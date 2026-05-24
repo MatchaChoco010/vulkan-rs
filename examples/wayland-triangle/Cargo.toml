@@ -1,0 +1,15 @@
+[package]
+name = "vulkan-wayland-triangle"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+bytemuck = { version = "1.25", features = ["derive"] }
+raw-window-handle = "0.6"
+vulkan = { path = "../../crates/vulkan", features = ["std", "wayland"] }
+vulkan-alloc = { path = "../../crates/vulkan-alloc" }
+winit = { version = "0.30", default-features = false, features = ["wayland", "rwh_06"] }

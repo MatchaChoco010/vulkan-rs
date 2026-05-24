@@ -1,0 +1,17 @@
+[package]
+name = "vulkan-mesh-shader"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+bytemuck = { version = "1.25", features = ["derive"] }
+glam = "0.33.0"
+vulkan = { path = "../../crates/vulkan", features = ["std"] }
+vulkan-alloc = { path = "../../crates/vulkan-alloc" }
+
+[build-dependencies]
+anyhow = "1"

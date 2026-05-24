@@ -1,0 +1,453 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from xml.etree import ElementTree
+
+
+ROOT = Path(__file__).resolve().parents[1]
+REGISTRY = ROOT / "third_party" / "vulkan" / "registry"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    video = parser.add_mutually_exclusive_group()
+    video.add_argument(
+        "--video",
+        dest="video",
+        action="store_true",
+        default=True,
+        help="include Vulkan video registry data (default)",
+    )
+    video.add_argument(
+        "--no-video",
+        dest="video",
+        action="store_false",
+        help="exclude Vulkan video registry data",
+    )
+    parser.add_argument("--ir", default=str(ROOT / "target" / "vulkan-ir.json"))
+    parser.add_argument("--out", default=str(ROOT / "crates" / "vulkan" / "src" / "vk" / "generated"))
+    parser.add_argument(
+        "--allow-non-sdk-tag",
+        action="store_true",
+        help="allow generating from a non vulkan-sdk-* tag for development snapshots",
+    )
+    args = parser.parse_args()
+
+    vk = load_vulkan_object(args.video)
+    ir = build_ir(vk, args.video, args.allow_non_sdk_tag)
+
+    ir_json = json.dumps(ir, indent=2, sort_keys=True) + "\n"
+
+    codegen = ROOT / "target" / "debug" / "vulkan-codegen"
+    subprocess.run(["cargo", "build", "-p", "vulkan-codegen"], cwd=ROOT, check=True)
+
+    ir_path = Path(args.ir)
+    ir_path.parent.mkdir(parents=True, exist_ok=True)
+    ir_path.write_text(ir_json)
+    subprocess.run([str(codegen), str(ir_path), str(Path(args.out))], cwd=ROOT, check=True)
+    format_generated(Path(args.out))
+
+    return 0
+
+
+def format_generated(path: Path) -> None:
+    files = sorted(str(file) for file in path.glob("*.rs"))
+    if files:
+        subprocess.run(["rustfmt", "--edition", "2024", *files], cwd=ROOT, check=True)
+
+
+def load_vulkan_object(include_video: bool):
+    sys.path.insert(0, str(REGISTRY))
+    import base_generator  # type: ignore
+    from reg import Registry  # type: ignore
+
+    (ROOT / "target").mkdir(parents=True, exist_ok=True)
+
+    class IrGenerator(base_generator.BaseGenerator):
+        def generate(self):
+            pass
+
+    # Khronos' BaseGenerator builds and owns the stable VulkanObject abstraction in `gen.vk`.
+    # Keep all registry access behind that object instead of walking vk.xml in the Rust emitter.
+    base_generator.SetTargetApiName("vulkan")
+    base_generator.SetMergedApiNames(None)
+    base_generator.SetOutputDirectory(str(ROOT / "target"))
+    base_generator.SetOutputFileName("vulkan-ir")
+
+    video_xml = str(REGISTRY / "video.xml") if include_video else None
+    opts = base_generator.BaseGeneratorOptions(
+        customFileName="vulkan-ir",
+        customDirectory=str(ROOT / "target"),
+        customApiName="vulkan",
+        videoXmlPath=video_xml,
+    )
+    gen = IrGenerator()
+    registry = Registry(gen, opts)
+    registry.loadElementTree(ElementTree.parse(REGISTRY / "vk.xml"))
+    registry.apiGen()
+    return gen.vk
+
+
+def build_ir(vk, include_video: bool, allow_non_sdk_tag: bool):
+    commit = git(["-C", str(ROOT / "third_party" / "vulkan"), "rev-parse", "--short=12", "HEAD"])
+    exact_tags = git(
+        ["-C", str(ROOT / "third_party" / "vulkan"), "tag", "--points-at", "HEAD"],
+        allow_fail=True,
+    ).splitlines()
+    sdk_tags = sorted(tag for tag in exact_tags if tag.startswith("vulkan-sdk-"))
+    if sdk_tags:
+        tag = sdk_tags[-1]
+    elif allow_non_sdk_tag:
+        tag = git(["-C", str(ROOT / "third_party" / "vulkan"), "describe", "--tags", "--always"])
+    else:
+        raise RuntimeError(
+            "third_party/vulkan is not at an exact vulkan-sdk-* tag. "
+            "Use --allow-non-sdk-tag for development snapshots; "
+            f"current exact tags are {', '.join(exact_tags) or '<none>'}"
+        )
+
+    all_constants = list(vk.constants.values())
+    all_enums = list(vk.enums.values())
+    all_structs = list(vk.structs.values())
+    if include_video and vk.videoStd is not None:
+        all_constants.extend(vk.videoStd.constants.values())
+        all_enums.extend(vk.videoStd.enums.values())
+        all_structs.extend(vk.videoStd.structs.values())
+
+    bitmasks = []
+    for bitmask in sorted(vk.bitmasks.values(), key=lambda x: x.name):
+        if not include_item(bitmask, include_video):
+            continue
+        bitmasks.append(
+            {
+                "name": bitmask.name,
+                "rust_name": rust_type_name(bitmask.name),
+                "aliases": sorted(bitmask.aliases),
+                "bit_width": bitmask.bitWidth,
+                "protect": effective_protect(vk, bitmask),
+                "fields": [
+                    {
+                        "name": flag.name,
+                        "rust_name": bit_value_const_name(bitmask.name, flag.name),
+                        "value": int_literal(flag.value, bitmask.bitWidth, unsigned=True),
+                        "protect": flag.protect,
+                    }
+                    for flag in sorted(bitmask.flags, key=lambda x: (x.value, x.name))
+                ],
+            }
+        )
+
+    command_pointer_names = set()
+    func_pointers = []
+    for fp in sorted(vk.funcPointers.values(), key=lambda x: x.name):
+        if fp.name == "PFN_vkVoidFunction":
+            continue
+        func_pointers.append(func_pointer_ir(fp.name, fp.returnType, fp.params, fp.protect))
+    for command in sorted(vk.commands.values(), key=lambda x: x.name):
+        if not include_item(command, include_video):
+            continue
+        pfn_name = f"PFN_{command.name}"
+        if pfn_name not in command_pointer_names:
+            command_pointer_names.add(pfn_name)
+            func_pointers.append(func_pointer_ir(pfn_name, command.returnType, command.params, effective_protect(vk, command)))
+
+    return {
+        "header_version": int(vk.headerVersion),
+        "header_version_complete": vk.headerVersionComplete,
+        "headers_tag": tag,
+        "headers_commit": commit,
+        "constants": [
+            {
+                "name": c.name,
+                "rust_name": rust_const_name(c.name),
+                "value": constant_value(c),
+                "ty": c.type,
+            }
+            for c in sorted(all_constants, key=lambda x: x.name)
+            if (include_video or c.videoStdHeader is None)
+        ],
+        "handles": [
+            {
+                "name": h.name,
+                "rust_name": rust_type_name(h.name),
+                "aliases": sorted(h.aliases),
+                "dispatchable": h.dispatchable,
+                "protect": effective_protect(vk, h),
+            }
+            for h in sorted(vk.handles.values(), key=lambda x: x.name)
+            if include_item(h, include_video)
+        ],
+        "enums": [
+            {
+                "name": e.name,
+                "rust_name": rust_type_name(e.name),
+                "aliases": sorted(e.aliases),
+                "bit_width": e.bitWidth,
+                "protect": effective_protect(vk, e),
+                "fields": [
+                    {
+                        "name": f.name,
+                        "rust_name": enum_value_const_name(e.name, f.name),
+                        "value": int_literal(f.value, e.bitWidth, unsigned=False),
+                        "protect": f.protect,
+                    }
+                    for f in sorted(e.fields, key=lambda x: (x.value, x.name))
+                ],
+            }
+            for e in sorted(all_enums, key=lambda x: x.name)
+            if (include_video or e.videoStdHeader is None) and include_item(e, include_video)
+        ],
+        "bitmasks": bitmasks,
+        "flags": [
+            {
+                "name": f.name,
+                "rust_name": rust_type_name(f.name),
+                "aliases": sorted(f.aliases),
+                "bitmask": f.bitmaskName,
+                "bit_width": f.bitWidth,
+                "protect": effective_protect(vk, f),
+            }
+            for f in sorted(vk.flags.values(), key=lambda x: x.name)
+            if include_item(f, include_video)
+        ],
+        "func_pointers": sorted(func_pointers, key=lambda x: x["name"]),
+        "structs": [
+            {
+                "name": s.name,
+                "rust_name": rust_type_name(s.name),
+                "aliases": sorted(s.aliases),
+                "union": s.union,
+                "s_type": s.sType,
+                "extends": sorted(s.extends),
+                "protect": effective_protect(vk, s),
+                "members": [member_ir(m) for m in s.members],
+            }
+            for s in sorted(all_structs, key=lambda x: x.name)
+            if (include_video or s.videoStdHeader is None) and include_item(s, include_video)
+        ],
+        "commands": [
+            {
+                "name": c.name,
+                "rust_name": command_name(c.name),
+                "return_ty": c.returnType,
+                "success_codes": list(c.successCodes),
+                "error_codes": list(c.errorCodes),
+                "dispatch": dispatch(c),
+                "protect": effective_protect(vk, c),
+                "params": [param_ir(p, strict=True) for p in c.params],
+            }
+            for c in sorted(vk.commands.values(), key=lambda x: x.name)
+            if include_item(c, include_video)
+        ],
+        "extensions": [
+            {
+                "name": e.name,
+                "name_const": extension_name_const(e.nameString),
+                "spec_version_const": rust_const_name(e.specVersion),
+                "spec_version": e.specVersionValue,
+                "protect": e.protect,
+            }
+            for e in sorted(vk.extensions.values(), key=lambda x: x.name)
+            if include_extension(e, include_video)
+        ],
+    }
+
+
+def func_pointer_ir(name, return_ty, params, protect):
+    return {
+        "name": name,
+        "return_ty": return_ty,
+        "protect": protect,
+        "params": [param_ir(p, strict=False) for p in params],
+    }
+
+
+def member_ir(m):
+    return {
+        "name": m.name,
+        "rust_name": rust_field_name(m.name),
+        "ty": m.type,
+        "full_ty": m.fullType,
+        "is_const": m.const,
+        "pointer": m.pointer,
+        "optional": m.optional,
+        "optional_pointer": m.optionalPointer,
+        "len": m.length,
+        "null_terminated": m.nullTerminated,
+        "fixed_size_array": list(m.fixedSizeArray),
+    }
+
+
+def param_ir(p, strict: bool):
+    full_ty = p.fullType
+    return {
+        "name": p.name,
+        "rust_name": rust_field_name(p.name),
+        "ty": p.type,
+        "full_ty": full_ty,
+        "is_const": required_attr(p, "const") if strict else attr_or(p, "const", "const" in full_ty),
+        "pointer": required_attr(p, "pointer") if strict else attr_or(p, "pointer", "*" in full_ty),
+        "optional": required_attr(p, "optional") if strict else attr_or(p, "optional", False),
+        "optional_pointer": required_attr(p, "optionalPointer") if strict else attr_or(p, "optionalPointer", False),
+        "len": required_attr(p, "length") if strict else attr_or(p, "length", None),
+        "null_terminated": required_attr(p, "nullTerminated") if strict else attr_or(p, "nullTerminated", False),
+        "fixed_size_array": list(required_attr(p, "fixedSizeArray") if strict else attr_or(p, "fixedSizeArray", [])),
+    }
+
+
+def dispatch(command):
+    if command.name in {
+        "vkGetInstanceProcAddr",
+        "vkCreateInstance",
+        "vkEnumerateInstanceExtensionProperties",
+        "vkEnumerateInstanceLayerProperties",
+        "vkEnumerateInstanceVersion",
+    }:
+        return "entry"
+    if command.name == "vkGetDeviceProcAddr":
+        return "instance"
+    if command.params:
+        first = command.params[0].type
+        if first in {"VkDevice", "VkQueue", "VkCommandBuffer"}:
+            return "device"
+        if first in {"VkInstance", "VkPhysicalDevice"}:
+            return "instance"
+    return "entry"
+
+
+def effective_protect(vk, item):
+    protect = required_attr(item, "protect")
+    if protect:
+        return protect
+    for ext_name in required_attr(item, "extensions") or []:
+        ext = vk.extensions.get(ext_name)
+        if ext and ext.protect:
+            return ext.protect
+    return None
+
+
+def include_item(item, include_video: bool) -> bool:
+    if include_video:
+        return True
+    names = set(required_attr(item, "extensions") or [])
+    names.update((required_attr(item, "definingRequirements") or {}).keys())
+    return not any("video" in name.lower() for name in names)
+
+
+def include_extension(ext, include_video: bool) -> bool:
+    return include_video or "video" not in ext.name.lower()
+
+
+def rust_type_name(name: str) -> str:
+    if name == "VkResult":
+        return "VkResult"
+    return name[2:] if name.startswith("Vk") else name
+
+
+def command_name(name: str) -> str:
+    name = name[2:] if name.startswith("vk") else name
+    return rust_field_name(name)
+
+
+def rust_field_name(name: str) -> str:
+    out = []
+    for i, ch in enumerate(name):
+        prev = name[i - 1] if i else ""
+        next_ch = name[i + 1] if i + 1 < len(name) else ""
+        if ch.isupper() and i and (prev.islower() or prev.isdigit() or next_ch.islower()):
+            out.append("_")
+        out.append(ch.lower())
+    value = "".join(out)
+    if value and value[0].isdigit():
+        value = "_" + value
+    if value in {"type", "match", "ref", "box", "loop", "move", "where", "use", "fn", "mod", "self"}:
+        return "r#" + value
+    return value
+
+
+def rust_const_name(name: str) -> str:
+    if name.startswith("VK_"):
+        name = name[3:]
+    return name.upper()
+
+
+def extension_name_const(name: str) -> str:
+    name = rust_const_name(name)
+    return name.replace("_EXTENSION_NAME", "_NAME")
+
+
+def enum_value_const_name(parent: str, name: str) -> str:
+    if name.startswith("VK_"):
+        name = name[3:]
+    prefix = screaming(rust_type_name(parent))
+    if name.startswith(prefix + "_"):
+        name = name[len(prefix) + 1 :]
+    return name
+
+
+def bit_value_const_name(parent: str, name: str) -> str:
+    if name.startswith("VK_"):
+        name = name[3:]
+    prefix = screaming(rust_type_name(parent))
+    if "_FLAG_BITS_" in prefix:
+        prefix = prefix.split("_FLAG_BITS_", 1)[0] + "_"
+    else:
+        for suffix in ("_FLAG_BITS_2", "_FLAG_BITS"):
+            if prefix.endswith(suffix):
+                prefix = prefix[: -len(suffix)] + "_"
+                break
+    if name.startswith(prefix):
+        name = name[len(prefix) :]
+    if parent == "VkDebugUtilsMessageSeverityFlagBitsEXT":
+        return name.replace("_BIT_EXT", "")
+    for suffix in ("_BIT_KHR", "_BIT_EXT", "_BIT_NV", "_BIT_QCOM", "_BIT_ARM", "_BIT_AMD"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)] + suffix[4:]
+    if name.endswith("_BIT"):
+        name = name[:-4]
+    return name
+
+
+def screaming(name: str) -> str:
+    return rust_field_name(name).upper()
+
+
+def int_literal(value: int, bit_width: int, unsigned: bool) -> str:
+    return str(value)
+
+
+def constant_value(c) -> str:
+    if c.type == "float":
+        return repr(float(c.value))
+    return str(int(c.value))
+
+
+def required_attr(obj, name: str):
+    if not hasattr(obj, name):
+        obj_name = getattr(obj, "name", type(obj).__name__)
+        raise AttributeError(
+            f"{type(obj).__name__} {obj_name!r} is missing required VulkanObject attribute {name!r}"
+        )
+    return getattr(obj, name)
+
+
+def attr_or(obj, name: str, default):
+    return getattr(obj, name, default)
+
+
+def git(args, allow_fail=False):
+    try:
+        return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+    except subprocess.CalledProcessError:
+        if allow_fail:
+            return ""
+        raise
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

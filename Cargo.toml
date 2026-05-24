@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "crates/vulkan",
+    "crates/vulkan-alloc",
+    "crates/vulkan-codegen",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/MatchaChoco010/vulkan-rs"

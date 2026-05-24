@@ -1,0 +1,13 @@
+[package]
+name = "vulkan-compute-buffer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+bytemuck = "1.25"
+vulkan = { path = "../../crates/vulkan", features = ["std"] }
+vulkan-alloc = { path = "../../crates/vulkan-alloc" }

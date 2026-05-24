@@ -1,0 +1,11 @@
+error[E0597]: `validation` does not live long enough
+  --> tests/ui/pnext-temporary.rs:9:64
+   |
+ 8 |         let mut validation = vk::ValidationFeaturesEXT::default();
+   |             -------------- binding `validation` declared here
+ 9 |         info = vk::ShaderModuleCreateInfo::default().push_next(&mut validation);
+   |                                                                ^^^^^^^^^^^^^^^ borrowed value does not live long enough
+10 |     }
+   |     - `validation` dropped here while still borrowed
+11 |     use_info_later(info);
+   |                    ---- borrow later used here

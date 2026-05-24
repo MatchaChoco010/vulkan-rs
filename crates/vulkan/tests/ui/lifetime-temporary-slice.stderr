@@ -1,0 +1,11 @@
+error[E0597]: `priorities` does not live long enough
+  --> tests/ui/lifetime-temporary-slice.rs:9:70
+   |
+ 8 |         let priorities = [1.0];
+   |             ---------- binding `priorities` declared here
+ 9 |         info = vk::DeviceQueueCreateInfo::default().queue_priorities(&priorities);
+   |                                                                      ^^^^^^^^^^^ borrowed value does not live long enough
+10 |     }
+   |     - `priorities` dropped here while still borrowed
+11 |     use_info_later(info);
+   |                    ---- borrow later used here
