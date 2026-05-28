@@ -1,163 +1,17 @@
 #![allow(dead_code)]
 
-use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use vulkan_registry::{Command, Member, Param, Registry, Struct};
 
-#[derive(Deserialize)]
-struct RegistryIr {
-    header_version: u32,
-    header_version_complete: String,
-    headers_tag: String,
-    headers_commit: String,
-    constants: Vec<ConstantIr>,
-    handles: Vec<HandleIr>,
-    enums: Vec<EnumIr>,
-    bitmasks: Vec<BitmaskIr>,
-    flags: Vec<FlagsIr>,
-    func_pointers: Vec<FuncPointerIr>,
-    structs: Vec<StructIr>,
-    commands: Vec<CommandIr>,
-    extensions: Vec<ExtensionIr>,
-}
-
-#[derive(Deserialize)]
-struct ConstantIr {
-    name: String,
-    rust_name: String,
-    value: String,
-    ty: String,
-}
-
-#[derive(Deserialize)]
-struct HandleIr {
-    name: String,
-    rust_name: String,
-    aliases: Vec<String>,
-    dispatchable: bool,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct EnumIr {
-    name: String,
-    rust_name: String,
-    aliases: Vec<String>,
-    bit_width: u32,
-    fields: Vec<EnumFieldIr>,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct EnumFieldIr {
-    rust_name: String,
-    value: String,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct BitmaskIr {
-    name: String,
-    rust_name: String,
-    aliases: Vec<String>,
-    bit_width: u32,
-    fields: Vec<FlagFieldIr>,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct FlagFieldIr {
-    rust_name: String,
-    value: String,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct FlagsIr {
-    name: String,
-    rust_name: String,
-    aliases: Vec<String>,
-    bitmask: Option<String>,
-    bit_width: u32,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct FuncPointerIr {
-    name: String,
-    return_ty: String,
-    params: Vec<ParamIr>,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct StructIr {
-    name: String,
-    rust_name: String,
-    aliases: Vec<String>,
-    union: bool,
-    s_type: Option<String>,
-    extends: Vec<String>,
-    members: Vec<MemberIr>,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize, Clone)]
-struct MemberIr {
-    name: String,
-    rust_name: String,
-    ty: String,
-    full_ty: String,
-    is_const: bool,
-    pointer: bool,
-    optional: bool,
-    optional_pointer: bool,
-    len: Option<String>,
-    null_terminated: bool,
-    fixed_size_array: Vec<String>,
-}
-
-#[derive(Deserialize)]
-struct CommandIr {
-    name: String,
-    rust_name: String,
-    return_ty: String,
-    success_codes: Vec<String>,
-    error_codes: Vec<String>,
-    params: Vec<ParamIr>,
-    dispatch: String,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ExtensionIr {
-    name: String,
-    name_const: String,
-    spec_version_const: String,
-    spec_version: u32,
-    protect: Option<String>,
-}
-
-#[derive(Deserialize, Clone)]
-struct ParamIr {
-    name: String,
-    rust_name: String,
-    ty: String,
-    full_ty: String,
-    is_const: bool,
-    pointer: bool,
-    optional: bool,
-    optional_pointer: bool,
-    len: Option<String>,
-    null_terminated: bool,
-    fixed_size_array: Vec<String>,
-}
+#[cfg(test)]
+use vulkan_registry::{Bitmask, Constant, Enum, FlagField, Flags, Handle};
 
 struct Context<'a> {
-    structs: BTreeMap<&'a str, &'a StructIr>,
+    structs: BTreeMap<&'a str, &'a Struct>,
     unions: BTreeSet<&'a str>,
     handles: BTreeSet<&'a str>,
     enums: BTreeSet<&'a str>,
@@ -168,33 +22,32 @@ struct Context<'a> {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("usage: vulkan-codegen <ir.json> <out-dir>");
-        std::process::exit(2);
-    }
-
-    let ir_path = PathBuf::from(&args[1]);
-    let out_dir = PathBuf::from(&args[2]);
-    let ir: RegistryIr =
-        serde_json::from_str(&fs::read_to_string(&ir_path).expect("read IR")).expect("parse IR");
+    let out_dir = match args.as_slice() {
+        [_program, out_dir] => Path::new(out_dir).to_path_buf(),
+        _ => {
+            eprintln!("usage: vulkan-codegen <out-dir>");
+            std::process::exit(2);
+        }
+    };
 
     fs::create_dir_all(&out_dir).expect("create generated dir");
 
-    let ctx = Context::new(&ir);
+    let ir = Registry::get();
+    let ctx = Context::new(ir);
     write_file(&out_dir, "mod.rs", &emit_mod());
-    write_file(&out_dir, "version.rs", &emit_version(&ir));
-    write_file(&out_dir, "constants.rs", &emit_constants(&ir));
-    write_file(&out_dir, "handles.rs", &emit_handles(&ir));
-    write_file(&out_dir, "enums.rs", &emit_enums(&ir));
-    write_file(&out_dir, "bitmasks.rs", &emit_bitmasks(&ir, &ctx));
-    write_file(&out_dir, "func_pointers.rs", &emit_func_pointers(&ir, &ctx));
-    write_file(&out_dir, "extensions.rs", &emit_extensions(&ir));
-    write_file(&out_dir, "structs.rs", &emit_structs(&ir, &ctx));
-    write_file(&out_dir, "commands.rs", &emit_commands(&ir, &ctx));
+    write_file(&out_dir, "version.rs", &emit_version(ir));
+    write_file(&out_dir, "constants.rs", &emit_constants(ir));
+    write_file(&out_dir, "handles.rs", &emit_handles(ir));
+    write_file(&out_dir, "enums.rs", &emit_enums(ir));
+    write_file(&out_dir, "bitmasks.rs", &emit_bitmasks(ir, &ctx));
+    write_file(&out_dir, "func_pointers.rs", &emit_func_pointers(ir, &ctx));
+    write_file(&out_dir, "extensions.rs", &emit_extensions(ir));
+    write_file(&out_dir, "structs.rs", &emit_structs(ir, &ctx));
+    write_file(&out_dir, "commands.rs", &emit_commands(ir, &ctx));
 }
 
 impl<'a> Context<'a> {
-    fn new(ir: &'a RegistryIr) -> Self {
+    fn new(ir: &'a Registry) -> Self {
         let structs = ir
             .structs
             .iter()
@@ -317,7 +170,7 @@ fn emit_mod() -> String {
     .join("\n")
 }
 
-fn emit_version(ir: &RegistryIr) -> String {
+fn emit_version(ir: &Registry) -> String {
     let parts = parse_header_version_complete(&ir.header_version_complete);
     format!(
         "pub const VULKAN_HEADER_VERSION: u32 = {};\n\
@@ -337,7 +190,7 @@ fn parse_header_version_complete(value: &str) -> (u32, u32, u32) {
     )
 }
 
-fn emit_constants(ir: &RegistryIr) -> String {
+fn emit_constants(ir: &Registry) -> String {
     let mut out = prelude();
     let array_len_constants = array_len_constants(ir);
     for c in &ir.constants {
@@ -366,7 +219,7 @@ fn emit_constants(ir: &RegistryIr) -> String {
     out
 }
 
-fn array_len_constants(ir: &RegistryIr) -> BTreeSet<String> {
+fn array_len_constants(ir: &Registry) -> BTreeSet<String> {
     let constant_names = ir
         .constants
         .iter()
@@ -385,7 +238,7 @@ fn array_len_constants(ir: &RegistryIr) -> BTreeSet<String> {
     names
 }
 
-fn emit_handles(ir: &RegistryIr) -> String {
+fn emit_handles(ir: &Registry) -> String {
     let mut out = prelude();
     out.push_str("use core::ffi::c_void;\n\n");
     for h in &ir.handles {
@@ -422,7 +275,7 @@ fn emit_handles(ir: &RegistryIr) -> String {
     out
 }
 
-fn emit_enums(ir: &RegistryIr) -> String {
+fn emit_enums(ir: &Registry) -> String {
     let mut out = prelude();
     for e in &ir.enums {
         let repr = if e.bit_width == 64 { "i64" } else { "i32" };
@@ -470,7 +323,7 @@ fn emit_enums(ir: &RegistryIr) -> String {
     out
 }
 
-fn emit_bitmasks(ir: &RegistryIr, _ctx: &Context<'_>) -> String {
+fn emit_bitmasks(ir: &Registry, _ctx: &Context<'_>) -> String {
     let bitmask_fields = ir
         .bitmasks
         .iter()
@@ -634,7 +487,7 @@ fn emit_bitmasks(ir: &RegistryIr, _ctx: &Context<'_>) -> String {
     out
 }
 
-fn emit_func_pointers(ir: &RegistryIr, ctx: &Context<'_>) -> String {
+fn emit_func_pointers(ir: &Registry, ctx: &Context<'_>) -> String {
     let mut out = prelude();
     out.push_str("use core::ffi::{c_char, c_void};\n\n");
     out.push_str("pub type PFN_vkVoidFunction = Option<unsafe extern \"system\" fn()>;\n\n");
@@ -657,7 +510,7 @@ fn emit_func_pointers(ir: &RegistryIr, ctx: &Context<'_>) -> String {
     out
 }
 
-fn emit_extensions(ir: &RegistryIr) -> String {
+fn emit_extensions(ir: &Registry) -> String {
     let mut out = prelude();
     out.push_str("use core::ffi::CStr;\n\n");
 
@@ -681,7 +534,7 @@ fn emit_extensions(ir: &RegistryIr) -> String {
     out
 }
 
-fn emit_structs(ir: &RegistryIr, ctx: &Context<'_>) -> String {
+fn emit_structs(ir: &Registry, ctx: &Context<'_>) -> String {
     let mut out = prelude();
     out.push_str("use core::ffi::{c_char, c_void};\nuse core::marker::PhantomData;\n\n");
     for s in &ir.structs {
@@ -840,7 +693,7 @@ fn emit_acceleration_structure_instance(out: &mut String) {
     );
 }
 
-fn emit_union_impls(out: &mut String, s: &StructIr, ctx: &Context<'_>) {
+fn emit_union_impls(out: &mut String, s: &Struct, ctx: &Context<'_>) {
     cfg(out, s.protect.as_deref());
     writeln!(
         out,
@@ -893,7 +746,7 @@ fn emit_union_impls(out: &mut String, s: &StructIr, ctx: &Context<'_>) {
     out.push_str("}\n\n");
 }
 
-fn should_use_raw_pointer_setter(m: &MemberIr, ctx: &Context<'_>) -> bool {
+fn should_use_raw_pointer_setter(m: &Member, ctx: &Context<'_>) -> bool {
     m.pointer
         && m.ty != "void"
         && m.ty != "char"
@@ -901,7 +754,7 @@ fn should_use_raw_pointer_setter(m: &MemberIr, ctx: &Context<'_>) -> bool {
         && !ctx.is_known_vulkan_type(&m.ty)
 }
 
-fn bool32_setter_value(m: &MemberIr) -> Option<&'static str> {
+fn bool32_setter_value(m: &Member) -> Option<&'static str> {
     if !m.pointer && m.ty == "VkBool32" {
         Some("bool")
     } else {
@@ -913,7 +766,7 @@ fn bool32_assign_expr(field: &str) -> String {
     format!("        self.{field} = value as crate::vk::Bool32;")
 }
 
-fn emit_struct_impls(out: &mut String, s: &StructIr, ctx: &Context<'_>) {
+fn emit_struct_impls(out: &mut String, s: &Struct, ctx: &Context<'_>) {
     cfg(out, s.protect.as_deref());
     writeln!(
         out,
@@ -1139,7 +992,7 @@ fn emit_struct_impls(out: &mut String, s: &StructIr, ctx: &Context<'_>) {
     }
 }
 
-fn emit_commands(ir: &RegistryIr, ctx: &Context<'_>) -> String {
+fn emit_commands(ir: &Registry, ctx: &Context<'_>) -> String {
     let mut out = prelude_with_clippy_lints(&["missing_safety_doc", "too_many_arguments"]);
     out.push_str("use core::ffi::{c_char, c_void};\n\n");
     emit_fn_table(
@@ -1165,7 +1018,7 @@ fn emit_commands(ir: &RegistryIr, ctx: &Context<'_>) -> String {
 fn emit_fn_table<'a>(
     out: &mut String,
     name: &str,
-    commands: impl Iterator<Item = &'a CommandIr> + Clone,
+    commands: impl Iterator<Item = &'a Command> + Clone,
 ) {
     writeln!(out, "#[derive(Copy, Clone)]\npub struct {name} {{").unwrap();
     for c in commands.clone() {
@@ -1217,7 +1070,7 @@ fn emit_fn_table<'a>(
     }
 }
 
-fn emit_raw_wrappers(out: &mut String, ir: &RegistryIr, ctx: &Context<'_>) {
+fn emit_raw_wrappers(out: &mut String, ir: &Registry, ctx: &Context<'_>) {
     for dispatch in ["entry", "instance", "device"] {
         let self_ty = match dispatch {
             "entry" => "crate::Entry",
@@ -1273,7 +1126,7 @@ fn emit_raw_wrappers(out: &mut String, ir: &RegistryIr, ctx: &Context<'_>) {
     }
 }
 
-fn emit_wrappers(out: &mut String, ir: &RegistryIr, ctx: &Context<'_>) {
+fn emit_wrappers(out: &mut String, ir: &Registry, ctx: &Context<'_>) {
     for dispatch in ["entry", "instance", "device"] {
         let self_ty = match dispatch {
             "entry" => "crate::Entry",
@@ -1295,7 +1148,7 @@ fn emit_wrappers(out: &mut String, ir: &RegistryIr, ctx: &Context<'_>) {
     }
 }
 
-fn emit_command_wrapper(out: &mut String, c: &CommandIr, dispatch: &str, ctx: &Context<'_>) {
+fn emit_command_wrapper(out: &mut String, c: &Command, dispatch: &str, ctx: &Context<'_>) {
     let params = command_params_after_self(c, dispatch);
     // Acceleration-structure build commands use `ppBuildRangeInfos`: an array of pointers where
     // each pointed-to slice length is taken from the corresponding build-info geometry count.
@@ -1321,7 +1174,7 @@ fn emit_command_wrapper(out: &mut String, c: &CommandIr, dispatch: &str, ctx: &C
     }
 }
 
-fn supports_high_wrapper(c: &CommandIr, dispatch: &str, ctx: &Context<'_>) -> bool {
+fn supports_high_wrapper(c: &Command, dispatch: &str, ctx: &Context<'_>) -> bool {
     let params = command_params_after_self(c, dispatch);
     // The acceleration-structure build wrappers are supported even though their nested
     // pointer-to-slice parameter shape is outside the generic wrapper recognizers.
@@ -1358,7 +1211,7 @@ fn supports_high_wrapper(c: &CommandIr, dispatch: &str, ctx: &Context<'_>) -> bo
     wrapper_args_supported(params, &[], ctx)
 }
 
-fn emit_build_acceleration_structures_wrapper(out: &mut String, c: &CommandIr) {
+fn emit_build_acceleration_structures_wrapper(out: &mut String, c: &Command) {
     cfg(out, c.protect.as_deref());
     out.push_str("    #[cfg(feature = \"alloc\")]\n");
     match c.name.as_str() {
@@ -1422,7 +1275,7 @@ fn emit_build_acceleration_structures_wrapper(out: &mut String, c: &CommandIr) {
     }
 }
 
-fn emit_cmd_build_acceleration_structures_indirect_wrapper(out: &mut String, c: &CommandIr) {
+fn emit_cmd_build_acceleration_structures_indirect_wrapper(out: &mut String, c: &Command) {
     cfg(out, c.protect.as_deref());
     out.push_str(
         "    #[cfg(feature = \"alloc\")]\n\
@@ -1472,7 +1325,7 @@ fn emit_cmd_build_acceleration_structures_indirect_wrapper(out: &mut String, c: 
     );
 }
 
-fn emit_plain_wrapper(out: &mut String, c: &CommandIr, params: &[ParamIr], ctx: &Context<'_>) {
+fn emit_plain_wrapper(out: &mut String, c: &Command, params: &[Param], ctx: &Context<'_>) {
     cfg(out, c.protect.as_deref());
     let args = wrapper_args(params, &BTreeSet::new(), ctx);
     let ret = if c.return_ty == "VkResult" {
@@ -1523,8 +1376,8 @@ fn write_fn_return(out: &mut String, ret: &str) {
     }
 }
 
-fn emit_shared_count_len_checks(out: &mut String, params: &[ParamIr]) {
-    let mut groups = BTreeMap::<String, Vec<&ParamIr>>::new();
+fn emit_shared_count_len_checks(out: &mut String, params: &[Param]) {
+    let mut groups = BTreeMap::<String, Vec<&Param>>::new();
     for p in params {
         if p.pointer
             && p.fixed_size_array.is_empty()
@@ -1555,7 +1408,7 @@ fn emit_shared_count_len_checks(out: &mut String, params: &[ParamIr]) {
     }
 }
 
-fn emit_struct_len_checks(out: &mut String, params: &[ParamIr]) {
+fn emit_struct_len_checks(out: &mut String, params: &[Param]) {
     for p in params {
         if !p.pointer || !p.fixed_size_array.is_empty() {
             continue;
@@ -1585,7 +1438,7 @@ fn emit_struct_len_checks(out: &mut String, params: &[ParamIr]) {
     }
 }
 
-fn wrapper_slice_len_expr(p: &ParamIr) -> String {
+fn wrapper_slice_len_expr(p: &Param) -> String {
     let name = pointer_arg_name(p);
     if p.optional || p.optional_pointer {
         format!("{name}.map_or(0, |x| x.len())")
@@ -1596,8 +1449,8 @@ fn wrapper_slice_len_expr(p: &ParamIr) -> String {
 
 fn emit_single_output_wrapper(
     out: &mut String,
-    c: &CommandIr,
-    params: &[ParamIr],
+    c: &Command,
+    params: &[Param],
     output_i: usize,
     ctx: &Context<'_>,
 ) {
@@ -1681,11 +1534,11 @@ fn emit_single_output_wrapper(
     out.push_str("    }\n");
 }
 
-fn should_emit_in_place_output_wrapper(c: &CommandIr, output: &ParamIr, ctx: &Context<'_>) -> bool {
+fn should_emit_in_place_output_wrapper(c: &Command, output: &Param, ctx: &Context<'_>) -> bool {
     (c.return_ty == "void" || c.return_ty == "VkResult") && output_struct_has_p_next(output, ctx)
 }
 
-fn output_struct_has_p_next(output: &ParamIr, ctx: &Context<'_>) -> bool {
+fn output_struct_has_p_next(output: &Param, ctx: &Context<'_>) -> bool {
     if !output.pointer || output.is_const {
         return false;
     }
@@ -1698,8 +1551,8 @@ fn output_struct_has_p_next(output: &ParamIr, ctx: &Context<'_>) -> bool {
 
 fn emit_in_place_output_wrapper(
     out: &mut String,
-    c: &CommandIr,
-    params: &[ParamIr],
+    c: &Command,
+    params: &[Param],
     ctx: &Context<'_>,
 ) {
     let args = wrapper_args(params, &BTreeSet::new(), ctx);
@@ -1726,8 +1579,8 @@ fn emit_in_place_output_wrapper(
 
 fn emit_enumeration_wrapper(
     out: &mut String,
-    c: &CommandIr,
-    params: &[ParamIr],
+    c: &Command,
+    params: &[Param],
     count_i: usize,
     data_i: usize,
     ctx: &Context<'_>,
@@ -1842,8 +1695,8 @@ fn emit_enumeration_wrapper(
 
 fn emit_enumeration_in_place_wrappers(
     out: &mut String,
-    c: &CommandIr,
-    params: &[ParamIr],
+    c: &Command,
+    params: &[Param],
     indices: (usize, usize),
     args: &[WrapperArg],
     elem_ty: &str,
@@ -1922,7 +1775,7 @@ fn emit_enumeration_in_place_wrappers(
     out.push_str("    }\n");
 }
 
-fn count_as_usize_expr(count: &ParamIr, name: &str, ctx: &Context<'_>) -> String {
+fn count_as_usize_expr(count: &Param, name: &str, ctx: &Context<'_>) -> String {
     if return_ty(&count.ty, ctx) == "usize" {
         name.to_string()
     } else {
@@ -1932,8 +1785,8 @@ fn count_as_usize_expr(count: &ParamIr, name: &str, ctx: &Context<'_>) -> String
 
 fn emit_counted_output_wrapper(
     out: &mut String,
-    c: &CommandIr,
-    params: &[ParamIr],
+    c: &Command,
+    params: &[Param],
     count_i: usize,
     input_i: usize,
     output_i: usize,
@@ -2011,11 +1864,11 @@ fn emit_counted_output_wrapper(
     }
 }
 
-fn has_non_success_success_code(c: &CommandIr) -> bool {
+fn has_non_success_success_code(c: &Command) -> bool {
     c.success_codes.iter().any(|code| code != "VK_SUCCESS")
 }
 
-fn is_pipeline_creation_command(c: &CommandIr) -> bool {
+fn is_pipeline_creation_command(c: &Command) -> bool {
     c.return_ty == "VkResult"
         && c.name.starts_with("vkCreate")
         && c.name.contains("Pipelines")
@@ -2024,7 +1877,7 @@ fn is_pipeline_creation_command(c: &CommandIr) -> bool {
             .any(|p| p.ty == "VkPipeline" && p.pointer && !p.is_const)
 }
 
-fn is_acquire_next_image_command(c: &CommandIr) -> bool {
+fn is_acquire_next_image_command(c: &Command) -> bool {
     matches!(
         c.name.as_str(),
         "vkAcquireNextImageKHR" | "vkAcquireNextImage2KHR"
@@ -2034,7 +1887,7 @@ fn is_acquire_next_image_command(c: &CommandIr) -> bool {
         .any(|code| code == "VK_SUBOPTIMAL_KHR")
 }
 
-fn is_suboptimal_result_command(c: &CommandIr) -> bool {
+fn is_suboptimal_result_command(c: &Command) -> bool {
     c.name == "vkQueuePresentKHR"
         && c.success_codes
             .iter()
@@ -2043,8 +1896,8 @@ fn is_suboptimal_result_command(c: &CommandIr) -> bool {
 
 fn emit_struct_field_counted_output_wrapper(
     out: &mut String,
-    c: &CommandIr,
-    params: &[ParamIr],
+    c: &Command,
+    params: &[Param],
     _info_i: usize,
     field: &str,
     output_i: usize,
@@ -2086,7 +1939,7 @@ struct WrapperArg {
     raw: String,
 }
 
-fn wrapper_args(params: &[ParamIr], skip: &BTreeSet<usize>, ctx: &Context<'_>) -> Vec<WrapperArg> {
+fn wrapper_args(params: &[Param], skip: &BTreeSet<usize>, ctx: &Context<'_>) -> Vec<WrapperArg> {
     let mut args = Vec::new();
     let skipped_count_names = skip
         .iter()
@@ -2112,7 +1965,7 @@ fn wrapper_args(params: &[ParamIr], skip: &BTreeSet<usize>, ctx: &Context<'_>) -
     args
 }
 
-fn wrapper_args_supported(params: &[ParamIr], skip: &[usize], ctx: &Context<'_>) -> bool {
+fn wrapper_args_supported(params: &[Param], skip: &[usize], ctx: &Context<'_>) -> bool {
     let skip = skip.iter().copied().collect::<BTreeSet<_>>();
     for (i, p) in params.iter().enumerate() {
         if skip.contains(&i) {
@@ -2136,7 +1989,7 @@ fn wrapper_args_supported(params: &[ParamIr], skip: &[usize], ctx: &Context<'_>)
     !params.is_empty() || raw_args.is_empty()
 }
 
-fn wrapper_arg(p: &ParamIr, ctx: &Context<'_>) -> WrapperArg {
+fn wrapper_arg(p: &Param, ctx: &Context<'_>) -> WrapperArg {
     if !p.pointer && p.ty == "VkBool32" {
         let name = wrapper_param_name(p);
         return WrapperArg {
@@ -2239,7 +2092,7 @@ fn wrapper_arg(p: &ParamIr, ctx: &Context<'_>) -> WrapperArg {
     }
 }
 
-fn command_params_after_self<'a>(c: &'a CommandIr, dispatch: &str) -> &'a [ParamIr] {
+fn command_params_after_self<'a>(c: &'a Command, dispatch: &str) -> &'a [Param] {
     let wrapper_handle = match dispatch {
         "instance" => Some("VkInstance"),
         "device" => Some("VkDevice"),
@@ -2255,7 +2108,7 @@ fn command_params_after_self<'a>(c: &'a CommandIr, dispatch: &str) -> &'a [Param
     }
 }
 
-fn enumeration_output_pair(params: &[ParamIr]) -> Option<(usize, usize)> {
+fn enumeration_output_pair(params: &[Param]) -> Option<(usize, usize)> {
     if params.len() < 2 {
         return None;
     }
@@ -2276,7 +2129,7 @@ fn enumeration_output_pair(params: &[ParamIr]) -> Option<(usize, usize)> {
     }
 }
 
-fn counted_output_pair(params: &[ParamIr]) -> Option<(usize, usize, usize)> {
+fn counted_output_pair(params: &[Param]) -> Option<(usize, usize, usize)> {
     if params.len() < 3 {
         return None;
     }
@@ -2293,7 +2146,7 @@ fn counted_output_pair(params: &[ParamIr]) -> Option<(usize, usize, usize)> {
     Some((count_i, input_i, output_i))
 }
 
-fn struct_field_counted_output_pair(params: &[ParamIr]) -> Option<(usize, String, usize)> {
+fn struct_field_counted_output_pair(params: &[Param]) -> Option<(usize, String, usize)> {
     let output_i = params.len().checked_sub(1)?;
     let output = &params[output_i];
     if !output.pointer || output.is_const {
@@ -2305,7 +2158,7 @@ fn struct_field_counted_output_pair(params: &[ParamIr]) -> Option<(usize, String
     Some((info_i, rust_field_name(field_name), output_i))
 }
 
-fn single_output_param(params: &[ParamIr]) -> Option<usize> {
+fn single_output_param(params: &[Param]) -> Option<usize> {
     let i = params.len().checked_sub(1)?;
     let p = &params[i];
     if p.pointer
@@ -2322,7 +2175,7 @@ fn single_output_param(params: &[ParamIr]) -> Option<usize> {
 
 fn write_raw_args_for_params(
     out: &mut String,
-    params: &[ParamIr],
+    params: &[Param],
     args: &[WrapperArg],
     extras: &BTreeMap<usize, String>,
 ) {
@@ -2352,7 +2205,7 @@ fn write_raw_args_for_params(
     out.push_str(&raw.join(", "));
 }
 
-fn pointer_arg_name(p: &ParamIr) -> String {
+fn pointer_arg_name(p: &Param) -> String {
     if p.name.starts_with("pp") && p.name.len() > 2 && p.name.as_bytes()[2].is_ascii_uppercase() {
         return rust_field_name(&p.name[2..]);
     }
@@ -2362,7 +2215,7 @@ fn pointer_arg_name(p: &ParamIr) -> String {
     p.rust_name.clone()
 }
 
-fn wrapper_param_name(p: &ParamIr) -> String {
+fn wrapper_param_name(p: &Param) -> String {
     if p.pointer {
         pointer_arg_name(p)
     } else {
@@ -2370,7 +2223,7 @@ fn wrapper_param_name(p: &ParamIr) -> String {
     }
 }
 
-fn pointed_param_ty(p: &ParamIr, ctx: &Context<'_>) -> String {
+fn pointed_param_ty(p: &Param, ctx: &Context<'_>) -> String {
     let mut ty = rust_ty(&p.ty, ctx, true);
     let stars = p.full_ty.matches('*').count();
     for _ in 1..stars {
@@ -2379,7 +2232,7 @@ fn pointed_param_ty(p: &ParamIr, ctx: &Context<'_>) -> String {
     ty
 }
 
-fn output_param_ty(p: &ParamIr, ctx: &Context<'_>) -> String {
+fn output_param_ty(p: &Param, ctx: &Context<'_>) -> String {
     if p.ty == "VkBool32" {
         return "bool".to_string();
     }
@@ -2395,7 +2248,7 @@ fn output_param_ty(p: &ParamIr, ctx: &Context<'_>) -> String {
     }
 }
 
-fn output_storage_ty(p: &ParamIr, output_ty: &str) -> String {
+fn output_storage_ty(p: &Param, output_ty: &str) -> String {
     if p.ty == "VkBool32" {
         "u32".to_string()
     } else {
@@ -2403,7 +2256,7 @@ fn output_storage_ty(p: &ParamIr, output_ty: &str) -> String {
     }
 }
 
-fn supports_output_param(p: &ParamIr, _ctx: &Context<'_>) -> bool {
+fn supports_output_param(p: &Param, _ctx: &Context<'_>) -> bool {
     if !p.pointer || p.is_const || !p.fixed_size_array.is_empty() {
         return false;
     }
@@ -2423,7 +2276,7 @@ fn default_value_expr(ty: &str, ctx: &Context<'_>) -> String {
     }
 }
 
-fn member_default_expr(s: &StructIr, m: &MemberIr, ctx: &Context<'_>) -> String {
+fn member_default_expr(s: &Struct, m: &Member, ctx: &Context<'_>) -> String {
     let mut expr = scalar_member_default_expr(s, m, ctx);
     for len in m.fixed_size_array.iter().rev() {
         expr = format!("[{expr}; {}]", array_len_expr(len));
@@ -2431,7 +2284,7 @@ fn member_default_expr(s: &StructIr, m: &MemberIr, ctx: &Context<'_>) -> String 
     expr
 }
 
-fn scalar_member_default_expr(s: &StructIr, m: &MemberIr, ctx: &Context<'_>) -> String {
+fn scalar_member_default_expr(s: &Struct, m: &Member, ctx: &Context<'_>) -> String {
     if m.name == "sType"
         && let Some(s_type) = &s.s_type
     {
@@ -2487,7 +2340,7 @@ fn scalar_member_default_expr(s: &StructIr, m: &MemberIr, ctx: &Context<'_>) -> 
     }
 }
 
-fn member_ty(m: &MemberIr, ctx: &Context<'_>) -> String {
+fn member_ty(m: &Member, ctx: &Context<'_>) -> String {
     let base = rust_ty(&m.ty, ctx, false);
     let mut ty = if m.ty.starts_with("PFN_") {
         base
@@ -2511,7 +2364,7 @@ fn member_ty(m: &MemberIr, ctx: &Context<'_>) -> String {
     ty
 }
 
-fn param_ty(p: &ParamIr, ctx: &Context<'_>) -> String {
+fn param_ty(p: &Param, ctx: &Context<'_>) -> String {
     let base = rust_ty(&p.ty, ctx, true);
     let mut ty = if p.ty.starts_with("PFN_") {
         base
@@ -2531,7 +2384,7 @@ fn param_ty(p: &ParamIr, ctx: &Context<'_>) -> String {
     ty
 }
 
-fn pointed_ty(m: &MemberIr, ctx: &Context<'_>) -> String {
+fn pointed_ty(m: &Member, ctx: &Context<'_>) -> String {
     let mut ty = rust_ty(&m.ty, ctx, false);
     let stars = m.full_ty.matches('*').count();
     for _ in 1..stars {
@@ -2627,7 +2480,7 @@ fn struct_len_expr(value: Option<&str>) -> Option<(&str, &str)> {
     value.split_once("->").or_else(|| value.split_once("::"))
 }
 
-fn setter_name(m: &MemberIr) -> String {
+fn setter_name(m: &Member) -> String {
     if m.name.starts_with("pp") && m.name.len() > 2 && m.name.as_bytes()[2].is_ascii_uppercase() {
         return rust_field_name(&m.name[2..]);
     }
@@ -2762,8 +2615,8 @@ fn integer_literal(value: &str, repr: &str) -> String {
 mod tests {
     use super::*;
 
-    fn empty_ir() -> RegistryIr {
-        RegistryIr {
+    fn empty_registry() -> Registry {
+        Registry {
             header_version: 350,
             header_version_complete: "1.4.350".to_string(),
             headers_tag: "vulkan-sdk-1.4.350.0".to_string(),
@@ -2780,8 +2633,8 @@ mod tests {
         }
     }
 
-    fn member(name: &str, ty: &str, full_ty: &str) -> MemberIr {
-        MemberIr {
+    fn member(name: &str, ty: &str, full_ty: &str) -> Member {
+        Member {
             name: name.to_string(),
             rust_name: rust_field_name(name),
             ty: ty.to_string(),
@@ -2796,8 +2649,8 @@ mod tests {
         }
     }
 
-    fn param(name: &str, ty: &str, full_ty: &str) -> ParamIr {
-        ParamIr {
+    fn param(name: &str, ty: &str, full_ty: &str) -> Param {
+        Param {
             name: name.to_string(),
             rust_name: rust_field_name(name),
             ty: ty.to_string(),
@@ -2812,8 +2665,8 @@ mod tests {
         }
     }
 
-    fn structure_type_enum() -> EnumIr {
-        EnumIr {
+    fn structure_type_enum() -> Enum {
+        Enum {
             name: "VkStructureType".to_string(),
             rust_name: "StructureType".to_string(),
             aliases: Vec::new(),
@@ -2823,8 +2676,8 @@ mod tests {
         }
     }
 
-    fn bare_struct(name: &str) -> StructIr {
-        StructIr {
+    fn bare_struct(name: &str) -> Struct {
+        Struct {
             name: name.to_string(),
             rust_name: rust_type_name(name),
             aliases: Vec::new(),
@@ -2836,8 +2689,8 @@ mod tests {
         }
     }
 
-    fn add_device_and_result(ir: &mut RegistryIr) {
-        ir.enums.push(EnumIr {
+    fn add_device_and_result(ir: &mut Registry) {
+        ir.enums.push(Enum {
             name: "VkResult".to_string(),
             rust_name: "VkResult".to_string(),
             aliases: Vec::new(),
@@ -2845,7 +2698,7 @@ mod tests {
             fields: Vec::new(),
             protect: None,
         });
-        ir.handles.push(HandleIr {
+        ir.handles.push(Handle {
             name: "VkDevice".to_string(),
             rust_name: "Device".to_string(),
             aliases: Vec::new(),
@@ -2856,19 +2709,21 @@ mod tests {
 
     #[test]
     fn flag_bits_or_returns_flags_type() {
-        let mut ir = empty_ir();
-        ir.bitmasks.push(BitmaskIr {
+        let mut ir = empty_registry();
+        ir.bitmasks.push(Bitmask {
             name: "VkMemoryPropertyFlagBits".to_string(),
             rust_name: "MemoryPropertyFlagBits".to_string(),
             aliases: Vec::new(),
             bit_width: 32,
             fields: vec![
-                FlagFieldIr {
+                FlagField {
+                    name: "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT".to_string(),
                     rust_name: "HOST_VISIBLE".to_string(),
                     value: "1".to_string(),
                     protect: None,
                 },
-                FlagFieldIr {
+                FlagField {
+                    name: "VK_MEMORY_PROPERTY_HOST_COHERENT_BIT".to_string(),
                     rust_name: "HOST_COHERENT".to_string(),
                     value: "2".to_string(),
                     protect: None,
@@ -2876,7 +2731,7 @@ mod tests {
             ],
             protect: None,
         });
-        ir.flags.push(FlagsIr {
+        ir.flags.push(Flags {
             name: "VkMemoryPropertyFlags".to_string(),
             rust_name: "MemoryPropertyFlags".to_string(),
             aliases: Vec::new(),
@@ -2895,9 +2750,9 @@ mod tests {
 
     #[test]
     fn emits_shader_module_code_slice_setter_from_complex_len_expr() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         ir.enums.push(structure_type_enum());
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkShaderModuleCreateInfo".to_string(),
             rust_name: "ShaderModuleCreateInfo".to_string(),
             aliases: Vec::new(),
@@ -2930,9 +2785,9 @@ mod tests {
 
     #[test]
     fn emits_void_data_slice_setter_as_bytes() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         ir.enums.push(structure_type_enum());
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkWriteDescriptorSetInlineUniformBlock".to_string(),
             rust_name: "WriteDescriptorSetInlineUniformBlock".to_string(),
             aliases: Vec::new(),
@@ -2960,10 +2815,10 @@ mod tests {
 
     #[test]
     fn emits_mut_void_range_setter_as_bytes() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         let mut address = member("address", "void", "void*");
         address.len = Some("size".to_string());
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkHostAddressRangeEXT".to_string(),
             rust_name: "HostAddressRangeEXT".to_string(),
             aliases: Vec::new(),
@@ -2982,20 +2837,20 @@ mod tests {
 
     #[test]
     fn emits_constants_with_types_from_ir_and_array_len_usage() {
-        let mut ir = empty_ir();
-        ir.constants.push(ConstantIr {
+        let mut ir = empty_registry();
+        ir.constants.push(Constant {
             name: "VK_QUEUE_FAMILY_IGNORED".to_string(),
             rust_name: "QUEUE_FAMILY_IGNORED".to_string(),
             value: "4294967295".to_string(),
             ty: "uint32_t".to_string(),
         });
-        ir.constants.push(ConstantIr {
+        ir.constants.push(Constant {
             name: "VK_WHOLE_SIZE".to_string(),
             rust_name: "WHOLE_SIZE".to_string(),
             value: "18446744073709551615".to_string(),
             ty: "uint64_t".to_string(),
         });
-        ir.constants.push(ConstantIr {
+        ir.constants.push(Constant {
             name: "VK_UUID_SIZE".to_string(),
             rust_name: "UUID_SIZE".to_string(),
             value: "16".to_string(),
@@ -3003,7 +2858,7 @@ mod tests {
         });
         let mut uuid_member = member("uuid", "uint8_t", "uint8_t");
         uuid_member.fixed_size_array = vec!["VK_UUID_SIZE".to_string()];
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkPhysicalDeviceIDProperties".to_string(),
             rust_name: "PhysicalDeviceIDProperties".to_string(),
             aliases: Vec::new(),
@@ -3033,9 +2888,9 @@ mod tests {
 
     #[test]
     fn emits_union_pointer_constructors() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         ir.structs.push(bare_struct("VkDeviceAddressRangeKHR"));
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkResourceDescriptorDataEXT".to_string(),
             rust_name: "ResourceDescriptorDataEXT".to_string(),
             aliases: Vec::new(),
@@ -3057,7 +2912,7 @@ mod tests {
 
     #[test]
     fn acceleration_structure_instance_has_bitfield_setters() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         ir.structs.push(bare_struct("VkTransformMatrixKHR"));
         ir.structs
             .push(bare_struct("VkAccelerationStructureInstanceKHR"));
@@ -3075,9 +2930,9 @@ mod tests {
 
     #[test]
     fn pnext_extends_impl_does_not_force_extension_and_root_lifetimes_to_match() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         ir.enums.push(structure_type_enum());
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkPhysicalDeviceFeatures2".to_string(),
             rust_name: "PhysicalDeviceFeatures2".to_string(),
             aliases: Vec::new(),
@@ -3090,7 +2945,7 @@ mod tests {
                 member("pNext", "void", "void*"),
             ],
         });
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkPhysicalDeviceVulkan12Features".to_string(),
             rust_name: "PhysicalDeviceVulkan12Features".to_string(),
             aliases: Vec::new(),
@@ -3112,7 +2967,7 @@ mod tests {
 
     #[test]
     fn wrappers_check_lengths_for_multiple_slices_sharing_one_count() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
         ir.structs.push(bare_struct("VkResourceDescriptorInfoEXT"));
         ir.structs.push(bare_struct("VkHostAddressRangeEXT"));
@@ -3128,7 +2983,7 @@ mod tests {
             "const VkHostAddressRangeEXT*",
         );
         descriptors.len = Some("resourceCount".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkWriteResourceDescriptorsEXT".to_string(),
             rust_name: "write_resource_descriptors_ext".to_string(),
             return_ty: "VkResult".to_string(),
@@ -3153,9 +3008,9 @@ mod tests {
 
     #[test]
     fn skips_unsized_void_output_high_wrapper() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkGetOpaqueDataEXT".to_string(),
             rust_name: "get_opaque_data_ext".to_string(),
             return_ty: "VkResult".to_string(),
@@ -3176,10 +3031,10 @@ mod tests {
 
     #[test]
     fn emits_struct_field_len_slice_for_command_params() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
         ir.enums.push(structure_type_enum());
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkBuildInfo".to_string(),
             rust_name: "BuildInfo".to_string(),
             aliases: Vec::new(),
@@ -3189,7 +3044,7 @@ mod tests {
             protect: None,
             members: vec![member("geometryCount", "uint32_t", "uint32_t")],
         });
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkSizeInfo".to_string(),
             rust_name: "SizeInfo".to_string(),
             aliases: Vec::new(),
@@ -3204,7 +3059,7 @@ mod tests {
         });
         let mut counts = param("pMaxPrimitiveCounts", "uint32_t", "const uint32_t*");
         counts.len = Some("pBuildInfo->geometryCount".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkGetBuildSizesKHR".to_string(),
             rust_name: "get_build_sizes_khr".to_string(),
             return_ty: "void".to_string(),
@@ -3229,16 +3084,16 @@ mod tests {
 
     #[test]
     fn emits_acceleration_structure_build_wrappers_with_nested_len_checks() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
-        ir.handles.push(HandleIr {
+        ir.handles.push(Handle {
             name: "VkDeferredOperationKHR".to_string(),
             rust_name: "DeferredOperationKHR".to_string(),
             aliases: Vec::new(),
             dispatchable: false,
             protect: None,
         });
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkAccelerationStructureBuildGeometryInfoKHR".to_string(),
             rust_name: "AccelerationStructureBuildGeometryInfoKHR".to_string(),
             aliases: Vec::new(),
@@ -3262,7 +3117,7 @@ mod tests {
             "const VkAccelerationStructureBuildRangeInfoKHR* const*",
         );
         ranges.len = Some("infoCount".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkBuildAccelerationStructuresKHR".to_string(),
             rust_name: "build_acceleration_structures_khr".to_string(),
             return_ty: "VkResult".to_string(),
@@ -3295,9 +3150,9 @@ mod tests {
 
     #[test]
     fn emits_pnext_enumeration_into_wrappers() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
-        ir.handles.push(HandleIr {
+        ir.handles.push(Handle {
             name: "VkPhysicalDevice".to_string(),
             rust_name: "PhysicalDevice".to_string(),
             aliases: Vec::new(),
@@ -3305,7 +3160,7 @@ mod tests {
             protect: None,
         });
         ir.enums.push(structure_type_enum());
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkQueueFamilyProperties2".to_string(),
             rust_name: "QueueFamilyProperties2".to_string(),
             aliases: Vec::new(),
@@ -3324,7 +3179,7 @@ mod tests {
             "VkQueueFamilyProperties2*",
         );
         properties.len = Some("pQueueFamilyPropertyCount".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkGetPhysicalDeviceQueueFamilyProperties2".to_string(),
             rust_name: "get_physical_device_queue_family_properties2".to_string(),
             return_ty: "void".to_string(),
@@ -3348,16 +3203,16 @@ mod tests {
 
     #[test]
     fn emits_acceleration_structure_indirect_wrapper_with_nested_len_checks() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
-        ir.handles.push(HandleIr {
+        ir.handles.push(Handle {
             name: "VkCommandBuffer".to_string(),
             rust_name: "CommandBuffer".to_string(),
             aliases: Vec::new(),
             dispatchable: true,
             protect: None,
         });
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkAccelerationStructureBuildGeometryInfoKHR".to_string(),
             rust_name: "AccelerationStructureBuildGeometryInfoKHR".to_string(),
             aliases: Vec::new(),
@@ -3383,7 +3238,7 @@ mod tests {
         strides.len = Some("infoCount".to_string());
         let mut counts = param("ppMaxPrimitiveCounts", "uint32_t", "const uint32_t* const*");
         counts.len = Some("infoCount".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkCmdBuildAccelerationStructuresIndirectKHR".to_string(),
             rust_name: "cmd_build_acceleration_structures_indirect_khr".to_string(),
             return_ty: "void".to_string(),
@@ -3412,11 +3267,11 @@ mod tests {
 
     #[test]
     fn emits_size_t_void_enumeration_as_vec_u8() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
         let mut data = param("pData", "void", "void*");
         data.len = Some("pDataSize".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkGetCacheData".to_string(),
             rust_name: "get_cache_data".to_string(),
             return_ty: "VkResult".to_string(),
@@ -3439,7 +3294,7 @@ mod tests {
 
     #[test]
     fn incomplete_enumeration_loop_grows_when_count_does_not_increase() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
         ir.structs.push(bare_struct("VkExtensionProperties"));
         let mut data = param(
@@ -3448,7 +3303,7 @@ mod tests {
             "VkExtensionProperties*",
         );
         data.len = Some("pPropertyCount".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkEnumerateDeviceExtensionProperties".to_string(),
             rust_name: "enumerate_device_extension_properties".to_string(),
             return_ty: "VkResult".to_string(),
@@ -3472,10 +3327,10 @@ mod tests {
 
     #[test]
     fn vk_result_pnext_output_uses_caller_storage() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
         ir.enums.push(structure_type_enum());
-        ir.structs.push(StructIr {
+        ir.structs.push(Struct {
             name: "VkOutputProperties2".to_string(),
             rust_name: "OutputProperties2".to_string(),
             aliases: Vec::new(),
@@ -3488,7 +3343,7 @@ mod tests {
                 member("pNext", "void", "void*"),
             ],
         });
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkGetOutputProperties2".to_string(),
             rust_name: "get_output_properties2".to_string(),
             return_ty: "VkResult".to_string(),
@@ -3511,10 +3366,10 @@ mod tests {
 
     #[test]
     fn acquire_next_image_does_not_read_output_for_not_ready_or_timeout() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
         for name in ["VkSwapchainKHR", "VkSemaphore", "VkFence"] {
-            ir.handles.push(HandleIr {
+            ir.handles.push(Handle {
                 name: name.to_string(),
                 rust_name: rust_type_name(name),
                 aliases: Vec::new(),
@@ -3522,7 +3377,7 @@ mod tests {
                 protect: None,
             });
         }
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkAcquireNextImageKHR".to_string(),
             rust_name: "acquire_next_image_khr".to_string(),
             return_ty: "VkResult".to_string(),
@@ -3562,16 +3417,16 @@ mod tests {
 
     #[test]
     fn all_pipeline_creation_wrappers_preserve_partial_outputs_on_non_success() {
-        let mut ir = empty_ir();
+        let mut ir = empty_registry();
         add_device_and_result(&mut ir);
-        ir.handles.push(HandleIr {
+        ir.handles.push(Handle {
             name: "VkPipelineCache".to_string(),
             rust_name: "PipelineCache".to_string(),
             aliases: Vec::new(),
             dispatchable: false,
             protect: None,
         });
-        ir.handles.push(HandleIr {
+        ir.handles.push(Handle {
             name: "VkPipeline".to_string(),
             rust_name: "Pipeline".to_string(),
             aliases: Vec::new(),
@@ -3588,7 +3443,7 @@ mod tests {
         infos.len = Some("createInfoCount".to_string());
         let mut pipelines = param("pPipelines", "VkPipeline", "VkPipeline*");
         pipelines.len = Some("createInfoCount".to_string());
-        ir.commands.push(CommandIr {
+        ir.commands.push(Command {
             name: "vkCreateRayTracingPipelinesNV".to_string(),
             rust_name: "create_ray_tracing_pipelines_nv".to_string(),
             return_ty: "VkResult".to_string(),

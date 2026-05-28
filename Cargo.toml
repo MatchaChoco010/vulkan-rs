@@ -3,6 +3,7 @@ members = [
     "crates/vulkan",
     "crates/vulkan-alloc",
     "crates/vulkan-codegen",
+    "crates/vulkan-registry",
 ]
 resolver = "2"
 

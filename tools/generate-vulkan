@@ -29,7 +29,6 @@ def main() -> int:
         action="store_false",
         help="exclude Vulkan video registry data",
     )
-    parser.add_argument("--ir", default=str(ROOT / "target" / "vulkan-ir.json"))
     parser.add_argument("--out", default=str(ROOT / "crates" / "vulkan" / "src" / "vk" / "generated"))
     parser.add_argument(
         "--allow-non-sdk-tag",
@@ -43,13 +42,14 @@ def main() -> int:
 
     ir_json = json.dumps(ir, indent=2, sort_keys=True) + "\n"
 
-    codegen = ROOT / "target" / "debug" / "vulkan-codegen"
-    subprocess.run(["cargo", "build", "-p", "vulkan-codegen"], cwd=ROOT, check=True)
-
-    ir_path = Path(args.ir)
+    ir_path = ROOT / "crates" / "vulkan-registry" / "vulkan-ir.json"
     ir_path.parent.mkdir(parents=True, exist_ok=True)
     ir_path.write_text(ir_json)
-    subprocess.run([str(codegen), str(ir_path), str(Path(args.out))], cwd=ROOT, check=True)
+    subprocess.run(
+        ["cargo", "run", "-p", "vulkan-codegen", "--", str(Path(args.out))],
+        cwd=ROOT,
+        check=True,
+    )
     format_generated(Path(args.out))
 
     return 0

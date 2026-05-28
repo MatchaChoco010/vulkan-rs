@@ -216,7 +216,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "vulkan"
-version = "0.1.0+vulkan-sdk-1.4.350.0"
+version = "0.2.0+vulkan-sdk-1.4.350.0"
 dependencies = [
  "libloading",
  "trybuild",
@@ -224,14 +224,21 @@ dependencies = [
 
 [[package]]
 name = "vulkan-alloc"
-version = "0.1.0"
+version = "0.2.0+vulkan-sdk-1.4.350.0"
 dependencies = [
  "vulkan",
 ]
 
 [[package]]
 name = "vulkan-codegen"
-version = "0.1.0"
+version = "0.2.0+vulkan-sdk-1.4.350.0"
+dependencies = [
+ "vulkan-registry",
+]
+
+[[package]]
+name = "vulkan-registry"
+version = "0.2.0+vulkan-sdk-1.4.350.0"
 dependencies = [
  "serde",
  "serde_json",
