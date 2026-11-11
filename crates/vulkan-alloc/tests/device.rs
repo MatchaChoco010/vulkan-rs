@@ -300,6 +300,109 @@ fn exportable_allocations_are_not_suballocated() {
     }
 }
 
+/// Collects `log` records so that the leak report can be asserted on.
+struct CapturedLog;
+
+static CAPTURED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+impl log::Log for CapturedLog {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+        true
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        CAPTURED
+            .lock()
+            .unwrap()
+            .push(format!("{} {}", record.level(), record.args()));
+    }
+
+    fn flush(&self) {}
+}
+
+/// A host that runs scripts cannot guarantee that every allocation is freed. Dropping
+/// the allocator must report what is left and carry on, not bring the process down.
+#[test]
+fn dropping_with_live_allocations_reports_and_continues() {
+    let Some(gpu) = Gpu::new() else { return };
+    log::set_logger(&CapturedLog).expect("no other logger in this test binary");
+    log::set_max_level(log::LevelFilter::Error);
+
+    let mut allocator = gpu.allocator();
+    let buffer;
+    let leaked_memory;
+    unsafe {
+        buffer = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
+        let leaked = allocator
+            .allocate(AllocationCreateDesc {
+                name: Some("script texture"),
+                ..desc(
+                    gpu.device.get_buffer_memory_requirements(buffer),
+                    MemoryLocation::GpuOnly,
+                )
+            })
+            .unwrap();
+        gpu.device
+            .bind_buffer_memory(buffer, leaked.memory(), leaked.offset())
+            .unwrap();
+        leaked_memory = leaked.memory();
+        // `leaked` is forgotten on purpose: it is never passed to `Allocator::free`.
+    }
+
+    let live = allocator.live_allocations();
+    assert_eq!(live.len(), 1);
+    assert_eq!(live[0].name.as_deref(), Some("script texture"));
+    assert_eq!(live[0].memory, leaked_memory);
+
+    drop(allocator); // Must not panic.
+
+    let records = CAPTURED.lock().unwrap().join("\n");
+    assert!(
+        records.contains("ERROR vulkan_alloc::Allocator dropped with 1 live allocation(s)"),
+        "{records}"
+    );
+    assert!(records.contains("\"script texture\""), "{records}");
+
+    // The memory was left alone, so the buffer is still valid until we clean up.
+    unsafe {
+        gpu.device.destroy_buffer(buffer, None);
+        gpu.device.free_memory(leaked_memory, None);
+    }
+}
+
+/// The explicit shutdown path: release everything, live or not.
+#[test]
+fn free_all_releases_memory_that_still_has_live_allocations() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut allocator = gpu.allocator();
+    unsafe {
+        let buffer = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
+        let allocation = allocator
+            .allocate(desc(
+                gpu.device.get_buffer_memory_requirements(buffer),
+                MemoryLocation::CpuToGpu,
+            ))
+            .unwrap();
+        gpu.device
+            .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
+            .unwrap();
+        {
+            let mapped = allocator.map(&allocation).unwrap();
+            // Out-of-range requests are an error value, not a panic.
+            assert!(mapped.try_byte_range(0, 4096).is_some());
+            assert!(mapped.try_byte_range(4096, usize::MAX).is_none());
+            assert!(mapped.try_byte_range(1 << 40, 1).is_none());
+        }
+
+        // The resource goes first, then the memory.
+        gpu.device.destroy_buffer(buffer, None);
+        assert_eq!(allocator.free_all(), 1);
+    }
+    assert!(allocator.is_empty());
+    assert!(allocator.live_allocations().is_empty());
+    // Nothing is left to report on drop, and the device has no memory to complain about.
+}
+
 #[test]
 fn allocator_is_send() {
     fn assert_send<T: Send>() {}
