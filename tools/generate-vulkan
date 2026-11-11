@@ -279,8 +279,41 @@ def build_ir(vk, allow_non_sdk_tag: bool):
                 "instance": e.instance,
                 "device": e.device,
                 "protect": e.protect,
+                "depends": e.depends,
+                "promoted_to": e.promotedTo,
             }
             for e in sorted(vk.extensions.values(), key=lambda x: x.name)
+        ],
+        "formats": [
+            {
+                "name": f.name,
+                "class": f.className,
+                "block_size": f.blockSize,
+                "texels_per_block": f.texelsPerBlock,
+                "block_extent": [int(x) for x in f.blockExtent],
+                "packed": f.packed,
+                "chroma": f.chroma,
+                "compressed": f.compressed,
+                "components": [
+                    {
+                        "name": c.type,
+                        "bits": None if c.bits == "compressed" else int(c.bits),
+                        "numeric_format": c.numericFormat,
+                        "plane_index": c.planeIndex,
+                    }
+                    for c in f.components
+                ],
+                "planes": [
+                    {
+                        "index": p.index,
+                        "width_divisor": p.widthDivisor,
+                        "height_divisor": p.heightDivisor,
+                        "compatible": p.compatible,
+                    }
+                    for p in f.planes
+                ],
+            }
+            for f in sorted(vk.formats.values(), key=lambda x: x.name)
         ],
     }
 

@@ -15,6 +15,7 @@ pub fn emit_mod() -> String {
         "constants",
         "enums",
         "extensions",
+        "formats",
         "func_pointers",
         "handles",
         "structs",
@@ -26,7 +27,10 @@ pub fn emit_mod() -> String {
     }
     out.push('\n');
     for module in modules {
-        w!(out, "pub use {module}::*;");
+        // `formats` only adds methods to `Format`; it exports nothing.
+        if module != "formats" {
+            w!(out, "pub use {module}::*;");
+        }
     }
     out
 }

@@ -1023,12 +1023,12 @@ unsafe fn write_resource_heap_descriptors(
     let material_range = device_address_range(device, materials);
     let range_descriptors = [
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::STORAGE_BUFFER)
+            .ty(vk::DescriptorType::STORAGE_BUFFER)
             .data(vk::ResourceDescriptorDataEXT::address_range(
                 &instance_range,
             )),
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::STORAGE_BUFFER)
+            .ty(vk::DescriptorType::STORAGE_BUFFER)
             .data(vk::ResourceDescriptorDataEXT::address_range(
                 &material_range,
             )),
@@ -1055,10 +1055,10 @@ unsafe fn write_resource_heap_descriptors(
     ];
     let image_descriptors = [
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::SAMPLED_IMAGE)
+            .ty(vk::DescriptorType::SAMPLED_IMAGE)
             .data(vk::ResourceDescriptorDataEXT::image(&image_infos[0])),
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::SAMPLED_IMAGE)
+            .ty(vk::DescriptorType::SAMPLED_IMAGE)
             .data(vk::ResourceDescriptorDataEXT::image(&image_infos[1])),
     ];
 

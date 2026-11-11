@@ -306,7 +306,7 @@ unsafe fn import_image(gpu: &Gpu, dmabuf: Dmabuf) -> Result<(vk::Image, vk::Devi
             vk::PhysicalDeviceExternalImageFormatInfo::default().handle_type(DMA_BUF);
         let format_info = vk::PhysicalDeviceImageFormatInfo2::default()
             .format(dmabuf.format)
-            .r#type(vk::ImageType::_2D)
+            .ty(vk::ImageType::_2D)
             .tiling(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT)
             .usage(usage)
             .push_next(&mut modifier_info)

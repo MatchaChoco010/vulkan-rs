@@ -561,7 +561,7 @@ unsafe fn create_scene_acceleration_structures(
         .flags(vk::GeometryFlagsKHR::OPAQUE);
     let blas_geometries = [blas_geometry];
     let blas_build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
-        .r#type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+        .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
         .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
         .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
         .geometries(&blas_geometries);
@@ -596,7 +596,7 @@ unsafe fn create_scene_acceleration_structures(
         ));
     let tlas_geometries = [tlas_geometry];
     let tlas_build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
-        .r#type(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
+        .ty(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
         .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
         .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
         .geometries(&tlas_geometries);
@@ -772,7 +772,7 @@ unsafe fn create_acceleration_structure(
     let create_info = vk::AccelerationStructureCreateInfoKHR::default()
         .buffer(buffer.buffer)
         .size(sizes.acceleration_structure_size)
-        .r#type(build_info.r#type);
+        .ty(build_info.ty);
     let handle = match device.create_acceleration_structure_khr(&create_info, None) {
         Ok(handle) => handle,
         Err(err) => {
@@ -1040,10 +1040,10 @@ unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::Descriptor
 unsafe fn create_descriptor_pool(device: &Device) -> Result<vk::DescriptorPool> {
     let pool_sizes = [
         vk::DescriptorPoolSize::default()
-            .r#type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+            .ty(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
             .descriptor_count(1),
         vk::DescriptorPoolSize::default()
-            .r#type(vk::DescriptorType::STORAGE_BUFFER)
+            .ty(vk::DescriptorType::STORAGE_BUFFER)
             .descriptor_count(1),
     ];
     let info = vk::DescriptorPoolCreateInfo::default()
@@ -1137,19 +1137,19 @@ unsafe fn create_ray_tracing_pipeline(
     ];
     let groups = [
         vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .r#type(vk::RayTracingShaderGroupTypeKHR::GENERAL)
+            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
             .general_shader(0)
             .closest_hit_shader(vk::SHADER_UNUSED_KHR)
             .any_hit_shader(vk::SHADER_UNUSED_KHR)
             .intersection_shader(vk::SHADER_UNUSED_KHR),
         vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .r#type(vk::RayTracingShaderGroupTypeKHR::GENERAL)
+            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
             .general_shader(1)
             .closest_hit_shader(vk::SHADER_UNUSED_KHR)
             .any_hit_shader(vk::SHADER_UNUSED_KHR)
             .intersection_shader(vk::SHADER_UNUSED_KHR),
         vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .r#type(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
+            .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
             .general_shader(vk::SHADER_UNUSED_KHR)
             .closest_hit_shader(2)
             .any_hit_shader(vk::SHADER_UNUSED_KHR)

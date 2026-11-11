@@ -120,15 +120,19 @@ fn strip_tag_suffix<'a>(name: &'a str, tag: Option<&str>) -> &'a str {
     }
 }
 
-/// Escapes Rust keywords and identifiers that start with a digit.
+/// Makes a name a valid Rust identifier: keywords are renamed or escaped, and a name that
+/// starts with a digit gets a leading underscore.
 pub fn raw_ident(name: &str) -> String {
     if name.as_bytes().first().is_some_and(|b| b.is_ascii_digit()) {
         return format!("_{name}");
     }
     match name {
-        "type" | "match" | "ref" | "box" | "loop" | "move" | "where" | "use" | "fn" | "mod"
-        | "in" | "as" | "pub" | "const" | "static" | "struct" | "enum" | "union" | "trait"
-        | "impl" | "for" | "while" | "async" | "await" | "dyn" | "final" | "override" | "gen" => {
+        // `type` is common enough in Vulkan (`VkDescriptorPoolSize::type`) that `r#type`
+        // at every use is a nuisance. `ty` is the conventional Rust spelling.
+        "type" => "ty".to_string(),
+        "match" | "ref" | "box" | "loop" | "move" | "where" | "use" | "fn" | "mod" | "in"
+        | "as" | "pub" | "const" | "static" | "struct" | "enum" | "union" | "trait" | "impl"
+        | "for" | "while" | "async" | "await" | "dyn" | "final" | "override" | "gen" => {
             format!("r#{name}")
         }
         // These cannot be raw identifiers.
@@ -191,7 +195,8 @@ mod tests {
     fn field_names_escape_keywords() {
         assert_eq!(field_name("sType"), "s_type");
         assert_eq!(field_name("pNext"), "p_next");
-        assert_eq!(field_name("type"), "r#type");
+        assert_eq!(field_name("type"), "ty");
+        assert_eq!(field_name("match"), "r#match");
         assert_eq!(field_name("ppEnabledLayerNames"), "pp_enabled_layer_names");
         assert_eq!(field_name("ScalingList4x4"), "scaling_list4x4");
         assert_eq!(field_name("self"), "self_");
