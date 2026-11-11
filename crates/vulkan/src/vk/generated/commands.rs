@@ -36300,11 +36300,15 @@ impl crate::Device {
     pub unsafe fn get_fence_win32_handle_khr(
         &self,
         get_win32_handle_info: &FenceGetWin32HandleInfoKHR<'_>,
-        handle: *mut HANDLE,
-    ) -> crate::vk::Result<()> {
+    ) -> crate::vk::Result<HANDLE> {
         unsafe {
-            self.get_fence_win32_handle_khr_raw(core::ptr::from_ref(get_win32_handle_info), handle)
-                .into_result()
+            let mut value: HANDLE = core::mem::zeroed::<HANDLE>();
+            self.get_fence_win32_handle_khr_raw(
+                core::ptr::from_ref(get_win32_handle_info),
+                &mut value,
+            )
+            .into_result()?;
+            Ok(value)
         }
     }
     /// [`vkGetFramebufferTilePropertiesQCOM`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetFramebufferTilePropertiesQCOM.html)
@@ -36988,11 +36992,15 @@ impl crate::Device {
     pub unsafe fn get_memory_win32_handle_khr(
         &self,
         get_win32_handle_info: &MemoryGetWin32HandleInfoKHR<'_>,
-        handle: *mut HANDLE,
-    ) -> crate::vk::Result<()> {
+    ) -> crate::vk::Result<HANDLE> {
         unsafe {
-            self.get_memory_win32_handle_khr_raw(core::ptr::from_ref(get_win32_handle_info), handle)
-                .into_result()
+            let mut value: HANDLE = core::mem::zeroed::<HANDLE>();
+            self.get_memory_win32_handle_khr_raw(
+                core::ptr::from_ref(get_win32_handle_info),
+                &mut value,
+            )
+            .into_result()?;
+            Ok(value)
         }
     }
     #[cfg(feature = "win32")]
@@ -37007,11 +37015,12 @@ impl crate::Device {
         &self,
         memory: DeviceMemory,
         handle_type: ExternalMemoryHandleTypeFlagsNV,
-        handle: *mut HANDLE,
-    ) -> crate::vk::Result<()> {
+    ) -> crate::vk::Result<HANDLE> {
         unsafe {
-            self.get_memory_win32_handle_nv_raw(memory, handle_type, handle)
-                .into_result()
+            let mut value: HANDLE = core::mem::zeroed::<HANDLE>();
+            self.get_memory_win32_handle_nv_raw(memory, handle_type, &mut value)
+                .into_result()?;
+            Ok(value)
         }
     }
     #[cfg(feature = "win32")]
@@ -37048,14 +37057,15 @@ impl crate::Device {
     pub unsafe fn get_memory_zircon_handle_fuchsia(
         &self,
         get_zircon_handle_info: &MemoryGetZirconHandleInfoFUCHSIA<'_>,
-        zircon_handle: *mut zx_handle_t,
-    ) -> crate::vk::Result<()> {
+    ) -> crate::vk::Result<zx_handle_t> {
         unsafe {
+            let mut value: zx_handle_t = core::mem::zeroed::<zx_handle_t>();
             self.get_memory_zircon_handle_fuchsia_raw(
                 core::ptr::from_ref(get_zircon_handle_info),
-                zircon_handle,
+                &mut value,
             )
-            .into_result()
+            .into_result()?;
+            Ok(value)
         }
     }
     #[cfg(feature = "fuchsia")]
@@ -37843,14 +37853,15 @@ impl crate::Device {
     pub unsafe fn get_semaphore_win32_handle_khr(
         &self,
         get_win32_handle_info: &SemaphoreGetWin32HandleInfoKHR<'_>,
-        handle: *mut HANDLE,
-    ) -> crate::vk::Result<()> {
+    ) -> crate::vk::Result<HANDLE> {
         unsafe {
+            let mut value: HANDLE = core::mem::zeroed::<HANDLE>();
             self.get_semaphore_win32_handle_khr_raw(
                 core::ptr::from_ref(get_win32_handle_info),
-                handle,
+                &mut value,
             )
-            .into_result()
+            .into_result()?;
+            Ok(value)
         }
     }
     #[cfg(feature = "fuchsia")]
@@ -37864,14 +37875,15 @@ impl crate::Device {
     pub unsafe fn get_semaphore_zircon_handle_fuchsia(
         &self,
         get_zircon_handle_info: &SemaphoreGetZirconHandleInfoFUCHSIA<'_>,
-        zircon_handle: *mut zx_handle_t,
-    ) -> crate::vk::Result<()> {
+    ) -> crate::vk::Result<zx_handle_t> {
         unsafe {
+            let mut value: zx_handle_t = core::mem::zeroed::<zx_handle_t>();
             self.get_semaphore_zircon_handle_fuchsia_raw(
                 core::ptr::from_ref(get_zircon_handle_info),
-                zircon_handle,
+                &mut value,
             )
-            .into_result()
+            .into_result()?;
+            Ok(value)
         }
     }
     /// [`vkGetShaderBinaryDataEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetShaderBinaryDataEXT.html)

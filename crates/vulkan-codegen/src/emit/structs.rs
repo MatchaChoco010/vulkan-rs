@@ -351,7 +351,7 @@ fn emit_union(out: &mut String, model: &Model<'_>, s: &Struct) {
             ctor = field.clone();
             assert!(emitted.insert(ctor.clone()), "{}: duplicate {ctor}", s.name);
         }
-        let opaque = ty.base == "void" || model.is_external(&ty.base);
+        let opaque = model.is_opaque(&ty.base);
         if ty.depth() == 1 && ty.arrays.is_empty() && !opaque {
             let (reference, convert) = if ty.pointers[0] {
                 ("&'a", "core::ptr::from_ref(value)")
@@ -531,7 +531,7 @@ fn emit_setters(
     }
 
     let count = len_count(s, m);
-    let opaque = ty.base == "void" || model.is_external(&ty.base);
+    let opaque = model.is_opaque(&ty.base);
     let mut name = pointer_setter_name(&m.name);
     if emitted.contains(&name) {
         // `pGeometries` and `ppGeometries` would both be `geometries`.

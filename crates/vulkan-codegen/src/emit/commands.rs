@@ -246,7 +246,7 @@ fn value_count(params: &[Field], p: &Field) -> Option<usize> {
 }
 
 fn is_opaque(model: &Model<'_>, ty: &CType) -> bool {
-    ty.base == "void" || model.is_external(&ty.base)
+    model.is_opaque(&ty.base)
 }
 
 fn has_p_next(model: &Model<'_>, name: &str) -> bool {

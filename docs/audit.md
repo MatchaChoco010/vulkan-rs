@@ -150,7 +150,7 @@ let info = vk::DeviceCreateInfo::default().push_next(&mut features); // 旧: 0x1
 
 ### テスト
 
-`crates/vulkan/tests/ui/fail/` に、抜け穴 1 つにつき 1 ファイルの compile-fail テストを置きました（17 個）。`ui/pass/live_borrows.rs` は、同じ形で寿命が足りている場合に通ることを確かめます。
+`crates/vulkan/tests/ui/fail/` に、抜け穴 1 つにつき 1 ファイルの compile-fail テストを置きました（18 個）。`ui/pass/live_borrows.rs` は、同じ形で寿命が足りている場合に通ることを確かめます。
 
 | ファイル | 確かめること |
 | --- | --- |
@@ -163,6 +163,7 @@ let info = vk::DeviceCreateInfo::default().push_next(&mut features); // 旧: 0x1
 | `union_pointer.rs` | ポインタを選んだ共用体 |
 | `p_next_dropped.rs`、`p_next_temporary.rs` | chain に入れた構造体が先に消える |
 | `p_next_twice.rs` | 同じ構造体を 2 回 chain に入れる |
+| `p_next_member_borrow.rs` | chain に入れた構造体が指す先が、root より先に消える |
 | `p_next_output_read_while_chained.rs` | 出力用の chain に入れた構造体を、root が生きている間に読む |
 | `output_slice_read_while_borrowed.rs` | 出力用の配列を、構造体が生きている間に読む |
 | `no_lifetime_erasure.rs`、`returned_from_function.rs` | 寿命を消して持ち出す方法がない |
