@@ -288,7 +288,9 @@ fn detect_shape(model: &Model<'_>, c: &Command, params: &[Field]) -> Shape {
         }
     }
 
-    if ty.depth() == 1 && ty.base != "void" {
+    // An array of structs that hold pointers is not an output: the caller has to say
+    // where each element points (`VkHostAddressRangeEXT* pDatas`). It stays a slice.
+    if ty.depth() == 1 && ty.base != "void" && !model.has_lifetime(&ty.base) {
         if let Some(count) = value_count(params, last)
             && params.iter().enumerate().any(|(i, p)| {
                 i != out && CType::of(p).pointers == [true] && value_count(params, p) == Some(count)
@@ -1203,6 +1205,33 @@ mod tests {
         assert!(out.contains(
             "alloc::vec![Default::default(); allocate_info.command_buffer_count as usize];"
         ));
+    }
+
+    #[test]
+    fn arrays_of_structs_with_pointers_are_supplied_by_the_caller() {
+        let mut ir = base();
+        ir.structs.push(crate::test_support::structure(
+            "VkHostAddressRangeEXT",
+            vec![
+                counted("address", "void*", "size"),
+                field("size", "size_t"),
+            ],
+        ));
+        ir.commands.push(device(result_command(
+            "vkGetImageOpaqueCaptureDataEXT",
+            &["VK_SUCCESS"],
+            vec![
+                field("device", "VkDevice"),
+                field("imageCount", "uint32_t"),
+                counted("pImages", "const VkBuffer*", "imageCount"),
+                counted("pDatas", "VkHostAddressRangeEXT*", "imageCount"),
+            ],
+        )));
+        let out = generate(&ir);
+        assert!(out.contains(
+            "pub unsafe fn get_image_opaque_capture_data_ext(&self, images: &[Buffer], datas: &mut [HostAddressRangeEXT<'_>]) -> crate::vk::Result<()> {"
+        ));
+        assert!(out.contains("assert_eq!(datas.len(), image_count_len,"));
     }
 
     #[test]

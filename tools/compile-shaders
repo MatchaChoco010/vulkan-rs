@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Compile the Slang shaders of the examples to SPIR-V.
+"""Compile the Slang shaders of the examples and tests to SPIR-V.
 
-The `.spv` files are committed next to the shader sources so that the examples build
-without a shader compiler. Run this after editing a `.slang` file and commit the result.
+The `.spv` files are committed next to the shader sources so that the examples and tests
+build without a shader compiler. Run this after editing a `.slang` file and commit the result.
 Requires `slangc` (shipped with the Vulkan SDK) in PATH.
 
 `--check` recompiles into a temporary directory and fails if a committed `.spv` differs.
@@ -29,37 +29,38 @@ RAY_TRACING = [
 ]
 DESCRIPTOR_HEAP = ["-profile", "spirv_1_6", "-capability", "spvDescriptorHeapEXT"]
 
-# (example, source, entry point, stage, output, extra slangc arguments)
+EXAMPLE = "examples/{}/src/shaders"
+TESTS = "crates/vulkan/tests/shaders"
+
+# (directory, source, entry point, stage, output, extra slangc arguments)
 SHADERS = [
-    ("compute-buffer", "compute.slang", "computeMain", "compute", "compute.spv", GLSL_450),
-    ("descriptor-heap-14", "graphics.slang", "vertexMain", "vertex", "vertex.spv", DESCRIPTOR_HEAP),
-    ("descriptor-heap-14", "graphics.slang", "fragmentMain", "fragment", "fragment.spv", DESCRIPTOR_HEAP),
-    ("headless-triangle", "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
-    ("headless-triangle", "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
-    ("mesh-shader", "mesh.slang", "taskMain", "task", "task.spv", MESH),
-    ("mesh-shader", "mesh.slang", "meshMain", "mesh", "mesh.spv", MESH),
-    ("mesh-shader", "mesh.slang", "fragmentMain", "fragment", "fragment.spv", MESH),
-    ("ray-tracing-pipeline", "raygen.slang", "raygenMain", "raygeneration", "raygen.spv", RAY_TRACING),
-    ("ray-tracing-pipeline", "miss.slang", "missMain", "miss", "miss.spv", RAY_TRACING),
-    ("ray-tracing-pipeline", "closesthit.slang", "closestHitMain", "closesthit", "closesthit.spv", RAY_TRACING),
-    ("wayland-dynamic-rendering", "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
-    ("wayland-dynamic-rendering", "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
-    ("wayland-triangle", "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
-    ("wayland-triangle", "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
+    (TESTS, "descriptor_heap.slang", "vertexMain", "vertex", "descriptor_heap.vert.spv", DESCRIPTOR_HEAP),
+    (TESTS, "descriptor_heap.slang", "fragmentMain", "fragment", "descriptor_heap.frag.spv", DESCRIPTOR_HEAP),
+    (EXAMPLE.format("compute-buffer"), "compute.slang", "computeMain", "compute", "compute.spv", GLSL_450),
+    (EXAMPLE.format("descriptor-heap-14"), "graphics.slang", "vertexMain", "vertex", "vertex.spv", DESCRIPTOR_HEAP),
+    (EXAMPLE.format("descriptor-heap-14"), "graphics.slang", "fragmentMain", "fragment", "fragment.spv", DESCRIPTOR_HEAP),
+    (EXAMPLE.format("headless-triangle"), "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
+    (EXAMPLE.format("headless-triangle"), "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
+    (EXAMPLE.format("mesh-shader"), "mesh.slang", "taskMain", "task", "task.spv", MESH),
+    (EXAMPLE.format("mesh-shader"), "mesh.slang", "meshMain", "mesh", "mesh.spv", MESH),
+    (EXAMPLE.format("mesh-shader"), "mesh.slang", "fragmentMain", "fragment", "fragment.spv", MESH),
+    (EXAMPLE.format("ray-tracing-pipeline"), "raygen.slang", "raygenMain", "raygeneration", "raygen.spv", RAY_TRACING),
+    (EXAMPLE.format("ray-tracing-pipeline"), "miss.slang", "missMain", "miss", "miss.spv", RAY_TRACING),
+    (EXAMPLE.format("ray-tracing-pipeline"), "closesthit.slang", "closestHitMain", "closesthit", "closesthit.spv", RAY_TRACING),
+    (EXAMPLE.format("wayland-dynamic-rendering"), "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
+    (EXAMPLE.format("wayland-dynamic-rendering"), "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
+    (EXAMPLE.format("wayland-triangle"), "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
+    (EXAMPLE.format("wayland-triangle"), "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
 ]
-
-
-def shader_dir(example: str) -> Path:
-    return ROOT / "examples" / example / "src" / "shaders"
 
 
 def compile_all(out_root: Path | None) -> list[tuple[Path, Path]]:
     """Returns (committed path, freshly compiled path) pairs."""
     pairs = []
-    for example, source, entry, stage, output, extra in SHADERS:
-        directory = shader_dir(example)
+    for relative, source, entry, stage, output, extra in SHADERS:
+        directory = ROOT / relative
         committed = directory / output
-        target = committed if out_root is None else out_root / example / output
+        target = committed if out_root is None else out_root / relative / output
         target.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
             ["slangc", source, "-entry", entry, "-stage", stage, "-target", "spirv", *extra, "-o", str(target)],
