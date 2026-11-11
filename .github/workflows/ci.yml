@@ -26,6 +26,11 @@ jobs:
         with:
           submodules: true
 
+      # tools/generate-vulkan names the bindings after the SDK tag of the submodule
+      # commit, and the checkout above does not fetch tags.
+      - name: Fetch the Vulkan-Headers SDK tags
+        run: git -C third_party/vulkan fetch --quiet --depth=1 origin 'refs/tags/vulkan-sdk-*:refs/tags/vulkan-sdk-*'
+
       - name: Install lavapipe, the Vulkan loader and the validation layers
         run: |
           sudo apt-get update
