@@ -12,7 +12,6 @@ resolver = "3"
 # `<crate semver>+<Vulkan-Headers SDK tag>`. See README.md "Versioning".
 version = "0.3.0+vulkan-sdk-1.4.363.0"
 edition = "2024"
-rust-version = "1.88"
 license = "Apache-2.0"
 repository = "https://github.com/MatchaChoco010/vulkan-rs"
 

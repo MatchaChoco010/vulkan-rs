@@ -35,9 +35,14 @@ def git(*args: str, cwd: Path = ROOT) -> str:
     return subprocess.check_output(["git", *args], cwd=cwd, text=True).strip()
 
 
-def sdk_tags() -> list[str]:
-    tags = [tag for tag in git("tag", "--list", "vulkan-sdk-*", cwd=HEADERS).splitlines() if SDK_TAG.match(tag)]
-    return sorted(tags, key=lambda tag: tuple(int(part) for part in SDK_TAG.match(tag).groups()))
+def tag_key(tag: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in SDK_TAG.match(tag).groups())
+
+
+def sdk_tags(*filters: str) -> list[str]:
+    """SDK tags of the submodule, oldest first. `filters` are extra `git tag` arguments."""
+    tags = git("tag", "--list", "vulkan-sdk-*", *filters, cwd=HEADERS).splitlines()
+    return sorted((tag for tag in tags if SDK_TAG.match(tag)), key=tag_key)
 
 
 def current_version() -> tuple[int, int, int, str]:
@@ -94,8 +99,16 @@ def main() -> int:
             write_github_output({"updated": "false", "old_tag": old_tag, "new_tag": new_tag})
         return 0
 
-    print(f"updating {old_tag} -> {new_tag}")
     git("checkout", "--quiet", new_tag, cwd=HEADERS)
+    # One commit can carry several SDK tags. tools/generate-vulkan names the bindings
+    # after the newest of them, so the version has to use the same one.
+    new_tag = sdk_tags("--points-at", "HEAD")[-1]
+    if new_tag == old_tag:
+        print(f"already at {old_tag}")
+        if args.github_output:
+            write_github_output({"updated": "false", "old_tag": old_tag, "new_tag": new_tag})
+        return 0
+    print(f"updating {old_tag} -> {new_tag}")
     major, minor, patch, _ = old
     new_semver = f"{major}.{minor}.{patch}" if args.no_bump else f"{major}.{minor + 1}.0"
     set_version(old, new_semver, new_tag)
