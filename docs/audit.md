@@ -250,7 +250,7 @@ dma-buf の import は allocator を通りません。import するメモリは�
 
 - **ティアリング（`IMMEDIATE` / `FIFO_RELAXED`）と HDR（`HDR10_ST2084`、`VK_EXT_hdr_metadata`）での present**。niri の surface が `MAILBOX` と `FIFO`、`SRGB_NONLINEAR` と `PASS_THROUGH` しか提示しないため、選べなかった。コードは書いてあり、型と validation は通るが、実際の表示は見ていない。
 - **`VK_KHR_display` / `VK_EXT_acquire_drm_display` で画面を取得する経路**。DRM master が要る。Wayland session の中からは、display の列挙が 0 個を返すことだけ確かめた。
-- **CI の上での一部の結合テスト**。CI の lavapipe（Mesa 25.2）は `VK_EXT_descriptor_heap`、`VK_EXT_image_drm_format_modifier`、`VK_KHR_external_fence_fd`、`VK_KHR_external_semaphore_fd`、`VK_KHR_display` を持たないので、それらのテストは CI では skip される（job の summary に出る）。ローカルの RADV と lavapipe（Mesa 26.2）では通る。
+- **CI の上での一部の結合テスト**。CI の lavapipe（Mesa 25.2）は `VK_EXT_descriptor_heap`、`VK_EXT_image_drm_format_modifier`、`VK_KHR_external_fence_fd`、`VK_KHR_external_semaphore_fd` を持たないので、それらのテストは CI では skip される（job の summary に出る）。ローカルの RADV と lavapipe（Mesa 26.2）では通る。
 - **Linux x86_64 以外**。照合テストは実行した環境の ABI を見る。Windows、macOS、aarch64 では動かしていない。
 - **プラットフォーム固有の構造体の layout**（`VK_USE_PLATFORM_*`）。照合の対象外。
 - **Vulkan Video**。構造体の layout は照合したが、実際の decode / encode は動かしていない。
