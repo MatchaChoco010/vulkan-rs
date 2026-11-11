@@ -307,12 +307,6 @@ pub const EXT_CONSERVATIVE_RASTERIZATION_NAME: &CStr = c"VK_EXT_conservative_ras
 /// `VK_EXT_CONSERVATIVE_RASTERIZATION_SPEC_VERSION`
 pub const EXT_CONSERVATIVE_RASTERIZATION_SPEC_VERSION: u32 = 1;
 
-/// Device extension `VK_EXT_cooperative_matrix_maintenance1`.
-pub const EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_NAME: &CStr =
-    c"VK_EXT_cooperative_matrix_maintenance1";
-/// `VK_EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_SPEC_VERSION`
-pub const EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_SPEC_VERSION: u32 = 1;
-
 /// Device extension `VK_EXT_custom_border_color`.
 pub const EXT_CUSTOM_BORDER_COLOR_NAME: &CStr = c"VK_EXT_custom_border_color";
 /// `VK_EXT_CUSTOM_BORDER_COLOR_SPEC_VERSION`
@@ -576,11 +570,6 @@ pub const EXT_IMAGE_ROBUSTNESS_SPEC_VERSION: u32 = 1;
 pub const EXT_IMAGE_SLICED_VIEW_OF_3D_NAME: &CStr = c"VK_EXT_image_sliced_view_of_3d";
 /// `VK_EXT_IMAGE_SLICED_VIEW_OF_3D_SPEC_VERSION`
 pub const EXT_IMAGE_SLICED_VIEW_OF_3D_SPEC_VERSION: u32 = 1;
-
-/// Device extension `VK_EXT_image_tiling_control`.
-pub const EXT_IMAGE_TILING_CONTROL_NAME: &CStr = c"VK_EXT_image_tiling_control";
-/// `VK_EXT_IMAGE_TILING_CONTROL_SPEC_VERSION`
-pub const EXT_IMAGE_TILING_CONTROL_SPEC_VERSION: u32 = 1;
 
 /// Device extension `VK_EXT_image_view_min_lod`.
 pub const EXT_IMAGE_VIEW_MIN_LOD_NAME: &CStr = c"VK_EXT_image_view_min_lod";
@@ -1130,11 +1119,6 @@ pub const IMG_RELAXED_LINE_RASTERIZATION_NAME: &CStr = c"VK_IMG_relaxed_line_ras
 /// `VK_IMG_RELAXED_LINE_RASTERIZATION_SPEC_VERSION`
 pub const IMG_RELAXED_LINE_RASTERIZATION_SPEC_VERSION: u32 = 1;
 
-/// Device extension `VK_INTEL_device_info`.
-pub const INTEL_DEVICE_INFO_NAME: &CStr = c"VK_INTEL_device_info";
-/// `VK_INTEL_DEVICE_INFO_SPEC_VERSION`
-pub const INTEL_DEVICE_INFO_SPEC_VERSION: u32 = 1;
-
 /// Device extension `VK_INTEL_performance_query`.
 pub const INTEL_PERFORMANCE_QUERY_NAME: &CStr = c"VK_INTEL_performance_query";
 /// `VK_INTEL_PERFORMANCE_QUERY_SPEC_VERSION`
@@ -1519,11 +1503,6 @@ pub const KHR_PIPELINE_EXECUTABLE_PROPERTIES_SPEC_VERSION: u32 = 1;
 pub const KHR_PIPELINE_LIBRARY_NAME: &CStr = c"VK_KHR_pipeline_library";
 /// `VK_KHR_PIPELINE_LIBRARY_SPEC_VERSION`
 pub const KHR_PIPELINE_LIBRARY_SPEC_VERSION: u32 = 1;
-
-/// Device extension `VK_KHR_pipeline_library_group_handles`.
-pub const KHR_PIPELINE_LIBRARY_GROUP_HANDLES_NAME: &CStr = c"VK_KHR_pipeline_library_group_handles";
-/// `VK_KHR_PIPELINE_LIBRARY_GROUP_HANDLES_SPEC_VERSION`
-pub const KHR_PIPELINE_LIBRARY_GROUP_HANDLES_SPEC_VERSION: u32 = 1;
 
 /// Instance extension `VK_KHR_portability_enumeration`.
 pub const KHR_PORTABILITY_ENUMERATION_NAME: &CStr = c"VK_KHR_portability_enumeration";
@@ -2181,7 +2160,7 @@ pub const NV_LOW_LATENCY_SPEC_VERSION: u32 = 2;
 /// Device extension `VK_NV_low_latency2`.
 pub const NV_LOW_LATENCY_2_NAME: &CStr = c"VK_NV_low_latency2";
 /// `VK_NV_LOW_LATENCY_2_SPEC_VERSION`
-pub const NV_LOW_LATENCY_2_SPEC_VERSION: u32 = 3;
+pub const NV_LOW_LATENCY_2_SPEC_VERSION: u32 = 2;
 
 /// Device extension `VK_NV_memory_decompression`.
 pub const NV_MEMORY_DECOMPRESSION_NAME: &CStr = c"VK_NV_memory_decompression";
@@ -2218,11 +2197,6 @@ pub const NV_PRESENT_BARRIER_SPEC_VERSION: u32 = 1;
 pub const NV_PRESENT_METERING_NAME: &CStr = c"VK_NV_present_metering";
 /// `VK_NV_PRESENT_METERING_SPEC_VERSION`
 pub const NV_PRESENT_METERING_SPEC_VERSION: u32 = 1;
-
-/// Device extension `VK_NV_private_data_base_handle`.
-pub const NV_PRIVATE_DATA_BASE_HANDLE_NAME: &CStr = c"VK_NV_private_data_base_handle";
-/// `VK_NV_PRIVATE_DATA_BASE_HANDLE_SPEC_VERSION`
-pub const NV_PRIVATE_DATA_BASE_HANDLE_SPEC_VERSION: u32 = 1;
 
 /// Device extension `VK_NV_push_constant_bank`.
 pub const NV_PUSH_CONSTANT_BANK_NAME: &CStr = c"VK_NV_push_constant_bank";
@@ -2473,12 +2447,6 @@ pub const SEC_UBM_SURFACE_NAME: &CStr = c"VK_SEC_ubm_surface";
 #[cfg(feature = "ubm")]
 /// `VK_SEC_UBM_SURFACE_SPEC_VERSION`
 pub const SEC_UBM_SURFACE_SPEC_VERSION: u32 = 1;
-
-/// Device extension `VK_VALVE_buffer_device_address_allocation_alignment`.
-pub const VALVE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_NAME: &CStr =
-    c"VK_VALVE_buffer_device_address_allocation_alignment";
-/// `VK_VALVE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_SPEC_VERSION`
-pub const VALVE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_SPEC_VERSION: u32 = 1;
 
 /// Device extension `VK_VALVE_descriptor_set_host_mapping`.
 pub const VALVE_DESCRIPTOR_SET_HOST_MAPPING_NAME: &CStr = c"VK_VALVE_descriptor_set_host_mapping";
@@ -2814,10 +2782,7 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
         name: c"VK_ARM_data_graph_neural_accelerator_statistics",
         spec_version: 1,
         level: ExtensionLevel::Device,
-        depends: Some(Dependency::Any(&[
-            Dependency::Extension(c"VK_KHR_get_physical_device_properties2"),
-            Dependency::Version(make_api_version(0, 1, 1, 0)),
-        ])),
+        depends: None,
         promoted_to_version: None,
         promoted_to_extension: None,
     },
@@ -3075,14 +3040,6 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
             Dependency::Extension(c"VK_KHR_get_physical_device_properties2"),
             Dependency::Version(make_api_version(0, 1, 1, 0)),
         ])),
-        promoted_to_version: None,
-        promoted_to_extension: None,
-    },
-    ExtensionInfo {
-        name: c"VK_EXT_cooperative_matrix_maintenance1",
-        spec_version: 1,
-        level: ExtensionLevel::Device,
-        depends: Some(Dependency::Extension(c"VK_KHR_cooperative_matrix")),
         promoted_to_version: None,
         promoted_to_extension: None,
     },
@@ -3643,10 +3600,7 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
         name: c"VK_EXT_image_compression_control_swapchain",
         spec_version: 1,
         level: ExtensionLevel::Device,
-        depends: Some(Dependency::All(&[
-            Dependency::Extension(c"VK_EXT_image_compression_control"),
-            Dependency::Extension(c"VK_KHR_swapchain"),
-        ])),
+        depends: Some(Dependency::Extension(c"VK_EXT_image_compression_control")),
         promoted_to_version: None,
         promoted_to_extension: None,
     },
@@ -3691,17 +3645,6 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
                 Dependency::Extension(c"VK_KHR_maintenance1"),
                 Dependency::Extension(c"VK_KHR_get_physical_device_properties2"),
             ]),
-            Dependency::Version(make_api_version(0, 1, 1, 0)),
-        ])),
-        promoted_to_version: None,
-        promoted_to_extension: None,
-    },
-    ExtensionInfo {
-        name: c"VK_EXT_image_tiling_control",
-        spec_version: 1,
-        level: ExtensionLevel::Device,
-        depends: Some(Dependency::Any(&[
-            Dependency::Extension(c"VK_KHR_get_physical_device_properties2"),
             Dependency::Version(make_api_version(0, 1, 1, 0)),
         ])),
         promoted_to_version: None,
@@ -4001,7 +3944,7 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
             Dependency::Extension(c"VK_KHR_pipeline_library"),
         ])),
         promoted_to_version: None,
-        promoted_to_extension: Some(c"VK_KHR_pipeline_library_group_handles"),
+        promoted_to_extension: None,
     },
     ExtensionInfo {
         name: c"VK_EXT_pipeline_properties",
@@ -4797,17 +4740,6 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
     },
     ExtensionInfo {
         name: c"VK_IMG_relaxed_line_rasterization",
-        spec_version: 1,
-        level: ExtensionLevel::Device,
-        depends: Some(Dependency::Any(&[
-            Dependency::Extension(c"VK_KHR_get_physical_device_properties2"),
-            Dependency::Version(make_api_version(0, 1, 1, 0)),
-        ])),
-        promoted_to_version: None,
-        promoted_to_extension: None,
-    },
-    ExtensionInfo {
-        name: c"VK_INTEL_device_info",
         spec_version: 1,
         level: ExtensionLevel::Device,
         depends: Some(Dependency::Any(&[
@@ -5614,17 +5546,6 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
         spec_version: 1,
         level: ExtensionLevel::Device,
         depends: None,
-        promoted_to_version: None,
-        promoted_to_extension: None,
-    },
-    ExtensionInfo {
-        name: c"VK_KHR_pipeline_library_group_handles",
-        spec_version: 1,
-        level: ExtensionLevel::Device,
-        depends: Some(Dependency::All(&[
-            Dependency::Extension(c"VK_KHR_ray_tracing_pipeline"),
-            Dependency::Extension(c"VK_KHR_pipeline_library"),
-        ])),
         promoted_to_version: None,
         promoted_to_extension: None,
     },
@@ -6899,7 +6820,7 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
     },
     ExtensionInfo {
         name: c"VK_NV_low_latency2",
-        spec_version: 3,
+        spec_version: 2,
         level: ExtensionLevel::Device,
         depends: Some(Dependency::All(&[
             Dependency::Any(&[
@@ -7002,17 +6923,6 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
         depends: Some(Dependency::Any(&[
             Dependency::Extension(c"VK_KHR_get_physical_device_properties2"),
             Dependency::Version(make_api_version(0, 1, 1, 0)),
-        ])),
-        promoted_to_version: None,
-        promoted_to_extension: None,
-    },
-    ExtensionInfo {
-        name: c"VK_NV_private_data_base_handle",
-        spec_version: 1,
-        level: ExtensionLevel::Device,
-        depends: Some(Dependency::Any(&[
-            Dependency::Version(make_api_version(0, 1, 3, 0)),
-            Dependency::Extension(c"VK_EXT_private_data"),
         ])),
         promoted_to_version: None,
         promoted_to_extension: None,
@@ -7491,17 +7401,6 @@ pub const EXTENSIONS: &[ExtensionInfo] = &[
         spec_version: 1,
         level: ExtensionLevel::Instance,
         depends: Some(Dependency::Extension(c"VK_KHR_surface")),
-        promoted_to_version: None,
-        promoted_to_extension: None,
-    },
-    ExtensionInfo {
-        name: c"VK_VALVE_buffer_device_address_allocation_alignment",
-        spec_version: 1,
-        level: ExtensionLevel::Device,
-        depends: Some(Dependency::Any(&[
-            Dependency::Extension(c"VK_KHR_buffer_device_address"),
-            Dependency::Version(make_api_version(0, 1, 2, 0)),
-        ])),
         promoted_to_version: None,
         promoted_to_extension: None,
     },

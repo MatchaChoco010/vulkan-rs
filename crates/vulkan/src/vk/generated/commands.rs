@@ -134,8 +134,6 @@ pub struct InstanceFn {
         PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR,
     pub get_physical_device_cooperative_matrix_flexible_dimensions_properties_nv:
         PFN_vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV,
-    pub get_physical_device_cooperative_matrix_properties2_ext:
-        PFN_vkGetPhysicalDeviceCooperativeMatrixProperties2EXT,
     pub get_physical_device_cooperative_matrix_properties_khr:
         PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR,
     pub get_physical_device_cooperative_matrix_properties_nv:
@@ -474,10 +472,6 @@ impl InstanceFn {
                         c"vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV"
                             .as_ptr(),
                     )),
-                get_physical_device_cooperative_matrix_properties2_ext: crate::load_pfn(get(
-                    instance,
-                    c"vkGetPhysicalDeviceCooperativeMatrixProperties2EXT".as_ptr(),
-                )),
                 get_physical_device_cooperative_matrix_properties_khr: crate::load_pfn(get(
                     instance,
                     c"vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR".as_ptr(),
@@ -5324,30 +5318,6 @@ impl crate::Instance {
             (self.fp().get_physical_device_cooperative_matrix_flexible_dimensions_properties_nv.expect("vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV is not loaded"))(physical_device, p_property_count, p_properties)
         }
     }
-    /// Raw [`vkGetPhysicalDeviceCooperativeMatrixProperties2EXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetPhysicalDeviceCooperativeMatrixProperties2EXT.html).
-    ///
-    /// # Safety
-    ///
-    /// All valid usage rules of `vkGetPhysicalDeviceCooperativeMatrixProperties2EXT` must be upheld. Panics if the command is not loaded.
-    pub unsafe fn get_physical_device_cooperative_matrix_properties2_ext_raw(
-        &self,
-        physical_device: PhysicalDevice,
-        p_cooperative_matrix_info: *const PhysicalDeviceCooperativeMatrixInfo2EXT<'_>,
-        p_property_count: *mut u32,
-        p_properties: *mut CooperativeMatrixProperties2EXT<'_>,
-    ) -> VkResult {
-        unsafe {
-            (self
-                .fp()
-                .get_physical_device_cooperative_matrix_properties2_ext
-                .expect("vkGetPhysicalDeviceCooperativeMatrixProperties2EXT is not loaded"))(
-                physical_device,
-                p_cooperative_matrix_info,
-                p_property_count,
-                p_properties,
-            )
-        }
-    }
     /// Raw [`vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR.html).
     ///
     /// # Safety
@@ -8098,45 +8068,6 @@ impl crate::Instance {
                         &mut count,
                         values.as_mut_ptr(),
                     );
-                if result == VkResult::INCOMPLETE {
-                    continue;
-                }
-                result.into_result()?;
-                values.truncate(count as usize);
-                return Ok(values);
-            }
-        }
-    }
-    /// [`vkGetPhysicalDeviceCooperativeMatrixProperties2EXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetPhysicalDeviceCooperativeMatrixProperties2EXT.html)
-    ///
-    /// Provided by `VK_EXT_cooperative_matrix_maintenance1`.
-    ///
-    /// # Safety
-    ///
-    /// All valid usage rules of `vkGetPhysicalDeviceCooperativeMatrixProperties2EXT` must be upheld. Panics if the command is not loaded.
-    pub unsafe fn get_physical_device_cooperative_matrix_properties2_ext(
-        &self,
-        physical_device: PhysicalDevice,
-        cooperative_matrix_info: &PhysicalDeviceCooperativeMatrixInfo2EXT<'_>,
-    ) -> crate::vk::Result<Vec<CooperativeMatrixProperties2EXT<'static>>> {
-        unsafe {
-            loop {
-                let mut count: u32 = 0;
-                self.get_physical_device_cooperative_matrix_properties2_ext_raw(
-                    physical_device,
-                    core::ptr::from_ref(cooperative_matrix_info),
-                    &mut count,
-                    core::ptr::null_mut(),
-                )
-                .into_result()?;
-                let mut values: Vec<CooperativeMatrixProperties2EXT<'static>> =
-                    alloc::vec![Default::default(); count as usize];
-                let result = self.get_physical_device_cooperative_matrix_properties2_ext_raw(
-                    physical_device,
-                    core::ptr::from_ref(cooperative_matrix_info),
-                    &mut count,
-                    values.as_mut_ptr(),
-                );
                 if result == VkResult::INCOMPLETE {
                     continue;
                 }
@@ -36092,12 +36023,14 @@ impl crate::Device {
     pub unsafe fn get_device_subpass_shading_max_workgroup_size_huawei(
         &self,
         renderpass: RenderPass,
-    ) -> crate::vk::Result<Extent2D> {
+        max_workgroup_size: &mut [Extent2D],
+    ) -> crate::vk::Result<()> {
         unsafe {
-            let mut value: Extent2D = Default::default();
-            self.get_device_subpass_shading_max_workgroup_size_huawei_raw(renderpass, &mut value)
-                .into_result()?;
-            Ok(value)
+            self.get_device_subpass_shading_max_workgroup_size_huawei_raw(
+                renderpass,
+                max_workgroup_size.as_mut_ptr(),
+            )
+            .into_result()
         }
     }
     /// [`vkGetDeviceTensorMemoryRequirementsARM`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetDeviceTensorMemoryRequirementsARM.html)

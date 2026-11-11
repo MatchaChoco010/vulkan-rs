@@ -8,13 +8,13 @@
 use crate::vk::*;
 
 /// `VK_HEADER_VERSION`
-pub const HEADER_VERSION: u32 = 363;
+pub const HEADER_VERSION: u32 = 357;
 /// `VK_HEADER_VERSION_COMPLETE`
-pub const HEADER_VERSION_COMPLETE: u32 = make_api_version(0, 1, 4, 363);
+pub const HEADER_VERSION_COMPLETE: u32 = make_api_version(0, 1, 4, 357);
 /// Vulkan-Headers tag these bindings were generated from.
-pub const HEADERS_TAG: &str = "vulkan-sdk-1.4.363.0";
+pub const HEADERS_TAG: &str = "vulkan-sdk-1.4.357.0";
 /// Vulkan-Headers commit these bindings were generated from.
-pub const HEADERS_COMMIT: &str = "6802bb4733b6";
+pub const HEADERS_COMMIT: &str = "e3b1eec08173";
 /// `VK_API_VERSION_1_0`
 pub const API_VERSION_1_0: u32 = make_api_version(0, 1, 0, 0);
 /// `VK_API_VERSION_1_1`

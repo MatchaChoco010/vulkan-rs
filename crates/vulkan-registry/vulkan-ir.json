@@ -1603,21 +1603,6 @@
    "fields": [
     {
      "aliases": [],
-     "name": "VK_COOPERATIVE_MATRIX_SATURATING_ACCUMULATION_BIT_EXT",
-     "protect": null,
-     "value": "1"
-    }
-   ],
-   "flags_name": "VkCooperativeMatrixFlagsEXT",
-   "name": "VkCooperativeMatrixFlagBitsEXT",
-   "protect": null
-  },
-  {
-   "aliases": [],
-   "bit_width": 32,
-   "fields": [
-    {
-     "aliases": [],
      "name": "VK_CULL_MODE_NONE",
      "protect": null,
      "value": "0"
@@ -6533,23 +6518,6 @@
    ],
    "flags_name": "VkPresentTimingInfoFlagsEXT",
    "name": "VkPresentTimingInfoFlagBitsEXT",
-   "protect": null
-  },
-  {
-   "aliases": [
-    "VkPrivateDataSlotCreateFlagBitsEXT"
-   ],
-   "bit_width": 32,
-   "fields": [
-    {
-     "aliases": [],
-     "name": "VK_PRIVATE_DATA_SLOT_CREATE_BASE_OBJECT_HANDLE_BIT_NV",
-     "protect": null,
-     "value": "1"
-    }
-   ],
-   "flags_name": "VkPrivateDataSlotCreateFlags",
-   "name": "VkPrivateDataSlotCreateFlagBits",
    "protect": null
   },
   {
@@ -42572,7 +42540,7 @@
      "fixed_size_array": [],
      "full_ty": "VkExtent2D*",
      "is_const": false,
-     "len": null,
+     "len": "1",
      "name": "pMaxWorkgroupSize",
      "null_terminated": false,
      "optional": false,
@@ -46424,78 +46392,6 @@
      "optional_pointer": false,
      "pointer": true,
      "ty": "VkCooperativeMatrixFlexibleDimensionsPropertiesNV"
-    }
-   ],
-   "protect": null,
-   "return_ty": "VkResult",
-   "success_codes": [
-    "VK_SUCCESS",
-    "VK_INCOMPLETE"
-   ],
-   "version": null
-  },
-  {
-   "alias": null,
-   "device": false,
-   "error_codes": [
-    "VK_ERROR_OUT_OF_HOST_MEMORY",
-    "VK_ERROR_OUT_OF_DEVICE_MEMORY",
-    "VK_ERROR_UNKNOWN",
-    "VK_ERROR_VALIDATION_FAILED"
-   ],
-   "extensions": [
-    "VK_EXT_cooperative_matrix_maintenance1"
-   ],
-   "instance": true,
-   "name": "vkGetPhysicalDeviceCooperativeMatrixProperties2EXT",
-   "params": [
-    {
-     "fixed_size_array": [],
-     "full_ty": "VkPhysicalDevice",
-     "is_const": false,
-     "len": null,
-     "name": "physicalDevice",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkPhysicalDevice"
-    },
-    {
-     "fixed_size_array": [],
-     "full_ty": "const VkPhysicalDeviceCooperativeMatrixInfo2EXT*",
-     "is_const": true,
-     "len": null,
-     "name": "pCooperativeMatrixInfo",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "VkPhysicalDeviceCooperativeMatrixInfo2EXT"
-    },
-    {
-     "fixed_size_array": [],
-     "full_ty": "uint32_t*",
-     "is_const": false,
-     "len": null,
-     "name": "pPropertyCount",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": true,
-     "pointer": true,
-     "ty": "uint32_t"
-    },
-    {
-     "fixed_size_array": [],
-     "full_ty": "VkCooperativeMatrixProperties2EXT*",
-     "is_const": false,
-     "len": "pPropertyCount",
-     "name": "pProperties",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "VkCooperativeMatrixProperties2EXT"
     }
    ],
    "protect": null,
@@ -52689,7 +52585,7 @@
      "len": null,
      "name": "pMetricValues",
      "null_terminated": false,
-     "optional": true,
+     "optional": false,
      "optional_pointer": false,
      "pointer": true,
      "ty": "void"
@@ -64385,12 +64281,6 @@
      "name": "VK_DRIVER_ID_APE_SOFT",
      "protect": null,
      "value": "30"
-    },
-    {
-     "aliases": [],
-     "name": "VK_DRIVER_ID_RESERVED_31",
-     "protect": null,
-     "value": "31"
     }
    ],
    "name": "VkDriverId",
@@ -67741,33 +67631,6 @@
     }
    ],
    "name": "VkImageTiling",
-   "protect": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "bit_width": 32,
-   "fields": [
-    {
-     "aliases": [],
-     "name": "VK_IMAGE_TILING_CONTROL_DEFAULT_EXT",
-     "protect": null,
-     "value": "0"
-    },
-    {
-     "aliases": [],
-     "name": "VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT",
-     "protect": null,
-     "value": "1"
-    },
-    {
-     "aliases": [],
-     "name": "VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT",
-     "protect": null,
-     "value": "2"
-    }
-   ],
-   "name": "VkImageTilingControlEXT",
    "protect": null,
    "video_std_header": null
   },
@@ -77450,10 +77313,8 @@
      "value": "1000497001"
     },
     {
-     "aliases": [
-      "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_EXT"
-     ],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_KHR",
+     "aliases": [],
+     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_EXT",
      "protect": null,
      "value": "1000498000"
     },
@@ -78987,24 +78848,6 @@
     },
     {
      "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT",
-     "protect": null,
-     "value": "1000659000"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_INFO_2_EXT",
-     "protect": null,
-     "value": "1000659001"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_2_EXT",
-     "protect": null,
-     "value": "1000659002"
-    },
-    {
-     "aliases": [],
      "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_PARTITIONED_FEATURES_EXT",
      "protect": null,
      "value": "1000662000"
@@ -79113,51 +78956,9 @@
     },
     {
      "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_TILING_CONTROL_FEATURES_EXT",
-     "protect": null,
-     "value": "1000687000"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_IMAGE_TILING_CONTROL_CREATE_INFO_EXT",
-     "protect": null,
-     "value": "1000687001"
-    },
-    {
-     "aliases": [],
      "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_DECODE_VECTOR_FEATURES_NV",
      "protect": null,
      "value": "1000689000"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIVATE_DATA_BASE_HANDLE_FEATURES_NV",
-     "protect": null,
-     "value": "1000707000"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INFO_PROPERTIES_INTEL",
-     "protect": null,
-     "value": "1000708000"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_FEATURES_VALVE",
-     "protect": null,
-     "value": "1000709000"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_PROPERTIES_VALVE",
-     "protect": null,
-     "value": "1000709001"
-    },
-    {
-     "aliases": [],
-     "name": "VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_ALIGNMENT_ALLOCATE_INFO_VALVE",
-     "protect": null,
-     "value": "1000709002"
     }
    ],
    "name": "VkStructureType",
@@ -80190,7 +79991,7 @@
    "spec_version_macro": "VK_ARM_DATA_GRAPH_INSTRUCTION_SET_TOSA_SPEC_VERSION"
   },
   {
-   "depends": "VK_KHR_get_physical_device_properties2,VK_VERSION_1_1",
+   "depends": null,
    "device": true,
    "instance": false,
    "name": "VK_ARM_data_graph_neural_accelerator_statistics",
@@ -80474,17 +80275,6 @@
    "protect": null,
    "spec_version": 1,
    "spec_version_macro": "VK_EXT_CONSERVATIVE_RASTERIZATION_SPEC_VERSION"
-  },
-  {
-   "depends": "VK_KHR_cooperative_matrix",
-   "device": true,
-   "instance": false,
-   "name": "VK_EXT_cooperative_matrix_maintenance1",
-   "name_macro": "VK_EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_EXTENSION_NAME",
-   "promoted_to": null,
-   "protect": null,
-   "spec_version": 1,
-   "spec_version_macro": "VK_EXT_COOPERATIVE_MATRIX_MAINTENANCE_1_SPEC_VERSION"
   },
   {
    "depends": "VK_KHR_get_physical_device_properties2,VK_VERSION_1_1",
@@ -81004,7 +80794,7 @@
    "spec_version_macro": "VK_EXT_IMAGE_COMPRESSION_CONTROL_SPEC_VERSION"
   },
   {
-   "depends": "VK_EXT_image_compression_control+VK_KHR_swapchain",
+   "depends": "VK_EXT_image_compression_control",
    "device": true,
    "instance": false,
    "name": "VK_EXT_image_compression_control_swapchain",
@@ -81046,17 +80836,6 @@
    "protect": null,
    "spec_version": 1,
    "spec_version_macro": "VK_EXT_IMAGE_SLICED_VIEW_OF_3D_SPEC_VERSION"
-  },
-  {
-   "depends": "VK_KHR_get_physical_device_properties2,VK_VERSION_1_1",
-   "device": true,
-   "instance": false,
-   "name": "VK_EXT_image_tiling_control",
-   "name_macro": "VK_EXT_IMAGE_TILING_CONTROL_EXTENSION_NAME",
-   "promoted_to": null,
-   "protect": null,
-   "spec_version": 1,
-   "spec_version_macro": "VK_EXT_IMAGE_TILING_CONTROL_SPEC_VERSION"
   },
   {
    "depends": "VK_KHR_get_physical_device_properties2,VK_VERSION_1_1",
@@ -81361,7 +81140,7 @@
    "instance": false,
    "name": "VK_EXT_pipeline_library_group_handles",
    "name_macro": "VK_EXT_PIPELINE_LIBRARY_GROUP_HANDLES_EXTENSION_NAME",
-   "promoted_to": "VK_KHR_pipeline_library_group_handles",
+   "promoted_to": null,
    "protect": null,
    "spec_version": 1,
    "spec_version_macro": "VK_EXT_PIPELINE_LIBRARY_GROUP_HANDLES_SPEC_VERSION"
@@ -82214,17 +81993,6 @@
    "spec_version_macro": "VK_IMG_RELAXED_LINE_RASTERIZATION_SPEC_VERSION"
   },
   {
-   "depends": "VK_KHR_get_physical_device_properties2,VK_VERSION_1_1",
-   "device": true,
-   "instance": false,
-   "name": "VK_INTEL_device_info",
-   "name_macro": "VK_INTEL_DEVICE_INFO_EXTENSION_NAME",
-   "promoted_to": null,
-   "protect": null,
-   "spec_version": 1,
-   "spec_version_macro": "VK_INTEL_DEVICE_INFO_SPEC_VERSION"
-  },
-  {
    "depends": null,
    "device": true,
    "instance": false,
@@ -83048,17 +82816,6 @@
    "protect": null,
    "spec_version": 1,
    "spec_version_macro": "VK_KHR_PIPELINE_LIBRARY_SPEC_VERSION"
-  },
-  {
-   "depends": "VK_KHR_ray_tracing_pipeline+VK_KHR_pipeline_library",
-   "device": true,
-   "instance": false,
-   "name": "VK_KHR_pipeline_library_group_handles",
-   "name_macro": "VK_KHR_PIPELINE_LIBRARY_GROUP_HANDLES_EXTENSION_NAME",
-   "promoted_to": null,
-   "protect": null,
-   "spec_version": 1,
-   "spec_version_macro": "VK_KHR_PIPELINE_LIBRARY_GROUP_HANDLES_SPEC_VERSION"
   },
   {
    "depends": null,
@@ -84432,7 +84189,7 @@
    "name_macro": "VK_NV_LOW_LATENCY_2_EXTENSION_NAME",
    "promoted_to": null,
    "protect": null,
-   "spec_version": 3,
+   "spec_version": 2,
    "spec_version_macro": "VK_NV_LOW_LATENCY_2_SPEC_VERSION"
   },
   {
@@ -84511,17 +84268,6 @@
    "protect": null,
    "spec_version": 1,
    "spec_version_macro": "VK_NV_PRESENT_METERING_SPEC_VERSION"
-  },
-  {
-   "depends": "VK_VERSION_1_3,VK_EXT_private_data",
-   "device": true,
-   "instance": false,
-   "name": "VK_NV_private_data_base_handle",
-   "name_macro": "VK_NV_PRIVATE_DATA_BASE_HANDLE_EXTENSION_NAME",
-   "promoted_to": null,
-   "protect": null,
-   "spec_version": 1,
-   "spec_version_macro": "VK_NV_PRIVATE_DATA_BASE_HANDLE_SPEC_VERSION"
   },
   {
    "depends": null,
@@ -85041,17 +84787,6 @@
    "spec_version_macro": "VK_SEC_UBM_SURFACE_SPEC_VERSION"
   },
   {
-   "depends": "VK_KHR_buffer_device_address,VK_VERSION_1_2",
-   "device": true,
-   "instance": false,
-   "name": "VK_VALVE_buffer_device_address_allocation_alignment",
-   "name_macro": "VK_VALVE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_EXTENSION_NAME",
-   "promoted_to": null,
-   "protect": null,
-   "spec_version": 1,
-   "spec_version_macro": "VK_VALVE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_SPEC_VERSION"
-  },
-  {
    "depends": "VK_KHR_get_physical_device_properties2,VK_VERSION_1_1",
    "device": true,
    "instance": false,
@@ -85317,13 +85052,6 @@
    "bit_width": 32,
    "bitmask": "VkConditionalRenderingFlagBitsEXT",
    "name": "VkConditionalRenderingFlagsEXT",
-   "protect": null
-  },
-  {
-   "aliases": [],
-   "bit_width": 32,
-   "bitmask": "VkCooperativeMatrixFlagBitsEXT",
-   "name": "VkCooperativeMatrixFlagsEXT",
    "protect": null
   },
   {
@@ -86229,7 +85957,7 @@
     "VkPrivateDataSlotCreateFlagsEXT"
    ],
    "bit_width": 32,
-   "bitmask": "VkPrivateDataSlotCreateFlagBits",
+   "bitmask": null,
    "name": "VkPrivateDataSlotCreateFlags",
    "protect": null
   },
@@ -98026,10 +97754,10 @@
    "protect": null
   }
  ],
- "header_version": 363,
- "header_version_complete": "1.4.363",
- "headers_commit": "6802bb4733b6",
- "headers_tag": "vulkan-sdk-1.4.363.0",
+ "header_version": 357,
+ "header_version_complete": "1.4.357",
+ "headers_commit": "e3b1eec08173",
+ "headers_tag": "vulkan-sdk-1.4.357.0",
  "platforms": {
   "android": "VK_USE_PLATFORM_ANDROID_KHR",
   "directfb": "VK_USE_PLATFORM_DIRECTFB_EXT",
@@ -119197,63 +118925,6 @@
   {
    "aliases": [],
    "extends": [
-    "VkBufferCreateInfo",
-    "VkMemoryAllocateInfo"
-   ],
-   "extensions": [
-    "VK_VALVE_buffer_device_address_allocation_alignment"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "alignment",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    }
-   ],
-   "name": "VkBufferDeviceAddressAlignmentAllocateInfoVALVE",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_ALIGNMENT_ALLOCATE_INFO_VALVE",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [
     "VkBufferCreateInfo"
    ],
    "extensions": [
@@ -124090,138 +123761,6 @@
    "name": "VkCooperativeMatrixFlexibleDimensionsPropertiesNV",
    "protect": null,
    "s_type": "VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_FLEXIBLE_DIMENSIONS_PROPERTIES_NV",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [],
-   "extensions": [
-    "VK_EXT_cooperative_matrix_maintenance1"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "MGranularity",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "NGranularity",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "KGranularity",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkComponentTypeKHR",
-     "is_const": false,
-     "len": null,
-     "name": "AType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkComponentTypeKHR"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkComponentTypeKHR",
-     "is_const": false,
-     "len": null,
-     "name": "BType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkComponentTypeKHR"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkComponentTypeKHR",
-     "is_const": false,
-     "len": null,
-     "name": "CType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkComponentTypeKHR"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkComponentTypeKHR",
-     "is_const": false,
-     "len": null,
-     "name": "ResultType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkComponentTypeKHR"
-    }
-   ],
-   "name": "VkCooperativeMatrixProperties2EXT",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_2_EXT",
    "union": false,
    "version": null,
    "video_std_header": null
@@ -148811,62 +148350,6 @@
    "video_std_header": null
   },
   {
-   "aliases": [],
-   "extends": [
-    "VkImageCreateInfo"
-   ],
-   "extensions": [
-    "VK_EXT_image_tiling_control"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "const void*",
-     "is_const": true,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkImageTilingControlEXT",
-     "is_const": false,
-     "len": null,
-     "name": "tilingControl",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkImageTilingControlEXT"
-    }
-   ],
-   "name": "VkImageTilingControlCreateInfoEXT",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_IMAGE_TILING_CONTROL_CREATE_INFO_EXT",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
    "aliases": [
     "VkImageToMemoryCopyEXT"
    ],
@@ -160602,119 +160085,6 @@
    "video_std_header": null
   },
   {
-   "aliases": [],
-   "extends": [
-    "VkDeviceCreateInfo",
-    "VkPhysicalDeviceFeatures2"
-   ],
-   "extensions": [
-    "VK_VALVE_buffer_device_address_allocation_alignment"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "bufferDeviceAddressAllocationAlignment",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    }
-   ],
-   "name": "VkPhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_FEATURES_VALVE",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [
-    "VkPhysicalDeviceProperties2"
-   ],
-   "extensions": [
-    "VK_VALVE_buffer_device_address_allocation_alignment"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "maxBufferDeviceAddressAllocationAlignment",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    }
-   ],
-   "name": "VkPhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_PROPERTIES_VALVE",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
    "aliases": [
     "VkPhysicalDeviceBufferDeviceAddressFeaturesKHR"
    ],
@@ -162367,208 +161737,6 @@
    "name": "VkPhysicalDeviceCooperativeMatrixFeaturesNV",
    "protect": null,
    "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_NV",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [],
-   "extensions": [
-    "VK_EXT_cooperative_matrix_maintenance1"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "const void*",
-     "is_const": true,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkScopeKHR",
-     "is_const": false,
-     "len": null,
-     "name": "scope",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkScopeKHR"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "invocations",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "subgroupSize",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkCooperativeMatrixFlagsEXT",
-     "is_const": false,
-     "len": null,
-     "name": "flags",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkCooperativeMatrixFlagsEXT"
-    }
-   ],
-   "name": "VkPhysicalDeviceCooperativeMatrixInfo2EXT",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_INFO_2_EXT",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [
-    "VkDeviceCreateInfo",
-    "VkPhysicalDeviceFeatures2"
-   ],
-   "extensions": [
-    "VK_EXT_cooperative_matrix_maintenance1"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "cooperativeMatrixProperties2",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "cooperativeMatrixReductions",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "cooperativeMatrixConversions",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "cooperativeMatrixPerElementOperations",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "cooperativeMatrixGetCoordinate",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    }
-   ],
-   "name": "VkPhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT",
    "union": false,
    "version": null,
    "video_std_header": null
@@ -174057,63 +173225,6 @@
   {
    "aliases": [],
    "extends": [
-    "VkDeviceCreateInfo",
-    "VkPhysicalDeviceFeatures2"
-   ],
-   "extensions": [
-    "VK_EXT_image_tiling_control"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "imageTilingControl",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    }
-   ],
-   "name": "VkPhysicalDeviceImageTilingControlFeaturesEXT",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_TILING_CONTROL_FEATURES_EXT",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [
     "VkPhysicalDeviceImageFormatInfo2"
    ],
    "extensions": [
@@ -174342,88 +173453,6 @@
    "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INDEX_TYPE_UINT8_FEATURES",
    "union": false,
    "version": "VK_VERSION_1_4",
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [
-    "VkPhysicalDeviceProperties2"
-   ],
-   "extensions": [
-    "VK_INTEL_device_info"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "deviceIpVersionArch",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "deviceIpVersionRelease",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "uint32_t",
-     "is_const": false,
-     "len": null,
-     "name": "deviceIpVersionRevision",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "uint32_t"
-    }
-   ],
-   "name": "VkPhysicalDeviceInfoPropertiesINTEL",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_INFO_PROPERTIES_INTEL",
-   "union": false,
-   "version": null,
    "video_std_header": null
   },
   {
@@ -181624,15 +180653,12 @@
    "video_std_header": null
   },
   {
-   "aliases": [
-    "VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT"
-   ],
+   "aliases": [],
    "extends": [
     "VkDeviceCreateInfo",
     "VkPhysicalDeviceFeatures2"
    ],
    "extensions": [
-    "VK_KHR_pipeline_library_group_handles",
     "VK_EXT_pipeline_library_group_handles"
    ],
    "members": [
@@ -181676,9 +180702,9 @@
      "ty": "VkBool32"
     }
    ],
-   "name": "VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR",
+   "name": "VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT",
    "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_KHR",
+   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_EXT",
    "union": false,
    "version": null,
    "video_std_header": null
@@ -183056,63 +182082,6 @@
    "name": "VkPhysicalDevicePrimitivesGeneratedQueryFeaturesEXT",
    "protect": null,
    "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIMITIVES_GENERATED_QUERY_FEATURES_EXT",
-   "union": false,
-   "version": null,
-   "video_std_header": null
-  },
-  {
-   "aliases": [],
-   "extends": [
-    "VkDeviceCreateInfo",
-    "VkPhysicalDeviceFeatures2"
-   ],
-   "extensions": [
-    "VK_NV_private_data_base_handle"
-   ],
-   "members": [
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkStructureType",
-     "is_const": false,
-     "len": null,
-     "name": "sType",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkStructureType"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "void*",
-     "is_const": false,
-     "len": null,
-     "name": "pNext",
-     "null_terminated": false,
-     "optional": true,
-     "optional_pointer": false,
-     "pointer": true,
-     "ty": "void"
-    },
-    {
-     "bit_field_width": null,
-     "fixed_size_array": [],
-     "full_ty": "VkBool32",
-     "is_const": false,
-     "len": null,
-     "name": "privateDataBaseHandle",
-     "null_terminated": false,
-     "optional": false,
-     "optional_pointer": false,
-     "pointer": false,
-     "ty": "VkBool32"
-    }
-   ],
-   "name": "VkPhysicalDevicePrivateDataBaseHandleFeaturesNV",
-   "protect": null,
-   "s_type": "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRIVATE_DATA_BASE_HANDLE_FEATURES_NV",
    "union": false,
    "version": null,
    "video_std_header": null
@@ -198713,7 +197682,7 @@
      ],
      "full_ty": "uint8_t",
      "is_const": false,
-     "len": "keySize",
+     "len": "VK_MAX_PIPELINE_BINARY_KEY_SIZE_KHR",
      "name": "key",
      "null_terminated": false,
      "optional": false,
@@ -204653,7 +203622,7 @@
      "len": null,
      "name": "flags",
      "null_terminated": false,
-     "optional": true,
+     "optional": false,
      "optional_pointer": false,
      "pointer": false,
      "ty": "VkPrivateDataSlotCreateFlags"
@@ -232288,7 +231257,6 @@
   "MSFT",
   "MTK",
   "MVK",
-  "MWS",
   "NN",
   "NV",
   "NVX",

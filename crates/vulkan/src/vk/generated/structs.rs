@@ -14045,52 +14045,6 @@ unsafe impl TaggedStructure for BufferCreateInfo<'_> {
     const STRUCTURE_TYPE: StructureType = StructureType::BUFFER_CREATE_INFO;
 }
 
-/// [`VkBufferDeviceAddressAlignmentAllocateInfoVALVE`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkBufferDeviceAddressAlignmentAllocateInfoVALVE.html)
-///
-/// Provided by `VK_VALVE_buffer_device_address_allocation_alignment`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct BufferDeviceAddressAlignmentAllocateInfoVALVE<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub alignment: u32,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for BufferDeviceAddressAlignmentAllocateInfoVALVE<'_> {}
-unsafe impl Sync for BufferDeviceAddressAlignmentAllocateInfoVALVE<'_> {}
-
-impl Default for BufferDeviceAddressAlignmentAllocateInfoVALVE<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::BUFFER_DEVICE_ADDRESS_ALIGNMENT_ALLOCATE_INFO_VALVE,
-            p_next: core::ptr::null_mut(),
-            alignment: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> BufferDeviceAddressAlignmentAllocateInfoVALVE<'a> {
-    pub fn alignment(mut self, value: u32) -> Self {
-        self.alignment = value;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for BufferDeviceAddressAlignmentAllocateInfoVALVE<'_> {
-    const STRUCTURE_TYPE: StructureType =
-        StructureType::BUFFER_DEVICE_ADDRESS_ALIGNMENT_ALLOCATE_INFO_VALVE;
-}
-
 /// [`VkBufferDeviceAddressCreateInfoEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkBufferDeviceAddressCreateInfoEXT.html)
 ///
 /// Provided by `VK_EXT_buffer_device_address`.
@@ -17381,87 +17335,6 @@ impl<'a> CooperativeMatrixFlexibleDimensionsPropertiesNV<'a> {
 unsafe impl TaggedStructure for CooperativeMatrixFlexibleDimensionsPropertiesNV<'_> {
     const STRUCTURE_TYPE: StructureType =
         StructureType::COOPERATIVE_MATRIX_FLEXIBLE_DIMENSIONS_PROPERTIES_NV;
-}
-
-/// [`VkCooperativeMatrixProperties2EXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkCooperativeMatrixProperties2EXT.html)
-///
-/// Provided by `VK_EXT_cooperative_matrix_maintenance1`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct CooperativeMatrixProperties2EXT<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub m_granularity: u32,
-    pub n_granularity: u32,
-    pub k_granularity: u32,
-    pub a_type: ComponentTypeKHR,
-    pub b_type: ComponentTypeKHR,
-    pub c_type: ComponentTypeKHR,
-    pub result_type: ComponentTypeKHR,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for CooperativeMatrixProperties2EXT<'_> {}
-unsafe impl Sync for CooperativeMatrixProperties2EXT<'_> {}
-
-impl Default for CooperativeMatrixProperties2EXT<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::COOPERATIVE_MATRIX_PROPERTIES_2_EXT,
-            p_next: core::ptr::null_mut(),
-            m_granularity: 0,
-            n_granularity: 0,
-            k_granularity: 0,
-            a_type: Default::default(),
-            b_type: Default::default(),
-            c_type: Default::default(),
-            result_type: Default::default(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> CooperativeMatrixProperties2EXT<'a> {
-    pub fn m_granularity(mut self, value: u32) -> Self {
-        self.m_granularity = value;
-        self
-    }
-    pub fn n_granularity(mut self, value: u32) -> Self {
-        self.n_granularity = value;
-        self
-    }
-    pub fn k_granularity(mut self, value: u32) -> Self {
-        self.k_granularity = value;
-        self
-    }
-    pub fn a_type(mut self, value: ComponentTypeKHR) -> Self {
-        self.a_type = value;
-        self
-    }
-    pub fn b_type(mut self, value: ComponentTypeKHR) -> Self {
-        self.b_type = value;
-        self
-    }
-    pub fn c_type(mut self, value: ComponentTypeKHR) -> Self {
-        self.c_type = value;
-        self
-    }
-    pub fn result_type(mut self, value: ComponentTypeKHR) -> Self {
-        self.result_type = value;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for CooperativeMatrixProperties2EXT<'_> {
-    const STRUCTURE_TYPE: StructureType = StructureType::COOPERATIVE_MATRIX_PROPERTIES_2_EXT;
 }
 
 /// [`VkCooperativeMatrixPropertiesKHR`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkCooperativeMatrixPropertiesKHR.html)
@@ -34989,51 +34862,6 @@ unsafe impl TaggedStructure for ImageSwapchainCreateInfoKHR<'_> {
     const STRUCTURE_TYPE: StructureType = StructureType::IMAGE_SWAPCHAIN_CREATE_INFO_KHR;
 }
 
-/// [`VkImageTilingControlCreateInfoEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkImageTilingControlCreateInfoEXT.html)
-///
-/// Provided by `VK_EXT_image_tiling_control`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct ImageTilingControlCreateInfoEXT<'a> {
-    pub s_type: StructureType,
-    pub p_next: *const c_void,
-    pub tiling_control: ImageTilingControlEXT,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for ImageTilingControlCreateInfoEXT<'_> {}
-unsafe impl Sync for ImageTilingControlCreateInfoEXT<'_> {}
-
-impl Default for ImageTilingControlCreateInfoEXT<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::IMAGE_TILING_CONTROL_CREATE_INFO_EXT,
-            p_next: core::ptr::null(),
-            tiling_control: Default::default(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> ImageTilingControlCreateInfoEXT<'a> {
-    pub fn tiling_control(mut self, value: ImageTilingControlEXT) -> Self {
-        self.tiling_control = value;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for ImageTilingControlCreateInfoEXT<'_> {
-    const STRUCTURE_TYPE: StructureType = StructureType::IMAGE_TILING_CONTROL_CREATE_INFO_EXT;
-}
-
 /// [`VkImageToMemoryCopy`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkImageToMemoryCopy.html)
 ///
 /// Provided by `VK_VERSION_1_4`, `VK_EXT_host_image_copy`.
@@ -43753,102 +43581,6 @@ unsafe impl TaggedStructure for PhysicalDeviceBorderColorSwizzleFeaturesEXT<'_> 
         StructureType::PHYSICAL_DEVICE_BORDER_COLOR_SWIZZLE_FEATURES_EXT;
 }
 
-/// [`VkPhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE.html)
-///
-/// Provided by `VK_VALVE_buffer_device_address_allocation_alignment`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub buffer_device_address_allocation_alignment: Bool32,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'_> {}
-unsafe impl Sync for PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'_> {}
-
-impl Default for PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_FEATURES_VALVE,
-            p_next: core::ptr::null_mut(),
-            buffer_device_address_allocation_alignment: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'a> {
-    pub fn buffer_device_address_allocation_alignment(mut self, value: bool) -> Self {
-        self.buffer_device_address_allocation_alignment = value as Bool32;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure
-    for PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'_>
-{
-    const STRUCTURE_TYPE: StructureType =
-        StructureType::PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_FEATURES_VALVE;
-}
-
-/// [`VkPhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE.html)
-///
-/// Provided by `VK_VALVE_buffer_device_address_allocation_alignment`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub max_buffer_device_address_allocation_alignment: u32,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for PhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE<'_> {}
-unsafe impl Sync for PhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE<'_> {}
-
-impl Default for PhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_PROPERTIES_VALVE,
-            p_next: core::ptr::null_mut(),
-            max_buffer_device_address_allocation_alignment: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> PhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE<'a> {
-    pub fn max_buffer_device_address_allocation_alignment(mut self, value: u32) -> Self {
-        self.max_buffer_device_address_allocation_alignment = value;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure
-    for PhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE<'_>
-{
-    const STRUCTURE_TYPE: StructureType =
-        StructureType::PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_ALLOCATION_ALIGNMENT_PROPERTIES_VALVE;
-}
-
 /// [`VkPhysicalDeviceBufferDeviceAddressFeatures`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceBufferDeviceAddressFeatures.html)
 ///
 /// Provided by `VK_VERSION_1_2`, `VK_KHR_buffer_device_address`.
@@ -45032,140 +44764,6 @@ impl<'a> PhysicalDeviceCooperativeMatrixFeaturesNV<'a> {
 unsafe impl TaggedStructure for PhysicalDeviceCooperativeMatrixFeaturesNV<'_> {
     const STRUCTURE_TYPE: StructureType =
         StructureType::PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_NV;
-}
-
-/// [`VkPhysicalDeviceCooperativeMatrixInfo2EXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceCooperativeMatrixInfo2EXT.html)
-///
-/// Provided by `VK_EXT_cooperative_matrix_maintenance1`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDeviceCooperativeMatrixInfo2EXT<'a> {
-    pub s_type: StructureType,
-    pub p_next: *const c_void,
-    pub scope: ScopeKHR,
-    pub invocations: u32,
-    pub subgroup_size: u32,
-    pub flags: CooperativeMatrixFlagsEXT,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for PhysicalDeviceCooperativeMatrixInfo2EXT<'_> {}
-unsafe impl Sync for PhysicalDeviceCooperativeMatrixInfo2EXT<'_> {}
-
-impl Default for PhysicalDeviceCooperativeMatrixInfo2EXT<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::PHYSICAL_DEVICE_COOPERATIVE_MATRIX_INFO_2_EXT,
-            p_next: core::ptr::null(),
-            scope: Default::default(),
-            invocations: 0,
-            subgroup_size: 0,
-            flags: Default::default(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> PhysicalDeviceCooperativeMatrixInfo2EXT<'a> {
-    pub fn scope(mut self, value: ScopeKHR) -> Self {
-        self.scope = value;
-        self
-    }
-    pub fn invocations(mut self, value: u32) -> Self {
-        self.invocations = value;
-        self
-    }
-    pub fn subgroup_size(mut self, value: u32) -> Self {
-        self.subgroup_size = value;
-        self
-    }
-    pub fn flags(mut self, value: CooperativeMatrixFlagsEXT) -> Self {
-        self.flags = value;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for PhysicalDeviceCooperativeMatrixInfo2EXT<'_> {
-    const STRUCTURE_TYPE: StructureType =
-        StructureType::PHYSICAL_DEVICE_COOPERATIVE_MATRIX_INFO_2_EXT;
-}
-
-/// [`VkPhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT.html)
-///
-/// Provided by `VK_EXT_cooperative_matrix_maintenance1`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub cooperative_matrix_properties2: Bool32,
-    pub cooperative_matrix_reductions: Bool32,
-    pub cooperative_matrix_conversions: Bool32,
-    pub cooperative_matrix_per_element_operations: Bool32,
-    pub cooperative_matrix_get_coordinate: Bool32,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'_> {}
-unsafe impl Sync for PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'_> {}
-
-impl Default for PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT,
-            p_next: core::ptr::null_mut(),
-            cooperative_matrix_properties2: 0,
-            cooperative_matrix_reductions: 0,
-            cooperative_matrix_conversions: 0,
-            cooperative_matrix_per_element_operations: 0,
-            cooperative_matrix_get_coordinate: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'a> {
-    pub fn cooperative_matrix_properties2(mut self, value: bool) -> Self {
-        self.cooperative_matrix_properties2 = value as Bool32;
-        self
-    }
-    pub fn cooperative_matrix_reductions(mut self, value: bool) -> Self {
-        self.cooperative_matrix_reductions = value as Bool32;
-        self
-    }
-    pub fn cooperative_matrix_conversions(mut self, value: bool) -> Self {
-        self.cooperative_matrix_conversions = value as Bool32;
-        self
-    }
-    pub fn cooperative_matrix_per_element_operations(mut self, value: bool) -> Self {
-        self.cooperative_matrix_per_element_operations = value as Bool32;
-        self
-    }
-    pub fn cooperative_matrix_get_coordinate(mut self, value: bool) -> Self {
-        self.cooperative_matrix_get_coordinate = value as Bool32;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'_> {
-    const STRUCTURE_TYPE: StructureType =
-        StructureType::PHYSICAL_DEVICE_COOPERATIVE_MATRIX_MAINTENANCE_1_FEATURES_EXT;
 }
 
 /// [`VkPhysicalDeviceCooperativeMatrixPropertiesKHR`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceCooperativeMatrixPropertiesKHR.html)
@@ -53130,52 +52728,6 @@ unsafe impl TaggedStructure for PhysicalDeviceImageSlicedViewOf3DFeaturesEXT<'_>
         StructureType::PHYSICAL_DEVICE_IMAGE_SLICED_VIEW_OF_3D_FEATURES_EXT;
 }
 
-/// [`VkPhysicalDeviceImageTilingControlFeaturesEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceImageTilingControlFeaturesEXT.html)
-///
-/// Provided by `VK_EXT_image_tiling_control`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDeviceImageTilingControlFeaturesEXT<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub image_tiling_control: Bool32,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for PhysicalDeviceImageTilingControlFeaturesEXT<'_> {}
-unsafe impl Sync for PhysicalDeviceImageTilingControlFeaturesEXT<'_> {}
-
-impl Default for PhysicalDeviceImageTilingControlFeaturesEXT<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::PHYSICAL_DEVICE_IMAGE_TILING_CONTROL_FEATURES_EXT,
-            p_next: core::ptr::null_mut(),
-            image_tiling_control: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> PhysicalDeviceImageTilingControlFeaturesEXT<'a> {
-    pub fn image_tiling_control(mut self, value: bool) -> Self {
-        self.image_tiling_control = value as Bool32;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for PhysicalDeviceImageTilingControlFeaturesEXT<'_> {
-    const STRUCTURE_TYPE: StructureType =
-        StructureType::PHYSICAL_DEVICE_IMAGE_TILING_CONTROL_FEATURES_EXT;
-}
-
 /// [`VkPhysicalDeviceImageViewImageFormatInfoEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceImageViewImageFormatInfoEXT.html)
 ///
 /// Provided by `VK_EXT_filter_cubic`.
@@ -53365,63 +52917,6 @@ unsafe impl TaggedStructure for PhysicalDeviceIndexTypeUint8Features<'_> {
 pub type PhysicalDeviceIndexTypeUint8FeaturesEXT<'a> = PhysicalDeviceIndexTypeUint8Features<'a>;
 
 pub type PhysicalDeviceIndexTypeUint8FeaturesKHR<'a> = PhysicalDeviceIndexTypeUint8Features<'a>;
-
-/// [`VkPhysicalDeviceInfoPropertiesINTEL`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceInfoPropertiesINTEL.html)
-///
-/// Provided by `VK_INTEL_device_info`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDeviceInfoPropertiesINTEL<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub device_ip_version_arch: u32,
-    pub device_ip_version_release: u32,
-    pub device_ip_version_revision: u32,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for PhysicalDeviceInfoPropertiesINTEL<'_> {}
-unsafe impl Sync for PhysicalDeviceInfoPropertiesINTEL<'_> {}
-
-impl Default for PhysicalDeviceInfoPropertiesINTEL<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::PHYSICAL_DEVICE_INFO_PROPERTIES_INTEL,
-            p_next: core::ptr::null_mut(),
-            device_ip_version_arch: 0,
-            device_ip_version_release: 0,
-            device_ip_version_revision: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> PhysicalDeviceInfoPropertiesINTEL<'a> {
-    pub fn device_ip_version_arch(mut self, value: u32) -> Self {
-        self.device_ip_version_arch = value;
-        self
-    }
-    pub fn device_ip_version_release(mut self, value: u32) -> Self {
-        self.device_ip_version_release = value;
-        self
-    }
-    pub fn device_ip_version_revision(mut self, value: u32) -> Self {
-        self.device_ip_version_revision = value;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for PhysicalDeviceInfoPropertiesINTEL<'_> {
-    const STRUCTURE_TYPE: StructureType = StructureType::PHYSICAL_DEVICE_INFO_PROPERTIES_INTEL;
-}
 
 /// [`VkPhysicalDeviceInheritedViewportScissorFeaturesNV`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDeviceInheritedViewportScissorFeaturesNV.html)
 ///
@@ -58276,26 +57771,26 @@ unsafe impl TaggedStructure for PhysicalDevicePipelineExecutablePropertiesFeatur
         StructureType::PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR;
 }
 
-/// [`VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR.html)
+/// [`VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT.html)
 ///
-/// Provided by `VK_KHR_pipeline_library_group_handles`, `VK_EXT_pipeline_library_group_handles`.
+/// Provided by `VK_EXT_pipeline_library_group_handles`.
 #[repr(C)]
 #[derive(Copy, Clone)]
 #[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'a> {
+pub struct PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'a> {
     pub s_type: StructureType,
     pub p_next: *mut c_void,
     pub pipeline_library_group_handles: Bool32,
     pub _marker: PhantomData<&'a ()>,
 }
 
-unsafe impl Send for PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'_> {}
-unsafe impl Sync for PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'_> {}
+unsafe impl Send for PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'_> {}
+unsafe impl Sync for PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'_> {}
 
-impl Default for PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'_> {
+impl Default for PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'_> {
     fn default() -> Self {
         Self {
-            s_type: StructureType::PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_KHR,
+            s_type: StructureType::PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_EXT,
             p_next: core::ptr::null_mut(),
             pipeline_library_group_handles: 0,
             _marker: PhantomData,
@@ -58303,7 +57798,7 @@ impl Default for PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'_> {
     }
 }
 
-impl<'a> PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'a> {
+impl<'a> PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'a> {
     pub fn pipeline_library_group_handles(mut self, value: bool) -> Self {
         self.pipeline_library_group_handles = value as Bool32;
         self
@@ -58317,13 +57812,10 @@ impl<'a> PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'a> {
     }
 }
 
-unsafe impl TaggedStructure for PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'_> {
+unsafe impl TaggedStructure for PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'_> {
     const STRUCTURE_TYPE: StructureType =
-        StructureType::PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_KHR;
+        StructureType::PHYSICAL_DEVICE_PIPELINE_LIBRARY_GROUP_HANDLES_FEATURES_EXT;
 }
-
-pub type PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'a> =
-    PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'a>;
 
 /// [`VkPhysicalDevicePipelineOpacityMicromapFeaturesARM`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDevicePipelineOpacityMicromapFeaturesARM.html)
 ///
@@ -59360,52 +58852,6 @@ impl<'a> PhysicalDevicePrimitivesGeneratedQueryFeaturesEXT<'a> {
 unsafe impl TaggedStructure for PhysicalDevicePrimitivesGeneratedQueryFeaturesEXT<'_> {
     const STRUCTURE_TYPE: StructureType =
         StructureType::PHYSICAL_DEVICE_PRIMITIVES_GENERATED_QUERY_FEATURES_EXT;
-}
-
-/// [`VkPhysicalDevicePrivateDataBaseHandleFeaturesNV`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDevicePrivateDataBaseHandleFeaturesNV.html)
-///
-/// Provided by `VK_NV_private_data_base_handle`.
-#[repr(C)]
-#[derive(Copy, Clone)]
-#[cfg_attr(feature = "debug", derive(Debug))]
-pub struct PhysicalDevicePrivateDataBaseHandleFeaturesNV<'a> {
-    pub s_type: StructureType,
-    pub p_next: *mut c_void,
-    pub private_data_base_handle: Bool32,
-    pub _marker: PhantomData<&'a ()>,
-}
-
-unsafe impl Send for PhysicalDevicePrivateDataBaseHandleFeaturesNV<'_> {}
-unsafe impl Sync for PhysicalDevicePrivateDataBaseHandleFeaturesNV<'_> {}
-
-impl Default for PhysicalDevicePrivateDataBaseHandleFeaturesNV<'_> {
-    fn default() -> Self {
-        Self {
-            s_type: StructureType::PHYSICAL_DEVICE_PRIVATE_DATA_BASE_HANDLE_FEATURES_NV,
-            p_next: core::ptr::null_mut(),
-            private_data_base_handle: 0,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a> PhysicalDevicePrivateDataBaseHandleFeaturesNV<'a> {
-    pub fn private_data_base_handle(mut self, value: bool) -> Self {
-        self.private_data_base_handle = value as Bool32;
-        self
-    }
-    /// Prepends `next` to the `pNext` chain.
-    ///
-    /// `next.p_next` is overwritten, so push extension structs one at a time.
-    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {
-        self.p_next = push_chain(next, self.p_next);
-        self
-    }
-}
-
-unsafe impl TaggedStructure for PhysicalDevicePrivateDataBaseHandleFeaturesNV<'_> {
-    const STRUCTURE_TYPE: StructureType =
-        StructureType::PHYSICAL_DEVICE_PRIVATE_DATA_BASE_HANDLE_FEATURES_NV;
 }
 
 /// [`VkPhysicalDevicePrivateDataFeatures`](https://registry.khronos.org/vulkan/specs/latest/man/html/VkPhysicalDevicePrivateDataFeatures.html)
@@ -70260,11 +69706,6 @@ impl<'a> PipelineBinaryKeyKHR<'a> {
     pub fn key(mut self, value: [u8; MAX_PIPELINE_BINARY_KEY_SIZE_KHR]) -> Self {
         self.key = value;
         self
-    }
-    /// The first `keySize` elements of `key`.
-    pub fn key_as_slice(&self) -> &[u8] {
-        let len = (self.key_size as usize).min(self.key.len());
-        &self.key[..len]
     }
     /// Prepends `next` to the `pNext` chain.
     ///
@@ -94432,8 +93873,6 @@ unsafe impl Extends<BlitImageInfo2<'_>> for BlitImageCubicWeightsInfoQCOM<'_> {}
 unsafe impl Extends<BufferCreateInfo<'_>> for BufferCollectionBufferCreateInfoFUCHSIA<'_> {}
 #[cfg(feature = "fuchsia")]
 unsafe impl Extends<ImageCreateInfo<'_>> for BufferCollectionImageCreateInfoFUCHSIA<'_> {}
-unsafe impl Extends<BufferCreateInfo<'_>> for BufferDeviceAddressAlignmentAllocateInfoVALVE<'_> {}
-unsafe impl Extends<MemoryAllocateInfo<'_>> for BufferDeviceAddressAlignmentAllocateInfoVALVE<'_> {}
 unsafe impl Extends<BufferCreateInfo<'_>> for BufferDeviceAddressCreateInfoEXT<'_> {}
 unsafe impl Extends<BufferCreateInfo<'_>> for BufferOpaqueCaptureAddressCreateInfo<'_> {}
 unsafe impl Extends<BufferCreateInfo<'_>> for BufferUsageFlags2CreateInfo<'_> {}
@@ -94714,7 +94153,6 @@ unsafe impl Extends<PhysicalDeviceImageFormatInfo2<'_>> for ImageStencilUsage2Cr
 unsafe impl Extends<ImageCreateInfo<'_>> for ImageStencilUsageCreateInfo<'_> {}
 unsafe impl Extends<PhysicalDeviceImageFormatInfo2<'_>> for ImageStencilUsageCreateInfo<'_> {}
 unsafe impl Extends<ImageCreateInfo<'_>> for ImageSwapchainCreateInfoKHR<'_> {}
-unsafe impl Extends<ImageCreateInfo<'_>> for ImageTilingControlCreateInfoEXT<'_> {}
 unsafe impl Extends<FramebufferAttachmentImageInfo<'_>> for ImageUsageFlags2CreateInfoKHR<'_> {}
 unsafe impl Extends<ImageCreateInfo<'_>> for ImageUsageFlags2CreateInfoKHR<'_> {}
 unsafe impl Extends<PhysicalDeviceImageFormatInfo2<'_>> for ImageUsageFlags2CreateInfoKHR<'_> {}
@@ -94885,18 +94323,6 @@ unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
     for PhysicalDeviceBorderColorSwizzleFeaturesEXT<'_>
 {
 }
-unsafe impl Extends<DeviceCreateInfo<'_>>
-    for PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'_>
-{
-}
-unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
-    for PhysicalDeviceBufferDeviceAddressAllocationAlignmentFeaturesVALVE<'_>
-{
-}
-unsafe impl Extends<PhysicalDeviceProperties2<'_>>
-    for PhysicalDeviceBufferDeviceAddressAllocationAlignmentPropertiesVALVE<'_>
-{
-}
 unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDeviceBufferDeviceAddressFeatures<'_> {}
 unsafe impl Extends<PhysicalDeviceFeatures2<'_>> for PhysicalDeviceBufferDeviceAddressFeatures<'_> {}
 unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDeviceBufferDeviceAddressFeaturesEXT<'_> {}
@@ -94996,14 +94422,6 @@ unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
 }
 unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDeviceCooperativeMatrixFeaturesNV<'_> {}
 unsafe impl Extends<PhysicalDeviceFeatures2<'_>> for PhysicalDeviceCooperativeMatrixFeaturesNV<'_> {}
-unsafe impl Extends<DeviceCreateInfo<'_>>
-    for PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'_>
-{
-}
-unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
-    for PhysicalDeviceCooperativeMatrixMaintenance1FeaturesEXT<'_>
-{
-}
 unsafe impl Extends<PhysicalDeviceProperties2<'_>>
     for PhysicalDeviceCooperativeMatrixPropertiesKHR<'_>
 {
@@ -95488,11 +94906,6 @@ unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
     for PhysicalDeviceImageSlicedViewOf3DFeaturesEXT<'_>
 {
 }
-unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDeviceImageTilingControlFeaturesEXT<'_> {}
-unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
-    for PhysicalDeviceImageTilingControlFeaturesEXT<'_>
-{
-}
 unsafe impl Extends<PhysicalDeviceImageFormatInfo2<'_>>
     for PhysicalDeviceImageViewImageFormatInfoEXT<'_>
 {
@@ -95506,7 +94919,6 @@ unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
 }
 unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDeviceIndexTypeUint8Features<'_> {}
 unsafe impl Extends<PhysicalDeviceFeatures2<'_>> for PhysicalDeviceIndexTypeUint8Features<'_> {}
-unsafe impl Extends<PhysicalDeviceProperties2<'_>> for PhysicalDeviceInfoPropertiesINTEL<'_> {}
 unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDeviceInheritedViewportScissorFeaturesNV<'_> {}
 unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
     for PhysicalDeviceInheritedViewportScissorFeaturesNV<'_>
@@ -95769,11 +95181,11 @@ unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
 {
 }
 unsafe impl Extends<DeviceCreateInfo<'_>>
-    for PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'_>
+    for PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'_>
 {
 }
 unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
-    for PhysicalDevicePipelineLibraryGroupHandlesFeaturesKHR<'_>
+    for PhysicalDevicePipelineLibraryGroupHandlesFeaturesEXT<'_>
 {
 }
 unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDevicePipelineOpacityMicromapFeaturesARM<'_> {}
@@ -95851,11 +95263,6 @@ unsafe impl Extends<DeviceCreateInfo<'_>>
 }
 unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
     for PhysicalDevicePrimitivesGeneratedQueryFeaturesEXT<'_>
-{
-}
-unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDevicePrivateDataBaseHandleFeaturesNV<'_> {}
-unsafe impl Extends<PhysicalDeviceFeatures2<'_>>
-    for PhysicalDevicePrivateDataBaseHandleFeaturesNV<'_>
 {
 }
 unsafe impl Extends<DeviceCreateInfo<'_>> for PhysicalDevicePrivateDataFeatures<'_> {}

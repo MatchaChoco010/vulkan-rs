@@ -5785,16 +5785,6 @@ pub type PFN_vkGetPhysicalDeviceCooperativeMatrixFlexibleDimensionsPropertiesNV 
     ) -> VkResult,
 >;
 
-/// Function pointer type of `vkGetPhysicalDeviceCooperativeMatrixProperties2EXT`.
-pub type PFN_vkGetPhysicalDeviceCooperativeMatrixProperties2EXT = Option<
-    unsafe extern "system" fn(
-        physical_device: PhysicalDevice,
-        p_cooperative_matrix_info: *const PhysicalDeviceCooperativeMatrixInfo2EXT<'_>,
-        p_property_count: *mut u32,
-        p_properties: *mut CooperativeMatrixProperties2EXT<'_>,
-    ) -> VkResult,
->;
-
 /// Function pointer type of `vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR`.
 pub type PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR = Option<
     unsafe extern "system" fn(

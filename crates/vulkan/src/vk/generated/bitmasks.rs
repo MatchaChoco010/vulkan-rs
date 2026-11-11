@@ -2293,69 +2293,6 @@ impl core::ops::BitAnd<ConditionalRenderingFlagBitsEXT> for ConditionalRendering
     }
 }
 
-/// `VkCooperativeMatrixFlagBitsEXT`: a single bit of [`CooperativeMatrixFlagsEXT`].
-#[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct CooperativeMatrixFlagBitsEXT(pub u32);
-
-impl CooperativeMatrixFlagBitsEXT {
-    pub const fn from_raw(value: u32) -> Self {
-        Self(value)
-    }
-    pub const fn as_raw(self) -> u32 {
-        self.0
-    }
-    /// `VK_COOPERATIVE_MATRIX_SATURATING_ACCUMULATION_BIT_EXT`
-    pub const SATURATING_ACCUMULATION: Self = Self(1);
-}
-
-impl core::fmt::Debug for CooperativeMatrixFlagBitsEXT {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const NAMES: &[(u32, &str)] = &[(1, "SATURATING_ACCUMULATION")];
-        debug_flags32(f, self.0, NAMES)
-    }
-}
-
-impl From<CooperativeMatrixFlagBitsEXT> for CooperativeMatrixFlagsEXT {
-    fn from(value: CooperativeMatrixFlagBitsEXT) -> Self {
-        Self(value.0)
-    }
-}
-
-impl core::ops::BitOr for CooperativeMatrixFlagBitsEXT {
-    type Output = CooperativeMatrixFlagsEXT;
-    fn bitor(self, rhs: Self) -> CooperativeMatrixFlagsEXT {
-        CooperativeMatrixFlagsEXT(self.0 | rhs.0)
-    }
-}
-
-impl core::ops::BitOr<CooperativeMatrixFlagsEXT> for CooperativeMatrixFlagBitsEXT {
-    type Output = CooperativeMatrixFlagsEXT;
-    fn bitor(self, rhs: CooperativeMatrixFlagsEXT) -> CooperativeMatrixFlagsEXT {
-        CooperativeMatrixFlagsEXT(self.0 | rhs.0)
-    }
-}
-
-impl core::ops::BitOr<CooperativeMatrixFlagBitsEXT> for CooperativeMatrixFlagsEXT {
-    type Output = Self;
-    fn bitor(self, rhs: CooperativeMatrixFlagBitsEXT) -> Self {
-        Self(self.0 | rhs.0)
-    }
-}
-
-impl core::ops::BitOrAssign<CooperativeMatrixFlagBitsEXT> for CooperativeMatrixFlagsEXT {
-    fn bitor_assign(&mut self, rhs: CooperativeMatrixFlagBitsEXT) {
-        self.0 |= rhs.0;
-    }
-}
-
-impl core::ops::BitAnd<CooperativeMatrixFlagBitsEXT> for CooperativeMatrixFlagsEXT {
-    type Output = Self;
-    fn bitand(self, rhs: CooperativeMatrixFlagBitsEXT) -> Self {
-        Self(self.0 & rhs.0)
-    }
-}
-
 /// `VkCullModeFlagBits`: a single bit of [`CullModeFlags`].
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -10187,71 +10124,6 @@ impl core::ops::BitAnd<PresentTimingInfoFlagBitsEXT> for PresentTimingInfoFlagsE
         Self(self.0 & rhs.0)
     }
 }
-
-/// `VkPrivateDataSlotCreateFlagBits`: a single bit of [`PrivateDataSlotCreateFlags`].
-#[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct PrivateDataSlotCreateFlagBits(pub u32);
-
-impl PrivateDataSlotCreateFlagBits {
-    pub const fn from_raw(value: u32) -> Self {
-        Self(value)
-    }
-    pub const fn as_raw(self) -> u32 {
-        self.0
-    }
-    /// `VK_PRIVATE_DATA_SLOT_CREATE_BASE_OBJECT_HANDLE_BIT_NV`
-    pub const BASE_OBJECT_HANDLE_NV: Self = Self(1);
-}
-
-impl core::fmt::Debug for PrivateDataSlotCreateFlagBits {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const NAMES: &[(u32, &str)] = &[(1, "BASE_OBJECT_HANDLE_NV")];
-        debug_flags32(f, self.0, NAMES)
-    }
-}
-
-impl From<PrivateDataSlotCreateFlagBits> for PrivateDataSlotCreateFlags {
-    fn from(value: PrivateDataSlotCreateFlagBits) -> Self {
-        Self(value.0)
-    }
-}
-
-impl core::ops::BitOr for PrivateDataSlotCreateFlagBits {
-    type Output = PrivateDataSlotCreateFlags;
-    fn bitor(self, rhs: Self) -> PrivateDataSlotCreateFlags {
-        PrivateDataSlotCreateFlags(self.0 | rhs.0)
-    }
-}
-
-impl core::ops::BitOr<PrivateDataSlotCreateFlags> for PrivateDataSlotCreateFlagBits {
-    type Output = PrivateDataSlotCreateFlags;
-    fn bitor(self, rhs: PrivateDataSlotCreateFlags) -> PrivateDataSlotCreateFlags {
-        PrivateDataSlotCreateFlags(self.0 | rhs.0)
-    }
-}
-
-impl core::ops::BitOr<PrivateDataSlotCreateFlagBits> for PrivateDataSlotCreateFlags {
-    type Output = Self;
-    fn bitor(self, rhs: PrivateDataSlotCreateFlagBits) -> Self {
-        Self(self.0 | rhs.0)
-    }
-}
-
-impl core::ops::BitOrAssign<PrivateDataSlotCreateFlagBits> for PrivateDataSlotCreateFlags {
-    fn bitor_assign(&mut self, rhs: PrivateDataSlotCreateFlagBits) {
-        self.0 |= rhs.0;
-    }
-}
-
-impl core::ops::BitAnd<PrivateDataSlotCreateFlagBits> for PrivateDataSlotCreateFlags {
-    type Output = Self;
-    fn bitand(self, rhs: PrivateDataSlotCreateFlagBits) -> Self {
-        Self(self.0 & rhs.0)
-    }
-}
-
-pub type PrivateDataSlotCreateFlagBitsEXT = PrivateDataSlotCreateFlagBits;
 
 /// `VkQueryControlFlagBits`: a single bit of [`QueryControlFlags`].
 #[repr(transparent)]
@@ -18709,93 +18581,6 @@ impl core::ops::BitXorAssign for ConditionalRenderingFlagsEXT {
 }
 
 impl core::ops::Not for ConditionalRenderingFlagsEXT {
-    type Output = Self;
-    fn not(self) -> Self {
-        Self(!self.0)
-    }
-}
-
-/// `VkCooperativeMatrixFlagsEXT`
-#[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct CooperativeMatrixFlagsEXT(pub u32);
-
-impl CooperativeMatrixFlagsEXT {
-    pub const fn empty() -> Self {
-        Self(0)
-    }
-    pub const fn from_raw(value: u32) -> Self {
-        Self(value)
-    }
-    pub const fn as_raw(self) -> u32 {
-        self.0
-    }
-    pub const fn is_empty(self) -> bool {
-        self.0 == 0
-    }
-    /// Returns `true` if every bit of `other` is set in `self`.
-    pub const fn contains(self, other: Self) -> bool {
-        (self.0 & other.0) == other.0
-    }
-    /// Returns `true` if any bit of `other` is set in `self`.
-    pub const fn intersects(self, other: Self) -> bool {
-        (self.0 & other.0) != 0
-    }
-    /// `const` equivalent of `self | other`.
-    pub const fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
-    }
-    /// `VK_COOPERATIVE_MATRIX_SATURATING_ACCUMULATION_BIT_EXT`
-    pub const SATURATING_ACCUMULATION: Self = Self(1);
-}
-
-impl core::fmt::Debug for CooperativeMatrixFlagsEXT {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const NAMES: &[(u32, &str)] = &[(1, "SATURATING_ACCUMULATION")];
-        debug_flags32(f, self.0, NAMES)
-    }
-}
-
-impl core::ops::BitOr for CooperativeMatrixFlagsEXT {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self {
-        Self(self.0 | rhs.0)
-    }
-}
-
-impl core::ops::BitOrAssign for CooperativeMatrixFlagsEXT {
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.0 |= rhs.0;
-    }
-}
-
-impl core::ops::BitAnd for CooperativeMatrixFlagsEXT {
-    type Output = Self;
-    fn bitand(self, rhs: Self) -> Self {
-        Self(self.0 & rhs.0)
-    }
-}
-
-impl core::ops::BitAndAssign for CooperativeMatrixFlagsEXT {
-    fn bitand_assign(&mut self, rhs: Self) {
-        self.0 &= rhs.0;
-    }
-}
-
-impl core::ops::BitXor for CooperativeMatrixFlagsEXT {
-    type Output = Self;
-    fn bitxor(self, rhs: Self) -> Self {
-        Self(self.0 ^ rhs.0)
-    }
-}
-
-impl core::ops::BitXorAssign for CooperativeMatrixFlagsEXT {
-    fn bitxor_assign(&mut self, rhs: Self) {
-        self.0 ^= rhs.0;
-    }
-}
-
-impl core::ops::Not for CooperativeMatrixFlagsEXT {
     type Output = Self;
     fn not(self) -> Self {
         Self(!self.0)
@@ -31581,13 +31366,11 @@ impl PrivateDataSlotCreateFlags {
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
-    /// `VK_PRIVATE_DATA_SLOT_CREATE_BASE_OBJECT_HANDLE_BIT_NV`
-    pub const BASE_OBJECT_HANDLE_NV: Self = Self(1);
 }
 
 impl core::fmt::Debug for PrivateDataSlotCreateFlags {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        const NAMES: &[(u32, &str)] = &[(1, "BASE_OBJECT_HANDLE_NV")];
+        const NAMES: &[(u32, &str)] = &[];
         debug_flags32(f, self.0, NAMES)
     }
 }
