@@ -11,6 +11,9 @@
 //! instance and device creation, `pNext` queries, dynamic rendering, synchronization2,
 //! timeline semaphores, and memory and fence sharing through file descriptors.
 
+// `Entry::load` needs the `std` feature.
+#![cfg(feature = "std")]
+
 use std::ffi::{CStr, c_void};
 use std::sync::Mutex;
 use vulkan::vk::{self, Handle};

@@ -110,11 +110,17 @@ def load_vulkan_object():
     return gen.vk
 
 
+def sdk_tag_key(tag: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in tag.removeprefix("vulkan-sdk-").split("."))
+
+
 def headers_tag(allow_non_sdk_tag: bool) -> str:
     exact_tags = git(["-C", str(HEADERS), "tag", "--points-at", "HEAD"], allow_fail=True).splitlines()
-    sdk_tags = sorted(tag for tag in exact_tags if tag.startswith("vulkan-sdk-"))
+    sdk_tags = [tag for tag in exact_tags if tag.startswith("vulkan-sdk-")]
     if sdk_tags:
-        return sdk_tags[-1]
+        # One commit can carry several SDK tags (1.4.350.0 and 1.4.350.1 do). The newest
+        # one names the bindings; tools/update-vulkan-headers relies on the same rule.
+        return max(sdk_tags, key=sdk_tag_key)
     if allow_non_sdk_tag:
         return git(["-C", str(HEADERS), "describe", "--tags", "--always"])
     raise RuntimeError(
