@@ -1212,10 +1212,7 @@ mod tests {
         let mut ir = base();
         ir.structs.push(crate::test_support::structure(
             "VkHostAddressRangeEXT",
-            vec![
-                counted("address", "void*", "size"),
-                field("size", "size_t"),
-            ],
+            vec![counted("address", "void*", "size"), field("size", "size_t")],
         ));
         ir.commands.push(device(result_command(
             "vkGetImageOpaqueCaptureDataEXT",
