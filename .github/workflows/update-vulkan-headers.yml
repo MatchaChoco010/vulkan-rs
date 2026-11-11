@@ -35,12 +35,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers
+            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers \
+            pkg-config libwayland-dev libxkbcommon-dev
 
+      # The version, profile and components come from rust-toolchain.toml.
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt,clippy
-          rustup default stable
+          rustup toolchain install
+          cargo --version
 
       - name: Update the submodule and regenerate
         id: update

@@ -34,14 +34,18 @@ jobs:
       - name: Install lavapipe, the Vulkan loader and the validation layers
         run: |
           sudo apt-get update
+          # libwayland-dev and libxkbcommon-dev are build dependencies of the Wayland
+          # examples (winit).
           sudo apt-get install --yes --no-install-recommends \
-            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
+            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools \
+            pkg-config libwayland-dev libxkbcommon-dev
           vulkaninfo --summary
 
+      # The version, profile and components come from rust-toolchain.toml.
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal --component rustfmt,clippy
-          rustup default stable
+          rustup toolchain install
+          cargo --version
 
       - uses: Swatinem/rust-cache@v2
 
