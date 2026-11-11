@@ -55,6 +55,36 @@ const EXTERNAL_TYPES: &[&str] = &[
     "zx_handle_t",
 ];
 
+/// The [`EXTERNAL_TYPES`] that are plain values (integers or pointers as typedefs) rather
+/// than opaque structs. They can be returned by value and borrowed like any integer.
+const EXTERNAL_VALUE_TYPES: &[&str] = &[
+    "DWORD",
+    "GgpFrameToken",
+    "GgpStreamDescriptor",
+    "HANDLE",
+    "HINSTANCE",
+    "HMONITOR",
+    "HWND",
+    "IOSurfaceRef",
+    "LPCWSTR",
+    "MTLBuffer_id",
+    "MTLCommandQueue_id",
+    "MTLDevice_id",
+    "MTLSharedEvent_id",
+    "MTLTexture_id",
+    "NvSciBufAttrList",
+    "NvSciBufObj",
+    "NvSciSyncAttrList",
+    "NvSciSyncFence",
+    "NvSciSyncObj",
+    "RROutput",
+    "VisualID",
+    "Window",
+    "xcb_visualid_t",
+    "xcb_window_t",
+    "zx_handle_t",
+];
+
 /// Where a command's function pointer is loaded from.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Dispatch {
@@ -233,9 +263,15 @@ impl<'a> Model<'a> {
         self.func_pointers.contains(name) || name.starts_with("PFN_")
     }
 
-    /// Opaque platform types that Rust must never form a reference to.
+    /// Platform types declared by hand in `vk/mod.rs`.
     pub fn is_external(&self, name: &str) -> bool {
         EXTERNAL_TYPES.contains(&name)
+    }
+
+    /// Types that Rust must never form a reference to: `void` and platform structs that
+    /// are declared as uninhabited enums or as aliases of `c_void`.
+    pub fn is_opaque(&self, name: &str) -> bool {
+        name == "void" || (self.is_external(name) && !EXTERNAL_VALUE_TYPES.contains(&name))
     }
 
     /// A struct needs a lifetime parameter when it can hold a borrowed pointer, directly or
@@ -603,6 +639,20 @@ mod tests {
         assert!(model.derives_partial_eq("VkViewport"));
         assert!(!model.derives_eq_hash("VkViewport"));
         assert!(!model.derives_partial_eq("VkInner"));
+    }
+
+    #[test]
+    fn platform_value_typedefs_are_not_opaque() {
+        let ir = registry();
+        let model = Model::new(&ir);
+        assert!(model.is_opaque("void"));
+        assert!(model.is_opaque("wl_display"));
+        assert!(model.is_opaque("Display"));
+        // HANDLE is a pointer-sized value and zx_handle_t an integer: both can be
+        // written through `&mut` and returned by value.
+        assert!(model.is_external("HANDLE") && !model.is_opaque("HANDLE"));
+        assert!(!model.is_opaque("zx_handle_t"));
+        assert!(!model.is_opaque("uint32_t"));
     }
 
     #[test]
