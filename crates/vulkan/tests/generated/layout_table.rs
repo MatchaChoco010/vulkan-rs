@@ -1289,7 +1289,7 @@ pub const STRUCTS: &[StructLayout] = &[
         offsets: &[
             ("sType", offset_of!(vk::AccelerationStructureBuildGeometryInfoKHR<'static>, s_type)),
             ("pNext", offset_of!(vk::AccelerationStructureBuildGeometryInfoKHR<'static>, p_next)),
-            ("type", offset_of!(vk::AccelerationStructureBuildGeometryInfoKHR<'static>, r#type)),
+            ("type", offset_of!(vk::AccelerationStructureBuildGeometryInfoKHR<'static>, ty)),
             ("flags", offset_of!(vk::AccelerationStructureBuildGeometryInfoKHR<'static>, flags)),
             ("mode", offset_of!(vk::AccelerationStructureBuildGeometryInfoKHR<'static>, mode)),
             ("srcAccelerationStructure", offset_of!(vk::AccelerationStructureBuildGeometryInfoKHR<'static>, src_acceleration_structure)),
@@ -1344,7 +1344,7 @@ pub const STRUCTS: &[StructLayout] = &[
             ("createFlags", offset_of!(vk::AccelerationStructureCreateInfo2KHR<'static>, create_flags)),
             ("addressRange", offset_of!(vk::AccelerationStructureCreateInfo2KHR<'static>, address_range)),
             ("addressFlags", offset_of!(vk::AccelerationStructureCreateInfo2KHR<'static>, address_flags)),
-            ("type", offset_of!(vk::AccelerationStructureCreateInfo2KHR<'static>, r#type)),
+            ("type", offset_of!(vk::AccelerationStructureCreateInfo2KHR<'static>, ty)),
         ],
     },
     StructLayout {
@@ -1358,7 +1358,7 @@ pub const STRUCTS: &[StructLayout] = &[
             ("buffer", offset_of!(vk::AccelerationStructureCreateInfoKHR<'static>, buffer)),
             ("offset", offset_of!(vk::AccelerationStructureCreateInfoKHR<'static>, offset)),
             ("size", offset_of!(vk::AccelerationStructureCreateInfoKHR<'static>, size)),
-            ("type", offset_of!(vk::AccelerationStructureCreateInfoKHR<'static>, r#type)),
+            ("type", offset_of!(vk::AccelerationStructureCreateInfoKHR<'static>, ty)),
             ("deviceAddress", offset_of!(vk::AccelerationStructureCreateInfoKHR<'static>, device_address)),
         ],
     },
@@ -1530,7 +1530,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::AccelerationStructureInfoNV<'static>, s_type)),
             ("pNext", offset_of!(vk::AccelerationStructureInfoNV<'static>, p_next)),
-            ("type", offset_of!(vk::AccelerationStructureInfoNV<'static>, r#type)),
+            ("type", offset_of!(vk::AccelerationStructureInfoNV<'static>, ty)),
             ("flags", offset_of!(vk::AccelerationStructureInfoNV<'static>, flags)),
             ("instanceCount", offset_of!(vk::AccelerationStructureInfoNV<'static>, instance_count)),
             ("geometryCount", offset_of!(vk::AccelerationStructureInfoNV<'static>, geometry_count)),
@@ -1563,7 +1563,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::AccelerationStructureMemoryRequirementsInfoNV<'static>, s_type)),
             ("pNext", offset_of!(vk::AccelerationStructureMemoryRequirementsInfoNV<'static>, p_next)),
-            ("type", offset_of!(vk::AccelerationStructureMemoryRequirementsInfoNV<'static>, r#type)),
+            ("type", offset_of!(vk::AccelerationStructureMemoryRequirementsInfoNV<'static>, ty)),
             ("accelerationStructure", offset_of!(vk::AccelerationStructureMemoryRequirementsInfoNV<'static>, acceleration_structure)),
         ],
     },
@@ -1593,7 +1593,7 @@ StructLayout {
         size: size_of::<vk::AccelerationStructureMotionInstanceNV>(),
         align: align_of::<vk::AccelerationStructureMotionInstanceNV>(),
         offsets: &[
-            ("type", offset_of!(vk::AccelerationStructureMotionInstanceNV, r#type)),
+            ("type", offset_of!(vk::AccelerationStructureMotionInstanceNV, ty)),
             ("flags", offset_of!(vk::AccelerationStructureMotionInstanceNV, flags)),
             ("data", offset_of!(vk::AccelerationStructureMotionInstanceNV, data)),
         ],
@@ -2622,7 +2622,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::ClusterAccelerationStructureMoveObjectsInputNV<'static>, s_type)),
             ("pNext", offset_of!(vk::ClusterAccelerationStructureMoveObjectsInputNV<'static>, p_next)),
-            ("type", offset_of!(vk::ClusterAccelerationStructureMoveObjectsInputNV<'static>, r#type)),
+            ("type", offset_of!(vk::ClusterAccelerationStructureMoveObjectsInputNV<'static>, ty)),
             ("noMoveOverlap", offset_of!(vk::ClusterAccelerationStructureMoveObjectsInputNV<'static>, no_move_overlap)),
             ("maxMovedBytes", offset_of!(vk::ClusterAccelerationStructureMoveObjectsInputNV<'static>, max_moved_bytes)),
         ],
@@ -4001,7 +4001,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::DescriptorGetInfoEXT<'static>, s_type)),
             ("pNext", offset_of!(vk::DescriptorGetInfoEXT<'static>, p_next)),
-            ("type", offset_of!(vk::DescriptorGetInfoEXT<'static>, r#type)),
+            ("type", offset_of!(vk::DescriptorGetInfoEXT<'static>, ty)),
             ("data", offset_of!(vk::DescriptorGetInfoEXT<'static>, data)),
         ],
     },
@@ -4171,7 +4171,7 @@ StructLayout {
         size: size_of::<vk::DescriptorPoolSize>(),
         align: align_of::<vk::DescriptorPoolSize>(),
         offsets: &[
-            ("type", offset_of!(vk::DescriptorPoolSize, r#type)),
+            ("type", offset_of!(vk::DescriptorPoolSize, ty)),
             ("descriptorCount", offset_of!(vk::DescriptorPoolSize, descriptor_count)),
         ],
     },
@@ -4673,7 +4673,7 @@ StructLayout {
             ("sType", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, s_type)),
             ("pNext", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, p_next)),
             ("flags", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, flags)),
-            ("type", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, r#type)),
+            ("type", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, ty)),
             ("memoryObjectId", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, memory_object_id)),
             ("size", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, size)),
             ("objectType", offset_of!(vk::DeviceMemoryReportCallbackDataEXT<'static>, object_type)),
@@ -6568,7 +6568,7 @@ StructLayout {
         size: size_of::<vk::IndirectCommandsExecutionSetTokenEXT>(),
         align: align_of::<vk::IndirectCommandsExecutionSetTokenEXT>(),
         offsets: &[
-            ("type", offset_of!(vk::IndirectCommandsExecutionSetTokenEXT, r#type)),
+            ("type", offset_of!(vk::IndirectCommandsExecutionSetTokenEXT, ty)),
             ("shaderStages", offset_of!(vk::IndirectCommandsExecutionSetTokenEXT, shader_stages)),
         ],
     },
@@ -6628,7 +6628,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::IndirectCommandsLayoutTokenEXT<'static>, s_type)),
             ("pNext", offset_of!(vk::IndirectCommandsLayoutTokenEXT<'static>, p_next)),
-            ("type", offset_of!(vk::IndirectCommandsLayoutTokenEXT<'static>, r#type)),
+            ("type", offset_of!(vk::IndirectCommandsLayoutTokenEXT<'static>, ty)),
             ("data", offset_of!(vk::IndirectCommandsLayoutTokenEXT<'static>, data)),
             ("offset", offset_of!(vk::IndirectCommandsLayoutTokenEXT<'static>, offset)),
         ],
@@ -6698,7 +6698,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::IndirectExecutionSetCreateInfoEXT<'static>, s_type)),
             ("pNext", offset_of!(vk::IndirectExecutionSetCreateInfoEXT<'static>, p_next)),
-            ("type", offset_of!(vk::IndirectExecutionSetCreateInfoEXT<'static>, r#type)),
+            ("type", offset_of!(vk::IndirectExecutionSetCreateInfoEXT<'static>, ty)),
             ("info", offset_of!(vk::IndirectExecutionSetCreateInfoEXT<'static>, info)),
         ],
     },
@@ -6868,7 +6868,7 @@ StructLayout {
         offsets: &[
             ("pLayerName", offset_of!(vk::LayerSettingEXT<'static>, p_layer_name)),
             ("pSettingName", offset_of!(vk::LayerSettingEXT<'static>, p_setting_name)),
-            ("type", offset_of!(vk::LayerSettingEXT<'static>, r#type)),
+            ("type", offset_of!(vk::LayerSettingEXT<'static>, ty)),
             ("valueCount", offset_of!(vk::LayerSettingEXT<'static>, value_count)),
             ("pValues", offset_of!(vk::LayerSettingEXT<'static>, p_values)),
         ],
@@ -7182,7 +7182,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::MicromapBuildInfoEXT<'static>, s_type)),
             ("pNext", offset_of!(vk::MicromapBuildInfoEXT<'static>, p_next)),
-            ("type", offset_of!(vk::MicromapBuildInfoEXT<'static>, r#type)),
+            ("type", offset_of!(vk::MicromapBuildInfoEXT<'static>, ty)),
             ("flags", offset_of!(vk::MicromapBuildInfoEXT<'static>, flags)),
             ("mode", offset_of!(vk::MicromapBuildInfoEXT<'static>, mode)),
             ("dstMicromap", offset_of!(vk::MicromapBuildInfoEXT<'static>, dst_micromap)),
@@ -7218,7 +7218,7 @@ StructLayout {
             ("buffer", offset_of!(vk::MicromapCreateInfoEXT<'static>, buffer)),
             ("offset", offset_of!(vk::MicromapCreateInfoEXT<'static>, offset)),
             ("size", offset_of!(vk::MicromapCreateInfoEXT<'static>, size)),
-            ("type", offset_of!(vk::MicromapCreateInfoEXT<'static>, r#type)),
+            ("type", offset_of!(vk::MicromapCreateInfoEXT<'static>, ty)),
             ("deviceAddress", offset_of!(vk::MicromapCreateInfoEXT<'static>, device_address)),
         ],
     },
@@ -7591,7 +7591,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::PerfHintInfoQCOM<'static>, s_type)),
             ("pNext", offset_of!(vk::PerfHintInfoQCOM<'static>, p_next)),
-            ("type", offset_of!(vk::PerfHintInfoQCOM<'static>, r#type)),
+            ("type", offset_of!(vk::PerfHintInfoQCOM<'static>, ty)),
             ("scale", offset_of!(vk::PerfHintInfoQCOM<'static>, scale)),
         ],
     },
@@ -7602,7 +7602,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::PerformanceConfigurationAcquireInfoINTEL<'static>, s_type)),
             ("pNext", offset_of!(vk::PerformanceConfigurationAcquireInfoINTEL<'static>, p_next)),
-            ("type", offset_of!(vk::PerformanceConfigurationAcquireInfoINTEL<'static>, r#type)),
+            ("type", offset_of!(vk::PerformanceConfigurationAcquireInfoINTEL<'static>, ty)),
         ],
     },
     StructLayout {
@@ -7682,7 +7682,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::PerformanceOverrideInfoINTEL<'static>, s_type)),
             ("pNext", offset_of!(vk::PerformanceOverrideInfoINTEL<'static>, p_next)),
-            ("type", offset_of!(vk::PerformanceOverrideInfoINTEL<'static>, r#type)),
+            ("type", offset_of!(vk::PerformanceOverrideInfoINTEL<'static>, ty)),
             ("enable", offset_of!(vk::PerformanceOverrideInfoINTEL<'static>, enable)),
             ("parameter", offset_of!(vk::PerformanceOverrideInfoINTEL<'static>, parameter)),
         ],
@@ -7724,7 +7724,7 @@ StructLayout {
         size: size_of::<vk::PerformanceValueINTEL<'static>>(),
         align: align_of::<vk::PerformanceValueINTEL<'static>>(),
         offsets: &[
-            ("type", offset_of!(vk::PerformanceValueINTEL<'static>, r#type)),
+            ("type", offset_of!(vk::PerformanceValueINTEL<'static>, ty)),
             ("data", offset_of!(vk::PerformanceValueINTEL<'static>, data)),
         ],
     },
@@ -8411,7 +8411,7 @@ StructLayout {
         size: size_of::<vk::PhysicalDeviceDataGraphProcessingEngineARM>(),
         align: align_of::<vk::PhysicalDeviceDataGraphProcessingEngineARM>(),
         offsets: &[
-            ("type", offset_of!(vk::PhysicalDeviceDataGraphProcessingEngineARM, r#type)),
+            ("type", offset_of!(vk::PhysicalDeviceDataGraphProcessingEngineARM, ty)),
             ("isForeign", offset_of!(vk::PhysicalDeviceDataGraphProcessingEngineARM, is_foreign)),
         ],
     },
@@ -9675,7 +9675,7 @@ StructLayout {
             ("sType", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, s_type)),
             ("pNext", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, p_next)),
             ("format", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, format)),
-            ("type", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, r#type)),
+            ("type", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, ty)),
             ("tiling", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, tiling)),
             ("usage", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, usage)),
             ("flags", offset_of!(vk::PhysicalDeviceImageFormatInfo2<'static>, flags)),
@@ -12231,7 +12231,7 @@ StructLayout {
             ("sType", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, s_type)),
             ("pNext", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, p_next)),
             ("format", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, format)),
-            ("type", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, r#type)),
+            ("type", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, ty)),
             ("samples", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, samples)),
             ("usage", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, usage)),
             ("tiling", offset_of!(vk::PhysicalDeviceSparseImageFormatInfo2<'static>, tiling)),
@@ -14431,7 +14431,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::RayTracingShaderGroupCreateInfoKHR<'static>, s_type)),
             ("pNext", offset_of!(vk::RayTracingShaderGroupCreateInfoKHR<'static>, p_next)),
-            ("type", offset_of!(vk::RayTracingShaderGroupCreateInfoKHR<'static>, r#type)),
+            ("type", offset_of!(vk::RayTracingShaderGroupCreateInfoKHR<'static>, ty)),
             ("generalShader", offset_of!(vk::RayTracingShaderGroupCreateInfoKHR<'static>, general_shader)),
             ("closestHitShader", offset_of!(vk::RayTracingShaderGroupCreateInfoKHR<'static>, closest_hit_shader)),
             ("anyHitShader", offset_of!(vk::RayTracingShaderGroupCreateInfoKHR<'static>, any_hit_shader)),
@@ -14446,7 +14446,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::RayTracingShaderGroupCreateInfoNV<'static>, s_type)),
             ("pNext", offset_of!(vk::RayTracingShaderGroupCreateInfoNV<'static>, p_next)),
-            ("type", offset_of!(vk::RayTracingShaderGroupCreateInfoNV<'static>, r#type)),
+            ("type", offset_of!(vk::RayTracingShaderGroupCreateInfoNV<'static>, ty)),
             ("generalShader", offset_of!(vk::RayTracingShaderGroupCreateInfoNV<'static>, general_shader)),
             ("closestHitShader", offset_of!(vk::RayTracingShaderGroupCreateInfoNV<'static>, closest_hit_shader)),
             ("anyHitShader", offset_of!(vk::RayTracingShaderGroupCreateInfoNV<'static>, any_hit_shader)),
@@ -14895,7 +14895,7 @@ StructLayout {
         offsets: &[
             ("sType", offset_of!(vk::ResourceDescriptorInfoEXT<'static>, s_type)),
             ("pNext", offset_of!(vk::ResourceDescriptorInfoEXT<'static>, p_next)),
-            ("type", offset_of!(vk::ResourceDescriptorInfoEXT<'static>, r#type)),
+            ("type", offset_of!(vk::ResourceDescriptorInfoEXT<'static>, ty)),
             ("data", offset_of!(vk::ResourceDescriptorInfoEXT<'static>, data)),
         ],
     },

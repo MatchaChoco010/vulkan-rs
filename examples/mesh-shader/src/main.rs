@@ -734,7 +734,7 @@ unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::Descriptor
 
 unsafe fn create_descriptor_pool(device: &Device) -> Result<vk::DescriptorPool> {
     let pool_sizes = [vk::DescriptorPoolSize::default()
-        .r#type(vk::DescriptorType::STORAGE_BUFFER)
+        .ty(vk::DescriptorType::STORAGE_BUFFER)
         .descriptor_count(3)];
     let info = vk::DescriptorPoolCreateInfo::default()
         .max_sets(1)

@@ -4,6 +4,7 @@ pub mod basic;
 pub mod commands;
 pub mod layout;
 pub mod structs;
+pub mod tables;
 
 /// `writeln!` into a `String`, which cannot fail.
 macro_rules! w {

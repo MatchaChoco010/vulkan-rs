@@ -432,3 +432,176 @@ fn swapchain_maintenance_structs_chain_into_swapchain_and_present() {
     let _ = Device::set_hdr_metadata_ext;
     let _ = Device::release_swapchain_images_khr;
 }
+
+/// `vk::Format::info` is generated from the registry's `<formats>`, which the C headers
+/// do not carry.
+#[test]
+fn formats_know_their_texel_layout() {
+    use vk::{ChromaSubsampling, ComponentName, NumericFormat};
+
+    assert!(vk::Format::UNDEFINED.info().is_none());
+    assert!(vk::Format::from_raw(-1).info().is_none());
+
+    let rgba = vk::Format::R8G8B8A8_UNORM.info().unwrap();
+    assert_eq!(rgba.class, "32-bit");
+    assert_eq!(rgba.block_size, 4);
+    assert_eq!(rgba.block_extent, [1, 1, 1]);
+    assert_eq!(rgba.components.len(), 4);
+    assert_eq!(rgba.components[3].name, ComponentName::A);
+    assert_eq!(rgba.components[0].bits, Some(8));
+    assert_eq!(rgba.components[0].numeric_format, NumericFormat::Unorm);
+    assert_eq!(rgba.plane_count(), 1);
+    assert_eq!(rgba.aspects(), vk::ImageAspectFlags::COLOR);
+    assert!(rgba.has_alpha() && !rgba.is_srgb() && !rgba.is_compressed());
+    assert!(vk::Format::B8G8R8A8_SRGB.info().unwrap().is_srgb());
+    // Same class: one can be viewed as the other.
+    assert_eq!(vk::Format::B8G8R8A8_SRGB.info().unwrap().class, rgba.class);
+
+    let depth_stencil = vk::Format::D24_UNORM_S8_UINT.info().unwrap();
+    assert_eq!(
+        depth_stencil.aspects(),
+        vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+    );
+    assert_eq!(
+        vk::Format::D32_SFLOAT.info().unwrap().aspects(),
+        vk::ImageAspectFlags::DEPTH
+    );
+
+    // NV12: full-resolution luma, half-resolution interleaved chroma.
+    let nv12 = vk::Format::G8_B8R8_2PLANE_420_UNORM.info().unwrap();
+    assert_eq!(nv12.chroma, Some(ChromaSubsampling::_420));
+    assert_eq!(nv12.plane_count(), 2);
+    assert!(nv12.is_multiplanar());
+    assert_eq!(nv12.planes[0].compatible, vk::Format::R8_UNORM);
+    assert_eq!(nv12.planes[1].compatible, vk::Format::R8G8_UNORM);
+    let full = vk::Extent2D {
+        width: 1920,
+        height: 1080,
+    };
+    let half = vk::Extent2D {
+        width: 960,
+        height: 540,
+    };
+    // `assert!` instead of `assert_eq!`: structs have `Debug` only with the `debug` feature.
+    assert!(nv12.plane_extent(0, full) == Some(full));
+    assert!(nv12.plane_extent(1, full) == Some(half));
+    assert!(nv12.plane_extent(2, full).is_none());
+    assert_eq!(nv12.plane_aspect(1), Some(vk::ImageAspectFlags::PLANE_1));
+    assert_eq!(nv12.plane_aspect(2), None);
+    assert_eq!(nv12.aspects(), vk::ImageAspectFlags::COLOR);
+    assert!(rgba.plane_extent(0, full) == Some(full));
+    assert_eq!(rgba.plane_aspect(0), None);
+
+    let bc1 = vk::Format::BC1_RGB_UNORM_BLOCK.info().unwrap();
+    assert_eq!(bc1.compression, Some("BC"));
+    assert_eq!(bc1.block_extent, [4, 4, 1]);
+    assert_eq!((bc1.block_size, bc1.texels_per_block), (8, 16));
+    assert_eq!(bc1.components[0].bits, None);
+
+    let packed = vk::Format::A2B10G10R10_UNORM_PACK32.info().unwrap();
+    assert_eq!(packed.packed, Some(32));
+    assert_eq!(
+        packed
+            .components
+            .iter()
+            .map(|c| c.bits.unwrap())
+            .collect::<Vec<_>>(),
+        [2, 10, 10, 10]
+    );
+
+    // `info` is usable in constants.
+    const BLOCK: u32 = match vk::Format::R16G16B16A16_SFLOAT.info() {
+        Some(info) => info.block_size,
+        None => 0,
+    };
+    assert_eq!(BLOCK, 8);
+}
+
+/// Sanity of the whole table: in an uncompressed single-plane format the components fit
+/// in the block. They need not fill it: `X8_D24`, `R10X6` and `E5B9G9R9` have bits that
+/// are not a component.
+#[test]
+fn format_component_bits_fit_in_the_block() {
+    let mut checked = 0;
+    for raw in (0..200).chain(1_000_000_000..1_001_000_000) {
+        let format = vk::Format::from_raw(raw);
+        let Some(info) = format.info() else { continue };
+        assert!(
+            info.block_size > 0 && info.texels_per_block > 0,
+            "{format:?}"
+        );
+        assert!(!info.components.is_empty(), "{format:?}");
+        if info.is_compressed() || info.is_multiplanar() {
+            continue;
+        }
+        let bits = info.components.iter().map(|c| c.bits.unwrap()).sum::<u32>();
+        assert!(bits <= info.block_size * 8, "{format:?}");
+        checked += 1;
+    }
+    assert!(checked > 100);
+}
+
+/// Extension dependencies come from the registry's `depends` attribute.
+#[test]
+fn extensions_know_their_dependencies() {
+    use std::ffi::CStr;
+    use vk::{Dependency, ExtensionInfo, ExtensionLevel};
+
+    // The table is sorted, which `get` relies on, and has no duplicates.
+    assert!(
+        vk::EXTENSIONS
+            .windows(2)
+            .all(|pair| pair[0].name < pair[1].name)
+    );
+    for info in vk::EXTENSIONS {
+        assert_eq!(ExtensionInfo::get(info.name), Some(info));
+    }
+    assert!(ExtensionInfo::get(c"VK_KHR_does_not_exist").is_none());
+
+    let swapchain = ExtensionInfo::get(vk::KHR_SWAPCHAIN_NAME).unwrap();
+    assert_eq!(swapchain.level, ExtensionLevel::Device);
+    assert_eq!(swapchain.spec_version, vk::KHR_SWAPCHAIN_SPEC_VERSION);
+    assert_eq!(
+        swapchain.depends,
+        Some(Dependency::Extension(c"VK_KHR_surface"))
+    );
+    let enabled = |list: &'static [&'static CStr]| move |name: &CStr| list.contains(&name);
+    assert!(!swapchain.dependencies_met(vk::API_VERSION_1_4, enabled(&[])));
+    assert!(swapchain.dependencies_met(vk::API_VERSION_1_0, enabled(&[vk::KHR_SURFACE_NAME])));
+
+    let surface = ExtensionInfo::get(vk::KHR_SURFACE_NAME).unwrap();
+    assert_eq!(surface.level, ExtensionLevel::Instance);
+    assert!(surface.dependencies_met(vk::API_VERSION_1_0, enabled(&[])));
+
+    // VK_EXT_descriptor_heap: usable on 1.4 alone; on 1.3 it needs VK_KHR_maintenance5,
+    // and the buffer device address dependency is covered by the 1.2 promotion.
+    let heap = ExtensionInfo::get(vk::EXT_DESCRIPTOR_HEAP_NAME).unwrap();
+    assert!(heap.dependencies_met(vk::API_VERSION_1_4, enabled(&[])));
+    assert!(!heap.dependencies_met(vk::API_VERSION_1_3, enabled(&[])));
+    assert!(heap.dependencies_met(vk::API_VERSION_1_3, enabled(&[vk::KHR_MAINTENANCE_5_NAME])));
+    assert!(!heap.dependencies_met(vk::API_VERSION_1_1, enabled(&[vk::KHR_MAINTENANCE_5_NAME])));
+    assert_eq!(
+        heap.depends.unwrap().to_string(),
+        "(((VK_KHR_extended_flags,VK_KHR_maintenance5)+(VK_KHR_buffer_device_address,VK_VERSION_1_2)),VK_VERSION_1_4)"
+    );
+
+    // Promotion: a dependency on a promoted extension is met by the core version.
+    let maintenance5 = ExtensionInfo::get(vk::KHR_MAINTENANCE_5_NAME).unwrap();
+    assert_eq!(maintenance5.promoted_to_version, Some(vk::API_VERSION_1_4));
+    let dynamic_rendering = Dependency::Extension(c"VK_KHR_dynamic_rendering");
+    assert!(dynamic_rendering.is_met(vk::API_VERSION_1_3, &|_: &CStr| false));
+    assert!(!dynamic_rendering.is_met(vk::API_VERSION_1_2, &|_: &CStr| false));
+
+    // Platform extensions are listed whatever features are enabled.
+    assert!(ExtensionInfo::get(c"VK_KHR_win32_surface").is_some());
+}
+
+/// Member and parameter names that are Rust keywords get a conventional spelling
+/// instead of a raw identifier: `type` is `ty`.
+#[test]
+fn keyword_members_have_plain_names() {
+    let size = vk::DescriptorPoolSize::default()
+        .ty(vk::DescriptorType::SAMPLED_IMAGE)
+        .descriptor_count(4);
+    assert_eq!(size.ty, vk::DescriptorType::SAMPLED_IMAGE);
+}

@@ -1330,10 +1330,10 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
             .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
         let resources = [
             vk::ResourceDescriptorInfoEXT::default()
-                .r#type(vk::DescriptorType::STORAGE_BUFFER)
+                .ty(vk::DescriptorType::STORAGE_BUFFER)
                 .data(vk::ResourceDescriptorDataEXT::address_range(&params_range)),
             vk::ResourceDescriptorInfoEXT::default()
-                .r#type(vk::DescriptorType::SAMPLED_IMAGE)
+                .ty(vk::DescriptorType::SAMPLED_IMAGE)
                 .data(vk::ResourceDescriptorDataEXT::image(&texture_info)),
         ];
         let (buffer_slots, image_slots) = resource_bytes.split_at_mut(texture_offset as usize);

@@ -8461,7 +8461,7 @@ pub type AabbPositionsNV = AabbPositionsKHR;
 pub struct AccelerationStructureBuildGeometryInfoKHR<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: AccelerationStructureTypeKHR,
+    pub ty: AccelerationStructureTypeKHR,
     pub flags: BuildAccelerationStructureFlagsKHR,
     pub mode: BuildAccelerationStructureModeKHR,
     pub src_acceleration_structure: AccelerationStructureKHR,
@@ -8481,7 +8481,7 @@ impl Default for AccelerationStructureBuildGeometryInfoKHR<'_> {
         Self {
             s_type: StructureType::ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             flags: Default::default(),
             mode: Default::default(),
             src_acceleration_structure: Default::default(),
@@ -8496,8 +8496,8 @@ impl Default for AccelerationStructureBuildGeometryInfoKHR<'_> {
 }
 
 impl<'a> AccelerationStructureBuildGeometryInfoKHR<'a> {
-    pub fn r#type(mut self, value: AccelerationStructureTypeKHR) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: AccelerationStructureTypeKHR) -> Self {
+        self.ty = value;
         self
     }
     pub fn flags(mut self, value: BuildAccelerationStructureFlagsKHR) -> Self {
@@ -8732,7 +8732,7 @@ pub struct AccelerationStructureCreateInfo2KHR<'a> {
     pub create_flags: AccelerationStructureCreateFlagsKHR,
     pub address_range: DeviceAddressRangeKHR,
     pub address_flags: AddressCommandFlagsKHR,
-    pub r#type: AccelerationStructureTypeKHR,
+    pub ty: AccelerationStructureTypeKHR,
     pub _marker: PhantomData<&'a ()>,
 }
 
@@ -8747,7 +8747,7 @@ impl Default for AccelerationStructureCreateInfo2KHR<'_> {
             create_flags: Default::default(),
             address_range: Default::default(),
             address_flags: Default::default(),
-            r#type: Default::default(),
+            ty: Default::default(),
             _marker: PhantomData,
         }
     }
@@ -8766,8 +8766,8 @@ impl<'a> AccelerationStructureCreateInfo2KHR<'a> {
         self.address_flags = value;
         self
     }
-    pub fn r#type(mut self, value: AccelerationStructureTypeKHR) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: AccelerationStructureTypeKHR) -> Self {
+        self.ty = value;
         self
     }
     /// Prepends `next` to the `pNext` chain.
@@ -8796,7 +8796,7 @@ pub struct AccelerationStructureCreateInfoKHR<'a> {
     pub buffer: Buffer,
     pub offset: DeviceSize,
     pub size: DeviceSize,
-    pub r#type: AccelerationStructureTypeKHR,
+    pub ty: AccelerationStructureTypeKHR,
     pub device_address: DeviceAddress,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -8813,7 +8813,7 @@ impl Default for AccelerationStructureCreateInfoKHR<'_> {
             buffer: Default::default(),
             offset: 0,
             size: 0,
-            r#type: Default::default(),
+            ty: Default::default(),
             device_address: 0,
             _marker: PhantomData,
         }
@@ -8837,8 +8837,8 @@ impl<'a> AccelerationStructureCreateInfoKHR<'a> {
         self.size = value;
         self
     }
-    pub fn r#type(mut self, value: AccelerationStructureTypeKHR) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: AccelerationStructureTypeKHR) -> Self {
+        self.ty = value;
         self
     }
     pub fn device_address(mut self, value: DeviceAddress) -> Self {
@@ -9681,7 +9681,7 @@ unsafe impl TaggedStructure for AccelerationStructureGeometryTrianglesDataKHR<'_
 pub struct AccelerationStructureInfoNV<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: AccelerationStructureTypeKHR,
+    pub ty: AccelerationStructureTypeKHR,
     pub flags: BuildAccelerationStructureFlagsKHR,
     pub instance_count: u32,
     pub geometry_count: u32,
@@ -9697,7 +9697,7 @@ impl Default for AccelerationStructureInfoNV<'_> {
         Self {
             s_type: StructureType::ACCELERATION_STRUCTURE_INFO_NV,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             flags: Default::default(),
             instance_count: 0,
             geometry_count: 0,
@@ -9708,8 +9708,8 @@ impl Default for AccelerationStructureInfoNV<'_> {
 }
 
 impl<'a> AccelerationStructureInfoNV<'a> {
-    pub fn r#type(mut self, value: AccelerationStructureTypeKHR) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: AccelerationStructureTypeKHR) -> Self {
+        self.ty = value;
         self
     }
     pub fn flags(mut self, value: BuildAccelerationStructureFlagsKHR) -> Self {
@@ -9906,7 +9906,7 @@ impl AccelerationStructureMatrixMotionInstanceNV {
 pub struct AccelerationStructureMemoryRequirementsInfoNV<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: AccelerationStructureMemoryRequirementsTypeNV,
+    pub ty: AccelerationStructureMemoryRequirementsTypeNV,
     pub acceleration_structure: AccelerationStructureNV,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -9919,7 +9919,7 @@ impl Default for AccelerationStructureMemoryRequirementsInfoNV<'_> {
         Self {
             s_type: StructureType::ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             acceleration_structure: Default::default(),
             _marker: PhantomData,
         }
@@ -9927,8 +9927,8 @@ impl Default for AccelerationStructureMemoryRequirementsInfoNV<'_> {
 }
 
 impl<'a> AccelerationStructureMemoryRequirementsInfoNV<'a> {
-    pub fn r#type(mut self, value: AccelerationStructureMemoryRequirementsTypeNV) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: AccelerationStructureMemoryRequirementsTypeNV) -> Self {
+        self.ty = value;
         self
     }
     pub fn acceleration_structure(mut self, value: AccelerationStructureNV) -> Self {
@@ -10055,7 +10055,7 @@ impl AccelerationStructureMotionInstanceDataNV {
 #[derive(Copy, Clone)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct AccelerationStructureMotionInstanceNV {
-    pub r#type: AccelerationStructureMotionInstanceTypeNV,
+    pub ty: AccelerationStructureMotionInstanceTypeNV,
     pub flags: AccelerationStructureMotionInstanceFlagsNV,
     pub data: AccelerationStructureMotionInstanceDataNV,
 }
@@ -10063,7 +10063,7 @@ pub struct AccelerationStructureMotionInstanceNV {
 impl Default for AccelerationStructureMotionInstanceNV {
     fn default() -> Self {
         Self {
-            r#type: Default::default(),
+            ty: Default::default(),
             flags: Default::default(),
             data: Default::default(),
         }
@@ -10071,8 +10071,8 @@ impl Default for AccelerationStructureMotionInstanceNV {
 }
 
 impl AccelerationStructureMotionInstanceNV {
-    pub fn r#type(mut self, value: AccelerationStructureMotionInstanceTypeNV) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: AccelerationStructureMotionInstanceTypeNV) -> Self {
+        self.ty = value;
         self
     }
     pub fn flags(mut self, value: AccelerationStructureMotionInstanceFlagsNV) -> Self {
@@ -15841,7 +15841,7 @@ impl ClusterAccelerationStructureMoveObjectsInfoNV {
 pub struct ClusterAccelerationStructureMoveObjectsInputNV<'a> {
     pub s_type: StructureType,
     pub p_next: *mut c_void,
-    pub r#type: ClusterAccelerationStructureTypeNV,
+    pub ty: ClusterAccelerationStructureTypeNV,
     pub no_move_overlap: Bool32,
     pub max_moved_bytes: DeviceSize,
     pub _marker: PhantomData<&'a ()>,
@@ -15855,7 +15855,7 @@ impl Default for ClusterAccelerationStructureMoveObjectsInputNV<'_> {
         Self {
             s_type: StructureType::CLUSTER_ACCELERATION_STRUCTURE_MOVE_OBJECTS_INPUT_NV,
             p_next: core::ptr::null_mut(),
-            r#type: Default::default(),
+            ty: Default::default(),
             no_move_overlap: 0,
             max_moved_bytes: 0,
             _marker: PhantomData,
@@ -15864,8 +15864,8 @@ impl Default for ClusterAccelerationStructureMoveObjectsInputNV<'_> {
 }
 
 impl<'a> ClusterAccelerationStructureMoveObjectsInputNV<'a> {
-    pub fn r#type(mut self, value: ClusterAccelerationStructureTypeNV) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: ClusterAccelerationStructureTypeNV) -> Self {
+        self.ty = value;
         self
     }
     pub fn no_move_overlap(mut self, value: bool) -> Self {
@@ -22584,7 +22584,7 @@ impl<'a> DescriptorDataEXT<'a> {
 pub struct DescriptorGetInfoEXT<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: DescriptorType,
+    pub ty: DescriptorType,
     pub data: DescriptorDataEXT<'a>,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -22597,7 +22597,7 @@ impl Default for DescriptorGetInfoEXT<'_> {
         Self {
             s_type: StructureType::DESCRIPTOR_GET_INFO_EXT,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             data: Default::default(),
             _marker: PhantomData,
         }
@@ -22605,8 +22605,8 @@ impl Default for DescriptorGetInfoEXT<'_> {
 }
 
 impl<'a> DescriptorGetInfoEXT<'a> {
-    pub fn r#type(mut self, value: DescriptorType) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: DescriptorType) -> Self {
+        self.ty = value;
         self
     }
     pub fn data(mut self, value: DescriptorDataEXT<'a>) -> Self {
@@ -23391,22 +23391,22 @@ pub type DescriptorPoolInlineUniformBlockCreateInfoEXT<'a> =
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct DescriptorPoolSize {
-    pub r#type: DescriptorType,
+    pub ty: DescriptorType,
     pub descriptor_count: u32,
 }
 
 impl Default for DescriptorPoolSize {
     fn default() -> Self {
         Self {
-            r#type: Default::default(),
+            ty: Default::default(),
             descriptor_count: 0,
         }
     }
 }
 
 impl DescriptorPoolSize {
-    pub fn r#type(mut self, value: DescriptorType) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: DescriptorType) -> Self {
+        self.ty = value;
         self
     }
     pub fn descriptor_count(mut self, value: u32) -> Self {
@@ -25800,7 +25800,7 @@ pub struct DeviceMemoryReportCallbackDataEXT<'a> {
     pub s_type: StructureType,
     pub p_next: *mut c_void,
     pub flags: DeviceMemoryReportFlagsEXT,
-    pub r#type: DeviceMemoryReportEventTypeEXT,
+    pub ty: DeviceMemoryReportEventTypeEXT,
     pub memory_object_id: u64,
     pub size: DeviceSize,
     pub object_type: ObjectType,
@@ -25818,7 +25818,7 @@ impl Default for DeviceMemoryReportCallbackDataEXT<'_> {
             s_type: StructureType::DEVICE_MEMORY_REPORT_CALLBACK_DATA_EXT,
             p_next: core::ptr::null_mut(),
             flags: Default::default(),
-            r#type: Default::default(),
+            ty: Default::default(),
             memory_object_id: 0,
             size: 0,
             object_type: Default::default(),
@@ -25834,8 +25834,8 @@ impl<'a> DeviceMemoryReportCallbackDataEXT<'a> {
         self.flags = value;
         self
     }
-    pub fn r#type(mut self, value: DeviceMemoryReportEventTypeEXT) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: DeviceMemoryReportEventTypeEXT) -> Self {
+        self.ty = value;
         self
     }
     pub fn memory_object_id(mut self, value: u64) -> Self {
@@ -36789,22 +36789,22 @@ unsafe impl TaggedStructure for ImportSemaphoreZirconHandleInfoFUCHSIA<'_> {
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct IndirectCommandsExecutionSetTokenEXT {
-    pub r#type: IndirectExecutionSetInfoTypeEXT,
+    pub ty: IndirectExecutionSetInfoTypeEXT,
     pub shader_stages: ShaderStageFlags,
 }
 
 impl Default for IndirectCommandsExecutionSetTokenEXT {
     fn default() -> Self {
         Self {
-            r#type: Default::default(),
+            ty: Default::default(),
             shader_stages: Default::default(),
         }
     }
 }
 
 impl IndirectCommandsExecutionSetTokenEXT {
-    pub fn r#type(mut self, value: IndirectExecutionSetInfoTypeEXT) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: IndirectExecutionSetInfoTypeEXT) -> Self {
+        self.ty = value;
         self
     }
     pub fn shader_stages(mut self, value: ShaderStageFlags) -> Self {
@@ -37055,7 +37055,7 @@ unsafe impl TaggedStructure for IndirectCommandsLayoutPushDataTokenNV<'_> {
 pub struct IndirectCommandsLayoutTokenEXT<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: IndirectCommandsTokenTypeEXT,
+    pub ty: IndirectCommandsTokenTypeEXT,
     pub data: IndirectCommandsTokenDataEXT<'a>,
     pub offset: u32,
     pub _marker: PhantomData<&'a ()>,
@@ -37069,7 +37069,7 @@ impl Default for IndirectCommandsLayoutTokenEXT<'_> {
         Self {
             s_type: StructureType::INDIRECT_COMMANDS_LAYOUT_TOKEN_EXT,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             data: Default::default(),
             offset: 0,
             _marker: PhantomData,
@@ -37078,8 +37078,8 @@ impl Default for IndirectCommandsLayoutTokenEXT<'_> {
 }
 
 impl<'a> IndirectCommandsLayoutTokenEXT<'a> {
-    pub fn r#type(mut self, value: IndirectCommandsTokenTypeEXT) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: IndirectCommandsTokenTypeEXT) -> Self {
+        self.ty = value;
         self
     }
     pub fn data(mut self, value: IndirectCommandsTokenDataEXT<'a>) -> Self {
@@ -37387,7 +37387,7 @@ impl IndirectCommandsVertexBufferTokenEXT {
 pub struct IndirectExecutionSetCreateInfoEXT<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: IndirectExecutionSetInfoTypeEXT,
+    pub ty: IndirectExecutionSetInfoTypeEXT,
     pub info: IndirectExecutionSetInfoEXT<'a>,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -37400,7 +37400,7 @@ impl Default for IndirectExecutionSetCreateInfoEXT<'_> {
         Self {
             s_type: StructureType::INDIRECT_EXECUTION_SET_CREATE_INFO_EXT,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             info: Default::default(),
             _marker: PhantomData,
         }
@@ -37408,8 +37408,8 @@ impl Default for IndirectExecutionSetCreateInfoEXT<'_> {
 }
 
 impl<'a> IndirectExecutionSetCreateInfoEXT<'a> {
-    pub fn r#type(mut self, value: IndirectExecutionSetInfoTypeEXT) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: IndirectExecutionSetInfoTypeEXT) -> Self {
+        self.ty = value;
         self
     }
     pub fn info(mut self, value: IndirectExecutionSetInfoEXT<'a>) -> Self {
@@ -38230,7 +38230,7 @@ impl LayerProperties {
 pub struct LayerSettingEXT<'a> {
     pub p_layer_name: *const c_char,
     pub p_setting_name: *const c_char,
-    pub r#type: LayerSettingTypeEXT,
+    pub ty: LayerSettingTypeEXT,
     pub value_count: u32,
     pub p_values: *const c_void,
     pub _marker: PhantomData<&'a ()>,
@@ -38244,7 +38244,7 @@ impl Default for LayerSettingEXT<'_> {
         Self {
             p_layer_name: core::ptr::null(),
             p_setting_name: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             value_count: 0,
             p_values: core::ptr::null(),
             _marker: PhantomData,
@@ -38261,8 +38261,8 @@ impl<'a> LayerSettingEXT<'a> {
         self.p_setting_name = value.as_ptr();
         self
     }
-    pub fn r#type(mut self, value: LayerSettingTypeEXT) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: LayerSettingTypeEXT) -> Self {
+        self.ty = value;
         self
     }
     pub fn value_count(mut self, value: u32) -> Self {
@@ -40225,7 +40225,7 @@ unsafe impl TaggedStructure for MetalSurfaceCreateInfoEXT<'_> {
 pub struct MicromapBuildInfoEXT<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: MicromapTypeEXT,
+    pub ty: MicromapTypeEXT,
     pub flags: BuildMicromapFlagsEXT,
     pub mode: BuildMicromapModeEXT,
     pub dst_micromap: MicromapEXT,
@@ -40247,7 +40247,7 @@ impl Default for MicromapBuildInfoEXT<'_> {
         Self {
             s_type: StructureType::MICROMAP_BUILD_INFO_EXT,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             flags: Default::default(),
             mode: Default::default(),
             dst_micromap: Default::default(),
@@ -40264,8 +40264,8 @@ impl Default for MicromapBuildInfoEXT<'_> {
 }
 
 impl<'a> MicromapBuildInfoEXT<'a> {
-    pub fn r#type(mut self, value: MicromapTypeEXT) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: MicromapTypeEXT) -> Self {
+        self.ty = value;
         self
     }
     pub fn flags(mut self, value: BuildMicromapFlagsEXT) -> Self {
@@ -40409,7 +40409,7 @@ pub struct MicromapCreateInfoEXT<'a> {
     pub buffer: Buffer,
     pub offset: DeviceSize,
     pub size: DeviceSize,
-    pub r#type: MicromapTypeEXT,
+    pub ty: MicromapTypeEXT,
     pub device_address: DeviceAddress,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -40426,7 +40426,7 @@ impl Default for MicromapCreateInfoEXT<'_> {
             buffer: Default::default(),
             offset: 0,
             size: 0,
-            r#type: Default::default(),
+            ty: Default::default(),
             device_address: 0,
             _marker: PhantomData,
         }
@@ -40450,8 +40450,8 @@ impl<'a> MicromapCreateInfoEXT<'a> {
         self.size = value;
         self
     }
-    pub fn r#type(mut self, value: MicromapTypeEXT) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: MicromapTypeEXT) -> Self {
+        self.ty = value;
         self
     }
     pub fn device_address(mut self, value: DeviceAddress) -> Self {
@@ -42289,7 +42289,7 @@ unsafe impl TaggedStructure for PerTileEndInfoQCOM<'_> {
 pub struct PerfHintInfoQCOM<'a> {
     pub s_type: StructureType,
     pub p_next: *mut c_void,
-    pub r#type: PerfHintTypeQCOM,
+    pub ty: PerfHintTypeQCOM,
     pub scale: u32,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -42302,7 +42302,7 @@ impl Default for PerfHintInfoQCOM<'_> {
         Self {
             s_type: StructureType::PERF_HINT_INFO_QCOM,
             p_next: core::ptr::null_mut(),
-            r#type: Default::default(),
+            ty: Default::default(),
             scale: 0,
             _marker: PhantomData,
         }
@@ -42310,8 +42310,8 @@ impl Default for PerfHintInfoQCOM<'_> {
 }
 
 impl<'a> PerfHintInfoQCOM<'a> {
-    pub fn r#type(mut self, value: PerfHintTypeQCOM) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: PerfHintTypeQCOM) -> Self {
+        self.ty = value;
         self
     }
     pub fn scale(mut self, value: u32) -> Self {
@@ -42340,7 +42340,7 @@ unsafe impl TaggedStructure for PerfHintInfoQCOM<'_> {
 pub struct PerformanceConfigurationAcquireInfoINTEL<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: PerformanceConfigurationTypeINTEL,
+    pub ty: PerformanceConfigurationTypeINTEL,
     pub _marker: PhantomData<&'a ()>,
 }
 
@@ -42352,15 +42352,15 @@ impl Default for PerformanceConfigurationAcquireInfoINTEL<'_> {
         Self {
             s_type: StructureType::PERFORMANCE_CONFIGURATION_ACQUIRE_INFO_INTEL,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             _marker: PhantomData,
         }
     }
 }
 
 impl<'a> PerformanceConfigurationAcquireInfoINTEL<'a> {
-    pub fn r#type(mut self, value: PerformanceConfigurationTypeINTEL) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: PerformanceConfigurationTypeINTEL) -> Self {
+        self.ty = value;
         self
     }
     /// Prepends `next` to the `pNext` chain.
@@ -42730,7 +42730,7 @@ unsafe impl TaggedStructure for PerformanceMarkerInfoINTEL<'_> {
 pub struct PerformanceOverrideInfoINTEL<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: PerformanceOverrideTypeINTEL,
+    pub ty: PerformanceOverrideTypeINTEL,
     pub enable: Bool32,
     pub parameter: u64,
     pub _marker: PhantomData<&'a ()>,
@@ -42744,7 +42744,7 @@ impl Default for PerformanceOverrideInfoINTEL<'_> {
         Self {
             s_type: StructureType::PERFORMANCE_OVERRIDE_INFO_INTEL,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             enable: 0,
             parameter: 0,
             _marker: PhantomData,
@@ -42753,8 +42753,8 @@ impl Default for PerformanceOverrideInfoINTEL<'_> {
 }
 
 impl<'a> PerformanceOverrideInfoINTEL<'a> {
-    pub fn r#type(mut self, value: PerformanceOverrideTypeINTEL) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: PerformanceOverrideTypeINTEL) -> Self {
+        self.ty = value;
         self
     }
     pub fn enable(mut self, value: bool) -> Self {
@@ -42933,7 +42933,7 @@ impl<'a> PerformanceValueDataINTEL<'a> {
 #[derive(Copy, Clone)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct PerformanceValueINTEL<'a> {
-    pub r#type: PerformanceValueTypeINTEL,
+    pub ty: PerformanceValueTypeINTEL,
     pub data: PerformanceValueDataINTEL<'a>,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -42944,7 +42944,7 @@ unsafe impl Sync for PerformanceValueINTEL<'_> {}
 impl Default for PerformanceValueINTEL<'_> {
     fn default() -> Self {
         Self {
-            r#type: Default::default(),
+            ty: Default::default(),
             data: Default::default(),
             _marker: PhantomData,
         }
@@ -42952,8 +42952,8 @@ impl Default for PerformanceValueINTEL<'_> {
 }
 
 impl<'a> PerformanceValueINTEL<'a> {
-    pub fn r#type(mut self, value: PerformanceValueTypeINTEL) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: PerformanceValueTypeINTEL) -> Self {
+        self.ty = value;
         self
     }
     pub fn data(mut self, value: PerformanceValueDataINTEL<'a>) -> Self {
@@ -46219,22 +46219,22 @@ unsafe impl TaggedStructure for PhysicalDeviceDataGraphOpticalFlowFeaturesARM<'_
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct PhysicalDeviceDataGraphProcessingEngineARM {
-    pub r#type: PhysicalDeviceDataGraphProcessingEngineTypeARM,
+    pub ty: PhysicalDeviceDataGraphProcessingEngineTypeARM,
     pub is_foreign: Bool32,
 }
 
 impl Default for PhysicalDeviceDataGraphProcessingEngineARM {
     fn default() -> Self {
         Self {
-            r#type: Default::default(),
+            ty: Default::default(),
             is_foreign: 0,
         }
     }
 }
 
 impl PhysicalDeviceDataGraphProcessingEngineARM {
-    pub fn r#type(mut self, value: PhysicalDeviceDataGraphProcessingEngineTypeARM) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: PhysicalDeviceDataGraphProcessingEngineTypeARM) -> Self {
+        self.ty = value;
         self
     }
     pub fn is_foreign(mut self, value: bool) -> Self {
@@ -52704,7 +52704,7 @@ pub struct PhysicalDeviceImageFormatInfo2<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
     pub format: Format,
-    pub r#type: ImageType,
+    pub ty: ImageType,
     pub tiling: ImageTiling,
     pub usage: ImageUsageFlags,
     pub flags: ImageCreateFlags,
@@ -52720,7 +52720,7 @@ impl Default for PhysicalDeviceImageFormatInfo2<'_> {
             s_type: StructureType::PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
             p_next: core::ptr::null(),
             format: Default::default(),
-            r#type: Default::default(),
+            ty: Default::default(),
             tiling: Default::default(),
             usage: Default::default(),
             flags: Default::default(),
@@ -52734,8 +52734,8 @@ impl<'a> PhysicalDeviceImageFormatInfo2<'a> {
         self.format = value;
         self
     }
-    pub fn r#type(mut self, value: ImageType) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: ImageType) -> Self {
+        self.ty = value;
         self
     }
     pub fn tiling(mut self, value: ImageTiling) -> Self {
@@ -65229,7 +65229,7 @@ pub struct PhysicalDeviceSparseImageFormatInfo2<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
     pub format: Format,
-    pub r#type: ImageType,
+    pub ty: ImageType,
     pub samples: SampleCountFlagBits,
     pub usage: ImageUsageFlags,
     pub tiling: ImageTiling,
@@ -65245,7 +65245,7 @@ impl Default for PhysicalDeviceSparseImageFormatInfo2<'_> {
             s_type: StructureType::PHYSICAL_DEVICE_SPARSE_IMAGE_FORMAT_INFO_2,
             p_next: core::ptr::null(),
             format: Default::default(),
-            r#type: Default::default(),
+            ty: Default::default(),
             samples: SampleCountFlagBits::_1,
             usage: Default::default(),
             tiling: Default::default(),
@@ -65259,8 +65259,8 @@ impl<'a> PhysicalDeviceSparseImageFormatInfo2<'a> {
         self.format = value;
         self
     }
-    pub fn r#type(mut self, value: ImageType) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: ImageType) -> Self {
+        self.ty = value;
         self
     }
     pub fn samples(mut self, value: SampleCountFlagBits) -> Self {
@@ -76329,7 +76329,7 @@ unsafe impl TaggedStructure for RayTracingPipelineInterfaceCreateInfoKHR<'_> {
 pub struct RayTracingShaderGroupCreateInfoKHR<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: RayTracingShaderGroupTypeKHR,
+    pub ty: RayTracingShaderGroupTypeKHR,
     pub general_shader: u32,
     pub closest_hit_shader: u32,
     pub any_hit_shader: u32,
@@ -76346,7 +76346,7 @@ impl Default for RayTracingShaderGroupCreateInfoKHR<'_> {
         Self {
             s_type: StructureType::RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             general_shader: 0,
             closest_hit_shader: 0,
             any_hit_shader: 0,
@@ -76358,8 +76358,8 @@ impl Default for RayTracingShaderGroupCreateInfoKHR<'_> {
 }
 
 impl<'a> RayTracingShaderGroupCreateInfoKHR<'a> {
-    pub fn r#type(mut self, value: RayTracingShaderGroupTypeKHR) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: RayTracingShaderGroupTypeKHR) -> Self {
+        self.ty = value;
         self
     }
     pub fn general_shader(mut self, value: u32) -> Self {
@@ -76405,7 +76405,7 @@ unsafe impl TaggedStructure for RayTracingShaderGroupCreateInfoKHR<'_> {
 pub struct RayTracingShaderGroupCreateInfoNV<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: RayTracingShaderGroupTypeKHR,
+    pub ty: RayTracingShaderGroupTypeKHR,
     pub general_shader: u32,
     pub closest_hit_shader: u32,
     pub any_hit_shader: u32,
@@ -76421,7 +76421,7 @@ impl Default for RayTracingShaderGroupCreateInfoNV<'_> {
         Self {
             s_type: StructureType::RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             general_shader: 0,
             closest_hit_shader: 0,
             any_hit_shader: 0,
@@ -76432,8 +76432,8 @@ impl Default for RayTracingShaderGroupCreateInfoNV<'_> {
 }
 
 impl<'a> RayTracingShaderGroupCreateInfoNV<'a> {
-    pub fn r#type(mut self, value: RayTracingShaderGroupTypeKHR) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: RayTracingShaderGroupTypeKHR) -> Self {
+        self.ty = value;
         self
     }
     pub fn general_shader(mut self, value: u32) -> Self {
@@ -78595,7 +78595,7 @@ impl<'a> ResourceDescriptorDataEXT<'a> {
 pub struct ResourceDescriptorInfoEXT<'a> {
     pub s_type: StructureType,
     pub p_next: *const c_void,
-    pub r#type: DescriptorType,
+    pub ty: DescriptorType,
     pub data: ResourceDescriptorDataEXT<'a>,
     pub _marker: PhantomData<&'a ()>,
 }
@@ -78608,7 +78608,7 @@ impl Default for ResourceDescriptorInfoEXT<'_> {
         Self {
             s_type: StructureType::RESOURCE_DESCRIPTOR_INFO_EXT,
             p_next: core::ptr::null(),
-            r#type: Default::default(),
+            ty: Default::default(),
             data: Default::default(),
             _marker: PhantomData,
         }
@@ -78616,8 +78616,8 @@ impl Default for ResourceDescriptorInfoEXT<'_> {
 }
 
 impl<'a> ResourceDescriptorInfoEXT<'a> {
-    pub fn r#type(mut self, value: DescriptorType) -> Self {
-        self.r#type = value;
+    pub fn ty(mut self, value: DescriptorType) -> Self {
+        self.ty = value;
         self
     }
     pub fn data(mut self, value: ResourceDescriptorDataEXT<'a>) -> Self {

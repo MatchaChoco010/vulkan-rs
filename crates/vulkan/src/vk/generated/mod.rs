@@ -5,6 +5,7 @@ mod commands;
 mod constants;
 mod enums;
 mod extensions;
+mod formats;
 mod func_pointers;
 mod handles;
 mod structs;

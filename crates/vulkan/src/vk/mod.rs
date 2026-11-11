@@ -277,8 +277,12 @@ pub const fn api_version_patch(version: u32) -> u32 {
     version & 0xfff
 }
 
+mod extension;
+mod format;
 pub mod generated;
 
+pub use extension::*;
+pub use format::*;
 pub use generated::*;
 
 /// Result of a Vulkan command: `Err` holds an error code (negative `VkResult`).

@@ -5917,7 +5917,7 @@ pub type PFN_vkGetPhysicalDeviceExternalImageFormatPropertiesNV = Option<
     unsafe extern "system" fn(
         physical_device: PhysicalDevice,
         format: Format,
-        r#type: ImageType,
+        ty: ImageType,
         tiling: ImageTiling,
         usage: ImageUsageFlags,
         flags: ImageCreateFlags,
@@ -6018,7 +6018,7 @@ pub type PFN_vkGetPhysicalDeviceImageFormatProperties = Option<
     unsafe extern "system" fn(
         physical_device: PhysicalDevice,
         format: Format,
-        r#type: ImageType,
+        ty: ImageType,
         tiling: ImageTiling,
         usage: ImageUsageFlags,
         flags: ImageCreateFlags,
@@ -6207,7 +6207,7 @@ pub type PFN_vkGetPhysicalDeviceSparseImageFormatProperties = Option<
     unsafe extern "system" fn(
         physical_device: PhysicalDevice,
         format: Format,
-        r#type: ImageType,
+        ty: ImageType,
         samples: SampleCountFlagBits,
         usage: ImageUsageFlags,
         tiling: ImageTiling,

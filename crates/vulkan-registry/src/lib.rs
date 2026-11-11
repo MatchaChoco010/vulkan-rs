@@ -31,6 +31,7 @@ pub struct Registry {
     pub structs: Vec<Struct>,
     pub commands: Vec<Command>,
     pub extensions: Vec<Extension>,
+    pub formats: Vec<Format>,
 }
 
 impl Registry {
@@ -210,6 +211,51 @@ pub struct Extension {
     pub instance: bool,
     pub device: bool,
     pub protect: Option<String>,
+    /// Dependency expression, e.g. `(VK_KHR_a+VK_KHR_b),VK_VERSION_1_1`. `+` is AND and
+    /// `,` is OR, with equal precedence, evaluated left to right.
+    pub depends: Option<String>,
+    /// Core version (`VK_VERSION_1_3`) or extension this one was promoted to.
+    pub promoted_to: Option<String>,
+}
+
+/// `<format>` of the registry: the texel layout of a `VkFormat`.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Format {
+    pub name: String,
+    /// Compatibility class, e.g. `32-bit`.
+    pub class: String,
+    /// Bytes per texel block.
+    pub block_size: u32,
+    pub texels_per_block: u32,
+    /// Texel block extent; empty when the block is a single texel.
+    pub block_extent: Vec<u32>,
+    /// Width in bits of the packed word of a `_PACKnn` format.
+    pub packed: Option<u32>,
+    /// `420`, `422` or `444`.
+    pub chroma: Option<String>,
+    /// Compression scheme, e.g. `BC`.
+    pub compressed: Option<String>,
+    pub components: Vec<FormatComponent>,
+    pub planes: Vec<FormatPlane>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct FormatComponent {
+    /// `R`, `G`, `B`, `A`, `D` or `S`.
+    pub name: String,
+    /// `None` for block-compressed formats.
+    pub bits: Option<u32>,
+    pub numeric_format: String,
+    pub plane_index: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct FormatPlane {
+    pub index: u32,
+    pub width_divisor: u32,
+    pub height_divisor: u32,
+    /// The single-plane format with the layout of this plane.
+    pub compatible: String,
 }
 
 #[cfg(test)]
