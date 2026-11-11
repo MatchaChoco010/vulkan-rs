@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Compile the Slang shaders of the examples to SPIR-V.
+
+The `.spv` files are committed next to the shader sources so that the examples build
+without a shader compiler. Run this after editing a `.slang` file and commit the result.
+Requires `slangc` (shipped with the Vulkan SDK) in PATH.
+
+`--check` recompiles into a temporary directory and fails if a committed `.spv` differs.
+"""
+from __future__ import annotations
+
+import argparse
+import filecmp
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+GLSL_450 = ["-profile", "glsl_450"]
+MESH = ["-profile", "glsl_460+spirv_1_4"]
+RAY_TRACING = [
+    "-profile", "glsl_460",
+    "-capability", "SPV_EXT_physical_storage_buffer",
+    "-fvk-use-c-layout",
+    "-emit-spirv-directly",
+    "-fvk-use-entrypoint-name",
+]
+DESCRIPTOR_HEAP = ["-profile", "spirv_1_6", "-capability", "spvDescriptorHeapEXT"]
+
+# (example, source, entry point, stage, output, extra slangc arguments)
+SHADERS = [
+    ("compute-buffer", "compute.slang", "computeMain", "compute", "compute.spv", GLSL_450),
+    ("descriptor-heap-14", "graphics.slang", "vertexMain", "vertex", "vertex.spv", DESCRIPTOR_HEAP),
+    ("descriptor-heap-14", "graphics.slang", "fragmentMain", "fragment", "fragment.spv", DESCRIPTOR_HEAP),
+    ("headless-triangle", "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
+    ("headless-triangle", "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
+    ("mesh-shader", "mesh.slang", "taskMain", "task", "task.spv", MESH),
+    ("mesh-shader", "mesh.slang", "meshMain", "mesh", "mesh.spv", MESH),
+    ("mesh-shader", "mesh.slang", "fragmentMain", "fragment", "fragment.spv", MESH),
+    ("ray-tracing-pipeline", "raygen.slang", "raygenMain", "raygeneration", "raygen.spv", RAY_TRACING),
+    ("ray-tracing-pipeline", "miss.slang", "missMain", "miss", "miss.spv", RAY_TRACING),
+    ("ray-tracing-pipeline", "closesthit.slang", "closestHitMain", "closesthit", "closesthit.spv", RAY_TRACING),
+    ("wayland-dynamic-rendering", "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
+    ("wayland-dynamic-rendering", "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
+    ("wayland-triangle", "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
+    ("wayland-triangle", "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
+]
+
+
+def shader_dir(example: str) -> Path:
+    return ROOT / "examples" / example / "src" / "shaders"
+
+
+def compile_all(out_root: Path | None) -> list[tuple[Path, Path]]:
+    """Returns (committed path, freshly compiled path) pairs."""
+    pairs = []
+    for example, source, entry, stage, output, extra in SHADERS:
+        directory = shader_dir(example)
+        committed = directory / output
+        target = committed if out_root is None else out_root / example / output
+        target.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["slangc", source, "-entry", entry, "-stage", stage, "-target", "spirv", *extra, "-o", str(target)],
+            cwd=directory,
+            check=True,
+        )
+        pairs.append((committed, target))
+    return pairs
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--check", action="store_true", help="fail if a committed .spv is stale")
+    args = parser.parse_args()
+
+    if not args.check:
+        compile_all(None)
+        return 0
+
+    with tempfile.TemporaryDirectory() as tmp:
+        stale = [
+            str(committed.relative_to(ROOT))
+            for committed, fresh in compile_all(Path(tmp))
+            if not committed.exists() or not filecmp.cmp(committed, fresh, shallow=False)
+        ]
+    if stale:
+        print("stale SPIR-V; run ./tools/compile-shaders and commit:", file=sys.stderr)
+        print("\n".join(stale), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

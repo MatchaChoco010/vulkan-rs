@@ -1,0 +1,11 @@
+error[E0597]: `names` does not live long enough
+  --> tests/ui/fail/string_array.rs:8:72
+   |
+ 7 |         let names = [vk::CStrPtr::new(vk::KHR_SWAPCHAIN_NAME)];
+   |             ----- binding `names` declared here
+ 8 |         info = vk::DeviceCreateInfo::default().enabled_extension_names(&names);
+   |                                                                        ^^^^^^ borrowed value does not live long enough
+ 9 |     }
+   |     - `names` dropped here while still borrowed
+10 |     let _ = info;
+   |             ---- borrow later used here

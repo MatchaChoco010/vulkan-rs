@@ -1,10 +1,12 @@
 [package]
 name = "vulkan-codegen"
-version = "0.2.0+vulkan-sdk-1.4.350.0"
+description = "Code generator for the vulkan crate"
+version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
 
 [dependencies]
-vulkan-registry = { path = "../vulkan-registry" }
+vulkan-registry.workspace = true

@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ffi::c_void;
 use std::fmt;
 use std::ptr::NonNull;
+use std::sync::Arc;
 
 use vulkan::{Device, vk};
 
@@ -58,7 +59,7 @@ impl MemoryLocation {
 
 pub struct AllocatorCreateDesc<'a> {
     pub device: &'a Device,
-    pub memory_properties: vk::PhysicalDeviceMemoryProperties<'static>,
+    pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     pub non_coherent_atom_size: u64,
     pub buffer_image_granularity: u64,
     pub block_size: u64,
@@ -67,8 +68,8 @@ pub struct AllocatorCreateDesc<'a> {
 impl<'a> AllocatorCreateDesc<'a> {
     pub fn new(
         device: &'a Device,
-        memory_properties: vk::PhysicalDeviceMemoryProperties<'static>,
-        physical_device_properties: vk::PhysicalDeviceProperties<'static>,
+        memory_properties: vk::PhysicalDeviceMemoryProperties,
+        physical_device_properties: vk::PhysicalDeviceProperties,
     ) -> Self {
         Self {
             device,
@@ -83,10 +84,14 @@ impl<'a> AllocatorCreateDesc<'a> {
 #[derive(Copy, Clone)]
 pub struct AllocationCreateDesc<'a> {
     pub name: Option<&'a str>,
-    pub requirements: vk::MemoryRequirements<'static>,
+    pub requirements: vk::MemoryRequirements,
     pub location: MemoryLocation,
     pub linear: bool,
     pub memory_allocate_flags: vk::MemoryAllocateFlags,
+    /// Handle types the memory can be exported as (`VkExportMemoryAllocateInfo`), e.g.
+    /// `DMA_BUF_EXT`. A non-empty value gives the allocation its own `VkDeviceMemory`,
+    /// because an exported handle refers to the whole memory object.
+    pub export_handle_types: vk::ExternalMemoryHandleTypeFlags,
     pub allocation_scheme: AllocationScheme,
 }
 
@@ -103,6 +108,7 @@ impl fmt::Debug for AllocationCreateDesc<'_> {
             .field("location", &self.location)
             .field("linear", &self.linear)
             .field("memory_allocate_flags", &self.memory_allocate_flags)
+            .field("export_handle_types", &self.export_handle_types)
             .field("allocation_scheme", &self.allocation_scheme)
             .finish()
     }
@@ -298,6 +304,21 @@ enum DedicatedResource {
     Image(vk::Image),
 }
 
+/// What a new `VkDeviceMemory` has to be allocated with.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+struct BlockRequest {
+    dedicated: DedicatedResource,
+    memory_allocate_flags: vk::MemoryAllocateFlags,
+    export_handle_types: vk::ExternalMemoryHandleTypeFlags,
+}
+
+impl BlockRequest {
+    /// Dedicated and exportable allocations are never suballocated.
+    fn needs_own_block(self) -> bool {
+        self.dedicated != DedicatedResource::None || !self.export_handle_types.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationError {
     NoCompatibleMemoryType,
@@ -335,10 +356,13 @@ impl From<AllocationScheme> for DedicatedResource {
     }
 }
 
+// SAFETY: the only non-`Send` state is the mapped pointer of each block, which is plain
+// data owned by the allocator; all access goes through `&mut self`.
+unsafe impl Send for Allocator {}
+
 pub struct Allocator {
-    device_handle: vk::Device,
-    device_fp: vk::DeviceFn,
-    memory_properties: vk::PhysicalDeviceMemoryProperties<'static>,
+    device: Arc<Device>,
+    memory_properties: vk::PhysicalDeviceMemoryProperties,
     non_coherent_atom_size: u64,
     buffer_image_granularity: u64,
     block_size: u64,
@@ -354,8 +378,7 @@ impl Allocator {
             })
             .collect();
         Self {
-            device_handle: desc.device.handle(),
-            device_fp: *desc.device.fp(),
+            device: Arc::new(desc.device.clone()),
             memory_properties: desc.memory_properties,
             non_coherent_atom_size: desc.non_coherent_atom_size.max(1),
             buffer_image_granularity: desc.buffer_image_granularity.max(1),
@@ -364,8 +387,8 @@ impl Allocator {
         }
     }
 
-    fn device(&self) -> Device {
-        Device::from_raw(self.device_handle, self.device_fp)
+    fn device(&self) -> Arc<Device> {
+        Arc::clone(&self.device)
     }
 
     /// Allocates raw Vulkan device memory from this allocator.
@@ -404,8 +427,11 @@ impl Allocator {
                 memory_type_index,
                 requirements,
                 resource_class,
-                desc.allocation_scheme.into(),
-                desc.memory_allocate_flags,
+                BlockRequest {
+                    dedicated: desc.allocation_scheme.into(),
+                    memory_allocate_flags: desc.memory_allocate_flags,
+                    export_handle_types: desc.export_handle_types,
+                },
             )
         }
     }
@@ -615,15 +641,14 @@ impl Allocator {
     unsafe fn allocate_from_type(
         &mut self,
         memory_type_index: u32,
-        requirements: vk::MemoryRequirements<'static>,
+        requirements: vk::MemoryRequirements,
         resource_class: AllocationResourceClass,
-        dedicated_resource: DedicatedResource,
-        memory_allocate_flags: vk::MemoryAllocateFlags,
+        request: BlockRequest,
     ) -> Result<Allocation, AllocationError> {
         if requirements.size == 0 {
             return Err(AllocationError::OutOfMemory);
         }
-        if dedicated_resource == DedicatedResource::None {
+        if !request.needs_own_block() {
             let memory_type = self
                 .memory_types
                 .get_mut(memory_type_index as usize)
@@ -634,7 +659,12 @@ impl Allocator {
                 .enumerate()
                 .filter_map(|(index, block)| block.as_mut().map(|block| (index, block)))
             {
-                if block.resource_class != resource_class {
+                // A block can only be shared by allocations that asked for the same kind
+                // of memory: the flags were fixed when its VkDeviceMemory was allocated.
+                if block.resource_class != resource_class
+                    || block.dedicated
+                    || block.memory_allocate_flags != request.memory_allocate_flags
+                {
                     continue;
                 }
                 if let Some(suballocation) = block
@@ -654,24 +684,19 @@ impl Allocator {
             }
         }
 
-        let block_size = if dedicated_resource == DedicatedResource::None {
-            self.block_size.max(requirements.size)
-        } else {
+        let block_size = if request.needs_own_block() {
             requirements.size
+        } else {
+            self.block_size.max(requirements.size)
         };
-        let memory = unsafe {
-            self.allocate_device_memory(
-                block_size,
-                memory_type_index,
-                dedicated_resource,
-                memory_allocate_flags,
-            )
-        }?;
+        let memory =
+            unsafe { self.allocate_device_memory(block_size, memory_type_index, request) }?;
         let mut block = MemoryBlock {
             memory,
             size: block_size,
             resource_class,
-            dedicated: dedicated_resource != DedicatedResource::None,
+            dedicated: request.needs_own_block(),
+            memory_allocate_flags: request.memory_allocate_flags,
             suballocator: TlsfSuballocator::new(block_size),
             mapped_ptr: None,
             map_count: 0,
@@ -713,52 +738,35 @@ impl Allocator {
         &self,
         block_size: u64,
         memory_type_index: u32,
-        dedicated_resource: DedicatedResource,
-        memory_allocate_flags: vk::MemoryAllocateFlags,
+        request: BlockRequest,
     ) -> Result<vk::DeviceMemory, AllocationError> {
-        match dedicated_resource {
-            DedicatedResource::None => {
-                let base = vk::MemoryAllocateInfo::default()
-                    .allocation_size(block_size)
-                    .memory_type_index(memory_type_index);
-                if memory_allocate_flags.is_empty() {
-                    return Ok(unsafe { self.device().allocate_memory(&base, None) }?);
-                }
-                let mut flags = vk::MemoryAllocateFlagsInfo::default().flags(memory_allocate_flags);
-                let allocate_info = base.push_next(&mut flags);
-                Ok(unsafe { self.device().allocate_memory(&allocate_info, None) }?)
-            }
+        let mut flags_info =
+            vk::MemoryAllocateFlagsInfo::default().flags(request.memory_allocate_flags);
+        let mut dedicated_info = match request.dedicated {
+            DedicatedResource::None => None,
             DedicatedResource::Buffer(buffer) => {
-                let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().buffer(buffer);
-                let base = vk::MemoryAllocateInfo::default()
-                    .allocation_size(block_size)
-                    .memory_type_index(memory_type_index);
-                if memory_allocate_flags.is_empty() {
-                    let allocate_info = base.push_next(&mut dedicated);
-                    Ok(unsafe { self.device().allocate_memory(&allocate_info, None) }?)
-                } else {
-                    let mut flags =
-                        vk::MemoryAllocateFlagsInfo::default().flags(memory_allocate_flags);
-                    let allocate_info = base.push_next(&mut flags).push_next(&mut dedicated);
-                    Ok(unsafe { self.device().allocate_memory(&allocate_info, None) }?)
-                }
+                Some(vk::MemoryDedicatedAllocateInfo::default().buffer(buffer))
             }
             DedicatedResource::Image(image) => {
-                let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
-                let base = vk::MemoryAllocateInfo::default()
-                    .allocation_size(block_size)
-                    .memory_type_index(memory_type_index);
-                if memory_allocate_flags.is_empty() {
-                    let allocate_info = base.push_next(&mut dedicated);
-                    Ok(unsafe { self.device().allocate_memory(&allocate_info, None) }?)
-                } else {
-                    let mut flags =
-                        vk::MemoryAllocateFlagsInfo::default().flags(memory_allocate_flags);
-                    let allocate_info = base.push_next(&mut flags).push_next(&mut dedicated);
-                    Ok(unsafe { self.device().allocate_memory(&allocate_info, None) }?)
-                }
+                Some(vk::MemoryDedicatedAllocateInfo::default().image(image))
             }
+        };
+        let mut export_info =
+            vk::ExportMemoryAllocateInfo::default().handle_types(request.export_handle_types);
+
+        let mut allocate_info = vk::MemoryAllocateInfo::default()
+            .allocation_size(block_size)
+            .memory_type_index(memory_type_index);
+        if !request.memory_allocate_flags.is_empty() {
+            allocate_info = allocate_info.push_next(&mut flags_info);
         }
+        if let Some(dedicated_info) = dedicated_info.as_mut() {
+            allocate_info = allocate_info.push_next(dedicated_info);
+        }
+        if !request.export_handle_types.is_empty() {
+            allocate_info = allocate_info.push_next(&mut export_info);
+        }
+        Ok(unsafe { self.device.allocate_memory(&allocate_info, None) }?)
     }
 
     fn block(&self, allocation: &Allocation) -> Result<&MemoryBlock, AllocationError> {
@@ -826,9 +834,9 @@ impl Allocator {
     fn adjusted_requirements(
         &self,
         memory_type_index: u32,
-        mut requirements: vk::MemoryRequirements<'static>,
+        mut requirements: vk::MemoryRequirements,
         resource_class: AllocationResourceClass,
-    ) -> Result<vk::MemoryRequirements<'static>, AllocationError> {
+    ) -> Result<vk::MemoryRequirements, AllocationError> {
         let flags = self
             .memory_type_flags(memory_type_index)
             .ok_or(AllocationError::NoCompatibleMemoryType)?;
@@ -862,7 +870,7 @@ fn stats_from_memory_types(memory_types: &[MemoryTypeAllocator]) -> AllocatorSta
 
 fn snapshot_from_memory_types(
     memory_types: &[MemoryTypeAllocator],
-    memory_properties: &vk::PhysicalDeviceMemoryProperties<'_>,
+    memory_properties: &vk::PhysicalDeviceMemoryProperties,
 ) -> AllocatorSnapshot {
     let stats = stats_from_memory_types(memory_types);
     let mut snapshots = Vec::new();
@@ -948,6 +956,7 @@ struct MemoryBlock {
     size: u64,
     resource_class: AllocationResourceClass,
     dedicated: bool,
+    memory_allocate_flags: vk::MemoryAllocateFlags,
     suballocator: TlsfSuballocator,
     mapped_ptr: Option<NonNull<c_void>>,
     map_count: usize,
@@ -1044,7 +1053,7 @@ impl MemoryBlock {
 }
 
 fn find_memory_type_index(
-    properties: &vk::PhysicalDeviceMemoryProperties<'_>,
+    properties: &vk::PhysicalDeviceMemoryProperties,
     memory_type_bits: u32,
     required: vk::MemoryPropertyFlags,
     preferred: vk::MemoryPropertyFlags,
@@ -1383,9 +1392,7 @@ fn mapped_range_bounds(
 mod tests {
     use super::*;
 
-    fn memory_properties(
-        flags: &[vk::MemoryPropertyFlags],
-    ) -> vk::PhysicalDeviceMemoryProperties<'static> {
+    fn memory_properties(flags: &[vk::MemoryPropertyFlags]) -> vk::PhysicalDeviceMemoryProperties {
         let mut properties = vk::PhysicalDeviceMemoryProperties {
             memory_type_count: flags.len() as u32,
             ..Default::default()
@@ -1837,7 +1844,6 @@ mod tests {
             size: 1024,
             alignment: 256,
             memory_type_bits: 1,
-            _marker: std::marker::PhantomData,
         };
 
         let buffer_desc = AllocationCreateDesc {
@@ -1846,6 +1852,7 @@ mod tests {
             location: MemoryLocation::GpuOnly,
             linear: true,
             memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
             allocation_scheme: AllocationScheme::DedicatedBuffer(vk::Buffer(7)),
         };
         assert_eq!(
@@ -1860,6 +1867,7 @@ mod tests {
             location: MemoryLocation::GpuOnly,
             linear: false,
             memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
             allocation_scheme: AllocationScheme::DedicatedImage(vk::Image(9)),
         };
         assert_eq!(
@@ -1912,6 +1920,7 @@ mod tests {
             size: 1024,
             resource_class: AllocationResourceClass::Unknown,
             dedicated: false,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
             suballocator: TlsfSuballocator::new(1024),
             mapped_ptr: None,
             map_count: 0,
@@ -1944,6 +1953,7 @@ mod tests {
             size: 1024,
             resource_class: AllocationResourceClass::Optimal,
             dedicated: false,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
             suballocator: TlsfSuballocator::new(1024),
             mapped_ptr: None,
             map_count: 0,
@@ -2001,6 +2011,7 @@ mod tests {
                     size: 1024,
                     resource_class: AllocationResourceClass::Unknown,
                     dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                     suballocator: TlsfSuballocator::new(1024),
                     mapped_ptr: None,
                     map_count: 0,
@@ -2011,6 +2022,7 @@ mod tests {
                     size: 2048,
                     resource_class: AllocationResourceClass::Unknown,
                     dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                     suballocator: TlsfSuballocator::new(2048),
                     mapped_ptr: None,
                     map_count: 0,
@@ -2051,6 +2063,7 @@ mod tests {
                     size: 1024,
                     resource_class: AllocationResourceClass::Linear,
                     dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                     suballocator: TlsfSuballocator::new(1024),
                     mapped_ptr: None,
                     map_count: 0,
@@ -2088,6 +2101,7 @@ mod tests {
                     size: 1024,
                     resource_class: AllocationResourceClass::Linear,
                     dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                     suballocator: TlsfSuballocator::new(1024),
                     mapped_ptr: None,
                     map_count: 0,
@@ -2101,6 +2115,7 @@ mod tests {
                     size: 2048,
                     resource_class: AllocationResourceClass::Optimal,
                     dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                     suballocator: TlsfSuballocator::new(2048),
                     mapped_ptr: None,
                     map_count: 0,
@@ -2142,6 +2157,7 @@ mod tests {
             size: 1024,
             resource_class: AllocationResourceClass::Linear,
             dedicated: false,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
             suballocator: TlsfSuballocator::new(1024),
             mapped_ptr: None,
             map_count: 0,
@@ -2216,6 +2232,7 @@ mod tests {
                     size: 1024,
                     resource_class: AllocationResourceClass::Optimal,
                     dedicated: true,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                     suballocator: TlsfSuballocator::new(1024),
                     mapped_ptr: None,
                     map_count: 0,

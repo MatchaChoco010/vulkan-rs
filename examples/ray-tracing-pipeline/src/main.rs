@@ -89,7 +89,7 @@ fn main() -> Result<()> {
             vk::PipelineBindPoint::RAY_TRACING_KHR,
             pipeline_layout,
             0,
-            Some(&descriptor_sets),
+            &descriptor_sets,
             &[],
         );
         let push_constants = RayTracingPushConstants {
@@ -160,7 +160,11 @@ fn main() -> Result<()> {
         let submit = vk::SubmitInfo::default().command_buffers(&command_buffers);
         device.queue_submit(queue, &[submit], fence)?;
         device.wait_for_fences(&[fence], true, u64::MAX)?;
-        verify_and_write_ppm(&mut allocator, &output.allocation, "ray_tracing.ppm")?;
+        verify_and_write_ppm(
+            &mut allocator,
+            &output.allocation,
+            &output_path("ray_tracing.ppm"),
+        )?;
 
         device.destroy_pipeline(pipeline, None);
         device.destroy_pipeline_layout(pipeline_layout, None);
@@ -181,7 +185,7 @@ fn main() -> Result<()> {
         instance.destroy_instance(None);
     }
 
-    println!("wrote ray_tracing.ppm");
+    println!("wrote {}", output_path("ray_tracing.ppm").display());
     Ok(())
 }
 
@@ -240,8 +244,8 @@ fn ray_tracing_camera_origin() -> Vec3 {
 
 fn ray_tracing_world_from_clip() -> Mat4 {
     let origin = ray_tracing_camera_origin();
-    let view = Mat4::look_at_rh(origin, Vec3::ZERO, Vec3::Y);
-    let projection = Mat4::perspective_rh(
+    let view = glam::camera::rh::view::look_at_mat4(origin, Vec3::ZERO, Vec3::Y);
+    let projection = glam::camera::rh::proj::directx::perspective(
         50.0_f32.to_radians(),
         WIDTH as f32 / HEIGHT as f32,
         0.1,
@@ -261,18 +265,20 @@ struct PodAccelerationStructureInstance {
 
 impl PodAccelerationStructureInstance {
     fn new(acceleration_structure_reference: u64) -> Self {
+        // Let the bindings pack the C bit-fields, then copy the two storage words.
+        let packed = vk::AccelerationStructureInstanceKHR::default()
+            .instance_custom_index(0)
+            .mask(0xff)
+            .instance_shader_binding_table_record_offset(0)
+            .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE);
         Self {
             transform: [
                 [1.0, 0.0, 0.0, 0.0],
                 [0.0, 1.0, 0.0, 0.0],
                 [0.0, 0.0, 1.0, 0.0],
             ],
-            instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff).0,
-            instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
-                0,
-                vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE_KHR.as_raw() as u8,
-            )
-            .0,
+            instance_custom_index_and_mask: packed.bitfield0,
+            instance_shader_binding_table_record_offset_and_flags: packed.bitfield1,
             acceleration_structure_reference,
         }
     }
@@ -303,11 +309,11 @@ unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instanc
     let enabled_layers = validation_layers(entry)?;
     let enabled_layer_names = enabled_layers
         .iter()
-        .map(|layer| layer.as_ptr())
+        .map(|layer| vk::CStrPtr::new(layer))
         .collect::<Vec<_>>();
     let extension_names = extensions
         .iter()
-        .map(|extension| extension.as_ptr())
+        .map(|extension| vk::CStrPtr::new(extension))
         .collect::<Vec<_>>();
     let app_info = vk::ApplicationInfo::default()
         .application_name(app_name.as_c_str())
@@ -324,7 +330,7 @@ unsafe fn has_instance_extension(entry: &Entry, name: &CStr) -> Result<bool> {
     Ok(entry
         .enumerate_instance_extension_properties(None)?
         .iter()
-        .any(|extension| CStr::from_ptr(extension.extension_name.as_ptr()) == name))
+        .any(|extension| extension.extension_name_as_c_str() == Ok(name)))
 }
 
 unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
@@ -332,11 +338,13 @@ unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
     let available = entry.enumerate_instance_layer_properties()?;
     let has_validation = available
         .iter()
-        .any(|layer| CStr::from_ptr(layer.layer_name.as_ptr()) == validation);
+        .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
     if has_validation {
         Ok(vec![validation])
     } else {
-        Err(anyhow!("VK_LAYER_KHRONOS_validation is required for this example"))
+        Err(anyhow!(
+            "VK_LAYER_KHRONOS_validation is required for this example"
+        ))
     }
 }
 
@@ -353,9 +361,9 @@ unsafe fn create_debug_messenger(
                 | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )
         .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE_EXT,
+            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
         )
         .pfn_user_callback(Some(vulkan_debug_callback));
     Ok(instance.create_debug_utils_messenger_ext(&info, None)?)
@@ -421,8 +429,7 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
             instance.get_physical_device_properties2(physical_device, &mut properties2);
         }
 
-        let queue_families =
-            instance.get_physical_device_queue_family_properties(physical_device)?;
+        let queue_families = instance.get_physical_device_queue_family_properties(physical_device);
         let Some(queue_family) = queue_families
             .iter()
             .position(|p| p.queue_flags.contains(vk::QueueFlags::COMPUTE))
@@ -464,10 +471,10 @@ unsafe fn create_device_and_queue(
         .queue_family_index(queue_family)
         .queue_priorities(&priorities)];
     let extension_names = [
-        vk::KHR_DEFERRED_HOST_OPERATIONS_NAME.as_ptr(),
-        vk::KHR_ACCELERATION_STRUCTURE_NAME.as_ptr(),
-        vk::KHR_RAY_TRACING_PIPELINE_NAME.as_ptr(),
-        vk::KHR_BUFFER_DEVICE_ADDRESS_NAME.as_ptr(),
+        vk::CStrPtr::new(vk::KHR_DEFERRED_HOST_OPERATIONS_NAME),
+        vk::CStrPtr::new(vk::KHR_ACCELERATION_STRUCTURE_NAME),
+        vk::CStrPtr::new(vk::KHR_RAY_TRACING_PIPELINE_NAME),
+        vk::CStrPtr::new(vk::KHR_BUFFER_DEVICE_ADDRESS_NAME),
     ];
     let mut buffer_device_address_features =
         vk::PhysicalDeviceBufferDeviceAddressFeatures::default().buffer_device_address(true);
@@ -547,16 +554,16 @@ unsafe fn create_scene_acceleration_structures(
             index_address,
         ));
     let blas_geometry = vk::AccelerationStructureGeometryKHR::default()
-        .geometry_type(vk::GeometryTypeKHR::GEOMETRY_TYPE_TRIANGLES_KHR)
+        .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
         .geometry(vk::AccelerationStructureGeometryDataKHR::triangles(
             triangles,
         ))
-        .flags(vk::GeometryFlagsKHR::OPAQUE_KHR);
+        .flags(vk::GeometryFlagsKHR::OPAQUE);
     let blas_geometries = [blas_geometry];
     let blas_build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
-        .r#type(vk::AccelerationStructureTypeKHR::ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR)
-        .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR)
-        .mode(vk::BuildAccelerationStructureModeKHR::BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
+        .r#type(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
+        .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+        .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
         .geometries(&blas_geometries);
     let bottom_level =
         create_acceleration_structure(device, allocator, &blas_build_info, &[1], "bottom level")?;
@@ -583,15 +590,15 @@ unsafe fn create_scene_acceleration_structures(
             buffer_device_address(device, instance_buffer.buffer),
         ));
     let tlas_geometry = vk::AccelerationStructureGeometryKHR::default()
-        .geometry_type(vk::GeometryTypeKHR::GEOMETRY_TYPE_INSTANCES_KHR)
+        .geometry_type(vk::GeometryTypeKHR::INSTANCES)
         .geometry(vk::AccelerationStructureGeometryDataKHR::instances(
             instances_data,
         ));
     let tlas_geometries = [tlas_geometry];
     let tlas_build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
-        .r#type(vk::AccelerationStructureTypeKHR::ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
-        .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE_KHR)
-        .mode(vk::BuildAccelerationStructureModeKHR::BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
+        .r#type(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
+        .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+        .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
         .geometries(&tlas_geometries);
     let top_level =
         create_acceleration_structure(device, allocator, &tlas_build_info, &[1], "top level")?;
@@ -617,6 +624,7 @@ unsafe fn create_scene_acceleration_structures(
             location: MemoryLocation::GpuOnly,
             linear: true,
             memory_allocate_flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
+            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
             allocation_scheme: AllocationScheme::GpuAllocatorManaged,
         }) {
             Ok(allocation) => allocation,
@@ -746,7 +754,7 @@ unsafe fn create_acceleration_structure(
 ) -> Result<AccelerationStructureAllocation> {
     let mut sizes = vk::AccelerationStructureBuildSizesInfoKHR::default();
     device.get_acceleration_structure_build_sizes_khr(
-        vk::AccelerationStructureBuildTypeKHR::ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+        vk::AccelerationStructureBuildTypeKHR::DEVICE,
         build_info,
         Some(primitive_counts),
         &mut sizes,
@@ -801,6 +809,7 @@ unsafe fn create_buffer_allocation(
         location,
         linear: true,
         memory_allocate_flags,
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -871,8 +880,8 @@ unsafe fn copy_buffer_one_time(
 ) -> Result<()> {
     device.reset_fences(&[fence])?;
     device.reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())?;
-    let begin = vk::CommandBufferBeginInfo::default()
-        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+    let begin =
+        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
     device.begin_command_buffer(command_buffer, &begin)?;
     let region = vk::BufferCopy::default().size(size);
     device.cmd_copy_buffer(command_buffer, src, dst, &[region]);
@@ -935,6 +944,7 @@ unsafe fn create_shader_binding_table_buffer(
         location: MemoryLocation::CpuToGpu,
         linear: true,
         memory_allocate_flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -993,6 +1003,7 @@ unsafe fn create_output_buffer(
         location: MemoryLocation::GpuToCpu,
         linear: true,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -1104,18 +1115,9 @@ unsafe fn create_ray_tracing_pipeline(
     device: &Device,
     layout: vk::PipelineLayout,
 ) -> Result<vk::Pipeline> {
-    let raygen = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/raygen.spv")),
-    )?;
-    let miss = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/miss.spv")),
-    )?;
-    let closest_hit = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/closesthit.spv")),
-    )?;
+    let raygen = create_shader_module(device, include_bytes!("shaders/raygen.spv"))?;
+    let miss = create_shader_module(device, include_bytes!("shaders/miss.spv"))?;
+    let closest_hit = create_shader_module(device, include_bytes!("shaders/closesthit.spv"))?;
     let raygen_main = c"raygenMain";
     let miss_main = c"missMain";
     let closest_hit_main = c"closestHitMain";
@@ -1135,21 +1137,19 @@ unsafe fn create_ray_tracing_pipeline(
     ];
     let groups = [
         vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .r#type(vk::RayTracingShaderGroupTypeKHR::RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR)
+            .r#type(vk::RayTracingShaderGroupTypeKHR::GENERAL)
             .general_shader(0)
             .closest_hit_shader(vk::SHADER_UNUSED_KHR)
             .any_hit_shader(vk::SHADER_UNUSED_KHR)
             .intersection_shader(vk::SHADER_UNUSED_KHR),
         vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .r#type(vk::RayTracingShaderGroupTypeKHR::RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR)
+            .r#type(vk::RayTracingShaderGroupTypeKHR::GENERAL)
             .general_shader(1)
             .closest_hit_shader(vk::SHADER_UNUSED_KHR)
             .any_hit_shader(vk::SHADER_UNUSED_KHR)
             .intersection_shader(vk::SHADER_UNUSED_KHR),
         vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .r#type(
-                vk::RayTracingShaderGroupTypeKHR::RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
-            )
+            .r#type(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
             .general_shader(vk::SHADER_UNUSED_KHR)
             .closest_hit_shader(2)
             .any_hit_shader(vk::SHADER_UNUSED_KHR)
@@ -1242,7 +1242,7 @@ unsafe fn initialize_output(allocator: &mut Allocator, allocation: &Allocation) 
 unsafe fn verify_and_write_ppm(
     allocator: &mut Allocator,
     allocation: &Allocation,
-    path: &str,
+    path: &std::path::Path,
 ) -> Result<()> {
     let flags = allocator.allocation_memory_flags(allocation)?;
     let mut mapped = allocator.map(allocation)?;
@@ -1280,8 +1280,15 @@ fn align_up(value: u64, alignment: u64) -> u64 {
     value.div_ceil(alignment) * alignment
 }
 
-fn has_extension(properties: &[vk::ExtensionProperties<'_>], name: &std::ffi::CStr) -> bool {
-    properties.iter().any(|property| unsafe {
-        std::ffi::CStr::from_ptr(property.extension_name.as_ptr()) == name
-    })
+fn has_extension(properties: &[vk::ExtensionProperties], name: &std::ffi::CStr) -> bool {
+    properties
+        .iter()
+        .any(|property| property.extension_name_as_c_str() == Ok(name))
+}
+
+/// Example images go to `target/example-output/`, never into the source tree.
+fn output_path(file_name: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/example-output");
+    std::fs::create_dir_all(&dir).expect("create target/example-output");
+    dir.join(file_name)
 }

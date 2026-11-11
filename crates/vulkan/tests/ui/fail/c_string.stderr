@@ -1,0 +1,11 @@
+error[E0597]: `name` does not live long enough
+  --> tests/ui/fail/c_string.rs:9:64
+   |
+ 8 |         let name = CString::new("app").unwrap();
+   |             ---- binding `name` declared here
+ 9 |         info = vk::ApplicationInfo::default().application_name(&name);
+   |                                                                ^^^^^ borrowed value does not live long enough
+10 |     }
+   |     - `name` dropped here while still borrowed
+11 |     let _ = info;
+   |             ---- borrow later used here

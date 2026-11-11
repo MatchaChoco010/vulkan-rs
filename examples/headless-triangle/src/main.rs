@@ -83,8 +83,12 @@ fn main() -> Result<()> {
         )?;
 
         let image_info = image_create_info(FORMAT, WIDTH, HEIGHT);
-        let image =
-            create_allocated_image(&device, &mut allocator, &image_info, MemoryLocation::GpuOnly)?;
+        let image = create_allocated_image(
+            &device,
+            &mut allocator,
+            &image_info,
+            MemoryLocation::GpuOnly,
+        )?;
         let image_view = create_image_view(&device, image.image, FORMAT)?;
 
         let readback_size = (WIDTH * HEIGHT * 4) as u64;
@@ -100,7 +104,8 @@ fn main() -> Result<()> {
         let render_pass = create_render_pass(&device, FORMAT)?;
         let framebuffer = create_framebuffer(&device, render_pass, image_view, WIDTH, HEIGHT)?;
         let pipeline_layout = create_pipeline_layout(&device)?;
-        let pipeline = create_pipeline(&device, render_pass, pipeline_layout, FORMAT, WIDTH, HEIGHT)?;
+        let pipeline =
+            create_pipeline(&device, render_pass, pipeline_layout, FORMAT, WIDTH, HEIGHT)?;
 
         let begin = vk::CommandBufferBeginInfo::default();
         device.begin_command_buffer(command_buffer, &begin)?;
@@ -123,8 +128,13 @@ fn main() -> Result<()> {
         device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
         let vertex_buffers = [vertex_buffer.buffer];
         let vertex_offsets = [0];
-        device.cmd_bind_vertex_buffers(command_buffer, 0, Some(&vertex_buffers), &vertex_offsets);
-        device.cmd_bind_index_buffer(command_buffer, index_buffer.buffer, 0, vk::IndexType::UINT16);
+        device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &vertex_offsets);
+        device.cmd_bind_index_buffer(
+            command_buffer,
+            index_buffer.buffer,
+            0,
+            vk::IndexType::UINT16,
+        );
         device.cmd_draw_indexed(command_buffer, INDICES.len() as u32, 1, 0, 0, 0);
         device.cmd_end_render_pass(command_buffer);
 
@@ -164,7 +174,13 @@ fn main() -> Result<()> {
         device.queue_submit(queue, &[submit], fence)?;
         device.wait_for_fences(&[fence], true, u64::MAX)?;
 
-        write_ppm(&mut allocator, &readback_buffer.allocation, WIDTH, HEIGHT, "triangle.ppm")?;
+        write_ppm(
+            &mut allocator,
+            &readback_buffer.allocation,
+            WIDTH,
+            HEIGHT,
+            &output_path("triangle.ppm"),
+        )?;
         let stats = allocator.stats();
         eprintln!(
             "allocator: {} blocks, {} allocated bytes, {} free bytes",
@@ -194,7 +210,7 @@ fn main() -> Result<()> {
         instance.destroy_instance(None);
     }
 
-    println!("wrote triangle.ppm");
+    println!("wrote {}", output_path("triangle.ppm").display());
     Ok(())
 }
 
@@ -203,11 +219,11 @@ unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instanc
     let enabled_layers = validation_layers(entry)?;
     let enabled_layer_ptrs = enabled_layers
         .iter()
-        .map(|layer| layer.as_ptr())
+        .map(|layer| vk::CStrPtr::new(layer))
         .collect::<Vec<_>>();
     let extension_ptrs = extensions
         .iter()
-        .map(|extension| extension.as_ptr())
+        .map(|extension| vk::CStrPtr::new(extension))
         .collect::<Vec<_>>();
     let app_info = vk::ApplicationInfo::default()
         .application_name(app_name.as_c_str())
@@ -224,7 +240,7 @@ unsafe fn has_instance_extension(entry: &Entry, name: &CStr) -> Result<bool> {
     Ok(entry
         .enumerate_instance_extension_properties(None)?
         .iter()
-        .any(|extension| CStr::from_ptr(extension.extension_name.as_ptr()) == name))
+        .any(|extension| extension.extension_name_as_c_str() == Ok(name)))
 }
 
 unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
@@ -232,11 +248,13 @@ unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
     let validation = c"VK_LAYER_KHRONOS_validation";
     let has_validation = available
         .iter()
-        .any(|layer| CStr::from_ptr(layer.layer_name.as_ptr()) == validation);
+        .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
     if has_validation {
         Ok(vec![validation])
     } else {
-        Err(anyhow!("VK_LAYER_KHRONOS_validation is required for this example"))
+        Err(anyhow!(
+            "VK_LAYER_KHRONOS_validation is required for this example"
+        ))
     }
 }
 
@@ -253,9 +271,9 @@ unsafe fn create_debug_messenger(
                 | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )
         .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE_EXT,
+            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
         )
         .pfn_user_callback(Some(vulkan_debug_callback));
     Ok(instance.create_debug_utils_messenger_ext(&info, None)?)
@@ -327,7 +345,7 @@ unsafe fn find_graphics_queue_family(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
 ) -> Result<Option<u32>> {
-    let props = instance.get_physical_device_queue_family_properties(physical_device)?;
+    let props = instance.get_physical_device_queue_family_properties(physical_device);
     Ok(props
         .iter()
         .position(|p| p.queue_flags.contains(vk::QueueFlags::GRAPHICS))
@@ -368,7 +386,7 @@ unsafe fn write_ppm(
     allocation: &Allocation,
     width: u32,
     height: u32,
-    path: &str,
+    path: &std::path::Path,
 ) -> Result<()> {
     let size = (width * height * 4) as usize;
     let flags = allocator.allocation_memory_flags(allocation)?;
@@ -400,6 +418,7 @@ unsafe fn create_allocated_buffer(
         location,
         linear: true,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -499,6 +518,7 @@ unsafe fn create_allocated_image(
         location,
         linear: info.tiling == vk::ImageTiling::LINEAR,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -643,14 +663,8 @@ unsafe fn create_pipeline(
     width: u32,
     height: u32,
 ) -> Result<vk::Pipeline> {
-    let vert = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/triangle.vert.spv")),
-    )?;
-    let frag = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/triangle.frag.spv")),
-    )?;
+    let vert = create_shader_module(device, include_bytes!("shaders/triangle.vert.spv"))?;
+    let frag = create_shader_module(device, include_bytes!("shaders/triangle.frag.spv"))?;
     let main = c"main";
     let stages = [
         vk::PipelineShaderStageCreateInfo::default()
@@ -754,4 +768,11 @@ fn spirv_words(bytes: &[u8]) -> Result<Vec<u32>> {
         .chunks_exact(4)
         .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
         .collect())
+}
+
+/// Example images go to `target/example-output/`, never into the source tree.
+fn output_path(file_name: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/example-output");
+    std::fs::create_dir_all(&dir).expect("create target/example-output");
+    dir.join(file_name)
 }

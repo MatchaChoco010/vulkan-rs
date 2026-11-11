@@ -1,0 +1,17 @@
+error[E0597]: `priorities` does not live long enough
+  --> tests/ui/fail/no_lifetime_erasure.rs:8:70
+   |
+ 7 |     let priorities = [1.0];
+   |         ---------- binding `priorities` declared here
+ 8 |     let info = vk::DeviceQueueCreateInfo::default().queue_priorities(&priorities);
+   |                                                                      ^^^^^^^^^^^ borrowed value does not live long enough
+ 9 |     keep(info);
+   |     ---------- argument requires that `priorities` is borrowed for `'static`
+10 | }
+   | - `priorities` dropped here while still borrowed
+   |
+note: requirement that the value outlives `'static` introduced here
+  --> tests/ui/fail/no_lifetime_erasure.rs:4:12
+   |
+ 4 | fn keep<T: 'static>(_: T) {}
+   |            ^^^^^^^

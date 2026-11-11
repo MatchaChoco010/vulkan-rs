@@ -1,15 +1,14 @@
 [package]
 name = "vulkan-descriptor-heap-14"
-version = "0.1.0"
-edition = "2024"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 publish = false
-build = "build.rs"
-
-[workspace]
 
 [dependencies]
 anyhow = "1"
 bytemuck = { version = "1.25", features = ["derive"] }
-glam = "0.33.0"
-vulkan = { path = "../../crates/vulkan", features = ["std"] }
-vulkan-alloc = { path = "../../crates/vulkan-alloc" }
+glam = "0.33.12"
+vulkan = { workspace = true, features = ["std"] }
+vulkan-alloc.workspace = true

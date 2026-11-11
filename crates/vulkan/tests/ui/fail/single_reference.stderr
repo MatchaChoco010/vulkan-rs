@@ -1,0 +1,11 @@
+error[E0597]: `features` does not live long enough
+  --> tests/ui/fail/single_reference.rs:8:65
+   |
+ 7 |         let features = vk::PhysicalDeviceFeatures::default();
+   |             -------- binding `features` declared here
+ 8 |         info = vk::DeviceCreateInfo::default().enabled_features(&features);
+   |                                                                 ^^^^^^^^^ borrowed value does not live long enough
+ 9 |     }
+   |     - `features` dropped here while still borrowed
+10 |     let _ = info;
+   |             ---- borrow later used here

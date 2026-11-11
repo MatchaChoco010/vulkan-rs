@@ -214,7 +214,7 @@ struct App {
     in_flight: vk::Fence,
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
-    extent: vk::Extent2D<'static>,
+    extent: vk::Extent2D,
 }
 
 impl App {
@@ -393,7 +393,7 @@ impl App {
             self.device.cmd_bind_vertex_buffers(
                 command_buffer,
                 0,
-                Some(&vertex_buffers),
+                &vertex_buffers,
                 &vertex_offsets,
             );
             self.device.cmd_draw(command_buffer, 3, 1, 0, 0);
@@ -537,11 +537,11 @@ unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instanc
     let enabled_layers = validation_layers(entry)?;
     let enabled_layer_ptrs = enabled_layers
         .iter()
-        .map(|layer| layer.as_ptr())
+        .map(|layer| vk::CStrPtr::new(layer))
         .collect::<Vec<_>>();
     let extension_ptrs = extensions
         .iter()
-        .map(|extension| extension.as_ptr())
+        .map(|extension| vk::CStrPtr::new(extension))
         .collect::<Vec<_>>();
     let app_info = vk::ApplicationInfo::default()
         .application_name(app_name.as_c_str())
@@ -558,7 +558,7 @@ unsafe fn has_instance_extension(entry: &Entry, name: &CStr) -> Result<bool> {
     Ok(entry
         .enumerate_instance_extension_properties(None)?
         .iter()
-        .any(|extension| CStr::from_ptr(extension.extension_name.as_ptr()) == name))
+        .any(|extension| extension.extension_name_as_c_str() == Ok(name)))
 }
 
 unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
@@ -566,11 +566,13 @@ unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
     let has_validation = entry
         .enumerate_instance_layer_properties()?
         .iter()
-        .any(|layer| CStr::from_ptr(layer.layer_name.as_ptr()) == validation);
+        .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
     if has_validation {
         Ok(vec![validation])
     } else {
-        Err(anyhow!("VK_LAYER_KHRONOS_validation is required for this example"))
+        Err(anyhow!(
+            "VK_LAYER_KHRONOS_validation is required for this example"
+        ))
     }
 }
 
@@ -587,9 +589,9 @@ unsafe fn create_debug_messenger(
                 | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )
         .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE_EXT,
+            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
         )
         .pfn_user_callback(Some(vulkan_debug_callback));
     Ok(instance.create_debug_utils_messenger_ext(&info, None)?)
@@ -670,7 +672,7 @@ unsafe fn device_supports_extensions(
     Ok(required_extensions.iter().all(|&required| {
         available
             .iter()
-            .any(|extension| CStr::from_ptr(extension.extension_name.as_ptr()) == required)
+            .any(|extension| extension.extension_name_as_c_str() == Ok(required))
     }))
 }
 
@@ -679,7 +681,7 @@ unsafe fn find_present_graphics_queue_family(
     physical_device: vk::PhysicalDevice,
     surface: vk::SurfaceKHR,
 ) -> Result<Option<u32>> {
-    let props = instance.get_physical_device_queue_family_properties(physical_device)?;
+    let props = instance.get_physical_device_queue_family_properties(physical_device);
     for (index, props) in props.iter().enumerate() {
         let supported = instance.get_physical_device_surface_support_khr(
             physical_device,
@@ -705,7 +707,7 @@ unsafe fn create_device_and_queue(
         .queue_priorities(&priorities)];
     let extension_ptrs = extensions
         .iter()
-        .map(|extension| extension.as_ptr())
+        .map(|extension| vk::CStrPtr::new(extension))
         .collect::<Vec<_>>();
     let mut dynamic_rendering_features =
         vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
@@ -722,7 +724,7 @@ unsafe fn surface_capabilities(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
     surface: vk::SurfaceKHR,
-) -> Result<vk::SurfaceCapabilitiesKHR<'static>> {
+) -> Result<vk::SurfaceCapabilitiesKHR> {
     Ok(instance.get_physical_device_surface_capabilities_khr(physical_device, surface)?)
 }
 
@@ -730,7 +732,7 @@ unsafe fn choose_surface_format(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
     surface: vk::SurfaceKHR,
-) -> Result<vk::SurfaceFormatKHR<'static>> {
+) -> Result<vk::SurfaceFormatKHR> {
     let formats = instance.get_physical_device_surface_formats_khr(physical_device, surface)?;
     Ok(formats
         .iter()
@@ -742,9 +744,9 @@ unsafe fn choose_surface_format(
 unsafe fn create_swapchain(
     device: &Device,
     surface: vk::SurfaceKHR,
-    caps: vk::SurfaceCapabilitiesKHR<'_>,
-    surface_format: vk::SurfaceFormatKHR<'_>,
-    extent: vk::Extent2D<'static>,
+    caps: vk::SurfaceCapabilitiesKHR,
+    surface_format: vk::SurfaceFormatKHR,
+    extent: vk::Extent2D,
 ) -> Result<vk::SwapchainKHR> {
     let mut image_count = caps.min_image_count + 1;
     if caps.max_image_count != 0 {
@@ -763,16 +765,13 @@ unsafe fn create_swapchain(
         .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
         .pre_transform(caps.current_transform)
         .composite_alpha(composite_alpha)
-        .present_mode(vk::PresentModeKHR::PRESENT_MODE_FIFO_KHR)
+        .present_mode(vk::PresentModeKHR::FIFO)
         .clipped(true)
         .old_swapchain(vk::SwapchainKHR::null());
     Ok(device.create_swapchain_khr(&info, None)?)
 }
 
-fn clamp_extent(
-    caps: vk::SurfaceCapabilitiesKHR<'_>,
-    extent: vk::Extent2D<'static>,
-) -> vk::Extent2D<'static> {
+fn clamp_extent(caps: vk::SurfaceCapabilitiesKHR, extent: vk::Extent2D) -> vk::Extent2D {
     if caps.current_extent.width != u32::MAX {
         vk::Extent2D::default()
             .width(caps.current_extent.width)
@@ -792,24 +791,24 @@ fn clamp_extent(
     }
 }
 
-fn choose_composite_alpha(caps: vk::SurfaceCapabilitiesKHR<'_>) -> vk::CompositeAlphaFlagBitsKHR {
+fn choose_composite_alpha(caps: vk::SurfaceCapabilitiesKHR) -> vk::CompositeAlphaFlagBitsKHR {
     if caps
         .supported_composite_alpha
-        .contains(vk::CompositeAlphaFlagsKHR::OPAQUE_KHR)
+        .contains(vk::CompositeAlphaFlagsKHR::OPAQUE)
     {
-        vk::CompositeAlphaFlagBitsKHR::OPAQUE_KHR
+        vk::CompositeAlphaFlagBitsKHR::OPAQUE
     } else if caps
         .supported_composite_alpha
-        .contains(vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED_KHR)
+        .contains(vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED)
     {
-        vk::CompositeAlphaFlagBitsKHR::PRE_MULTIPLIED_KHR
+        vk::CompositeAlphaFlagBitsKHR::PRE_MULTIPLIED
     } else if caps
         .supported_composite_alpha
-        .contains(vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED_KHR)
+        .contains(vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED)
     {
-        vk::CompositeAlphaFlagBitsKHR::POST_MULTIPLIED_KHR
+        vk::CompositeAlphaFlagBitsKHR::POST_MULTIPLIED
     } else {
-        vk::CompositeAlphaFlagBitsKHR::INHERIT_KHR
+        vk::CompositeAlphaFlagBitsKHR::INHERIT
     }
 }
 
@@ -891,6 +890,7 @@ unsafe fn create_vertex_buffer(
         location: MemoryLocation::CpuToGpu,
         linear: true,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -933,6 +933,7 @@ unsafe fn create_vertex_buffer(
         location: MemoryLocation::GpuOnly,
         linear: true,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -994,14 +995,8 @@ unsafe fn create_pipeline(
     width: u32,
     height: u32,
 ) -> Result<vk::Pipeline> {
-    let vert = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/triangle.vert.spv")),
-    )?;
-    let frag = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/triangle.frag.spv")),
-    )?;
+    let vert = create_shader_module(device, include_bytes!("shaders/triangle.vert.spv"))?;
+    let frag = create_shader_module(device, include_bytes!("shaders/triangle.frag.spv"))?;
     let main = c"main";
     let stages = [
         vk::PipelineShaderStageCreateInfo::default()
