@@ -150,7 +150,7 @@ let info = vk::DeviceCreateInfo::default().push_next(&mut features); // 旧: 0x1
 
 ### テスト
 
-`crates/vulkan/tests/ui/fail/` に、抜け穴 1 つにつき 1 ファイルの compile-fail テストを置きました（18 個）。`ui/pass/live_borrows.rs` は、同じ形で寿命が足りている場合に通ることを確かめます。
+`crates/vulkan/tests/ui/fail/` に、抜け穴 1 つにつき 1 ファイルの compile-fail テストを置きました（20 個）。`ui/pass/live_borrows.rs` は、同じ形で寿命が足りている場合に通ることを確かめます。
 
 | ファイル | 確かめること |
 | --- | --- |
@@ -166,6 +166,7 @@ let info = vk::DeviceCreateInfo::default().push_next(&mut features); // 旧: 0x1
 | `p_next_member_borrow.rs` | chain に入れた構造体が指す先が、root より先に消える |
 | `p_next_output_read_while_chained.rs` | 出力用の chain に入れた構造体を、root が生きている間に読む |
 | `output_slice_read_while_borrowed.rs` | 出力用の配列を、構造体が生きている間に読む |
+| `descriptor_heap_source.rs`、`descriptor_heap_destination.rs` | descriptor heap への書き込み元（共用体と 2 段の構造体）と、書き込み先のメモリ |
 | `no_lifetime_erasure.rs`、`returned_from_function.rs` | 寿命を消して持ち出す方法がない |
 
 chain に入れられない構造体を `push_next` に渡す場合は、エラーメッセージが registry の内容に依存して変わるため、`lib.rs` の doctest（`compile_fail,E0277`）で確かめています。
@@ -191,10 +192,15 @@ TLSF で `VkDeviceMemory` を分割する allocator です。単体テストが 
 
 dma-buf の import は allocator を通りません。import するメモリは、相手が決めた大きさと配置を持つ専用の `VkDeviceMemory` で、`vkAllocateMemory` を直接呼びます。allocator と同じ device で併用できます（`examples/dmabuf-roundtrip` が、export 側を allocator で、import 側を直接の確保で行っています）。
 
+その後、hizukuri の方針（スクリプトの誤りで落ちない）に合わせて、次も変えました。
+
+- **確保が残ったまま `Allocator` を drop すると panic していた**。`log` crate に報告して続けるようにしました。明示的に全部を解放する `free_all` と、残っている確保の一覧 `live_allocations` を足しました。
+- `map` が返す guard が drop で unmap することが、文書から分からなかった（利用側が `unmap_memory` と二重に呼んだ）。crate の文書と README に書きました。
+
 残っている性質:
 
-- 確保が残ったまま `Allocator` を drop すると panic します。漏れの検出としては有効ですが、終了処理の途中で panic することになります。
 - 内部は `&mut self` で、スレッド間で共有するには利用側で `Mutex` に入れます。
+- 破棄の順序（資源、確保、allocator、device）は、型では保証しません（[design.md](design.md) の `vulkan-alloc` の節）。
 
 ## E. codegen の構造
 
@@ -224,7 +230,7 @@ dma-buf の import は allocator を通りません。import するメモリは�
 ## G. 文書、テスト、CI
 
 - 文書は README の版の規則と更新手順だけでした。`AGENTS.md`、設計の文書、crate の文書を足しました。
-- CI はありませんでした。`.github/workflows/ci.yml` を足しました。
+- CI はありませんでした。`.github/workflows/ci.yml` を足しました。初回の実行で、submodule の tag がない、`libwayland-dev` と `libvulkan-dev` がない、Rust の版がローカルと違う、の 3 点で失敗し、直しました。
 - 実際の Vulkan 実装を呼ぶテストはありませんでした（examples を手で動かすだけ）。lavapipe でも動く結合テストを足しました。
 - リポジトリ直下に example が出力した `*.ppm` が残る作りでした。出力先を `target/example-output/` に変えました。
 
@@ -234,7 +240,8 @@ dma-buf の import は allocator を通りません。import するメモリは�
 
 - `cargo fmt --check`、`cargo clippy --workspace --all-features --all-targets`、`cargo test --workspace --all-features` が通る。
 - C のヘッダとの照合が、SDK 1.4.350.1、1.4.357.0、1.4.363.0 の 3 つの版で通る。
-- 結合テスト（`crates/vulkan/tests/device.rs` の 10 個、`crates/vulkan-alloc/tests/device.rs` の 4 個）が、RADV と lavapipe で通る。validation layer（1.4.350）を有効にして、エラーが出ない。
+- 結合テスト（`crates/vulkan/tests/device.rs` の 11 個、`crates/vulkan-alloc/tests/device.rs` の 6 個）が、RADV と lavapipe で通る。validation layer（1.4.350）を有効にして、エラーが出ない。descriptor heap での描画を含む。
+- GitHub Actions の CI（Ubuntu 24.04、Mesa 25.2 の lavapipe、validation layer 1.3.275）が通る。
 - examples 8 個が RADV で動く。headless の 6 個は lavapipe でも動く。出力画像を目で確認した。validation layer のメッセージは出ない。
 - Wayland の 2 個が niri の上で動く（swapchain の作成、描画、present、リサイズなしで 120 フレーム）。
 - `VK_EXT_surface_maintenance1` による present mode の互換性の照会が、RADV と niri の組み合わせで結果を返す。
@@ -243,7 +250,7 @@ dma-buf の import は allocator を通りません。import するメモリは�
 
 - **ティアリング（`IMMEDIATE` / `FIFO_RELAXED`）と HDR（`HDR10_ST2084`、`VK_EXT_hdr_metadata`）での present**。niri の surface が `MAILBOX` と `FIFO`、`SRGB_NONLINEAR` と `PASS_THROUGH` しか提示しないため、選べなかった。コードは書いてあり、型と validation は通るが、実際の表示は見ていない。
 - **`VK_KHR_display` / `VK_EXT_acquire_drm_display` で画面を取得する経路**。DRM master が要る。Wayland session の中からは、display の列挙が 0 個を返すことだけ確かめた。
-- **GitHub Actions の workflow**。push していないので、GitHub の上では一度も動かしていない。YAML として読めることだけ確かめた。
+- **CI の上での descriptor heap**。CI の lavapipe（Mesa 25.2）は `VK_EXT_descriptor_heap` を持たないので、そのテストは CI では skip される。ローカルの RADV と lavapipe（Mesa 26.2）では通る。
 - **Linux x86_64 以外**。照合テストは実行した環境の ABI を見る。Windows、macOS、aarch64 では動かしていない。
 - **プラットフォーム固有の構造体の layout**（`VK_USE_PLATFORM_*`）。照合の対象外。
 - **Vulkan Video**。構造体の layout は照合したが、実際の decode / encode は動かしていない。

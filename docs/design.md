@@ -1,10 +1,15 @@
 # vulkan-rs の設計
 
-作り直した後の構成と、API の規則を説明します。作り直す前に何が問題だったかは [audit.md](audit.md) にあります。
+作り直した後の構成と、API の規則を説明します。
+
+- 作り直す前に何が問題だったか: [audit.md](audit.md)
+- スクリプトの誤りで落ちない層を、どこに、どう作るか: [safety-layer.md](safety-layer.md)
 
 ## 目的
 
 Khronos の Vulkan-Headers から生成する、pure Rust の Vulkan バインディングです。hizukuri（ゲームエンジン兼 Wayland compositor）の土台として使います。
+
+hizukuri は Vulkan 1.4 と `VK_EXT_descriptor_heap` を前提にします。vulkan-rs は registry の全てを生成するので、従来の descriptor set の API も残りますが、手書きの層、`vulkan-alloc`、結合テストは、descriptor set を前提にしていません（「descriptor heap」の節）。
 
 方針は 3 つです。
 
@@ -19,11 +24,13 @@ crates/
   vulkan/            バインディング本体
     src/lib.rs         Entry / Instance / Device（手書き）
     src/vk/mod.rs      プラットフォームの型、基本の型、trait（手書き）
+    src/vk/format.rs   vk::Format::info が返す型（手書き。表は生成物）
+    src/vk/extension.rs  vk::ExtensionInfo と依存の評価（手書き。表は生成物）
     src/vk/generated/  生成物
     tests/api.rs       API の形（Vulkan 実装なしで動く）
     tests/lifetime.rs  寿命の compile-fail テスト（trybuild、tests/ui/）
     tests/layout.rs    C のヘッダとの照合（tests/generated/ は生成物）
-    tests/device.rs    実際の Vulkan 実装での結合テスト
+    tests/device.rs    実際の Vulkan 実装での結合テスト（tests/shaders/ に SPIR-V）
   vulkan-alloc/      VkDeviceMemory の suballocator（TLSF）
   vulkan-registry/   registry の dump（vulkan-ir.json）と、その型
   vulkan-codegen/    generator
@@ -32,7 +39,8 @@ third_party/vulkan/  Vulkan-Headers（submodule、SDK タグに固定）
 tools/
   generate-vulkan        再生成
   update-vulkan-headers  新しい SDK タグへの更新
-  compile-shaders        examples の shader のコンパイル
+  compile-shaders        examples とテストの shader のコンパイル
+rust-toolchain.toml  Rust の版の固定（rustfmt の出力と trybuild の期待値を揃える）
 ```
 
 ## 生成の流れ
@@ -67,6 +75,7 @@ Python のスクリプトは `VulkanObject` を JSON に写すだけで、判断
 | `emit::basic` | 定数、ハンドル、列挙型、フラグ、関数ポインタ型、拡張名 |
 | `emit::structs` | 構造体と共用体、setter、ビットフィールド、`push_next` |
 | `emit::commands` | 関数ポインタ表と command の wrapper |
+| `emit::tables` | format の表（`Format::info`）と拡張の表（`EXTENSIONS`） |
 | `emit::layout` | C のヘッダとの照合に使う C のプログラムと Rust の表 |
 
 generator は、registry に知らない形が現れたら panic します。たとえば次の場合です。
@@ -75,6 +84,8 @@ generator は、registry に知らない形が現れたら panic します。た
 - `crates/vulkan/Cargo.toml` に feature がないプラットフォーム
 - 32 bit でないビットフィールド
 - 同じ Rust の名前になり、値が違う 2 つの定数
+- `<format>` の記述がない format、知らない数値形式
+- 括弧が合わない依存の式
 
 黙って誤ったコードを出すより、更新のときに止まって人（またはエージェント）が判断する方を選んでいます。
 
@@ -88,6 +99,7 @@ generator は、registry に知らない形が現れたら panic します。た
 | `VkResult` | `vk::VkResult`（`vk::Result<T>` は結果の型） |
 | `vkCreateBuffer` | `device.create_buffer(..)` と `device.create_buffer_raw(..)` |
 | `pQueueCreateInfos`（member） | field `p_queue_create_infos`、setter `queue_create_infos` |
+| `type`（member、引数） | `ty`（`vk::DescriptorPoolSize::default().ty(..)`） |
 | `VK_PRESENT_MODE_IMMEDIATE_KHR` | `vk::PresentModeKHR::IMMEDIATE` |
 | `VK_COLOR_SPACE_HDR10_ST2084_EXT` | `vk::ColorSpaceKHR::HDR10_ST2084_EXT` |
 | `VK_IMAGE_USAGE_SAMPLED_BIT` | `vk::ImageUsageFlags::SAMPLED`、`vk::ImageUsageFlagBits::SAMPLED` |
@@ -96,7 +108,11 @@ generator は、registry に知らない形が現れたら panic します。た
 | `VK_KHR_SWAPCHAIN_EXTENSION_NAME` | `vk::KHR_SWAPCHAIN_NAME`（`&CStr`） |
 | `VK_API_VERSION_1_3` | `vk::API_VERSION_1_3` |
 
-列挙値は、型名の接頭辞を取ります。型と同じ vendor tag は取り、違う tag は残します。フラグは `_BIT` も取ります。数字で始まる名前には `_` を付けます。拡張名の定数は C のマクロ名に従うので、`VK_EXT_swapchain_colorspace` は `vk::EXT_SWAPCHAIN_COLOR_SPACE_NAME` です。
+列挙値は、型名の接頭辞を取ります。型と同じ vendor tag は取り、違う tag は残します。フラグは `_BIT` も取ります。
+
+接頭辞を取った結果が数字で始まる名前（`VK_IMAGE_TYPE_2D`、`VK_SAMPLE_COUNT_1_BIT`）には、`_` を付けます（`vk::ImageType::_2D`）。`TYPE_2D` のような語を補う方式は採りませんでした。補う語を型ごとに決める必要があり、機械的な規則でなくなるためです。
+
+Rust の予約語と重なる名前のうち、`type` だけは `ty` にします。Vulkan に多く現れ、`r#type` と毎回書くのは煩わしいためです。ほかの予約語が現れた場合は `r#` を付けます（現在の registry にはありません）。拡張名の定数は C のマクロ名に従うので、`VK_EXT_swapchain_colorspace` は `vk::EXT_SWAPCHAIN_COLOR_SPACE_NAME` です。
 
 `FlagBits`（1 bit を表す型）と `Flags`（集合）は、C と同じく別の型です。`FlagBits | FlagBits` は `Flags` になり、`FlagBits` は `.into()` で `Flags` になります。
 
@@ -228,6 +244,77 @@ hizukuri は `features = ["wayland"]` を足します。`VK_KHR_display` や DRM
 
 ハンドル、構造体、`Entry` / `Instance` / `Device` は `Send + Sync` です。Vulkan の外部同期の規則（同じ `VkCommandPool` を 2 つのスレッドから同時に使わない、など）は、command を呼ぶ側の責任です。
 
+### format の情報
+
+C のヘッダには、format ごとの texel の大きさや plane の構成がありません。registry の `<formats>` から生成します。
+
+```rust
+let info = vk::Format::G8_B8R8_2PLANE_420_UNORM.info().unwrap();
+assert_eq!(info.plane_count(), 2);
+assert_eq!(info.planes[1].compatible, vk::Format::R8G8_UNORM);
+let chroma = info.plane_extent(1, vk::Extent2D { width: 1920, height: 1080 }); // 960x540
+let aspects = vk::Format::D24_UNORM_S8_UINT.info().unwrap().aspects();      // DEPTH | STENCIL
+```
+
+`FormatInfo` が持つのは、互換性の class、block の大きさと texel 数、block の範囲、pack の幅、chroma の間引き、圧縮の方式、component（名前、bit 数、数値形式、属する plane）、plane（幅と高さの除数、同じ配置を持つ単一 plane の format）です。`info` は `const fn` なので、定数の計算に使えます。`UNDEFINED` と、このバインディングが知らない値には `None` を返します。
+
+### 拡張の依存関係
+
+`vk::ExtensionInfo::get(name)` が、拡張の種類（instance か device か）、依存の式、昇格先を返します。`vk::EXTENSIONS` は、プラットフォームの feature に関係なく、全ての拡張を持ちます。
+
+```rust
+let heap = vk::ExtensionInfo::get(vk::EXT_DESCRIPTOR_HEAP_NAME).unwrap();
+// Vulkan 1.3 では VK_KHR_maintenance5 が要る。1.4 では不要。
+assert!(!heap.dependencies_met(vk::API_VERSION_1_3, |_| false));
+assert!(heap.dependencies_met(vk::API_VERSION_1_3, |name| name == vk::KHR_MAINTENANCE_5_NAME));
+assert!(heap.dependencies_met(vk::API_VERSION_1_4, |_| false));
+println!("{}", heap.depends.unwrap()); // registry の記法で表示する
+```
+
+- 式は `Dependency::{Version, Extension, All, Any}` の木です。registry の `depends` の文法（`+` が and、`,` が or、優先順位は同じで左結合）のとおりに解釈します。
+- 依存先の拡張が、使っている core の版に昇格済みなら、依存は満たされたものとします。仕様の一般則に従っています。
+- device の拡張が instance の拡張に依存することがあるので、`enabled` は両方の一覧について答える必要があります。
+- command や構造体が「どの拡張で提供されるか」は、doc comment にだけ出しています。表としては未生成です（[safety-layer.md](safety-layer.md) の 3.1）。
+
+### descriptor heap
+
+`VK_EXT_descriptor_heap` では、descriptor set layout、pipeline layout、descriptor pool、descriptor set がなくなります。
+
+- heap は、`DESCRIPTOR_HEAP_EXT` の usage を持つ buffer です。resource 用と sampler 用の 2 つを bind します。
+- descriptor は、`write_resource_descriptors_ext` / `write_sampler_descriptors_ext` が、ホストのメモリに書きます。書き込み先は `vk::HostAddressRangeEXT::default().address(&mut bytes)` で、スライスとして渡します。heap の外には書けません。
+- pipeline は `vk::PipelineCreateFlags2::DESCRIPTOR_HEAP_EXT` を付けて、layout なしで作ります。
+- shader は、heap の中の番号で資源を引きます。番号に descriptor の大きさ（`bufferDescriptorSize` など）を掛けたものが、heap の中の offset です。番号は `cmd_push_data_ext` などで渡します。
+- driver が使う範囲（`minResourceHeapReservedRange`）を、heap の中に確保して `BindHeapInfoEXT` で伝えます。
+
+動く例は 2 つあります。どちらも RADV と lavapipe（Mesa 26.2）で、validation layer のエラーなしに通ります。
+
+- `crates/vulkan/tests/device.rs` の `descriptor_heap_draws_through_resource_and_sampler_heaps`。texture、sampler、storage buffer を heap に書き、描画して、結果の画素を確かめます。最小の形です。
+- `examples/descriptor-heap-14`。複数の material と texture を、buffer の中の番号から間接的に引きます。
+
+descriptor set を前提にした部分の洗い出しの結果です。
+
+| 場所 | 結果 |
+| --- | --- |
+| `crates/vulkan` の手書きの層 | なし |
+| `vulkan-alloc` | なし。メモリの確保だけを扱う。heap 用の buffer は、`memory_allocate_flags: DEVICE_ADDRESS` を付けて普通に確保する |
+| generator | なし。特定の拡張に依存する処理はない |
+| 結合テスト | なし |
+| examples | `compute-buffer`、`mesh-shader`、`ray-tracing-pipeline` の 3 つが descriptor set を使う。バインディングの例としては動くが、hizukuri の手本にはしない |
+
+寿命の規則は、descriptor heap の構造体にもそのまま効きます。書き込み元（`ResourceDescriptorInfoEXT` → 共用体 → `ImageDescriptorInfoEXT` → `ImageViewCreateInfo`）と、書き込み先（`HostAddressRangeEXT`）のどちらにも compile-fail テストがあります。
+
+この作業で、生成の誤りを 1 つ直しました。`vkGetImageOpaqueCaptureDataEXT` は、書き込み先を示す `VkHostAddressRangeEXT` の配列を呼ぶ側が渡す command ですが、wrapper が配列を「出力」と判定して、null の範囲の `Vec` を返していました。ポインタを持つ構造体の配列は、出力として扱わないようにしました。
+
+## `vulkan-alloc`
+
+`VkDeviceMemory` を、TLSF で分割して使う allocator です。使い方と注意は、crate の文書（`crates/vulkan-alloc/src/lib.rs` の冒頭）にあります。設計上の決まりは次のとおりです。
+
+- **確保が残ったまま drop しても、panic しない**。残っている確保を、`AllocationCreateDesc::name` の名前つきで `log` crate の `error` に出し、その `VkDeviceMemory` は解放しません。まだ使われている buffer や image の裏にあるかもしれず、解放すると、漏れがドライバの中の use-after-free に変わるためです。メモリは device の破棄まで残ります。
+- **明示的に全部を解放するのは `Allocator::free_all`**。資源を破棄した後で呼びます。スクリプトを動かすホストの終了処理は、これを使います。`Allocator::live_allocations` で、残っている確保を一覧できます。
+- **`map` は guard を返す**。guard の drop が unmap です。`map_memory` / `unmap_memory` の組とは別の経路で、混ぜません。範囲外の指定で panic しない `try_byte_range` があります。
+- **破棄の順序は、型では保証しない**。`vulkan::Device` はハンドルと関数ポインタ表で、所有者ではありません。allocator が device の clone を持っていても、`destroy_device` を先に呼ぶことは防げません。順序（資源、確保、allocator、device）は呼ぶ側が守ります。allocator の drop は Vulkan を呼ばないので、device の破棄の後に drop しても害はありません。所有と破棄の順序を型で保証するのは、上に載せる層の役割です。
+- allocate flags が違う確保は、同じ `VkDeviceMemory` を共有しません。export するメモリ（`export_handle_types`）と dedicated の確保は、専用の `VkDeviceMemory` になります。import するメモリは扱いません。
+
 ## テスト
 
 | テスト | 確かめること | 必要なもの |
@@ -236,11 +323,15 @@ hizukuri は `features = ["wayland"]` を足します。`VK_KHR_display` や DRM
 | `tests/api.rs` | 生成された API の形と値 | なし |
 | `tests/lifetime.rs` | 寿命が足りないコードがコンパイルエラーになる | なし |
 | `tests/layout.rs` | 大きさ、offset、ビットフィールド、定数が C と一致する | submodule、C コンパイラ |
-| `tests/device.rs` | 実際の Vulkan 実装で動く。validation のエラーが出ない | Vulkan 1.3 の device |
+| `tests/device.rs` | 実際の Vulkan 実装で動く。validation のエラーが出ない。descriptor heap での描画を含む | Vulkan 1.3 の device |
 | `vulkan-alloc` の単体テスト | 分割と解放の処理 | なし |
-| `vulkan-alloc/tests/device.rs` | block の共有の規則、export | Vulkan 1.2 の device |
+| `vulkan-alloc/tests/device.rs` | block の共有の規則、export、残った確保の報告、`free_all` | Vulkan 1.2 の device |
 
 `layout.rs` と `device.rs` は、必要なものがなければ skip します。`VULKAN_RS_REQUIRE_LAYOUT_TEST` と `VULKAN_RS_REQUIRE_DEVICE_TEST` を設定すると、skip せずに失敗します。CI は両方を設定します。
+
+結合テストは、ドライバが対応していない拡張のテストを、個別に skip します。CI（Ubuntu 24.04、Mesa 25.2 の lavapipe）では、何が skip されたかを job の summary に出します。descriptor heap のテストは、Mesa 26 以降の lavapipe で動きます。
+
+Rust の版は `rust-toolchain.toml` で固定しています。生成物の整形（rustfmt）と、compile-fail テストが照合するコンパイラのメッセージが、版によって変わるためです。上げるときは、`./tools/generate-vulkan` と `TRYBUILD=overwrite cargo test -p vulkan --test lifetime` をやり直し、差分を確かめます。
 
 lavapipe で動かすには、ICD を指定します。
 
@@ -285,10 +376,9 @@ cargo test --workspace --all-features
 
 ## 残っている課題
 
-- **format の情報**。registry は、format ごとの block の大きさ、plane の数、component の bit 数を持っています。compositor は dma-buf の format を扱うときにこれが要ります。`vk::Format` に method として生やせます。
-- **拡張の依存関係**。registry の `depends` を使えば、「この拡張を有効にするには何が要るか」を定数として出せます。
-- **`VK_KHR_display` で画面を取得する経路の実機確認**。DRM master が要るので、TTY から動かす example が必要です。
+- **registry の表の追加**。command ごとの要件（拡張、version、queue の種類、render の内外）、列挙値が既知かどうか、SPIR-V の capability の表、`externsync` の表。検査の層が必要とするものから足します（[safety-layer.md](safety-layer.md) の 3.1）。
+- **descriptor set を使う examples の扱い**。`compute-buffer`、`mesh-shader`、`ray-tracing-pipeline` を descriptor heap に書き直すか、消すか。
 - **ティアリングと HDR の実機確認**。対応する compositor の上で、`examples/wayland-dynamic-rendering` を動かして確かめます。hizukuri 自身が compositor になれば、そこで確かめられます。
 - **Linux x86_64 以外での照合**。`layout.rs` は実行した環境の ABI を見るので、CI に aarch64 や Windows を足せば、そのまま照合できます。
 - **プラットフォーム固有の構造体の照合**。プラットフォームのヘッダが要ります。Wayland だけなら、`wayland-client.h` がある環境で足せます。
-- **`vulkan-alloc` の drop 時の panic**。確保が残ったまま drop すると panic します。ログに出して続ける選択肢を検討します。
+- **`VK_KHR_display` で画面を取得する経路**。hizukuri は DRM/KMS を直接扱うので、example は作りません。バインディングとしては、signature の確認と、列挙が動くことまでを確かめています。
