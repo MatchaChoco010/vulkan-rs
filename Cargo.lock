@@ -1304,6 +1304,7 @@ dependencies = [
 name = "vulkan-alloc"
 version = "0.3.0+vulkan-sdk-1.4.363.0"
 dependencies = [
+ "log",
  "vulkan",
 ]
 
