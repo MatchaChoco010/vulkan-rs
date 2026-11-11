@@ -52,6 +52,18 @@ fn main() {
     let count = list.drm_format_modifier_count as usize;
     let _written = &modifiers[..count.min(modifiers.len())];
 
+    // Descriptor heap: what is written, and where to.
+    let view = vk::ImageViewCreateInfo::default();
+    let image_descriptor = vk::ImageDescriptorInfoEXT::default().view(&view);
+    let _descriptor = vk::ResourceDescriptorInfoEXT::default()
+        .ty(vk::DescriptorType::SAMPLED_IMAGE)
+        .data(vk::ResourceDescriptorDataEXT::image(&image_descriptor));
+    let mut heap_bytes = [0u8; 64];
+    let _destination = vk::HostAddressRangeEXT::default().address(&mut heap_bytes);
+    let push = [0u8; 16];
+    let _push_data = vk::PushDataInfoEXT::default()
+        .data(vk::HostAddressRangeConstEXT::default().address(&push));
+
     // Structs without pointers have no lifetime and can be stored anywhere.
     static EXTENT: vk::Extent2D = vk::Extent2D {
         width: 1,
