@@ -375,3 +375,60 @@ fn wayland_surface_takes_raw_display_and_surface() {
     assert_eq!(info.display, display);
     let _ = Instance::create_wayland_surface_khr;
 }
+
+/// Direct-to-display output (DRM/KMS). Acquiring a display needs DRM master, so only
+/// the shapes are checked here.
+#[test]
+fn display_commands_have_expected_signatures() {
+    type AcquireDrmDisplay =
+        unsafe fn(&Instance, vk::PhysicalDevice, i32, vk::DisplayKHR) -> vk::Result<()>;
+    type GetDrmDisplay =
+        unsafe fn(&Instance, vk::PhysicalDevice, i32, u32) -> vk::Result<vk::DisplayKHR>;
+    type CreateDisplayPlaneSurface = unsafe fn(
+        &Instance,
+        &vk::DisplaySurfaceCreateInfoKHR<'_>,
+        Option<&vk::AllocationCallbacks<'_>>,
+    ) -> vk::Result<vk::SurfaceKHR>;
+    type GetDisplays = unsafe fn(
+        &Instance,
+        vk::PhysicalDevice,
+    ) -> vk::Result<Vec<vk::DisplayPropertiesKHR<'static>>>;
+
+    let _: AcquireDrmDisplay = Instance::acquire_drm_display_ext;
+    let _: GetDrmDisplay = Instance::get_drm_display_ext;
+    let _: CreateDisplayPlaneSurface = Instance::create_display_plane_surface_khr;
+    let _: GetDisplays = Instance::get_physical_device_display_properties_khr;
+}
+
+/// Present mode switching and tearing control without recreating the swapchain.
+#[test]
+fn swapchain_maintenance_structs_chain_into_swapchain_and_present() {
+    let modes = [
+        vk::PresentModeKHR::FIFO,
+        vk::PresentModeKHR::FIFO_RELAXED,
+        vk::PresentModeKHR::IMMEDIATE,
+    ];
+    let mut compatible = vk::SwapchainPresentModesCreateInfoKHR::default().present_modes(&modes);
+    let swapchain = vk::SwapchainCreateInfoKHR::default()
+        .present_mode(vk::PresentModeKHR::FIFO)
+        .image_color_space(vk::ColorSpaceKHR::HDR10_ST2084_EXT)
+        .push_next(&mut compatible);
+    assert!(!swapchain.p_next.is_null());
+    assert_eq!(compatible.present_mode_count, 3);
+
+    let per_present = [vk::PresentModeKHR::IMMEDIATE];
+    let mut mode_info = vk::SwapchainPresentModeInfoKHR::default().present_modes(&per_present);
+    let swapchains = [vk::SwapchainKHR::null()];
+    let indices = [0];
+    let present = vk::PresentInfoKHR::default()
+        .swapchains(&swapchains)
+        .image_indices(&indices)
+        .push_next(&mut mode_info);
+    assert_eq!(present.swapchain_count, 1);
+
+    // The EXT names are aliases of the promoted KHR types.
+    let _: vk::SwapchainPresentModesCreateInfoEXT<'_> =
+        vk::SwapchainPresentModesCreateInfoKHR::default();
+    let _ = Device::set_hdr_metadata_ext;
+    let _ = Device::release_swapchain_images_khr;
+}

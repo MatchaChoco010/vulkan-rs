@@ -1,3 +1,17 @@
+//! A triangle on a Wayland surface with dynamic rendering.
+//!
+//! The swapchain parameters a compositor or an HDR-aware client cares about can be
+//! chosen from the environment. The surface's support for each is printed at startup.
+//!
+//! - `VULKAN_EXAMPLE_PRESENT_MODE`: `fifo` (default), `fifo_relaxed`, `immediate`
+//!   (tearing) or `mailbox`.
+//! - `VULKAN_EXAMPLE_COLOR_SPACE`: `srgb` (default), `hdr10` (BT.2020 PQ, with
+//!   `VK_EXT_hdr_metadata` when available) or `scrgb` (extended linear sRGB).
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames.
+//!
+//! The shader always writes the same values, so the triangle is only colorimetrically
+//! right in `srgb`. The point of the other modes is the swapchain setup.
+
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use anyhow::{Result, anyhow};
@@ -207,6 +221,9 @@ struct App {
     image_views: Vec<vk::ImageView>,
     image_layouts: Vec<vk::ImageLayout>,
     surface_format: vk::Format,
+    present_mode: vk::PresentModeKHR,
+    /// `VK_EXT_hdr_metadata` is enabled on the device.
+    hdr_metadata: bool,
     command_pool: vk::CommandPool,
     command_buffer: vk::CommandBuffer,
     image_available: vk::Semaphore,
@@ -226,9 +243,21 @@ impl App {
     ) -> Result<Self> {
         let entry = Entry::load()?;
         let mut instance_extensions = vec![vk::KHR_SURFACE_NAME, vk::KHR_WAYLAND_SURFACE_NAME];
-        if has_instance_extension(&entry, vk::EXT_DEBUG_UTILS_NAME)? {
-            instance_extensions.push(vk::EXT_DEBUG_UTILS_NAME);
+        // Optional instance extensions: debug messages, color spaces beyond sRGB, and
+        // the queries that tell which present modes a swapchain can switch between.
+        for optional in [
+            vk::EXT_DEBUG_UTILS_NAME,
+            vk::EXT_SWAPCHAIN_COLOR_SPACE_NAME,
+            vk::KHR_GET_SURFACE_CAPABILITIES_2_NAME,
+            vk::EXT_SURFACE_MAINTENANCE_1_NAME,
+        ] {
+            if has_instance_extension(&entry, optional)? {
+                instance_extensions.push(optional);
+            }
         }
+        let surface_maintenance = instance_extensions
+            .contains(&vk::KHR_GET_SURFACE_CAPABILITIES_2_NAME)
+            && instance_extensions.contains(&vk::EXT_SURFACE_MAINTENANCE_1_NAME);
         let debug_utils_enabled = instance_extensions.contains(&vk::EXT_DEBUG_UTILS_NAME);
         let instance = create_instance(&entry, &instance_extensions)?;
         let debug_messenger = create_debug_messenger(&instance, debug_utils_enabled)?;
@@ -238,8 +267,17 @@ impl App {
             .surface(wl_surface);
         let surface = instance.create_wayland_surface_khr(&surface_info, None)?;
 
-        let device_extensions = [vk::KHR_SWAPCHAIN_NAME];
-        let selection = pick_physical_device(&instance, surface, &device_extensions)?;
+        let required_extensions = [vk::KHR_SWAPCHAIN_NAME];
+        let selection = pick_physical_device(&instance, surface, &required_extensions)?;
+        let mut device_extensions = required_extensions.to_vec();
+        let hdr_metadata = device_supports_extensions(
+            &instance,
+            selection.physical_device,
+            &[vk::EXT_HDR_METADATA_NAME],
+        )?;
+        if hdr_metadata {
+            device_extensions.push(vk::EXT_HDR_METADATA_NAME);
+        }
         let (device, queue) = create_device_and_queue(
             &instance,
             selection.physical_device,
@@ -254,8 +292,19 @@ impl App {
             AllocatorCreateDesc::new(&device, memory_properties, physical_properties);
         let mut allocator = Allocator::new(allocator_desc);
 
+        print_surface_support(
+            &instance,
+            selection.physical_device,
+            surface,
+            surface_maintenance,
+        )?;
         let caps = surface_capabilities(&instance, selection.physical_device, surface)?;
         let surface_format = choose_surface_format(&instance, selection.physical_device, surface)?;
+        let present_mode = choose_present_mode(&instance, selection.physical_device, surface)?;
+        println!(
+            "swapchain: {:?} / {:?}, present mode {:?}",
+            surface_format.format, surface_format.color_space, present_mode
+        );
         let requested_extent = if caps.current_extent.width != u32::MAX {
             vk::Extent2D::default()
                 .width(caps.current_extent.width)
@@ -265,7 +314,11 @@ impl App {
         };
         let extent = clamp_extent(caps, requested_extent);
 
-        let swapchain = create_swapchain(&device, surface, caps, surface_format, extent)?;
+        let swapchain =
+            create_swapchain(&device, surface, caps, surface_format, present_mode, extent)?;
+        if hdr_metadata {
+            set_hdr_metadata(&device, swapchain, surface_format.color_space);
+        }
         let images = swapchain_images(&device, swapchain)?;
         let image_views = images
             .iter()
@@ -305,6 +358,8 @@ impl App {
             image_views,
             image_layouts,
             surface_format: surface_format.format,
+            present_mode,
+            hdr_metadata,
             command_pool,
             command_buffer,
             image_available,
@@ -462,8 +517,17 @@ impl App {
         };
         let extent = clamp_extent(caps, requested_extent);
 
-        self.swapchain =
-            create_swapchain(&self.device, self.surface, caps, surface_format, extent)?;
+        self.swapchain = create_swapchain(
+            &self.device,
+            self.surface,
+            caps,
+            surface_format,
+            self.present_mode,
+            extent,
+        )?;
+        if self.hdr_metadata {
+            set_hdr_metadata(&self.device, self.swapchain, surface_format.color_space);
+        }
         self.images = swapchain_images(&self.device, self.swapchain)?;
         self.image_views = self
             .images
@@ -728,17 +792,151 @@ unsafe fn surface_capabilities(
     Ok(instance.get_physical_device_surface_capabilities_khr(physical_device, surface)?)
 }
 
+/// The format and color space for the swapchain, following `VULKAN_EXAMPLE_COLOR_SPACE`.
+/// Falls back to 8-bit sRGB when the surface does not offer the requested one.
 unsafe fn choose_surface_format(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
     surface: vk::SurfaceKHR,
 ) -> Result<vk::SurfaceFormatKHR> {
     let formats = instance.get_physical_device_surface_formats_khr(physical_device, surface)?;
-    Ok(formats
-        .iter()
-        .copied()
-        .find(|f| f.format == vk::Format::B8G8R8A8_UNORM)
-        .unwrap_or_else(|| formats[0]))
+    let wanted = std::env::var("VULKAN_EXAMPLE_COLOR_SPACE").unwrap_or_default();
+    let find = |color_space: vk::ColorSpaceKHR, candidates: &[vk::Format]| {
+        candidates.iter().find_map(|&format| {
+            formats
+                .iter()
+                .copied()
+                .find(|f| f.format == format && f.color_space == color_space)
+        })
+    };
+    let chosen = match wanted.as_str() {
+        // BT.2020 primaries with the PQ transfer function; needs 10 bits or more.
+        "hdr10" => find(
+            vk::ColorSpaceKHR::HDR10_ST2084_EXT,
+            &[
+                vk::Format::A2B10G10R10_UNORM_PACK32,
+                vk::Format::A2R10G10B10_UNORM_PACK32,
+                vk::Format::R16G16B16A16_SFLOAT,
+            ],
+        ),
+        // sRGB primaries, linear, values outside [0, 1] allowed.
+        "scrgb" => find(
+            vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+            &[vk::Format::R16G16B16A16_SFLOAT],
+        ),
+        _ => None,
+    };
+    if chosen.is_none() && !matches!(wanted.as_str(), "" | "srgb") {
+        println!("color space `{wanted}` is not offered by the surface; using sRGB");
+    }
+    Ok(chosen
+        .or_else(|| {
+            find(
+                vk::ColorSpaceKHR::SRGB_NONLINEAR,
+                &[vk::Format::B8G8R8A8_UNORM, vk::Format::R8G8B8A8_UNORM],
+            )
+        })
+        .unwrap_or(formats[0]))
+}
+
+/// The present mode for the swapchain, following `VULKAN_EXAMPLE_PRESENT_MODE`.
+///
+/// `IMMEDIATE` presents without waiting for vertical blank and may tear; `FIFO_RELAXED`
+/// tears only when a frame is late. `FIFO` is the only mode every surface supports.
+unsafe fn choose_present_mode(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+    surface: vk::SurfaceKHR,
+) -> Result<vk::PresentModeKHR> {
+    let supported =
+        instance.get_physical_device_surface_present_modes_khr(physical_device, surface)?;
+    let wanted = match std::env::var("VULKAN_EXAMPLE_PRESENT_MODE")
+        .unwrap_or_default()
+        .as_str()
+    {
+        "immediate" => vk::PresentModeKHR::IMMEDIATE,
+        "fifo_relaxed" => vk::PresentModeKHR::FIFO_RELAXED,
+        "mailbox" => vk::PresentModeKHR::MAILBOX,
+        _ => vk::PresentModeKHR::FIFO,
+    };
+    if supported.contains(&wanted) {
+        Ok(wanted)
+    } else {
+        println!("present mode {wanted:?} is not supported by the surface; using FIFO");
+        Ok(vk::PresentModeKHR::FIFO)
+    }
+}
+
+/// Prints what the surface offers: formats with color spaces, present modes, and, with
+/// `VK_EXT_surface_maintenance1`, which present modes a swapchain can switch between
+/// without being recreated.
+unsafe fn print_surface_support(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+    surface: vk::SurfaceKHR,
+    surface_maintenance: bool,
+) -> Result<()> {
+    println!("surface formats:");
+    for format in instance.get_physical_device_surface_formats_khr(physical_device, surface)? {
+        println!("  {:?} / {:?}", format.format, format.color_space);
+    }
+    let present_modes =
+        instance.get_physical_device_surface_present_modes_khr(physical_device, surface)?;
+    println!("present modes: {present_modes:?}");
+
+    if surface_maintenance {
+        for &mode in &present_modes {
+            // The two-call idiom inside a pNext struct: first the count, then the array.
+            let mut query = vk::SurfacePresentModeEXT::default().present_mode(mode);
+            let surface_info = vk::PhysicalDeviceSurfaceInfo2KHR::default()
+                .surface(surface)
+                .push_next(&mut query);
+            let mut compatibility = vk::SurfacePresentModeCompatibilityEXT::default();
+            let mut caps = vk::SurfaceCapabilities2KHR::default().push_next(&mut compatibility);
+            instance.get_physical_device_surface_capabilities2_khr(
+                physical_device,
+                &surface_info,
+                &mut caps,
+            )?;
+            let mut compatible =
+                vec![vk::PresentModeKHR::default(); compatibility.present_mode_count as usize];
+            let mut compatibility =
+                vk::SurfacePresentModeCompatibilityEXT::default().present_modes(&mut compatible);
+            let mut caps = vk::SurfaceCapabilities2KHR::default().push_next(&mut compatibility);
+            instance.get_physical_device_surface_capabilities2_khr(
+                physical_device,
+                &surface_info,
+                &mut caps,
+            )?;
+            let written = compatibility.present_mode_count as usize;
+            println!("  {mode:?} can switch to {:?}", &compatible[..written]);
+        }
+    }
+    Ok(())
+}
+
+/// Describes the mastering display to the compositor when the swapchain is HDR10.
+unsafe fn set_hdr_metadata(
+    device: &Device,
+    swapchain: vk::SwapchainKHR,
+    color_space: vk::ColorSpaceKHR,
+) {
+    if color_space != vk::ColorSpaceKHR::HDR10_ST2084_EXT {
+        return;
+    }
+    let xy = |x: f32, y: f32| vk::XYColorEXT { x, y };
+    // BT.2020 primaries, D65 white, a 1000 cd/m2 mastering display.
+    let metadata = vk::HdrMetadataEXT::default()
+        .display_primary_red(xy(0.708, 0.292))
+        .display_primary_green(xy(0.170, 0.797))
+        .display_primary_blue(xy(0.131, 0.046))
+        .white_point(xy(0.3127, 0.3290))
+        .max_luminance(1000.0)
+        .min_luminance(0.001)
+        .max_content_light_level(1000.0)
+        .max_frame_average_light_level(400.0);
+    device.set_hdr_metadata_ext(&[swapchain], &[metadata]);
+    println!("set HDR10 metadata");
 }
 
 unsafe fn create_swapchain(
@@ -746,6 +944,7 @@ unsafe fn create_swapchain(
     surface: vk::SurfaceKHR,
     caps: vk::SurfaceCapabilitiesKHR,
     surface_format: vk::SurfaceFormatKHR,
+    present_mode: vk::PresentModeKHR,
     extent: vk::Extent2D,
 ) -> Result<vk::SwapchainKHR> {
     let mut image_count = caps.min_image_count + 1;
@@ -765,7 +964,7 @@ unsafe fn create_swapchain(
         .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
         .pre_transform(caps.current_transform)
         .composite_alpha(composite_alpha)
-        .present_mode(vk::PresentModeKHR::FIFO)
+        .present_mode(present_mode)
         .clipped(true)
         .old_swapchain(vk::SwapchainKHR::null());
     Ok(device.create_swapchain_khr(&info, None)?)

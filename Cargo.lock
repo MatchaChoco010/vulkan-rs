@@ -1336,6 +1336,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vulkan-dmabuf-roundtrip"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "vulkan",
+ "vulkan-alloc",
+]
+
+[[package]]
 name = "vulkan-headless-triangle"
 version = "0.0.0"
 dependencies = [
