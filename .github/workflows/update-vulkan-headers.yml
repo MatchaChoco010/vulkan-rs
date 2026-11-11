@@ -36,7 +36,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             libvulkan1 mesa-vulkan-drivers vulkan-validationlayers \
-            pkg-config libwayland-dev libxkbcommon-dev
+            libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
 
       # The version, profile and components come from rust-toolchain.toml.
       - name: Install Rust
