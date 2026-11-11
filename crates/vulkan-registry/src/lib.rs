@@ -118,7 +118,6 @@ pub struct FlagField {
     pub aliases: Vec<String>,
     pub value: String,
     pub protect: Option<String>,
-    pub multi_bit: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -154,8 +153,6 @@ pub struct Struct {
     pub s_type: Option<String>,
     /// Structs whose `pNext` chain may contain this struct.
     pub extends: Vec<String>,
-    pub allow_duplicate: bool,
-    pub returned_only: bool,
     pub members: Vec<Field>,
     pub protect: Option<String>,
     pub extensions: Vec<String>,
@@ -180,13 +177,9 @@ pub struct Field {
     pub len: Option<String>,
     pub null_terminated: bool,
     pub fixed_size_array: Vec<String>,
-    pub object_type: Option<String>,
+    /// Width of a C bit-field member. Always `None` for command parameters.
     #[serde(default)]
     pub bit_field_width: Option<u32>,
-    #[serde(default)]
-    pub selector: Option<String>,
-    #[serde(default)]
-    pub selection: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -216,13 +209,7 @@ pub struct Extension {
     pub spec_version: u32,
     pub instance: bool,
     pub device: bool,
-    pub depends: Option<String>,
-    pub platform: Option<String>,
     pub protect: Option<String>,
-    pub provisional: bool,
-    pub promoted_to: Option<String>,
-    pub deprecated_by: Option<String>,
-    pub obsoleted_by: Option<String>,
 }
 
 #[cfg(test)]

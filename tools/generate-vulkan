@@ -4,8 +4,10 @@
 Pipeline:
 
 1. Load the registry (`vk.xml` + `video.xml`) through Khronos' own `VulkanObject`
-   abstraction and dump it, unmodified, to `crates/vulkan-registry/vulkan-ir.json`.
-   All Rust naming and shaping decisions live in `vulkan-codegen`, not here.
+   abstraction and dump the parts the generator uses, unmodified, to
+   `crates/vulkan-registry/vulkan-ir.json`. All Rust naming and shaping decisions live
+   in `vulkan-codegen`, not here. Only attributes that the generator reads are dumped:
+   every extra one is one more way for a Vulkan-Headers update to break this script.
 2. Run `vulkan-codegen`, which writes the generated sources and test tables.
 3. Format the generated Rust with rustfmt.
 
@@ -206,7 +208,6 @@ def build_ir(vk, allow_non_sdk_tag: bool):
                         "aliases": sorted(f.aliases),
                         "value": str(f.value),
                         "protect": f.protect,
-                        "multi_bit": f.multiBit,
                     }
                     for f in sorted(b.flags, key=lambda x: (x.value, x.name))
                 ],
@@ -239,8 +240,6 @@ def build_ir(vk, allow_non_sdk_tag: bool):
                 "union": s.union,
                 "s_type": s.sType,
                 "extends": sorted(s.extends),
-                "allow_duplicate": s.allowDuplicate,
-                "returned_only": s.returnedOnly,
                 "protect": effective_protect(vk, s),
                 "extensions": list(s.extensions),
                 "version": s.version.name if s.version is not None else None,
@@ -273,13 +272,7 @@ def build_ir(vk, allow_non_sdk_tag: bool):
                 "spec_version": e.specVersionValue,
                 "instance": e.instance,
                 "device": e.device,
-                "depends": e.depends,
-                "platform": e.platform,
                 "protect": e.protect,
-                "provisional": e.provisional,
-                "promoted_to": e.promotedTo,
-                "deprecated_by": e.deprecatedBy,
-                "obsoleted_by": e.obsoletedBy,
             }
             for e in sorted(vk.extensions.values(), key=lambda x: x.name)
         ],
@@ -298,15 +291,12 @@ def param_ir(p):
         "len": p.length,
         "null_terminated": p.nullTerminated,
         "fixed_size_array": list(p.fixedSizeArray),
-        "object_type": p.objectType,
     }
 
 
 def member_ir(m):
     ir = param_ir(m)
     ir["bit_field_width"] = m.bitFieldWidth
-    ir["selector"] = m.selector
-    ir["selection"] = list(m.selection)
     return ir
 
 
