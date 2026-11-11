@@ -1,18 +1,27 @@
 [package]
 name = "vulkan"
-version = "0.2.0+vulkan-sdk-1.4.350.0"
+description = "Pure Rust Vulkan bindings generated from Khronos Vulkan-Headers"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
 
 [features]
-default = ["alloc"]
-alloc = []
-std = ["alloc", "dep:libloading"]
+default = ["std", "debug"]
+# Load the Vulkan loader at runtime (`Entry::load`). Without it the crate is `no_std` + `alloc`.
+std = ["dep:libloading"]
+# Link the Vulkan loader at build time (`Entry::linked`).
 linked = []
-android = []
+# Derive `Debug` for structs. Enums, flags and handles always implement `Debug`.
+debug = []
+
+# Provisional extensions (`VK_ENABLE_BETA_EXTENSIONS`).
 beta = []
+
+# Platform window system integration (`VK_USE_PLATFORM_*`). Each name is the registry's
+# platform name; `tools/generate-vulkan` fails if the registry gains one that is missing here.
+android = []
 directfb = []
 fuchsia = []
 ggp = []
@@ -20,9 +29,8 @@ ios = []
 macos = []
 metal = []
 ohos = []
-rdma = []
-screen = []
 sci = []
+screen = []
 ubm = []
 vi = []
 wayland = []
@@ -31,8 +39,11 @@ xcb = []
 xlib = []
 xlib-xrandr = ["xlib"]
 
+[dependencies]
+libloading = { version = "0.8", optional = true }
+
 [dev-dependencies]
 trybuild = "1"
 
-[dependencies]
-libloading = { version = "0.8", optional = true }
+[package.metadata.docs.rs]
+all-features = true

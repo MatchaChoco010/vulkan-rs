@@ -259,10 +259,10 @@ fn main() -> Result<()> {
         );
 
         let color_to_attachment = vk::ImageMemoryBarrier2::default()
-            .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_NONE)
+            .src_stage_mask(vk::PipelineStageFlags2::NONE)
             .src_access_mask(vk::AccessFlags2::empty())
-            .dst_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT)
-            .dst_access_mask(vk::AccessFlags2::ACCESS_2_COLOR_ATTACHMENT_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
             .old_layout(vk::ImageLayout::UNDEFINED)
             .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .image(color.image)
@@ -270,15 +270,15 @@ fn main() -> Result<()> {
         cmd_image_barrier(&device, command_buffer, color_to_attachment);
 
         let depth_to_attachment = vk::ImageMemoryBarrier2::default()
-            .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_NONE)
+            .src_stage_mask(vk::PipelineStageFlags2::NONE)
             .src_access_mask(vk::AccessFlags2::empty())
             .dst_stage_mask(
-                vk::PipelineStageFlags2::PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS
-                    | vk::PipelineStageFlags2::PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS,
+                vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
+                    | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
             )
             .dst_access_mask(
-                vk::AccessFlags2::ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ
-                    | vk::AccessFlags2::ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE,
+                vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ
+                    | vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
             )
             .old_layout(vk::ImageLayout::UNDEFINED)
             .new_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
@@ -315,7 +315,7 @@ fn main() -> Result<()> {
         device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
         let vertex_buffers = [vertex_buffer.buffer, instance_buffer.buffer];
         let vertex_offsets = [0_u64, 0_u64];
-        device.cmd_bind_vertex_buffers(command_buffer, 0, Some(&vertex_buffers), &vertex_offsets);
+        device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &vertex_offsets);
         device.cmd_bind_index_buffer(
             command_buffer,
             index_buffer.buffer,
@@ -350,10 +350,10 @@ fn main() -> Result<()> {
         device.cmd_end_rendering(command_buffer);
 
         let color_to_copy_src = vk::ImageMemoryBarrier2::default()
-            .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT)
-            .src_access_mask(vk::AccessFlags2::ACCESS_2_COLOR_ATTACHMENT_WRITE)
-            .dst_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_COPY)
-            .dst_access_mask(vk::AccessFlags2::ACCESS_2_TRANSFER_READ)
+            .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags2::COPY)
+            .dst_access_mask(vk::AccessFlags2::TRANSFER_READ)
             .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .image(color.image)
@@ -362,10 +362,10 @@ fn main() -> Result<()> {
         copy_image_to_buffer(&device, command_buffer, color.image, readback.buffer);
 
         let readback_barrier = vk::BufferMemoryBarrier2::default()
-            .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_COPY)
-            .src_access_mask(vk::AccessFlags2::ACCESS_2_TRANSFER_WRITE)
-            .dst_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_HOST)
-            .dst_access_mask(vk::AccessFlags2::ACCESS_2_HOST_READ)
+            .src_stage_mask(vk::PipelineStageFlags2::COPY)
+            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags2::HOST)
+            .dst_access_mask(vk::AccessFlags2::HOST_READ)
             .buffer(readback.buffer)
             .offset(0)
             .size(readback.size);
@@ -383,7 +383,7 @@ fn main() -> Result<()> {
         verify_and_write_ppm(
             &mut allocator,
             &readback.allocation,
-            "descriptor_heap_spheres.ppm",
+            &output_path("descriptor_heap_spheres.ppm"),
         )?;
 
         device.destroy_pipeline(pipeline, None);
@@ -409,7 +409,10 @@ fn main() -> Result<()> {
         instance.destroy_instance(None);
     }
 
-    println!("wrote descriptor_heap_spheres.ppm");
+    println!(
+        "wrote {}",
+        output_path("descriptor_heap_spheres.ppm").display()
+    );
     Ok(())
 }
 
@@ -418,11 +421,11 @@ unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instanc
     let enabled_layers = validation_layers(entry)?;
     let enabled_layer_names = enabled_layers
         .iter()
-        .map(|layer| layer.as_ptr())
+        .map(|layer| vk::CStrPtr::new(layer))
         .collect::<Vec<_>>();
     let extension_names = extensions
         .iter()
-        .map(|extension| extension.as_ptr())
+        .map(|extension| vk::CStrPtr::new(extension))
         .collect::<Vec<_>>();
     let app_info = vk::ApplicationInfo::default()
         .application_name(app_name.as_c_str())
@@ -439,7 +442,7 @@ unsafe fn has_instance_extension(entry: &Entry, name: &CStr) -> Result<bool> {
     Ok(entry
         .enumerate_instance_extension_properties(None)?
         .iter()
-        .any(|extension| CStr::from_ptr(extension.extension_name.as_ptr()) == name))
+        .any(|extension| extension.extension_name_as_c_str() == Ok(name)))
 }
 
 unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
@@ -447,11 +450,13 @@ unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
     let available = entry.enumerate_instance_layer_properties()?;
     let has_validation = available
         .iter()
-        .any(|layer| CStr::from_ptr(layer.layer_name.as_ptr()) == validation);
+        .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
     if has_validation {
         Ok(vec![validation])
     } else {
-        Err(anyhow!("VK_LAYER_KHRONOS_validation is required for this example"))
+        Err(anyhow!(
+            "VK_LAYER_KHRONOS_validation is required for this example"
+        ))
     }
 }
 
@@ -468,9 +473,9 @@ unsafe fn create_debug_messenger(
                 | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )
         .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE_EXT,
+            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
         )
         .pfn_user_callback(Some(vulkan_debug_callback));
     Ok(instance.create_debug_utils_messenger_ext(&info, None)?)
@@ -535,8 +540,7 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
             instance.get_physical_device_properties2(physical_device, &mut properties2);
         }
 
-        let queue_families =
-            instance.get_physical_device_queue_family_properties(physical_device)?;
+        let queue_families = instance.get_physical_device_queue_family_properties(physical_device);
         let Some(queue_family) = queue_families
             .iter()
             .position(|p| p.queue_flags.contains(vk::QueueFlags::GRAPHICS))
@@ -576,8 +580,8 @@ unsafe fn create_device_and_queue(
         .queue_family_index(queue_family)
         .queue_priorities(&priorities)];
     let extension_names = [
-        vk::EXT_DESCRIPTOR_HEAP_NAME.as_ptr(),
-        vk::KHR_SHADER_UNTYPED_POINTERS_NAME.as_ptr(),
+        vk::CStrPtr::new(vk::EXT_DESCRIPTOR_HEAP_NAME),
+        vk::CStrPtr::new(vk::KHR_SHADER_UNTYPED_POINTERS_NAME),
     ];
     let mut vulkan11_features =
         vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
@@ -696,6 +700,7 @@ unsafe fn create_buffer(
         location,
         linear: true,
         memory_allocate_flags,
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: if memory_allocate_flags.is_empty() {
             AllocationScheme::GpuAllocatorManaged
         } else {
@@ -781,17 +786,17 @@ unsafe fn upload_buffer_now(
     let copy = vk::BufferCopy::default().size(size);
     device.cmd_copy_buffer(command_buffer, src, dst, &[copy]);
     let barrier = vk::BufferMemoryBarrier2::default()
-        .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_COPY)
-        .src_access_mask(vk::AccessFlags2::ACCESS_2_TRANSFER_WRITE)
+        .src_stage_mask(vk::PipelineStageFlags2::COPY)
+        .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
         .dst_stage_mask(
-            vk::PipelineStageFlags2::PIPELINE_STAGE_2_VERTEX_INPUT
-                | vk::PipelineStageFlags2::PIPELINE_STAGE_2_VERTEX_SHADER
-                | vk::PipelineStageFlags2::PIPELINE_STAGE_2_FRAGMENT_SHADER,
+            vk::PipelineStageFlags2::VERTEX_INPUT
+                | vk::PipelineStageFlags2::VERTEX_SHADER
+                | vk::PipelineStageFlags2::FRAGMENT_SHADER,
         )
         .dst_access_mask(
-            vk::AccessFlags2::ACCESS_2_VERTEX_ATTRIBUTE_READ
-                | vk::AccessFlags2::ACCESS_2_INDEX_READ
-                | vk::AccessFlags2::ACCESS_2_SHADER_STORAGE_READ,
+            vk::AccessFlags2::VERTEX_ATTRIBUTE_READ
+                | vk::AccessFlags2::INDEX_READ
+                | vk::AccessFlags2::SHADER_STORAGE_READ,
         )
         .buffer(dst)
         .offset(0)
@@ -885,7 +890,13 @@ unsafe fn create_color_target(
         .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC)
         .sharing_mode(vk::SharingMode::EXCLUSIVE)
         .initial_layout(vk::ImageLayout::UNDEFINED);
-    create_image(device, allocator, "descriptor heap color target", &image_info, vk::ImageAspectFlags::COLOR)
+    create_image(
+        device,
+        allocator,
+        "descriptor heap color target",
+        &image_info,
+        vk::ImageAspectFlags::COLOR,
+    )
 }
 
 unsafe fn create_depth_target(
@@ -904,7 +915,13 @@ unsafe fn create_depth_target(
         .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
         .sharing_mode(vk::SharingMode::EXCLUSIVE)
         .initial_layout(vk::ImageLayout::UNDEFINED);
-    create_image(device, allocator, "descriptor heap depth target", &image_info, vk::ImageAspectFlags::DEPTH)
+    create_image(
+        device,
+        allocator,
+        "descriptor heap depth target",
+        &image_info,
+        vk::ImageAspectFlags::DEPTH,
+    )
 }
 
 unsafe fn create_image(
@@ -922,6 +939,7 @@ unsafe fn create_image(
         location: MemoryLocation::GpuOnly,
         linear: false,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -962,10 +980,10 @@ unsafe fn upload_texture_now(
     let begin = vk::CommandBufferBeginInfo::default();
     device.begin_command_buffer(command_buffer, &begin)?;
     let texture_to_copy_dst = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_NONE)
+        .src_stage_mask(vk::PipelineStageFlags2::NONE)
         .src_access_mask(vk::AccessFlags2::empty())
-        .dst_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_COPY)
-        .dst_access_mask(vk::AccessFlags2::ACCESS_2_TRANSFER_WRITE)
+        .dst_stage_mask(vk::PipelineStageFlags2::COPY)
+        .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
         .old_layout(vk::ImageLayout::UNDEFINED)
         .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .image(dst)
@@ -973,10 +991,10 @@ unsafe fn upload_texture_now(
     cmd_image_barrier(device, command_buffer, texture_to_copy_dst);
     copy_buffer_to_image(device, command_buffer, src, dst, TEXTURE_SIZE, TEXTURE_SIZE);
     let texture_to_shader_read = vk::ImageMemoryBarrier2::default()
-        .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_COPY)
-        .src_access_mask(vk::AccessFlags2::ACCESS_2_TRANSFER_WRITE)
-        .dst_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_FRAGMENT_SHADER)
-        .dst_access_mask(vk::AccessFlags2::ACCESS_2_SHADER_SAMPLED_READ)
+        .src_stage_mask(vk::PipelineStageFlags2::COPY)
+        .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+        .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+        .dst_access_mask(vk::AccessFlags2::SHADER_SAMPLED_READ)
         .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .image(dst)
@@ -1005,12 +1023,12 @@ unsafe fn write_resource_heap_descriptors(
     let material_range = device_address_range(device, materials);
     let range_descriptors = [
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::STORAGE_BUFFER)
+            .ty(vk::DescriptorType::STORAGE_BUFFER)
             .data(vk::ResourceDescriptorDataEXT::address_range(
                 &instance_range,
             )),
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::STORAGE_BUFFER)
+            .ty(vk::DescriptorType::STORAGE_BUFFER)
             .data(vk::ResourceDescriptorDataEXT::address_range(
                 &material_range,
             )),
@@ -1037,10 +1055,10 @@ unsafe fn write_resource_heap_descriptors(
     ];
     let image_descriptors = [
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::SAMPLED_IMAGE)
+            .ty(vk::DescriptorType::SAMPLED_IMAGE)
             .data(vk::ResourceDescriptorDataEXT::image(&image_infos[0])),
         vk::ResourceDescriptorInfoEXT::default()
-            .r#type(vk::DescriptorType::SAMPLED_IMAGE)
+            .ty(vk::DescriptorType::SAMPLED_IMAGE)
             .data(vk::ResourceDescriptorDataEXT::image(&image_infos[1])),
     ];
 
@@ -1100,7 +1118,7 @@ unsafe fn write_sampler_heap_descriptors(
 unsafe fn device_address_range(
     device: &Device,
     buffer: &BufferAllocation,
-) -> vk::DeviceAddressRangeKHR<'static> {
+) -> vk::DeviceAddressRangeKHR {
     let address = device
         .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer.buffer));
     vk::DeviceAddressRangeKHR::default()
@@ -1151,21 +1169,20 @@ unsafe fn barrier_descriptor_heaps(
     sampler_layout: &SamplerHeapLayout,
 ) {
     let resource_barrier = vk::BufferMemoryBarrier2::default()
-        .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_HOST)
-        .src_access_mask(vk::AccessFlags2::ACCESS_2_HOST_WRITE)
+        .src_stage_mask(vk::PipelineStageFlags2::HOST)
+        .src_access_mask(vk::AccessFlags2::HOST_WRITE)
         .dst_stage_mask(
-            vk::PipelineStageFlags2::PIPELINE_STAGE_2_VERTEX_SHADER
-                | vk::PipelineStageFlags2::PIPELINE_STAGE_2_FRAGMENT_SHADER,
+            vk::PipelineStageFlags2::VERTEX_SHADER | vk::PipelineStageFlags2::FRAGMENT_SHADER,
         )
-        .dst_access_mask(vk::AccessFlags2::ACCESS_2_RESOURCE_HEAP_READ_EXT)
+        .dst_access_mask(vk::AccessFlags2::RESOURCE_HEAP_READ_EXT)
         .buffer(resource_heap.buffer)
         .offset(0)
         .size(resource_layout.heap_size);
     let sampler_barrier = vk::BufferMemoryBarrier2::default()
-        .src_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_HOST)
-        .src_access_mask(vk::AccessFlags2::ACCESS_2_HOST_WRITE)
-        .dst_stage_mask(vk::PipelineStageFlags2::PIPELINE_STAGE_2_FRAGMENT_SHADER)
-        .dst_access_mask(vk::AccessFlags2::ACCESS_2_SAMPLER_HEAP_READ_EXT)
+        .src_stage_mask(vk::PipelineStageFlags2::HOST)
+        .src_access_mask(vk::AccessFlags2::HOST_WRITE)
+        .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+        .dst_access_mask(vk::AccessFlags2::SAMPLER_HEAP_READ_EXT)
         .buffer(sampler_heap.buffer)
         .offset(0)
         .size(sampler_layout.heap_size);
@@ -1175,14 +1192,8 @@ unsafe fn barrier_descriptor_heaps(
 }
 
 unsafe fn create_graphics_pipeline(device: &Device) -> Result<vk::Pipeline> {
-    let vertex_shader = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/vertex.spv")),
-    )?;
-    let fragment_shader = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/fragment.spv")),
-    )?;
+    let vertex_shader = create_shader_module(device, include_bytes!("shaders/vertex.spv"))?;
+    let fragment_shader = create_shader_module(device, include_bytes!("shaders/fragment.spv"))?;
     let main = c"main";
     let stages = [
         vk::PipelineShaderStageCreateInfo::default()
@@ -1194,14 +1205,16 @@ unsafe fn create_graphics_pipeline(device: &Device) -> Result<vk::Pipeline> {
             .module(fragment_shader)
             .name(main),
     ];
-    let binding = [vk::VertexInputBindingDescription::default()
-        .binding(0)
-        .stride(core::mem::size_of::<Vertex>() as u32)
-        .input_rate(vk::VertexInputRate::VERTEX),
+    let binding = [
+        vk::VertexInputBindingDescription::default()
+            .binding(0)
+            .stride(core::mem::size_of::<Vertex>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX),
         vk::VertexInputBindingDescription::default()
             .binding(1)
             .stride(core::mem::size_of::<InstanceData>() as u32)
-            .input_rate(vk::VertexInputRate::INSTANCE)];
+            .input_rate(vk::VertexInputRate::INSTANCE),
+    ];
     let attributes = [
         vk::VertexInputAttributeDescription::default()
             .location(0)
@@ -1271,7 +1284,7 @@ unsafe fn create_graphics_pipeline(device: &Device) -> Result<vk::Pipeline> {
         .color_attachment_formats(&color_formats)
         .depth_attachment_format(DEPTH_FORMAT);
     let mut flags2 = vk::PipelineCreateFlags2CreateInfo::default()
-        .flags(vk::PipelineCreateFlags2::PIPELINE_CREATE_2_DESCRIPTOR_HEAP_EXT);
+        .flags(vk::PipelineCreateFlags2::DESCRIPTOR_HEAP_EXT);
     let info = vk::GraphicsPipelineCreateInfo::default()
         .stages(&stages)
         .vertex_input_state(&vertex_input)
@@ -1378,15 +1391,15 @@ unsafe fn copy_image_to_buffer(
     device.cmd_copy_image_to_buffer2(command_buffer, &copy);
 }
 
-fn color_subresource_range() -> vk::ImageSubresourceRange<'static> {
+fn color_subresource_range() -> vk::ImageSubresourceRange {
     image_subresource_range(vk::ImageAspectFlags::COLOR)
 }
 
-fn depth_subresource_range() -> vk::ImageSubresourceRange<'static> {
+fn depth_subresource_range() -> vk::ImageSubresourceRange {
     image_subresource_range(vk::ImageAspectFlags::DEPTH)
 }
 
-fn image_subresource_range(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRange<'static> {
+fn image_subresource_range(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRange {
     vk::ImageSubresourceRange::default()
         .aspect_mask(aspect)
         .base_mip_level(0)
@@ -1422,7 +1435,7 @@ unsafe fn create_fence(device: &Device) -> Result<vk::Fence> {
 unsafe fn verify_and_write_ppm(
     allocator: &mut Allocator,
     allocation: &Allocation,
-    path: &str,
+    path: &std::path::Path,
 ) -> Result<()> {
     let flags = allocator.allocation_memory_flags(allocation)?;
     let mut mapped = allocator.map(allocation)?;
@@ -1565,8 +1578,8 @@ fn material_data(layout: &ResourceHeapLayout) -> [MaterialData; 2] {
 }
 
 fn clip_from_world() -> Mat4 {
-    let view = Mat4::look_at_rh(Vec3::ZERO, Vec3::Z, Vec3::Y);
-    let projection = Mat4::perspective_rh(
+    let view = glam::camera::rh::view::look_at_mat4(Vec3::ZERO, Vec3::Z, Vec3::Y);
+    let projection = glam::camera::rh::proj::directx::perspective(
         48.0_f32.to_radians(),
         WIDTH as f32 / HEIGHT as f32,
         0.1,
@@ -1598,10 +1611,10 @@ fn checker_texture(a: u32, b: u32) -> Vec<u32> {
     values
 }
 
-fn has_extension(properties: &[vk::ExtensionProperties<'_>], name: &CStr) -> bool {
+fn has_extension(properties: &[vk::ExtensionProperties], name: &CStr) -> bool {
     properties
         .iter()
-        .any(|property| unsafe { CStr::from_ptr(property.extension_name.as_ptr()) == name })
+        .any(|property| property.extension_name_as_c_str() == Ok(name))
 }
 
 fn align_up(value: u64, alignment: u64) -> u64 {
@@ -1627,4 +1640,11 @@ fn gcd(mut a: u64, mut b: u64) -> u64 {
         b = next;
     }
     a
+}
+
+/// Example images go to `target/example-output/`, never into the source tree.
+fn output_path(file_name: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/example-output");
+    std::fs::create_dir_all(&dir).expect("create target/example-output");
+    dir.join(file_name)
 }

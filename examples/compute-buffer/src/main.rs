@@ -1,10 +1,10 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::ffi::{CStr, CString, c_void};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use vulkan::{vk, Device, Entry, Instance};
+use vulkan::{Device, Entry, Instance, vk};
 use vulkan_alloc::{
     Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc,
     MemoryLocation,
@@ -58,7 +58,7 @@ fn main() -> Result<()> {
                 vk::PipelineBindPoint::COMPUTE,
                 pipeline_layout,
                 0,
-                Some(&descriptor_sets),
+                &descriptor_sets,
                 &[],
             );
             device.cmd_dispatch(command_buffer, 1, 1, 1);
@@ -84,7 +84,11 @@ fn main() -> Result<()> {
         device.queue_submit(queue, &[submit], fence)?;
         device.wait_for_fences(&[fence], true, u64::MAX)?;
 
-        verify_and_write_ppm(&mut allocator, &buffer.allocation, "compute_buffer.ppm")?;
+        verify_and_write_ppm(
+            &mut allocator,
+            &buffer.allocation,
+            &output_path("compute_buffer.ppm"),
+        )?;
 
         device.destroy_pipeline(pipeline, None);
         device.destroy_pipeline_layout(pipeline_layout, None);
@@ -102,7 +106,7 @@ fn main() -> Result<()> {
         instance.destroy_instance(None);
     }
 
-    println!("wrote compute_buffer.ppm");
+    println!("wrote {}", output_path("compute_buffer.ppm").display());
     Ok(())
 }
 
@@ -121,11 +125,11 @@ unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instanc
     let enabled_layers = validation_layers(entry)?;
     let enabled_layer_names = enabled_layers
         .iter()
-        .map(|layer| layer.as_ptr())
+        .map(|layer| vk::CStrPtr::new(layer))
         .collect::<Vec<_>>();
     let extension_names = extensions
         .iter()
-        .map(|extension| extension.as_ptr())
+        .map(|extension| vk::CStrPtr::new(extension))
         .collect::<Vec<_>>();
     let app_info = vk::ApplicationInfo::default()
         .application_name(app_name.as_c_str())
@@ -142,7 +146,7 @@ unsafe fn has_instance_extension(entry: &Entry, name: &CStr) -> Result<bool> {
     Ok(entry
         .enumerate_instance_extension_properties(None)?
         .iter()
-        .any(|extension| CStr::from_ptr(extension.extension_name.as_ptr()) == name))
+        .any(|extension| extension.extension_name_as_c_str() == Ok(name)))
 }
 
 unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
@@ -150,11 +154,13 @@ unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
     let available = entry.enumerate_instance_layer_properties()?;
     let has_validation = available
         .iter()
-        .any(|layer| CStr::from_ptr(layer.layer_name.as_ptr()) == validation);
+        .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
     if has_validation {
         Ok(vec![validation])
     } else {
-        Err(anyhow!("VK_LAYER_KHRONOS_validation is required for this example"))
+        Err(anyhow!(
+            "VK_LAYER_KHRONOS_validation is required for this example"
+        ))
     }
 }
 
@@ -171,9 +177,9 @@ unsafe fn create_debug_messenger(
                 | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
         )
         .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION_EXT
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE_EXT,
+            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
         )
         .pfn_user_callback(Some(vulkan_debug_callback));
     Ok(instance.create_debug_utils_messenger_ext(&info, None)?)
@@ -194,7 +200,7 @@ unsafe extern "system" fn vulkan_debug_callback(
 unsafe fn pick_physical_device(instance: &Instance) -> Result<PhysicalDeviceSelection> {
     let mut best = None;
     for physical_device in instance.enumerate_physical_devices()? {
-        let props = instance.get_physical_device_queue_family_properties(physical_device)?;
+        let props = instance.get_physical_device_queue_family_properties(physical_device);
         let Some(index) = props
             .iter()
             .position(|p| p.queue_flags.contains(vk::QueueFlags::COMPUTE))
@@ -257,6 +263,7 @@ unsafe fn create_storage_buffer(
         location: MemoryLocation::GpuToCpu,
         linear: true,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
@@ -285,7 +292,7 @@ unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::Descriptor
 
 unsafe fn create_descriptor_pool(device: &Device) -> Result<vk::DescriptorPool> {
     let pool_sizes = [vk::DescriptorPoolSize::default()
-        .r#type(vk::DescriptorType::STORAGE_BUFFER)
+        .ty(vk::DescriptorType::STORAGE_BUFFER)
         .descriptor_count(1)];
     let info = vk::DescriptorPoolCreateInfo::default()
         .max_sets(1)
@@ -338,10 +345,7 @@ unsafe fn create_compute_pipeline(
     device: &Device,
     layout: vk::PipelineLayout,
 ) -> Result<vk::Pipeline> {
-    let shader = create_shader_module(
-        device,
-        include_bytes!(concat!(env!("OUT_DIR"), "/compute.spv")),
-    )?;
+    let shader = create_shader_module(device, include_bytes!("shaders/compute.spv"))?;
     let main = c"main";
     let stage = vk::PipelineShaderStageCreateInfo::default()
         .stage(vk::ShaderStageFlagBits::COMPUTE)
@@ -428,7 +432,7 @@ unsafe fn initialize_buffer(allocator: &mut Allocator, allocation: &Allocation) 
 unsafe fn verify_and_write_ppm(
     allocator: &mut Allocator,
     allocation: &Allocation,
-    path: &str,
+    path: &std::path::Path,
 ) -> Result<()> {
     let flags = allocator.allocation_memory_flags(allocation)?;
     let mut mapped = allocator.map(allocation)?;
@@ -458,4 +462,11 @@ unsafe fn verify_and_write_ppm(
         }
     }
     Ok(())
+}
+
+/// Example images go to `target/example-output/`, never into the source tree.
+fn output_path(file_name: &str) -> std::path::PathBuf {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/example-output");
+    std::fs::create_dir_all(&dir).expect("create target/example-output");
+    dir.join(file_name)
 }

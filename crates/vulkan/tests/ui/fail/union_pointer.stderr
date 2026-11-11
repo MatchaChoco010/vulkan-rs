@@ -1,0 +1,12 @@
+error[E0597]: `image` does not live long enough
+  --> tests/ui/fail/union_pointer.rs:8:57
+   |
+ 7 |         let image = vk::DescriptorImageInfo::default();
+   |             ----- binding `image` declared here
+ 8 |         let data = vk::DescriptorDataEXT::sampled_image(&image);
+   |                                                         ^^^^^^ borrowed value does not live long enough
+ 9 |         info = vk::DescriptorGetInfoEXT::default().data(data);
+10 |     }
+   |     - `image` dropped here while still borrowed
+11 |     let _ = info;
+   |             ---- borrow later used here

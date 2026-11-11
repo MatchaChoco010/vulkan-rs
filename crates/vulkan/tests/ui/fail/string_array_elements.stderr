@@ -1,0 +1,11 @@
+error[E0597]: `owned` does not live long enough
+  --> tests/ui/fail/string_array_elements.rs:9:35
+   |
+ 8 |         let owned = CString::new("VK_KHR_swapchain").unwrap();
+   |             ----- binding `owned` declared here
+ 9 |         names = [vk::CStrPtr::new(&owned)];
+   |                                   ^^^^^^ borrowed value does not live long enough
+10 |     }
+   |     - `owned` dropped here while still borrowed
+11 |     let info = vk::DeviceCreateInfo::default().enabled_extension_names(&names);
+   |                                                                        ------ borrow later used here

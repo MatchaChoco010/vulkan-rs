@@ -1,0 +1,8 @@
+error[E0515]: cannot return value referencing local variable `priorities`
+ --> tests/ui/fail/returned_from_function.rs:6:5
+  |
+6 |     vk::DeviceQueueCreateInfo::default().queue_priorities(&priorities)
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-----------^
+  |     |                                                     |
+  |     |                                                     `priorities` is borrowed here
+  |     returns a value referencing data owned by the current function

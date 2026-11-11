@@ -1,0 +1,11 @@
+error[E0597]: `geometry` does not live long enough
+  --> tests/ui/fail/pointer_array_elements.rs:8:21
+   |
+ 7 |         let geometry = vk::AccelerationStructureGeometryKHR::default();
+   |             -------- binding `geometry` declared here
+ 8 |         pointers = [&geometry];
+   |                     ^^^^^^^^^ borrowed value does not live long enough
+ 9 |     }
+   |     - `geometry` dropped here while still borrowed
+10 |     let info = vk::AccelerationStructureBuildGeometryInfoKHR::default().geometries_ptrs(&pointers);
+   |                                                                                         --------- borrow later used here

@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Move `third_party/vulkan` to a newer Vulkan SDK tag and regenerate the bindings.
+
+Steps:
+
+1. Fetch the tags of Khronos Vulkan-Headers and pick the newest `vulkan-sdk-*` tag
+   (or the one given with `--tag`).
+2. Check it out in the submodule.
+3. Set the workspace version to `<semver>+<tag>`, bumping the minor version because new
+   headers can rename or remove provisional items (see README.md "Versioning").
+4. Run `tools/generate-vulkan`.
+
+Nothing is committed. Review the diff, run the checks in AGENTS.md, then commit.
+
+Exit status: 0 on success, including when already up to date. With `--github-output`,
+`updated`, `old_tag` and `new_tag` are appended to the file named by `$GITHUB_OUTPUT`.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+HEADERS = ROOT / "third_party" / "vulkan"
+MANIFEST = ROOT / "Cargo.toml"
+SDK_TAG = re.compile(r"^vulkan-sdk-(\d+)\.(\d+)\.(\d+)\.(\d+)$")
+VERSION_LINE = re.compile(r'^version = "(\d+)\.(\d+)\.(\d+)\+(vulkan-sdk-[0-9.]+)"$', re.M)
+
+
+def git(*args: str, cwd: Path = ROOT) -> str:
+    return subprocess.check_output(["git", *args], cwd=cwd, text=True).strip()
+
+
+def tag_key(tag: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in SDK_TAG.match(tag).groups())
+
+
+def sdk_tags(*filters: str) -> list[str]:
+    """SDK tags of the submodule, oldest first. `filters` are extra `git tag` arguments."""
+    tags = git("tag", "--list", "vulkan-sdk-*", *filters, cwd=HEADERS).splitlines()
+    return sorted((tag for tag in tags if SDK_TAG.match(tag)), key=tag_key)
+
+
+def current_version() -> tuple[int, int, int, str]:
+    match = VERSION_LINE.search(MANIFEST.read_text())
+    if match is None:
+        raise SystemExit(f"{MANIFEST}: no `version = \"x.y.z+vulkan-sdk-...\"` line")
+    major, minor, patch, tag = match.groups()
+    return int(major), int(minor), int(patch), tag
+
+
+def set_version(old: tuple[int, int, int, str], new_semver: str, new_tag: str) -> None:
+    major, minor, patch, tag = old
+    old_semver = f"{major}.{minor}.{patch}"
+    text = MANIFEST.read_text()
+    text = text.replace(f'version = "{old_semver}+{tag}"', f'version = "{new_semver}+{new_tag}"')
+    # Workspace-internal dependency requirements carry the semver part only.
+    text = text.replace(f'version = "{old_semver}"', f'version = "{new_semver}"')
+    MANIFEST.write_text(text)
+
+
+def write_github_output(values: dict[str, str]) -> None:
+    path = os.environ.get("GITHUB_OUTPUT")
+    if not path:
+        raise SystemExit("--github-output needs $GITHUB_OUTPUT")
+    with open(path, "a") as output:
+        for key, value in values.items():
+            output.write(f"{key}={value}\n")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--tag", help="SDK tag to move to (default: the newest vulkan-sdk-* tag)")
+    parser.add_argument("--no-fetch", action="store_true", help="use the tags already present in the submodule")
+    parser.add_argument("--no-bump", action="store_true", help="keep the semver part of the version")
+    parser.add_argument("--github-output", action="store_true", help="report the result to $GITHUB_OUTPUT")
+    args = parser.parse_args()
+
+    if not (HEADERS / "registry" / "vk.xml").exists():
+        print("third_party/vulkan is empty; run `git submodule update --init` first", file=sys.stderr)
+        return 1
+    if not args.no_fetch:
+        git("fetch", "--tags", "--quiet", "origin", cwd=HEADERS)
+
+    old = current_version()
+    old_tag = old[3]
+    new_tag = args.tag or sdk_tags()[-1]
+    if SDK_TAG.match(new_tag) is None:
+        print(f"{new_tag} is not a vulkan-sdk-* tag", file=sys.stderr)
+        return 1
+
+    if new_tag == old_tag:
+        print(f"already at {old_tag}")
+        if args.github_output:
+            write_github_output({"updated": "false", "old_tag": old_tag, "new_tag": new_tag})
+        return 0
+
+    git("checkout", "--quiet", new_tag, cwd=HEADERS)
+    # One commit can carry several SDK tags. tools/generate-vulkan names the bindings
+    # after the newest of them, so the version has to use the same one.
+    new_tag = sdk_tags("--points-at", "HEAD")[-1]
+    if new_tag == old_tag:
+        print(f"already at {old_tag}")
+        if args.github_output:
+            write_github_output({"updated": "false", "old_tag": old_tag, "new_tag": new_tag})
+        return 0
+    print(f"updating {old_tag} -> {new_tag}")
+    major, minor, patch, _ = old
+    new_semver = f"{major}.{minor}.{patch}" if args.no_bump else f"{major}.{minor + 1}.0"
+    set_version(old, new_semver, new_tag)
+    subprocess.run([str(ROOT / "tools" / "generate-vulkan")], cwd=ROOT, check=True)
+    # Refresh the version recorded for the workspace crates in Cargo.lock.
+    subprocess.run(["cargo", "metadata", "--format-version", "1"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+
+    print(f"workspace version is now {new_semver}+{new_tag}")
+    if args.github_output:
+        write_github_output({"updated": "true", "old_tag": old_tag, "new_tag": new_tag})
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

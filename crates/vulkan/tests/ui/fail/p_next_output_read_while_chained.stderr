@@ -1,0 +1,9 @@
+error[E0503]: cannot use `vulkan12.timeline_semaphore` because it was mutably borrowed
+  --> tests/ui/fail/p_next_output_read_while_chained.rs:10:20
+   |
+ 9 |     let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut vulkan12);
+   |                                                                         ------------- `vulkan12` is borrowed here
+10 |     let timeline = vulkan12.timeline_semaphore;
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^ use of borrowed `vulkan12`
+11 |     query(&mut features);
+   |           ------------- borrow later used here

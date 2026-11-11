@@ -1,0 +1,11 @@
+error[E0597]: `heap_bytes` does not live long enough
+  --> tests/ui/fail/descriptor_heap_destination.rs:8:66
+   |
+ 7 |         let mut heap_bytes = [0u8; 64];
+   |             -------------- binding `heap_bytes` declared here
+ 8 |         destination = vk::HostAddressRangeEXT::default().address(&mut heap_bytes);
+   |                                                                  ^^^^^^^^^^^^^^^ borrowed value does not live long enough
+ 9 |     }
+   |     - `heap_bytes` dropped here while still borrowed
+10 |     let _ = destination;
+   |             ----------- borrow later used here

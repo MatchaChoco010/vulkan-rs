@@ -1,0 +1,9 @@
+error[E0503]: cannot use `modifiers[_]` because it was mutably borrowed
+  --> tests/ui/fail/output_slice_read_while_borrowed.rs:10:17
+   |
+ 9 |         vk::DrmFormatModifierPropertiesListEXT::default().drm_format_modifier_properties(&mut modifiers);
+   |                                                                                          -------------- `modifiers` is borrowed here
+10 |     let first = modifiers[0];
+   |                 ^^^^^^^^^^^^ use of borrowed `modifiers`
+11 |     query(&mut list);
+   |           --------- borrow later used here

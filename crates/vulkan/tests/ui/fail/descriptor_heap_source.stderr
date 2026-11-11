@@ -1,0 +1,25 @@
+error[E0597]: `view` does not live long enough
+  --> tests/ui/fail/descriptor_heap_source.rs:9:64
+   |
+ 8 |         let view = vk::ImageViewCreateInfo::default();
+   |             ---- binding `view` declared here
+ 9 |         let image = vk::ImageDescriptorInfoEXT::default().view(&view);
+   |                                                                ^^^^^ borrowed value does not live long enough
+...
+12 |     }
+   |     - `view` dropped here while still borrowed
+13 |     let _ = descriptor;
+   |             ---------- borrow later used here
+
+error[E0597]: `image` does not live long enough
+  --> tests/ui/fail/descriptor_heap_source.rs:11:56
+   |
+ 9 |         let image = vk::ImageDescriptorInfoEXT::default().view(&view);
+   |             ----- binding `image` declared here
+10 |         descriptor = vk::ResourceDescriptorInfoEXT::default()
+11 |             .data(vk::ResourceDescriptorDataEXT::image(&image));
+   |                                                        ^^^^^^ borrowed value does not live long enough
+12 |     }
+   |     - `image` dropped here while still borrowed
+13 |     let _ = descriptor;
+   |             ---------- borrow later used here

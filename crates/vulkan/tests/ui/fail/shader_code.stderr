@@ -1,0 +1,11 @@
+error[E0597]: `code` does not live long enough
+  --> tests/ui/fail/shader_code.rs:8:59
+   |
+ 7 |         let code = [0x0723_0203_u32, 0, 0, 0];
+   |             ---- binding `code` declared here
+ 8 |         info = vk::ShaderModuleCreateInfo::default().code(&code);
+   |                                                           ^^^^^ borrowed value does not live long enough
+ 9 |     }
+   |     - `code` dropped here while still borrowed
+10 |     let _ = info;
+   |             ---- borrow later used here
