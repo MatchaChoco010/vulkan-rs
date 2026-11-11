@@ -690,7 +690,6 @@ mod tests {
                 FlagField {
                     name: "VK_IMAGE_USAGE_ALL".to_string(),
                     value: "7".to_string(),
-                    multi_bit: true,
                     ..Default::default()
                 },
             ],
