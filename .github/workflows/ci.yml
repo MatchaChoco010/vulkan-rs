@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail instead of skipping when the C headers or a Vulkan device are missing.
+  VULKAN_RS_REQUIRE_LAYOUT_TEST: "1"
+  VULKAN_RS_REQUIRE_DEVICE_TEST: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # tools/generate-vulkan names the bindings after the SDK tag of the submodule
+      # commit, and the checkout above does not fetch tags.
+      - name: Fetch the Vulkan-Headers SDK tags
+        run: git -C third_party/vulkan fetch --quiet --depth=1 origin 'refs/tags/vulkan-sdk-*:refs/tags/vulkan-sdk-*'
+
+      - name: Install lavapipe, the Vulkan loader and the validation layers
+        run: |
+          sudo apt-get update
+          # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
+          # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
+          sudo apt-get install --yes --no-install-recommends \
+            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools \
+            libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
+          vulkaninfo --summary
+
+      # The version, profile and components come from rust-toolchain.toml.
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Generated files are up to date
+        run: ./tools/generate-vulkan --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --all-features
+
+      - name: Test without default features
+        run: cargo test -p vulkan --no-default-features
+
+      # A device test skips itself when the driver lacks the extension it exercises.
+      # cargo hides the output of passing tests, so list the skips where they can be seen.
+      - name: Report what the device tests skipped
+        run: |
+          {
+            echo "### Device tests"
+            echo '```'
+            cargo test -p vulkan -p vulkan-alloc --all-features --test device -- --nocapture --test-threads=1 2>&1 \
+              | grep -E "device test on|skipping|test result" \
+              | sed -E 's/^test [a-z_0-9]+ \.\.\. //' | sort | uniq -c
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Run headless examples on lavapipe
+        run: |
+          cargo run -p vulkan-headless-triangle
+          cargo run -p vulkan-compute-buffer
+
+      - name: Upload example images
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: example-output
+          path: target/example-output/
+          if-no-files-found: ignore

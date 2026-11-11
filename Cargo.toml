@@ -4,10 +4,18 @@ members = [
     "crates/vulkan-alloc",
     "crates/vulkan-codegen",
     "crates/vulkan-registry",
+    "examples/*",
 ]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
+# `<crate semver>+<Vulkan-Headers SDK tag>`. See README.md "Versioning".
+version = "0.3.0+vulkan-sdk-1.4.363.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/MatchaChoco010/vulkan-rs"
+
+[workspace.dependencies]
+vulkan = { path = "crates/vulkan", version = "0.3.0", default-features = false }
+vulkan-alloc = { path = "crates/vulkan-alloc", version = "0.3.0" }
+vulkan-registry = { path = "crates/vulkan-registry", version = "0.3.0" }

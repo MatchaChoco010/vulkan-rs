@@ -1,0 +1,9 @@
+error[E0499]: cannot borrow `features` as mutable more than once at a time
+ --> tests/ui/fail/p_next_twice.rs:8:20
+  |
+7 |         .push_next(&mut features)
+  |                    ------------- first mutable borrow occurs here
+8 |         .push_next(&mut features);
+  |          --------- ^^^^^^^^^^^^^ second mutable borrow occurs here
+  |          |
+  |          first borrow later used by call

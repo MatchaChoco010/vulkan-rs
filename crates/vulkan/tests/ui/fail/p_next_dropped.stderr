@@ -1,0 +1,11 @@
+error[E0597]: `features` does not live long enough
+  --> tests/ui/fail/p_next_dropped.rs:8:58
+   |
+ 7 |         let mut features = vk::PhysicalDeviceVulkan12Features::default();
+   |             ------------ binding `features` declared here
+ 8 |         info = vk::DeviceCreateInfo::default().push_next(&mut features);
+   |                                                          ^^^^^^^^^^^^^ borrowed value does not live long enough
+ 9 |     }
+   |     - `features` dropped here while still borrowed
+10 |     let _ = info;
+   |             ---- borrow later used here

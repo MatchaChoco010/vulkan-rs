@@ -1,1 +1,4 @@
 target/
+# Images written by examples that are run from an older checkout.
+*.ppm
+__pycache__/

@@ -18,24 +18,19 @@ used for generation.
 ## Updating Vulkan Bindings
 
 ```sh
-git -C third_party/vulkan fetch --tags
-SDK_TAG="$(git -C third_party/vulkan tag --list 'vulkan-sdk-*' --sort=-v:refname | head -n1)"
-git -C third_party/vulkan checkout "$SDK_TAG"
+git submodule update --init
 
-./tools/generate-vulkan
+# Checks out the newest `vulkan-sdk-*` tag in third_party/vulkan, sets the
+# workspace version in Cargo.toml to "<semver>+<SDK tag>" and runs
+# ./tools/generate-vulkan.
+./tools/update-vulkan-headers
 
 cargo test --workspace --all-features
 
-# Choose the new crate semver version.
-CRATE_VERSION="0.2.0"
+SDK_TAG="$(git -C third_party/vulkan describe --tags --exact-match --match 'vulkan-sdk-*')"
+CRATE_VERSION="$(sed -n 's/^version = "\(.*\)+.*"$/\1/p' Cargo.toml)"
 
-# Set package.version to "${CRATE_VERSION}+${SDK_TAG}" in each workspace crate.
-${EDITOR:-vi} crates/vulkan/Cargo.toml
-${EDITOR:-vi} crates/vulkan-alloc/Cargo.toml
-${EDITOR:-vi} crates/vulkan-codegen/Cargo.toml
-${EDITOR:-vi} crates/vulkan-registry/Cargo.toml
-
-git add third_party/vulkan crates/vulkan crates/vulkan-alloc crates/vulkan-codegen crates/vulkan-registry examples tools Cargo.toml Cargo.lock README.md
+git add third_party/vulkan crates examples tools Cargo.toml Cargo.lock README.md
 git commit -m "Update Vulkan bindings to $SDK_TAG"
 git tag "v${CRATE_VERSION}+${SDK_TAG}"
 ```

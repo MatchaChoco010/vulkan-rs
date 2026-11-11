@@ -1,0 +1,12 @@
+error[E0597]: `modes` does not live long enough
+  --> tests/ui/fail/p_next_member_borrow.rs:9:53
+   |
+ 8 |         let modes = [vk::PresentModeKHR::FIFO, vk::PresentModeKHR::IMMEDIATE];
+   |             ----- binding `modes` declared here
+ 9 |         present_modes = present_modes.present_modes(&modes);
+   |                                                     ^^^^^^ borrowed value does not live long enough
+10 |         info = vk::SwapchainCreateInfoKHR::default().push_next(&mut present_modes);
+11 |     }
+   |     - `modes` dropped here while still borrowed
+12 |     let _ = info;
+   |             ---- borrow later used here
