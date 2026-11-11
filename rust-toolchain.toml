@@ -1,0 +1,8 @@
+# Pinned so that everyone, CI included, gets the same rustfmt output for the generated
+# code, the same clippy lints, and the same compiler messages for the trybuild tests in
+# crates/vulkan/tests/ui. This only affects builds inside this repository, not crates
+# that depend on it. Bump deliberately; see AGENTS.md.
+[toolchain]
+channel = "1.96.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
