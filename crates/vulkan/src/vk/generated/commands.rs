@@ -36535,18 +36535,21 @@ impl crate::Device {
     pub unsafe fn get_image_opaque_capture_data_ext(
         &self,
         images: &[Image],
-    ) -> crate::vk::Result<Vec<HostAddressRangeEXT<'static>>> {
+        datas: &mut [HostAddressRangeEXT<'_>],
+    ) -> crate::vk::Result<()> {
         unsafe {
             let image_count_len: usize = images.len();
-            let mut values: Vec<HostAddressRangeEXT<'static>> =
-                alloc::vec![Default::default(); image_count_len];
+            assert_eq!(
+                datas.len(),
+                image_count_len,
+                "vkGetImageOpaqueCaptureDataEXT: `datas` must have the same length as the other arrays sharing `imageCount`"
+            );
             self.get_image_opaque_capture_data_ext_raw(
                 image_count_len as u32,
                 images.as_ptr(),
-                values.as_mut_ptr(),
+                datas.as_mut_ptr(),
             )
-            .into_result()?;
-            Ok(values)
+            .into_result()
         }
     }
     /// [`vkGetImageOpaqueCaptureDescriptorDataEXT`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetImageOpaqueCaptureDescriptorDataEXT.html)
@@ -38174,18 +38177,21 @@ impl crate::Device {
     pub unsafe fn get_tensor_opaque_capture_data_arm(
         &self,
         tensors: &[TensorARM],
-    ) -> crate::vk::Result<Vec<HostAddressRangeEXT<'static>>> {
+        datas: &mut [HostAddressRangeEXT<'_>],
+    ) -> crate::vk::Result<()> {
         unsafe {
             let tensor_count_len: usize = tensors.len();
-            let mut values: Vec<HostAddressRangeEXT<'static>> =
-                alloc::vec![Default::default(); tensor_count_len];
+            assert_eq!(
+                datas.len(),
+                tensor_count_len,
+                "vkGetTensorOpaqueCaptureDataARM: `datas` must have the same length as the other arrays sharing `tensorCount`"
+            );
             self.get_tensor_opaque_capture_data_arm_raw(
                 tensor_count_len as u32,
                 tensors.as_ptr(),
-                values.as_mut_ptr(),
+                datas.as_mut_ptr(),
             )
-            .into_result()?;
-            Ok(values)
+            .into_result()
         }
     }
     /// [`vkGetTensorOpaqueCaptureDescriptorDataARM`](https://registry.khronos.org/vulkan/specs/latest/man/html/vkGetTensorOpaqueCaptureDescriptorDataARM.html)
