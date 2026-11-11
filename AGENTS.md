@@ -117,6 +117,6 @@ Rust の版を上げるとき。
 
 - examples と結合テストは、validation layer（`VK_LAYER_KHRONOS_validation`）があれば有効にします。古い example（`headless-triangle` など）は、validation layer がないと起動しません。
 - `sudo`、パッケージの導入、ホストの設定の変更が必要になったら、作業を止めて確認します。
-- `VK_EXT_descriptor_heap` は新しい拡張です。Mesa 26 以降の RADV と lavapipe で動きます。CI（Ubuntu 24.04）の lavapipe は古く、descriptor heap のテストは skip されます。何が skip されたかは、CI の job の summary に出ます。
+- `VK_EXT_descriptor_heap` は新しい拡張です。Mesa 26 以降の RADV と lavapipe で動きます。CI（Ubuntu 24.04）の lavapipe は古く、descriptor heap、DRM format modifier、fence と semaphore の fd のテストは skip されます。何が skip されたかは、CI の job の summary に出ます。
 - validation layer は、結合テストの答え合わせです。エラーが出たら、まずテストや example の側の誤りを疑ってください。
 - CI は、submodule の tag を別に取得します（`tools/generate-vulkan` が SDK タグの名前を必要とするため）。`--all-features` は `linked` feature を含むので、link に `libvulkan.so`（`libvulkan-dev`）が要ります。

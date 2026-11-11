@@ -72,7 +72,8 @@ jobs:
             echo "### Device tests"
             echo '```'
             cargo test -p vulkan -p vulkan-alloc --all-features --test device -- --nocapture --test-threads=1 2>&1 \
-              | grep -E "^device test on|^skipping|^test result" | sort | uniq -c
+              | grep -E "device test on|skipping|test result" \
+              | sed -E 's/^test [a-z_0-9]+ \.\.\. //' | sort | uniq -c
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
