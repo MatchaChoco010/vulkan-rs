@@ -1,3 +1,88 @@
+//! A suballocator for `VkDeviceMemory`, built on the `vulkan` crate.
+//!
+//! Vulkan implementations allow only a few thousand `VkDeviceMemory` objects, so memory
+//! for buffers and images is cut out of larger blocks. [`Allocator`] does that with a
+//! TLSF free list per memory type.
+//!
+//! ```no_run
+//! # use vulkan::{vk, Device, Instance};
+//! # use vulkan_alloc::*;
+//! # unsafe fn example(instance: &Instance, physical_device: vk::PhysicalDevice, device: &Device)
+//! # -> Result<(), Box<dyn std::error::Error>> { unsafe {
+//! let mut allocator = Allocator::new(AllocatorCreateDesc::new(
+//!     device,
+//!     instance.get_physical_device_memory_properties(physical_device),
+//!     instance.get_physical_device_properties(physical_device),
+//! ));
+//!
+//! let buffer = device.create_buffer(
+//!     &vk::BufferCreateInfo::default()
+//!         .size(1024)
+//!         .usage(vk::BufferUsageFlags::UNIFORM_BUFFER),
+//!     None,
+//! )?;
+//! let allocation = allocator.allocate(AllocationCreateDesc {
+//!     name: Some("uniforms"),
+//!     requirements: device.get_buffer_memory_requirements(buffer),
+//!     location: MemoryLocation::CpuToGpu,
+//!     linear: true, // buffers are linear; images with optimal tiling are not
+//!     memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+//!     export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+//!     allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+//! })?;
+//! device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
+//!
+//! {
+//!     // `map` returns a guard. Dropping the guard unmaps; there is nothing else to call.
+//!     let mut mapped = allocator.map(&allocation)?;
+//!     mapped.byte_range_mut(0, 4).copy_from_slice(&[1, 2, 3, 4]);
+//! }
+//!
+//! // Tear down in this order: resource, allocation, allocator, device.
+//! device.destroy_buffer(buffer, None);
+//! allocator.free(allocation)?;
+//! drop(allocator);
+//! # Ok(()) } }
+//! ```
+//!
+//! # Mapping
+//!
+//! There are two ways to map, and they must not be mixed for one mapping:
+//!
+//! - [`Allocator::map`] returns a [`MappedAllocation`] guard that unmaps when dropped.
+//!   Do **not** call [`Allocator::unmap_memory`] for it.
+//! - [`Allocator::map_memory`] returns a raw pointer and must be paired with exactly one
+//!   [`Allocator::unmap_memory`].
+//!
+//! # Order of destruction
+//!
+//! The allocator keeps a copy of the [`Device`] wrapper, but a `Device` is a handle and
+//! a function table, not an owner: nothing stops `destroy_device` from being called
+//! while the allocator is alive. The caller keeps the order.
+//!
+//! 1. Destroy the buffers and images.
+//! 2. [`Allocator::free`] their allocations, or call [`Allocator::free_all`].
+//! 3. Drop the allocator.
+//! 4. Destroy the device.
+//!
+//! Dropping the allocator does not call into Vulkan, so dropping it after the device was
+//! destroyed is harmless. Calling [`Allocator::free`] or [`Allocator::free_all`] after
+//! that is not.
+//!
+//! # Leaks
+//!
+//! Dropping an allocator that still has live allocations does not panic. It reports
+//! them through the [`log`] crate and leaves their memory to the device, because that
+//! memory may still back resources that are in use. See [`Allocator::live_allocations`]
+//! and [`Allocator::free_all`].
+//!
+//! # What does not go through the allocator
+//!
+//! Imported memory, such as a dma-buf received from a client, has a size and layout
+//! decided elsewhere. Allocate it with `vkAllocateMemory` directly. Memory to be
+//! *exported* can come from the allocator: set
+//! [`AllocationCreateDesc::export_handle_types`].
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ffi::c_void;
 use std::fmt;
@@ -150,6 +235,13 @@ impl Allocation {
     }
 }
 
+/// A mapped allocation, returned by [`Allocator::map`].
+///
+/// This is a guard: **dropping it unmaps**. Do not call [`Allocator::unmap_memory`] for
+/// a mapping made with [`Allocator::map`]; that would release a mapping this guard still
+/// owns. The guard borrows the allocator, so nothing else can be allocated, freed or
+/// mapped until it is dropped.
+#[must_use = "dropping the guard unmaps the allocation"]
 pub struct MappedAllocation<'a> {
     allocator: &'a mut Allocator,
     allocation: &'a Allocation,
@@ -386,6 +478,8 @@ impl From<AllocationScheme> for DedicatedResource {
 // data owned by the allocator; all access goes through `&mut self`.
 unsafe impl Send for Allocator {}
 
+/// Cuts allocations out of `VkDeviceMemory` blocks. See the [crate documentation](crate)
+/// for the order of destruction and for what happens to leaked allocations.
 pub struct Allocator {
     device: Arc<Device>,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
@@ -522,8 +616,9 @@ impl Allocator {
     /// Internally the containing `VkDeviceMemory` block is mapped once and reference
     /// counted per allocation.
     ///
-    /// Prefer [`Allocator::map`] for normal use. It returns an RAII guard and cannot forget the
-    /// matching unmap operation.
+    /// Every successful call must be paired with exactly one [`Allocator::unmap_memory`].
+    /// Prefer [`Allocator::map`], which returns a guard that unmaps on drop and cannot
+    /// be left unpaired.
     ///
     /// # Safety
     ///
@@ -570,9 +665,14 @@ impl Allocator {
 
     /// Maps the allocation and returns a guard that unmaps it on drop.
     ///
+    /// Do not call [`Allocator::unmap_memory`] for a mapping made here: the returned
+    /// [`MappedAllocation`] does it when it goes out of scope.
+    ///
     /// # Safety
     ///
-    /// The same safety requirements as [`Allocator::map_memory`] apply.
+    /// The caller must uphold Vulkan's host access rules for the memory while the guard
+    /// is alive: nothing else, including the device, may write the bytes that are read
+    /// through the guard.
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
@@ -586,7 +686,11 @@ impl Allocator {
         })
     }
 
-    /// Releases one map reference for an allocation.
+    /// Releases one map reference taken with [`Allocator::map_memory`].
+    ///
+    /// This is not the counterpart of [`Allocator::map`], whose guard unmaps by itself.
+    /// Calling it for an allocation that is not mapped returns
+    /// [`AllocationError::InvalidAllocation`].
     ///
     /// # Safety
     ///
