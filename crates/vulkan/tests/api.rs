@@ -605,3 +605,216 @@ fn keyword_members_have_plain_names() {
         .descriptor_count(4);
     assert_eq!(size.ty, vk::DescriptorType::SAMPLED_IMAGE);
 }
+
+/// Enum values and flag bits map to and from the names of their constants. A layer that
+/// takes names from a script, or prints values back to it, needs no table of its own.
+#[test]
+fn enums_map_to_and_from_names() {
+    assert_eq!(
+        vk::Format::R16G16B16A16_SFLOAT.name(),
+        Some("R16G16B16A16_SFLOAT")
+    );
+    assert_eq!(
+        vk::Format::from_name("R16G16B16A16_SFLOAT"),
+        Some(vk::Format::R16G16B16A16_SFLOAT)
+    );
+    assert_eq!(
+        vk::BlendFactor::from_name("ONE_MINUS_SRC_ALPHA"),
+        Some(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+    );
+    assert_eq!(vk::ImageViewType::_2D.name(), Some("_2D"));
+    assert_eq!(vk::Format::from_name("r16g16b16a16_sfloat"), None);
+    assert_eq!(vk::Format::from_name("NOT_A_FORMAT"), None);
+
+    // Unknown values have no name, which is also what `is_known` says.
+    assert_eq!(vk::Format::from_raw(-7).name(), None);
+    assert!(!vk::Format::from_raw(-7).is_known());
+    assert!(vk::Format::UNDEFINED.is_known());
+    assert!(vk::VkResult::ERROR_DEVICE_LOST.is_known());
+    assert_eq!(
+        vk::VkResult::ERROR_DEVICE_LOST.name(),
+        Some("ERROR_DEVICE_LOST")
+    );
+
+    // An alias is accepted by name, and reports the canonical name.
+    let alias = vk::PresentModeKHR::from_name("FIFO_LATEST_READY_EXT").unwrap();
+    assert_eq!(alias, vk::PresentModeKHR::FIFO_LATEST_READY);
+    assert_eq!(alias.name(), Some("FIFO_LATEST_READY"));
+
+    // The table is sorted by value and round-trips, for every enum that has one.
+    for (value, name) in vk::Format::variants() {
+        assert_eq!(value.name(), Some(*name));
+        assert_eq!(vk::Format::from_name(name), Some(*value));
+    }
+    assert!(
+        vk::Format::variants()
+            .windows(2)
+            .all(|pair| pair[0].0 < pair[1].0)
+    );
+    assert!(
+        vk::VkResult::variants()
+            .windows(2)
+            .all(|pair| pair[0].0 < pair[1].0)
+    );
+    assert!(vk::Format::variants().len() > 200);
+}
+
+#[test]
+fn flags_know_their_bits() {
+    assert_eq!(
+        vk::ImageUsageFlags::from_name("COLOR_ATTACHMENT"),
+        Some(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+    );
+    assert_eq!(vk::ImageUsageFlags::SAMPLED.name(), Some("SAMPLED"));
+    // A combination is not a named constant.
+    assert_eq!(
+        (vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE).name(),
+        None
+    );
+    // Multi-bit masks and zero are named constants too.
+    assert_eq!(
+        vk::ShaderStageFlags::from_name("ALL_GRAPHICS"),
+        Some(vk::ShaderStageFlags::ALL_GRAPHICS)
+    );
+    assert_eq!(
+        vk::CullModeFlags::from_name("NONE"),
+        Some(vk::CullModeFlags::NONE)
+    );
+
+    let all = vk::ImageUsageFlags::all();
+    assert!(all.contains(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST));
+    assert!((vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE).is_known());
+    assert!(!vk::ImageUsageFlags::from_raw(1 << 31).is_known());
+    assert!(vk::ImageUsageFlags::empty().is_known());
+    const _: vk::ImageUsageFlags = vk::ImageUsageFlags::all();
+
+    // 64-bit flags and the single-bit types work the same way.
+    assert_eq!(
+        vk::AccessFlags2::from_name("SHADER_READ"),
+        Some(vk::AccessFlags2::SHADER_READ)
+    );
+    assert_eq!(
+        vk::ShaderStageFlagBits::from_name("FRAGMENT"),
+        Some(vk::ShaderStageFlagBits::FRAGMENT)
+    );
+    assert_eq!(vk::ShaderStageFlagBits::COMPUTE.name(), Some("COMPUTE"));
+    assert!(vk::SampleCountFlagBits::_4.is_known());
+}
+
+/// What a shader has to declare to read a format.
+#[test]
+fn formats_know_their_shader_numeric_type() {
+    use vk::{NumericFormat, ShaderNumericType};
+    let color = vk::ImageAspectFlags::COLOR;
+    let shader_type = |format: vk::Format, aspect| format.info().unwrap().shader_type(aspect);
+
+    assert_eq!(
+        shader_type(vk::Format::R8G8B8A8_UNORM, color),
+        Some(ShaderNumericType::Float)
+    );
+    assert_eq!(
+        shader_type(vk::Format::B8G8R8A8_SRGB, color),
+        Some(ShaderNumericType::Float)
+    );
+    assert_eq!(
+        shader_type(vk::Format::R16G16B16A16_SFLOAT, color),
+        Some(ShaderNumericType::Float)
+    );
+    assert_eq!(
+        shader_type(vk::Format::R32_UINT, color),
+        Some(ShaderNumericType::Uint)
+    );
+    assert_eq!(
+        shader_type(vk::Format::R32G32_SINT, color),
+        Some(ShaderNumericType::Sint)
+    );
+    assert_eq!(
+        shader_type(vk::Format::R8G8B8A8_UNORM, vk::ImageAspectFlags::DEPTH),
+        None
+    );
+
+    // Depth reads as float and stencil as unsigned integer, from the same image.
+    let depth_stencil = vk::Format::D24_UNORM_S8_UINT;
+    assert_eq!(
+        shader_type(depth_stencil, vk::ImageAspectFlags::DEPTH),
+        Some(ShaderNumericType::Float)
+    );
+    assert_eq!(
+        shader_type(depth_stencil, vk::ImageAspectFlags::STENCIL),
+        Some(ShaderNumericType::Uint)
+    );
+    assert_eq!(depth_stencil.info().unwrap().numeric_format(), None);
+
+    assert_eq!(
+        vk::Format::R8G8B8A8_UNORM.info().unwrap().numeric_format(),
+        Some(NumericFormat::Unorm)
+    );
+    assert!(NumericFormat::Unorm.is_normalized() && NumericFormat::Srgb.is_normalized());
+    assert!(!NumericFormat::Sfloat.is_normalized() && !NumericFormat::Uint.is_normalized());
+    assert_eq!(NumericFormat::Bool.shader_type(), None);
+}
+
+/// Which commands can report a lost device, and what provides a command, from the
+/// registry.
+#[test]
+fn commands_know_their_result_codes() {
+    use vk::{CommandInfo, CommandLevel, VkResult};
+
+    let submit = vk::command::QUEUE_SUBMIT;
+    assert_eq!(submit.name, "vkQueueSubmit");
+    assert_eq!(submit.level, CommandLevel::Device);
+    assert!(submit.returns_result());
+    assert!(submit.can_return(VkResult::ERROR_DEVICE_LOST));
+    assert!(!submit.can_return(VkResult::ERROR_SURFACE_LOST_KHR));
+
+    // Recording a command cannot fail at all.
+    let draw = vk::command::CMD_DRAW;
+    assert!(!draw.returns_result());
+    assert!(!draw.can_return(VkResult::ERROR_DEVICE_LOST));
+
+    let acquire = vk::command::ACQUIRE_NEXT_IMAGE_KHR;
+    assert!(acquire.can_return(VkResult::SUBOPTIMAL_KHR));
+    assert!(acquire.can_return(VkResult::ERROR_OUT_OF_DATE_KHR));
+    assert_eq!(acquire.extensions, [vk::KHR_SWAPCHAIN_NAME]);
+    assert_eq!(acquire.version, None);
+
+    assert_eq!(
+        vk::command::CMD_BEGIN_RENDERING.version,
+        Some(vk::API_VERSION_1_3)
+    );
+    assert_eq!(vk::command::CREATE_INSTANCE.level, CommandLevel::Entry);
+    assert_eq!(vk::command::CREATE_DEVICE.level, CommandLevel::Instance);
+    assert_eq!(
+        vk::command::GET_PHYSICAL_DEVICE_SURFACE_FORMATS_KHR.level,
+        CommandLevel::Instance
+    );
+
+    // The table is sorted, which `get` relies on, and includes platform commands
+    // whatever features are enabled.
+    assert!(
+        vk::COMMANDS
+            .windows(2)
+            .all(|pair| pair[0].name < pair[1].name)
+    );
+    for info in vk::COMMANDS {
+        assert_eq!(CommandInfo::get(info.name), Some(info));
+    }
+    assert!(CommandInfo::get("vkCreateWin32SurfaceKHR").is_some());
+    assert!(CommandInfo::get("vkNoSuchCommand").is_none());
+
+    // How many commands can lose the device: a sanity bound, not an exact count.
+    let lossy = vk::COMMANDS
+        .iter()
+        .filter(|info| info.can_return(VkResult::ERROR_DEVICE_LOST))
+        .count();
+    assert!(lossy > 20 && lossy < vk::COMMANDS.len() / 2, "{lossy}");
+}
+
+/// `Device` and `Instance` share their function pointer table, so a clone is a handle
+/// and a couple of reference counts, not a copy of several kilobytes.
+#[test]
+fn wrappers_are_cheap_to_clone() {
+    assert!(std::mem::size_of::<vk::DeviceFn>() > 4096);
+    assert!(std::mem::size_of::<Device>() <= 4 * std::mem::size_of::<usize>());
+    assert!(std::mem::size_of::<Instance>() <= 4 * std::mem::size_of::<usize>());
+}

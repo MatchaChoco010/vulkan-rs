@@ -11,6 +11,7 @@ use vulkan_registry::{Bitmask, Enum};
 pub fn emit_mod() -> String {
     let modules = [
         "bitmasks",
+        "command_info",
         "commands",
         "constants",
         "enums",
@@ -297,24 +298,94 @@ fn emit_consts(out: &mut String, variants: &[Variant]) {
     }
 }
 
-/// `(value, name)` table used by the `Debug` impls. Multi-bit masks and aliases are left
-/// out for flags so that every set bit is printed exactly once.
-fn emit_name_table(out: &mut String, variants: &[Variant], repr: &str, single_bits_only: bool) {
-    w!(out, "        const NAMES: &[({repr}, &str)] = &[");
+/// Emits `variants()`, the private `aliases()`, `name()` and `from_name()` inside an
+/// `impl` block.
+///
+/// `variants()` lists every named value once, by ascending value, so that `name()` can
+/// binary-search it. Alias constants, which repeat a value under an older name, go to
+/// `aliases()` and are only consulted by `from_name()`.
+///
+/// These are functions, not associated constants: a constant could collide with a
+/// registry name such as `ALL`.
+fn emit_name_tables(out: &mut String, variants: &[Variant]) {
+    let numeric = |v: &Variant| v.value.parse::<i128>().expect("integer value");
+    let mut canonical = Vec::<&Variant>::new();
+    let mut aliases = Vec::<&Variant>::new();
     let mut seen = std::collections::BTreeSet::new();
     for v in variants {
-        if v.alias || !seen.insert(v.value.clone()) {
-            continue;
+        if !v.alias && seen.insert(numeric(v)) {
+            canonical.push(v);
+        } else {
+            aliases.push(v);
         }
-        if single_bits_only {
-            let value = v.value.parse::<u64>().expect("flag value");
-            if value.count_ones() != 1 {
-                continue;
-            }
-        }
-        w!(out, "            {}({}, \"{}\"),", v.cfg, v.value, v.name);
     }
-    w!(out, "        ];");
+    canonical.sort_by_key(|v| numeric(v));
+
+    w!(
+        out,
+        "    /// Every named value, without aliases, in ascending order of value."
+    );
+    w!(
+        out,
+        "    pub const fn variants() -> &'static [(Self, &'static str)] {{"
+    );
+    w!(out, "        &[");
+    for v in &canonical {
+        w!(
+            out,
+            "            {}(Self({}), \"{}\"),",
+            v.cfg,
+            v.value,
+            v.name
+        );
+    }
+    w!(out, "        ]\n    }}");
+    w!(
+        out,
+        "    /// Names that repeat a value of [`Self::variants`]."
+    );
+    w!(
+        out,
+        "    const fn aliases() -> &'static [(Self, &'static str)] {{"
+    );
+    w!(out, "        &[");
+    for v in &aliases {
+        w!(
+            out,
+            "            {}(Self({}), \"{}\"),",
+            v.cfg,
+            v.value,
+            v.name
+        );
+    }
+    w!(out, "        ]\n    }}");
+    w!(
+        out,
+        "    /// The name of the constant with this value, e.g. `\"{}\"`.",
+        canonical.first().map_or("NAME", |v| v.name.as_str())
+    );
+    w!(out, "    ///");
+    w!(
+        out,
+        "    /// `None` if these bindings have no constant with exactly this value."
+    );
+    w!(
+        out,
+        "    pub fn name(self) -> Option<&'static str> {{ name_of(Self::variants(), self) }}"
+    );
+    w!(
+        out,
+        "    /// The value of the constant with this name. Alias names are accepted."
+    );
+    w!(out, "    ///");
+    w!(
+        out,
+        "    /// The comparison is exact; this is a linear search."
+    );
+    w!(
+        out,
+        "    pub fn from_name(name: &str) -> Option<Self> {{ value_of(Self::variants(), Self::aliases(), name) }}"
+    );
 }
 
 pub fn emit_enums(model: &Model<'_>) -> String {
@@ -338,14 +409,25 @@ pub fn emit_enums(model: &Model<'_>) -> String {
         );
         w!(out, "    pub const fn as_raw(self) -> i32 {{ self.0 }}");
         emit_consts(&mut out, &variants);
+        emit_name_tables(&mut out, &variants);
+        w!(
+            out,
+            "    /// `true` if this is a value these bindings have a constant for."
+        );
+        w!(
+            out,
+            "    pub fn is_known(self) -> bool {{ self.name().is_some() }}"
+        );
         w!(out, "}}\n");
         w!(out, "{cfg}impl core::fmt::Debug for {name} {{");
         w!(
             out,
             "    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {{"
         );
-        emit_name_table(&mut out, &variants, "i32", false);
-        w!(out, "        debug_enum(f, \"{name}\", self.0, NAMES)");
+        w!(
+            out,
+            "        debug_enum(f, \"{name}\", self.name(), self.0)"
+        );
         w!(out, "    }}");
         w!(out, "}}\n");
         for alias in &e.aliases {
@@ -384,8 +466,17 @@ pub fn emit_bitmasks(model: &Model<'_>) -> String {
         );
         w!(out, "    pub const fn as_raw(self) -> {repr} {{ self.0 }}");
         emit_consts(&mut out, &variants);
+        emit_name_tables(&mut out, &variants);
+        w!(
+            out,
+            "    /// `true` if this is a value these bindings have a constant for."
+        );
+        w!(
+            out,
+            "    pub fn is_known(self) -> bool {{ self.name().is_some() }}"
+        );
         w!(out, "}}\n");
-        emit_flags_debug(&mut out, &cfg, &name, repr, &variants);
+        emit_flags_debug(&mut out, &cfg, &name, repr);
         w!(out, "{cfg}impl From<{name}> for {flags} {{");
         w!(
             out,
@@ -484,8 +575,28 @@ pub fn emit_bitmasks(model: &Model<'_>) -> String {
             "    pub const fn union(self, other: Self) -> Self {{ Self(self.0 | other.0) }}"
         );
         emit_consts(&mut out, &variants);
+        emit_name_tables(&mut out, &variants);
+        w!(out, "    /// Every bit these bindings have a constant for.");
+        w!(out, "    pub const fn all() -> Self {{");
+        w!(out, "        let variants = Self::variants();");
+        w!(out, "        let mut bits = 0;");
+        w!(out, "        let mut index = 0;");
+        w!(out, "        while index < variants.len() {{");
+        w!(out, "            bits |= variants[index].0.0;");
+        w!(out, "            index += 1;");
+        w!(out, "        }}");
+        w!(out, "        Self(bits)");
+        w!(out, "    }}");
+        w!(
+            out,
+            "    /// `true` if no bit is set that these bindings have no constant for."
+        );
+        w!(
+            out,
+            "    pub const fn is_known(self) -> bool {{ (self.0 & !Self::all().0) == 0 }}"
+        );
         w!(out, "}}\n");
-        emit_flags_debug(&mut out, &cfg, &name, repr, &variants);
+        emit_flags_debug(&mut out, &cfg, &name, repr);
         for (op, method, sym) in [
             ("BitOr", "bitor", "|"),
             ("BitAnd", "bitand", "&"),
@@ -524,18 +635,27 @@ fn repr(bit_width: u32) -> &'static str {
     }
 }
 
-fn emit_flags_debug(out: &mut String, cfg: &str, name: &str, repr: &str, variants: &[Variant]) {
+/// `Debug` for a flags or flag-bit type: the names of the set bits.
+fn emit_flags_debug(out: &mut String, cfg: &str, name: &str, repr: &str) {
+    let widen = if repr == "u64" {
+        "flag.0"
+    } else {
+        "u64::from(flag.0)"
+    };
+    let value = if repr == "u64" {
+        "self.0"
+    } else {
+        "u64::from(self.0)"
+    };
     w!(out, "{cfg}impl core::fmt::Debug for {name} {{");
     w!(
         out,
         "    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {{"
     );
-    emit_name_table(out, variants, repr, true);
-    if repr == "u64" {
-        w!(out, "        debug_flags64(f, self.0, NAMES)");
-    } else {
-        w!(out, "        debug_flags32(f, self.0, NAMES)");
-    }
+    w!(
+        out,
+        "        debug_flags(f, {value}, Self::variants().iter().map(|&(flag, name)| ({widen}, name)))"
+    );
     w!(out, "    }}");
     w!(out, "}}\n");
 }
@@ -650,8 +770,15 @@ mod tests {
         let out = emit_enums(&Model::new(&ir));
         assert!(out.contains("pub const FIFO_LATEST_READY: Self = Self(1000361000);"));
         assert!(out.contains("pub const FIFO_LATEST_READY_EXT: Self = Self(1000361000);"));
-        assert!(out.contains("(1000361000, \"FIFO_LATEST_READY\"),"));
-        assert!(!out.contains("(1000361000, \"FIFO_LATEST_READY_EXT\"),"));
+        // The alias is a constant and a name `from_name` accepts, but `name()` and
+        // `Debug` use the canonical one.
+        let out = out.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(out.contains(
+            "pub const fn variants() -> &'static [(Self, &'static str)] { &[ (Self(1000361000), \"FIFO_LATEST_READY\"), ] }"
+        ));
+        assert!(out.contains(
+            "const fn aliases() -> &'static [(Self, &'static str)] { &[ (Self(1000361000), \"FIFO_LATEST_READY_EXT\"), ] }"
+        ));
     }
 
     #[test]
@@ -709,8 +836,10 @@ mod tests {
         assert!(out.contains("pub struct ImageUsageFlags(pub u32);"));
         assert!(out.contains("pub const SAMPLED: Self = Self(4);"));
         assert!(out.contains("pub const ALL: Self = Self(7);"));
-        assert!(out.contains("(4, \"SAMPLED\"),"));
-        assert!(!out.contains("(7, \"ALL\"),"));
+        assert!(out.contains("(Self(4), \"SAMPLED\"),"));
+        assert!(out.contains("(Self(7), \"ALL\"),"));
+        assert!(out.contains("pub const fn all() -> Self {"));
+        assert!(out.contains("pub fn from_name(name: &str) -> Option<Self>"));
         assert!(out.contains("impl core::ops::Not for ImageUsageFlags"));
         assert!(out.contains("impl core::ops::BitAndAssign for ImageUsageFlags"));
         assert!(out.contains("impl From<ImageUsageFlagBits> for ImageUsageFlags"));

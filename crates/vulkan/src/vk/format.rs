@@ -85,6 +85,47 @@ pub enum NumericFormat {
     Bool,
 }
 
+/// The scalar type a shader sees when it reads a component: what the sampled type of an
+/// image, or the component type of a color attachment output, has to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShaderNumericType {
+    /// `float`: normalized, scaled, floating point and sRGB formats.
+    Float,
+    /// `int`
+    Sint,
+    /// `uint`
+    Uint,
+}
+
+impl NumericFormat {
+    /// The scalar type a shader reads this numeric format as. `None` for `Bool`, which
+    /// has no image sampled type.
+    pub const fn shader_type(self) -> Option<ShaderNumericType> {
+        match self {
+            NumericFormat::Unorm
+            | NumericFormat::Snorm
+            | NumericFormat::Uscaled
+            | NumericFormat::Sscaled
+            | NumericFormat::Ufloat
+            | NumericFormat::Sfloat
+            | NumericFormat::Srgb
+            | NumericFormat::Sfixed5 => Some(ShaderNumericType::Float),
+            NumericFormat::Sint => Some(ShaderNumericType::Sint),
+            NumericFormat::Uint => Some(ShaderNumericType::Uint),
+            NumericFormat::Bool => None,
+        }
+    }
+
+    /// `true` for the formats whose stored integers stand for a value in `[0, 1]` or
+    /// `[-1, 1]`: `Unorm`, `Snorm` and `Srgb`.
+    pub const fn is_normalized(self) -> bool {
+        matches!(
+            self,
+            NumericFormat::Unorm | NumericFormat::Snorm | NumericFormat::Srgb
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChromaSubsampling {
     /// 4:2:0: chroma has half the width and half the height.
@@ -134,6 +175,45 @@ impl FormatInfo {
         self.components
             .iter()
             .any(|c| c.numeric_format == NumericFormat::Srgb)
+    }
+
+    /// The numeric format of the components, when they all share one. Color formats do;
+    /// combined depth/stencil formats such as `D24_UNORM_S8_UINT` do not and give `None`.
+    pub fn numeric_format(&self) -> Option<NumericFormat> {
+        let first = self.components.first()?.numeric_format;
+        self.components
+            .iter()
+            .all(|c| c.numeric_format == first)
+            .then_some(first)
+    }
+
+    /// The scalar type a shader reads from `aspect` of an image of this format.
+    ///
+    /// `aspect` is `COLOR`, `DEPTH`, `STENCIL` or one `PLANE_n`; for a combined
+    /// depth/stencil format the answer depends on it (`Float` for depth, `Uint` for
+    /// stencil). `None` if the format does not have that aspect.
+    pub fn shader_type(&self, aspect: ImageAspectFlags) -> Option<ShaderNumericType> {
+        let wanted = |c: &&FormatComponent| {
+            if aspect == ImageAspectFlags::DEPTH {
+                c.name == ComponentName::D
+            } else if aspect == ImageAspectFlags::STENCIL {
+                c.name == ComponentName::S
+            } else if aspect == ImageAspectFlags::COLOR {
+                !matches!(c.name, ComponentName::D | ComponentName::S)
+            } else if aspect == ImageAspectFlags::PLANE_0 {
+                c.plane == Some(0)
+            } else if aspect == ImageAspectFlags::PLANE_1 {
+                c.plane == Some(1)
+            } else if aspect == ImageAspectFlags::PLANE_2 {
+                c.plane == Some(2)
+            } else {
+                false
+            }
+        };
+        self.components
+            .iter()
+            .find(wanted)
+            .and_then(|c| c.numeric_format.shader_type())
     }
 
     /// The aspects an image of this format has: `DEPTH` and / or `STENCIL` for

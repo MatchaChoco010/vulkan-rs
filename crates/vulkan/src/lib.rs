@@ -70,7 +70,6 @@ extern crate std;
 
 pub mod vk;
 
-#[cfg(feature = "std")]
 use alloc::sync::Arc;
 
 /// Keeps the dynamically loaded Vulkan loader alive.
@@ -81,10 +80,12 @@ use alloc::sync::Arc;
 type Library = Option<Arc<libloading::Library>>;
 
 /// The Vulkan loader and its global commands.
+///
+/// Cloning is cheap: the function pointer table is shared.
 #[derive(Clone)]
 pub struct Entry {
     static_fn: StaticFn,
-    fp: vk::EntryFn,
+    fp: Arc<vk::EntryFn>,
     #[cfg(feature = "std")]
     _library: Library,
 }
@@ -99,10 +100,13 @@ pub struct StaticFn {
 ///
 /// This is a handle plus a function pointer table. It does not destroy the instance on
 /// drop; call [`Instance::destroy_instance`].
+///
+/// Cloning is cheap: the function pointer table is shared, so a clone costs one
+/// reference count increment (two with a dynamically loaded Vulkan library).
 #[derive(Clone)]
 pub struct Instance {
     handle: vk::Instance,
-    fp: vk::InstanceFn,
+    fp: Arc<vk::InstanceFn>,
     #[cfg(feature = "std")]
     _library: Library,
 }
@@ -111,10 +115,14 @@ pub struct Instance {
 ///
 /// This is a handle plus a function pointer table. It does not destroy the device on
 /// drop; call [`Device::destroy_device`].
+///
+/// Cloning is cheap: the function pointer table (several kilobytes) is shared, so a
+/// clone costs one reference count increment (two with a dynamically loaded Vulkan
+/// library). Clone freely where borrowing a `&Device` is inconvenient.
 #[derive(Clone)]
 pub struct Device {
     handle: vk::Device,
-    fp: vk::DeviceFn,
+    fp: Arc<vk::DeviceFn>,
     #[cfg(feature = "std")]
     _library: Library,
 }
@@ -199,7 +207,7 @@ impl Entry {
         let fp = unsafe { vk::EntryFn::load(static_fn.get_instance_proc_addr) };
         Self {
             static_fn,
-            fp,
+            fp: Arc::new(fp),
             #[cfg(feature = "std")]
             _library: None,
         }
@@ -247,7 +255,7 @@ impl Instance {
         let fp = unsafe { vk::InstanceFn::load(entry.static_fn.get_instance_proc_addr, handle) };
         Self {
             handle,
-            fp,
+            fp: Arc::new(fp),
             #[cfg(feature = "std")]
             _library: entry._library.clone(),
         }
@@ -260,7 +268,7 @@ impl Instance {
     pub fn from_raw(handle: vk::Instance, fp: vk::InstanceFn) -> Self {
         Self {
             handle,
-            fp,
+            fp: Arc::new(fp),
             #[cfg(feature = "std")]
             _library: None,
         }
@@ -310,7 +318,7 @@ impl Device {
         let fp = unsafe { vk::DeviceFn::load(instance.fp.get_device_proc_addr, handle) };
         Self {
             handle,
-            fp,
+            fp: Arc::new(fp),
             #[cfg(feature = "std")]
             _library: instance._library.clone(),
         }
@@ -323,7 +331,7 @@ impl Device {
     pub fn from_raw(handle: vk::Device, fp: vk::DeviceFn) -> Self {
         Self {
             handle,
-            fp,
+            fp: Arc::new(fp),
             #[cfg(feature = "std")]
             _library: None,
         }

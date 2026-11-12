@@ -42,6 +42,7 @@ pub fn generate(ir: &Registry) -> Vec<(String, String)> {
             emit::basic::emit_extensions(&model) + &emit::tables::emit_extension_table(&model),
         ),
         src("formats.rs", emit::tables::emit_formats(&model)),
+        src("command_info.rs", emit::tables::emit_command_table(&model)),
         src("structs.rs", emit::structs::emit_structs(&model)),
         src("commands.rs", emit::commands::emit_commands(&model)),
         test("layout_table.rs", emit::layout::emit_layout_table(&model)),
@@ -63,7 +64,7 @@ mod tests {
     #[test]
     fn embedded_registry_generates() {
         let files = generate(Registry::get());
-        assert_eq!(files.len(), 13);
+        assert_eq!(files.len(), 14);
         for (path, body) in &files {
             assert!(!body.is_empty(), "{path} is empty");
         }

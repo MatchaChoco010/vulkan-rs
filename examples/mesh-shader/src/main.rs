@@ -1,11 +1,25 @@
-#![allow(unsafe_op_in_unsafe_fn)]
+//! A task shader and a mesh shader that read their geometry from storage buffers, with
+//! `VK_EXT_descriptor_heap`.
+//!
+//! The shaders (`shaders/mesh.slang`) declare three buffers with `set = 0` and bindings
+//! 0 to 2, and a push constant block. There is no descriptor set and no pipeline layout.
+//! The pipeline is created with a *mapping* for each binding that says "the index of
+//! this descriptor in the resource heap is the `u32` at this offset of the push data".
+//! So the draw chooses its buffers by pushing three indices, next to the matrix that the
+//! shader reads as its push constants.
+//!
+//! `examples/compute-buffer` shows the simpler mapping with a fixed offset.
+//!
+//! The image goes to `target/example-output/mesh_shader.ppm`.
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use glam::{Mat4, Vec3};
-use std::ffi::{CStr, CString, c_void};
+use std::ffi::{CStr, c_void};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::mem::offset_of;
 use vulkan::{Device, Entry, Instance, vk};
+use vulkan_alloc::descriptor_heap::{DescriptorSlots, ResourceHeapPlan};
 use vulkan_alloc::{
     Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc,
     MemoryLocation,
@@ -14,6 +28,7 @@ use vulkan_alloc::{
 const WIDTH: u32 = 64;
 const HEIGHT: u32 = 64;
 const FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
+const IMAGE_BYTES: u64 = (WIDTH * HEIGHT * 4) as u64;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
@@ -31,10 +46,17 @@ struct MeshDraw {
     _pad: u32,
 }
 
+/// What `vkCmdPushDataEXT` sends for a draw.
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
-struct PushConstants {
+struct PushData {
+    /// The shader's push constant block starts at offset 0 of the push data.
     clip_from_world: [[f32; 4]; 4],
+    /// Indices into the resource heap, read by the mappings of the pipeline.
+    vertices: u32,
+    indices: u32,
+    draws: u32,
+    _pad: u32,
 }
 
 const MESH_VERTICES: [MeshVertex; 3] = [
@@ -61,754 +83,397 @@ const MESH_DRAWS: [MeshDraw; 1] = [MeshDraw {
     _pad: 0,
 }];
 
+struct Gpu {
+    instance: Instance,
+    messenger: vk::DebugUtilsMessengerEXT,
+    physical_device: vk::PhysicalDevice,
+    device: Device,
+    queue: vk::Queue,
+    queue_family: u32,
+    heap_properties: vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'static>,
+    storage_buffer_alignment: u64,
+}
+
+/// A buffer that stays mapped for as long as it lives.
+struct MappedBuffer {
+    buffer: vk::Buffer,
+    allocation: Allocation,
+    address: vk::DeviceAddress,
+    bytes: *mut u8,
+    size: u64,
+}
+
+impl MappedBuffer {
+    /// # Safety
+    ///
+    /// The buffer must be alive, and the device must not be writing the memory.
+    unsafe fn bytes(&mut self) -> &mut [u8] {
+        unsafe { std::slice::from_raw_parts_mut(self.bytes, self.size as usize) }
+    }
+}
+
 fn main() -> Result<()> {
+    // SAFETY: the example upholds the valid usage rules of the commands it calls; the
+    // validation layer, when installed, reports any violation.
+    unsafe { run() }
+}
+
+unsafe fn run() -> Result<()> {
     unsafe {
-        let entry = Entry::load()?;
-        let mut instance_extensions = Vec::new();
-        if has_instance_extension(&entry, vk::EXT_DEBUG_UTILS_NAME)? {
-            instance_extensions.push(vk::EXT_DEBUG_UTILS_NAME);
-        }
-        let debug_utils_enabled = instance_extensions.contains(&vk::EXT_DEBUG_UTILS_NAME);
-        let instance = create_instance(&entry, &instance_extensions)?;
-        let debug_messenger = create_debug_messenger(&instance, debug_utils_enabled)?;
-        let Some(selection) = pick_physical_device(&instance)? else {
-            println!("skipped: no device with task shader, mesh shader, and dynamic rendering");
-            if !debug_messenger.is_null() {
-                instance.destroy_debug_utils_messenger_ext(debug_messenger, None);
-            }
-            instance.destroy_instance(None);
+        let Some(gpu) = create_gpu()? else {
+            println!("skipped: no Vulkan 1.4 device with mesh shaders and descriptor heaps");
             return Ok(());
         };
-        let (device, queue) =
-            create_device_and_queue(&instance, selection.physical_device, selection.queue_family)?;
-        let physical_properties =
-            instance.get_physical_device_properties(selection.physical_device);
-        let memory_properties =
-            instance.get_physical_device_memory_properties(selection.physical_device);
+        let device = &gpu.device;
         let mut allocator = Allocator::new(AllocatorCreateDesc::new(
-            &device,
-            memory_properties,
-            physical_properties,
+            device,
+            gpu.instance
+                .get_physical_device_memory_properties(gpu.physical_device),
+            gpu.instance
+                .get_physical_device_properties(gpu.physical_device),
         ));
 
-        let command_pool = create_command_pool(&device, selection.queue_family)?;
-        let command_buffer = allocate_command_buffer(&device, command_pool)?;
-        let fence = create_fence(&device)?;
-        let color = create_color_image(&device, &mut allocator)?;
-        let color_view = create_image_view(&device, color.image)?;
-        let readback = create_readback_buffer(&device, &mut allocator)?;
-        let vertex_buffer = create_storage_buffer(
-            &device,
+        let vertices = create_storage_buffer(&gpu, &mut allocator, "vertices", &MESH_VERTICES)?;
+        let indices = create_storage_buffer(&gpu, &mut allocator, "indices", &MESH_INDICES)?;
+        let draws = create_storage_buffer(&gpu, &mut allocator, "draws", &MESH_DRAWS)?;
+        let mut readback = create_mapped_buffer(
+            &gpu,
             &mut allocator,
-            command_buffer,
-            queue,
-            fence,
-            "mesh shader vertices",
-            &MESH_VERTICES,
+            "readback",
+            IMAGE_BYTES,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            1,
+            MemoryLocation::GpuToCpu,
         )?;
-        let index_buffer = create_storage_buffer(
-            &device,
+
+        // The resource heap: three buffer descriptors, then the range the implementation
+        // reserves for itself.
+        let mut plan = ResourceHeapPlan::new(&gpu.heap_properties);
+        let slots = plan.buffers(3)?;
+        let layout = plan.finish()?;
+        let mut heap = create_mapped_buffer(
+            &gpu,
             &mut allocator,
-            command_buffer,
-            queue,
-            fence,
-            "mesh shader indices",
-            &MESH_INDICES,
+            "resource heap",
+            layout.size,
+            vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT,
+            layout.alignment,
+            MemoryLocation::CpuToGpu,
         )?;
-        let draw_buffer = create_storage_buffer(
-            &device,
-            &mut allocator,
-            command_buffer,
-            queue,
-            fence,
-            "mesh shader draws",
-            &MESH_DRAWS,
+
+        // One call writes all three descriptors, each into its own slot of the heap.
+        let ranges = [&vertices, &indices, &draws].map(|buffer| {
+            vk::DeviceAddressRangeKHR::default()
+                .address(buffer.address)
+                .size(buffer.size)
+        });
+        let descriptors = [0, 1, 2].map(|slot| {
+            vk::ResourceDescriptorInfoEXT::default()
+                .ty(vk::DescriptorType::STORAGE_BUFFER)
+                .data(vk::ResourceDescriptorDataEXT::address_range(&ranges[slot]))
+        });
+        let destinations = slots
+            .slices(heap.bytes())
+            .context("the heap is smaller than its layout")?
+            .map(|bytes| vk::HostAddressRangeEXT::default().address(bytes))
+            .collect::<Vec<_>>();
+        device.write_resource_descriptors_ext(&descriptors, &destinations)?;
+
+        let image = device.create_image(
+            &vk::ImageCreateInfo::default()
+                .image_type(vk::ImageType::_2D)
+                .format(FORMAT)
+                .extent(vk::Extent3D::default().width(WIDTH).height(HEIGHT).depth(1))
+                .mip_levels(1)
+                .array_layers(1)
+                .samples(vk::SampleCountFlagBits::_1)
+                .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC),
+            None,
         )?;
-        let descriptor_set_layout = create_descriptor_set_layout(&device)?;
-        let descriptor_pool = create_descriptor_pool(&device)?;
-        let descriptor_set =
-            allocate_descriptor_set(&device, descriptor_pool, descriptor_set_layout)?;
-        update_descriptor_set(
-            &device,
-            descriptor_set,
-            &vertex_buffer,
-            &index_buffer,
-            &draw_buffer,
+        let image_allocation = allocator.allocate(AllocationCreateDesc {
+            name: Some("color image"),
+            requirements: device.get_image_memory_requirements(image),
+            location: MemoryLocation::GpuOnly,
+            linear: false,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        })?;
+        device.bind_image_memory(image, image_allocation.memory(), image_allocation.offset())?;
+        let color_range = vk::ImageSubresourceRange::default()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .level_count(1)
+            .layer_count(1);
+        let image_view = device.create_image_view(
+            &vk::ImageViewCreateInfo::default()
+                .image(image)
+                .view_type(vk::ImageViewType::_2D)
+                .format(FORMAT)
+                .subresource_range(color_range),
+            None,
+        )?;
+
+        let pipeline = create_pipeline(device, &slots)?;
+
+        let pool = device.create_command_pool(
+            &vk::CommandPoolCreateInfo::default().queue_family_index(gpu.queue_family),
+            None,
+        )?;
+        let command_buffer = device.allocate_command_buffers(
+            &vk::CommandBufferAllocateInfo::default()
+                .command_pool(pool)
+                .level(vk::CommandBufferLevel::PRIMARY)
+                .command_buffer_count(1),
+        )?[0];
+        device.begin_command_buffer(command_buffer, &vk::CommandBufferBeginInfo::default())?;
+
+        // What the host wrote becomes visible to the shaders: the heap as descriptors,
+        // the geometry as storage.
+        let geometry_stages =
+            vk::PipelineStageFlags2::TASK_SHADER_EXT | vk::PipelineStageFlags2::MESH_SHADER_EXT;
+        let host_write = |buffer: &MappedBuffer, access| {
+            vk::BufferMemoryBarrier2::default()
+                .src_stage_mask(vk::PipelineStageFlags2::HOST)
+                .src_access_mask(vk::AccessFlags2::HOST_WRITE)
+                .dst_stage_mask(geometry_stages)
+                .dst_access_mask(access)
+                .buffer(buffer.buffer)
+                .size(buffer.size)
+        };
+        let buffer_barriers = [
+            host_write(&heap, vk::AccessFlags2::RESOURCE_HEAP_READ_EXT),
+            host_write(&vertices, vk::AccessFlags2::SHADER_STORAGE_READ),
+            host_write(&indices, vk::AccessFlags2::SHADER_STORAGE_READ),
+            host_write(&draws, vk::AccessFlags2::SHADER_STORAGE_READ),
+        ];
+        let to_color = [vk::ImageMemoryBarrier2::default()
+            .dst_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .image(image)
+            .subresource_range(color_range)];
+        device.cmd_pipeline_barrier2(
+            command_buffer,
+            &vk::DependencyInfo::default()
+                .buffer_memory_barriers(&buffer_barriers)
+                .image_memory_barriers(&to_color),
         );
-        let pipeline_layout = create_pipeline_layout(&device, descriptor_set_layout)?;
-        let pipeline = create_mesh_pipeline(&device, pipeline_layout)?;
 
-        {
-            let begin = vk::CommandBufferBeginInfo::default();
-            device.begin_command_buffer(command_buffer, &begin)?;
-            let subresource_range = vk::ImageSubresourceRange::default()
-                .aspect_mask(vk::ImageAspectFlags::COLOR)
-                .level_count(1)
-                .layer_count(1);
-            let to_color = [vk::ImageMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::empty())
-                .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .image(color.image)
-                .subresource_range(subresource_range)];
-            device.cmd_pipeline_barrier(
-                command_buffer,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &to_color,
-            );
-            let geometry_barriers = [
-                vk::BufferMemoryBarrier::default()
-                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                    .buffer(vertex_buffer.buffer)
-                    .offset(0)
-                    .size(vertex_buffer.size),
-                vk::BufferMemoryBarrier::default()
-                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                    .buffer(index_buffer.buffer)
-                    .offset(0)
-                    .size(index_buffer.size),
-                vk::BufferMemoryBarrier::default()
-                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                    .buffer(draw_buffer.buffer)
-                    .offset(0)
-                    .size(draw_buffer.size),
-            ];
-            device.cmd_pipeline_barrier(
-                command_buffer,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::TASK_SHADER_EXT | vk::PipelineStageFlags::MESH_SHADER_EXT,
-                vk::DependencyFlags::empty(),
-                &[],
-                &geometry_barriers,
-                &[],
-            );
-
-            let clear = vk::ClearValue {
+        let attachments = [vk::RenderingAttachmentInfo::default()
+            .image_view(image_view)
+            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .clear_value(vk::ClearValue {
                 color: vk::ClearColorValue {
                     float32: [0.0, 0.0, 0.0, 1.0],
                 },
-            };
-            let attachment = [vk::RenderingAttachmentInfo::default()
-                .image_view(color_view)
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .clear_value(clear)];
-            let rendering = vk::RenderingInfo::default()
-                .render_area(
-                    vk::Rect2D::default()
-                        .extent(vk::Extent2D::default().width(WIDTH).height(HEIGHT)),
-                )
+            })];
+        let extent = vk::Extent2D::default().width(WIDTH).height(HEIGHT);
+        device.cmd_begin_rendering(
+            command_buffer,
+            &vk::RenderingInfo::default()
+                .render_area(vk::Rect2D::default().extent(extent))
                 .layer_count(1)
-                .color_attachments(&attachment);
-            device.cmd_begin_rendering(command_buffer, &rendering);
-            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
-            device.cmd_bind_descriptor_sets(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                pipeline_layout,
-                0,
-                &[descriptor_set],
-                &[],
-            );
-            let push_constants = PushConstants {
-                clip_from_world: mesh_clip_from_world().to_cols_array_2d(),
-            };
-            device.cmd_push_constants(
-                command_buffer,
-                pipeline_layout,
-                vk::ShaderStageFlags::MESH_EXT,
-                0,
-                bytemuck::bytes_of(&push_constants),
-            );
-            device.cmd_draw_mesh_tasks_ext(command_buffer, 1, 1, 1);
-            device.cmd_end_rendering(command_buffer);
-
-            let to_transfer = [vk::ImageMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
-                .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-                .image(color.image)
-                .subresource_range(subresource_range)];
-            device.cmd_pipeline_barrier(
-                command_buffer,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &to_transfer,
-            );
-            let copy = [vk::BufferImageCopy::default()
-                .image_subresource(
-                    vk::ImageSubresourceLayers::default()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .layer_count(1),
-                )
-                .image_extent(vk::Extent3D::default().width(WIDTH).height(HEIGHT).depth(1))];
-            device.cmd_copy_image_to_buffer(
-                command_buffer,
-                color.image,
-                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                readback.buffer,
-                &copy,
-            );
-            let readback_barrier = vk::BufferMemoryBarrier::default()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::HOST_READ)
-                .buffer(readback.buffer)
-                .offset(0)
-                .size((WIDTH * HEIGHT * 4) as u64);
-            device.cmd_pipeline_barrier(
-                command_buffer,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::HOST,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[readback_barrier],
-                &[],
-            );
-            device.end_command_buffer(command_buffer)?;
-        }
-        let command_buffers = [command_buffer];
-        let submit = vk::SubmitInfo::default().command_buffers(&command_buffers);
-        device.queue_submit(queue, &[submit], fence)?;
-        device.wait_for_fences(&[fence], true, u64::MAX)?;
-        verify_and_write_ppm(
-            &mut allocator,
-            &readback.allocation,
-            &output_path("mesh_shader.ppm"),
-        )?;
-
-        device.destroy_pipeline(pipeline, None);
-        device.destroy_pipeline_layout(pipeline_layout, None);
-        device.destroy_descriptor_pool(descriptor_pool, None);
-        device.destroy_descriptor_set_layout(descriptor_set_layout, None);
-        device.destroy_buffer(draw_buffer.buffer, None);
-        allocator.free(draw_buffer.allocation)?;
-        device.destroy_buffer(index_buffer.buffer, None);
-        allocator.free(index_buffer.allocation)?;
-        device.destroy_buffer(vertex_buffer.buffer, None);
-        allocator.free(vertex_buffer.allocation)?;
-        device.destroy_image_view(color_view, None);
-        device.destroy_image(color.image, None);
-        allocator.free(color.allocation)?;
-        device.destroy_buffer(readback.buffer, None);
-        allocator.free(readback.allocation)?;
-        device.destroy_fence(fence, None);
-        device.destroy_command_pool(command_pool, None);
-        drop(allocator);
-        device.destroy_device(None);
-        if !debug_messenger.is_null() {
-            instance.destroy_debug_utils_messenger_ext(debug_messenger, None);
-        }
-        instance.destroy_instance(None);
-    }
-
-    println!("wrote {}", output_path("mesh_shader.ppm").display());
-    Ok(())
-}
-
-struct PhysicalDeviceSelection {
-    physical_device: vk::PhysicalDevice,
-    queue_family: u32,
-}
-
-struct BufferAllocation {
-    buffer: vk::Buffer,
-    allocation: Allocation,
-    size: u64,
-}
-
-struct ImageAllocation {
-    image: vk::Image,
-    allocation: Allocation,
-}
-
-unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instance> {
-    let app_name = CString::new("vulkan-mesh-shader")?;
-    let enabled_layers = validation_layers(entry)?;
-    let enabled_layer_names = enabled_layers
-        .iter()
-        .map(|layer| vk::CStrPtr::new(layer))
-        .collect::<Vec<_>>();
-    let extension_names = extensions
-        .iter()
-        .map(|extension| vk::CStrPtr::new(extension))
-        .collect::<Vec<_>>();
-    let app_info = vk::ApplicationInfo::default()
-        .application_name(app_name.as_c_str())
-        .engine_name(app_name.as_c_str())
-        .api_version(vk::make_api_version(0, 1, 3, 0));
-    let create_info = vk::InstanceCreateInfo::default()
-        .application_info(&app_info)
-        .enabled_layer_names(&enabled_layer_names)
-        .enabled_extension_names(&extension_names);
-    Ok(entry.create_instance(&create_info, None)?)
-}
-
-unsafe fn has_instance_extension(entry: &Entry, name: &CStr) -> Result<bool> {
-    Ok(entry
-        .enumerate_instance_extension_properties(None)?
-        .iter()
-        .any(|extension| extension.extension_name_as_c_str() == Ok(name)))
-}
-
-unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
-    let validation = c"VK_LAYER_KHRONOS_validation";
-    let available = entry.enumerate_instance_layer_properties()?;
-    let has_validation = available
-        .iter()
-        .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
-    if has_validation {
-        Ok(vec![validation])
-    } else {
-        Err(anyhow!(
-            "VK_LAYER_KHRONOS_validation is required for this example"
-        ))
-    }
-}
-
-unsafe fn create_debug_messenger(
-    instance: &Instance,
-    enabled: bool,
-) -> Result<vk::DebugUtilsMessengerEXT> {
-    if !enabled {
-        return Ok(vk::DebugUtilsMessengerEXT::null());
-    }
-    let info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-        .message_severity(
-            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-        )
-        .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-        )
-        .pfn_user_callback(Some(vulkan_debug_callback));
-    Ok(instance.create_debug_utils_messenger_ext(&info, None)?)
-}
-
-unsafe extern "system" fn vulkan_debug_callback(
-    _severity: vk::DebugUtilsMessageSeverityFlagBitsEXT,
-    _types: vk::DebugUtilsMessageTypeFlagsEXT,
-    data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
-    _user_data: *mut c_void,
-) -> u32 {
-    if !data.is_null() && !(*data).p_message.is_null() {
-        eprintln!("{}", CStr::from_ptr((*data).p_message).to_string_lossy());
-    }
-    vk::FALSE
-}
-
-unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDeviceSelection>> {
-    let mut best = None;
-    for physical_device in instance.enumerate_physical_devices()? {
-        let extensions = instance.enumerate_device_extension_properties(physical_device, None)?;
-        if !has_extension(&extensions, vk::EXT_MESH_SHADER_NAME) {
-            continue;
-        }
-
-        let mut mesh_features = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
-        let mut dynamic_rendering_features = vk::PhysicalDeviceDynamicRenderingFeatures::default();
-        {
-            let mut features2 = vk::PhysicalDeviceFeatures2::default()
-                .push_next(&mut dynamic_rendering_features)
-                .push_next(&mut mesh_features);
-            instance.get_physical_device_features2(physical_device, &mut features2);
-        }
-        if mesh_features.task_shader == 0
-            || mesh_features.mesh_shader == 0
-            || dynamic_rendering_features.dynamic_rendering == 0
-        {
-            continue;
-        }
-
-        let queue_families = instance.get_physical_device_queue_family_properties(physical_device);
-        let Some(queue_family) = queue_families
-            .iter()
-            .position(|p| p.queue_flags.contains(vk::QueueFlags::GRAPHICS))
-        else {
-            continue;
-        };
-        let properties = instance.get_physical_device_properties(physical_device);
-        let score = match properties.device_type {
-            vk::PhysicalDeviceType::DISCRETE_GPU => 3,
-            vk::PhysicalDeviceType::INTEGRATED_GPU => 2,
-            vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
-            _ => 0,
-        };
-        if best
-            .as_ref()
-            .is_none_or(|(best_score, _)| score > *best_score)
-        {
-            best = Some((
-                score,
-                PhysicalDeviceSelection {
-                    physical_device,
-                    queue_family: queue_family as u32,
-                },
-            ));
-        }
-    }
-    Ok(best.map(|(_, selection)| selection))
-}
-
-unsafe fn create_device_and_queue(
-    instance: &Instance,
-    physical_device: vk::PhysicalDevice,
-    queue_family: u32,
-) -> Result<(Device, vk::Queue)> {
-    let priorities = [1.0_f32];
-    let queue_info = [vk::DeviceQueueCreateInfo::default()
-        .queue_family_index(queue_family)
-        .queue_priorities(&priorities)];
-    let extension_names = [vk::CStrPtr::new(vk::EXT_MESH_SHADER_NAME)];
-    let mut mesh_features = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
-        .task_shader(true)
-        .mesh_shader(true);
-    let mut dynamic_rendering_features =
-        vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
-    let create_info = vk::DeviceCreateInfo::default()
-        .queue_create_infos(&queue_info)
-        .enabled_extension_names(&extension_names)
-        .push_next(&mut mesh_features)
-        .push_next(&mut dynamic_rendering_features);
-    let device = instance.create_device(physical_device, &create_info, None)?;
-    let queue = device.get_device_queue(queue_family, 0);
-    Ok((device, queue))
-}
-
-unsafe fn create_color_image(
-    device: &Device,
-    allocator: &mut Allocator,
-) -> Result<ImageAllocation> {
-    let info = vk::ImageCreateInfo::default()
-        .image_type(vk::ImageType::_2D)
-        .format(FORMAT)
-        .extent(vk::Extent3D::default().width(WIDTH).height(HEIGHT).depth(1))
-        .mip_levels(1)
-        .array_layers(1)
-        .samples(vk::SampleCountFlagBits::_1)
-        .tiling(vk::ImageTiling::OPTIMAL)
-        .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let image = device.create_image(&info, None)?;
-    let requirements = device.get_image_memory_requirements(image);
-    let allocation = match allocator.allocate(AllocationCreateDesc {
-        name: Some("mesh shader color image"),
-        requirements,
-        location: MemoryLocation::GpuOnly,
-        linear: false,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }) {
-        Ok(allocation) => allocation,
-        Err(err) => {
-            device.destroy_image(image, None);
-            return Err(err.into());
-        }
-    };
-    if let Err(err) = device.bind_image_memory(image, allocation.memory(), allocation.offset()) {
-        let _ = allocator.free(allocation);
-        device.destroy_image(image, None);
-        return Err(err.into());
-    }
-    Ok(ImageAllocation { image, allocation })
-}
-
-unsafe fn create_image_view(device: &Device, image: vk::Image) -> Result<vk::ImageView> {
-    let info = vk::ImageViewCreateInfo::default()
-        .image(image)
-        .view_type(vk::ImageViewType::_2D)
-        .format(FORMAT)
-        .subresource_range(
-            vk::ImageSubresourceRange::default()
-                .aspect_mask(vk::ImageAspectFlags::COLOR)
-                .level_count(1)
-                .layer_count(1),
+                .color_attachments(&attachments),
         );
-    Ok(device.create_image_view(&info, None)?)
-}
+        device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
+        device.cmd_bind_resource_heap_ext(command_buffer, &layout.bind_info(heap.address)?);
 
-unsafe fn create_readback_buffer(
-    device: &Device,
-    allocator: &mut Allocator,
-) -> Result<BufferAllocation> {
-    let info = vk::BufferCreateInfo::default()
-        .size((WIDTH * HEIGHT * 4) as u64)
-        .usage(vk::BufferUsageFlags::TRANSFER_DST)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let buffer = device.create_buffer(&info, None)?;
-    let requirements = device.get_buffer_memory_requirements(buffer);
-    let allocation = match allocator.allocate(AllocationCreateDesc {
-        name: Some("mesh shader readback"),
-        requirements,
-        location: MemoryLocation::GpuToCpu,
-        linear: true,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }) {
-        Ok(allocation) => allocation,
-        Err(err) => {
-            device.destroy_buffer(buffer, None);
-            return Err(err.into());
+        // The matrix for the shader, and which descriptors the draw uses.
+        let push_data = PushData {
+            clip_from_world: mesh_clip_from_world().to_cols_array_2d(),
+            vertices: slots.index(0).context("slot 0 exists")?,
+            indices: slots.index(1).context("slot 1 exists")?,
+            draws: slots.index(2).context("slot 2 exists")?,
+            _pad: 0,
+        };
+        device.cmd_push_data_ext(
+            command_buffer,
+            &vk::PushDataInfoEXT::default().data(
+                vk::HostAddressRangeConstEXT::default().address(bytemuck::bytes_of(&push_data)),
+            ),
+        );
+        device.cmd_draw_mesh_tasks_ext(command_buffer, 1, 1, 1);
+        device.cmd_end_rendering(command_buffer);
+
+        let to_transfer = [vk::ImageMemoryBarrier2::default()
+            .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags2::COPY)
+            .dst_access_mask(vk::AccessFlags2::TRANSFER_READ)
+            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .image(image)
+            .subresource_range(color_range)];
+        device.cmd_pipeline_barrier2(
+            command_buffer,
+            &vk::DependencyInfo::default().image_memory_barriers(&to_transfer),
+        );
+        let regions = [vk::BufferImageCopy::default()
+            .image_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .layer_count(1),
+            )
+            .image_extent(vk::Extent3D::default().width(WIDTH).height(HEIGHT).depth(1))];
+        device.cmd_copy_image_to_buffer(
+            command_buffer,
+            image,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            readback.buffer,
+            &regions,
+        );
+        let to_host = [vk::BufferMemoryBarrier2::default()
+            .src_stage_mask(vk::PipelineStageFlags2::COPY)
+            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags2::HOST)
+            .dst_access_mask(vk::AccessFlags2::HOST_READ)
+            .buffer(readback.buffer)
+            .size(IMAGE_BYTES)];
+        device.cmd_pipeline_barrier2(
+            command_buffer,
+            &vk::DependencyInfo::default().buffer_memory_barriers(&to_host),
+        );
+        device.end_command_buffer(command_buffer)?;
+
+        let fence = device.create_fence(&vk::FenceCreateInfo::default(), None)?;
+        let command_buffers =
+            [vk::CommandBufferSubmitInfo::default().command_buffer(command_buffer)];
+        let submits = [vk::SubmitInfo2::default().command_buffer_infos(&command_buffers)];
+        device.queue_submit2(gpu.queue, &submits, fence)?;
+        device.wait_for_fences(&[fence], true, u64::MAX)?;
+
+        let path = output_path("mesh_shader.ppm");
+        verify_and_write_ppm(readback.bytes(), &path)?;
+        println!("wrote {}", path.display());
+
+        device.destroy_fence(fence, None);
+        device.destroy_command_pool(pool, None);
+        device.destroy_pipeline(pipeline, None);
+        device.destroy_image_view(image_view, None);
+        device.destroy_image(image, None);
+        allocator.free(image_allocation)?;
+        for buffer in [heap, readback, draws, indices, vertices] {
+            device.destroy_buffer(buffer.buffer, None);
+            // Freeing a persistently mapped allocation also ends its mapping.
+            allocator.free(buffer.allocation)?;
         }
-    };
-    if let Err(err) = device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) {
-        let _ = allocator.free(allocation);
-        device.destroy_buffer(buffer, None);
-        return Err(err.into());
+        drop(allocator);
+        gpu.destroy();
+        Ok(())
     }
-    Ok(BufferAllocation {
-        buffer,
-        allocation,
-        size: (WIDTH * HEIGHT * 4) as u64,
-    })
 }
 
-unsafe fn create_storage_buffer<T: bytemuck::Pod>(
-    device: &Device,
-    allocator: &mut Allocator,
-    command_buffer: vk::CommandBuffer,
-    queue: vk::Queue,
-    fence: vk::Fence,
-    name: &'static str,
-    values: &[T],
-) -> Result<BufferAllocation> {
-    let size = core::mem::size_of_val(values) as u64;
-    let info = vk::BufferCreateInfo::default()
-        .size(size)
-        .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::STORAGE_BUFFER)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let buffer = device.create_buffer(&info, None)?;
-    let requirements = device.get_buffer_memory_requirements(buffer);
-    let allocation = match allocator.allocate(AllocationCreateDesc {
-        name: Some(name),
-        requirements,
-        location: MemoryLocation::GpuOnly,
-        linear: true,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }) {
-        Ok(allocation) => allocation,
-        Err(err) => {
-            device.destroy_buffer(buffer, None);
-            return Err(err.into());
+/// A graphics pipeline without a pipeline layout. The mappings connect the bindings of
+/// the shaders to the heap indices in [`PushData`].
+unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Result<vk::Pipeline> {
+    unsafe {
+        let task = create_shader_module(device, include_bytes!("shaders/task.spv"))?;
+        let mesh = create_shader_module(device, include_bytes!("shaders/mesh.spv"))?;
+        let fragment = create_shader_module(device, include_bytes!("shaders/fragment.spv"))?;
+
+        // Binding `b` of set 0 is the descriptor at `index * stride` in the resource
+        // heap, where `index` is the u32 at `push_offset` of the push data. The stride
+        // is the distance between two slots of the run that `ResourceHeapPlan` laid out.
+        let stride = u32::try_from(slots.stride)?;
+        let mapping = |binding: u32, push_offset: usize| {
+            vk::DescriptorSetAndBindingMappingEXT::default()
+                .descriptor_set(0)
+                .first_binding(binding)
+                .binding_count(1)
+                .resource_mask(vk::SpirvResourceTypeFlagBitsEXT::READ_ONLY_STORAGE_BUFFER.into())
+                .source(vk::DescriptorMappingSourceEXT::HEAP_WITH_PUSH_INDEX)
+                .source_data(vk::DescriptorMappingSourceDataEXT::push_index(
+                    vk::DescriptorMappingSourcePushIndexEXT::default()
+                        .push_offset(push_offset as u32)
+                        .heap_index_stride(stride),
+                ))
+        };
+        let mappings = [
+            mapping(0, offset_of!(PushData, vertices)),
+            mapping(1, offset_of!(PushData, indices)),
+            mapping(2, offset_of!(PushData, draws)),
+        ];
+        // A stage ignores the mappings for bindings it does not use, so both stages can
+        // take the same list. Each needs its own struct in its own chain.
+        let mut task_mappings =
+            vk::ShaderDescriptorSetAndBindingMappingInfoEXT::default().mappings(&mappings);
+        let mut mesh_mappings =
+            vk::ShaderDescriptorSetAndBindingMappingInfoEXT::default().mappings(&mappings);
+        let stages = [
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlagBits::TASK_EXT)
+                .module(task)
+                .name(c"main")
+                .push_next(&mut task_mappings),
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlagBits::MESH_EXT)
+                .module(mesh)
+                .name(c"main")
+                .push_next(&mut mesh_mappings),
+            vk::PipelineShaderStageCreateInfo::default()
+                .stage(vk::ShaderStageFlagBits::FRAGMENT)
+                .module(fragment)
+                .name(c"main"),
+        ];
+
+        // A negative height flips the image so that +Y is up.
+        let viewports = [vk::Viewport::default()
+            .y(HEIGHT as f32)
+            .width(WIDTH as f32)
+            .height(-(HEIGHT as f32))
+            .max_depth(1.0)];
+        let scissors =
+            [vk::Rect2D::default().extent(vk::Extent2D::default().width(WIDTH).height(HEIGHT))];
+        let viewport_state = vk::PipelineViewportStateCreateInfo::default()
+            .viewports(&viewports)
+            .scissors(&scissors);
+        let rasterization_state = vk::PipelineRasterizationStateCreateInfo::default()
+            .polygon_mode(vk::PolygonMode::FILL)
+            .cull_mode(vk::CullModeFlags::NONE)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+            .line_width(1.0);
+        let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
+            .rasterization_samples(vk::SampleCountFlagBits::_1);
+        let blend_attachments = [vk::PipelineColorBlendAttachmentState::default()
+            .color_write_mask(
+                vk::ColorComponentFlags::R
+                    | vk::ColorComponentFlags::G
+                    | vk::ColorComponentFlags::B
+                    | vk::ColorComponentFlags::A,
+            )];
+        let color_blend_state =
+            vk::PipelineColorBlendStateCreateInfo::default().attachments(&blend_attachments);
+        let formats = [FORMAT];
+        let mut rendering =
+            vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&formats);
+        // `DESCRIPTOR_HEAP_EXT` is what allows the layout to be null.
+        let mut flags = vk::PipelineCreateFlags2CreateInfo::default()
+            .flags(vk::PipelineCreateFlags2::DESCRIPTOR_HEAP_EXT);
+        let info = vk::GraphicsPipelineCreateInfo::default()
+            .stages(&stages)
+            .viewport_state(&viewport_state)
+            .rasterization_state(&rasterization_state)
+            .multisample_state(&multisample_state)
+            .color_blend_state(&color_blend_state)
+            .push_next(&mut rendering)
+            .push_next(&mut flags);
+        let result = device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
+        for module in [fragment, mesh, task] {
+            device.destroy_shader_module(module, None);
         }
-    };
-    if let Err(err) = device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) {
-        let _ = allocator.free(allocation);
-        device.destroy_buffer(buffer, None);
-        return Err(err.into());
-    }
-
-    let staging = create_staging_buffer(device, allocator, size)?;
-    {
-        let flags = allocator.allocation_memory_flags(&staging.allocation)?;
-        let mut mapped = allocator.map(&staging.allocation)?;
-        mapped
-            .byte_range_mut(0, size as usize)
-            .copy_from_slice(bytemuck::cast_slice(values));
-        if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-            mapped.flush()?;
+        match result {
+            Ok(pipelines) => Ok(pipelines[0]),
+            Err((pipelines, error)) => {
+                for pipeline in pipelines.into_iter().filter(|p| !p.is_null()) {
+                    device.destroy_pipeline(pipeline, None);
+                }
+                Err(anyhow!("vkCreateGraphicsPipelines failed: {error}"))
+            }
         }
     }
-    copy_buffer_one_time(
-        device,
-        command_buffer,
-        queue,
-        fence,
-        staging.buffer,
-        buffer,
-        size,
-    )?;
-    device.destroy_buffer(staging.buffer, None);
-    allocator.free(staging.allocation)?;
-
-    Ok(BufferAllocation {
-        buffer,
-        allocation,
-        size,
-    })
-}
-
-unsafe fn create_staging_buffer(
-    device: &Device,
-    allocator: &mut Allocator,
-    size: u64,
-) -> Result<BufferAllocation> {
-    let info = vk::BufferCreateInfo::default()
-        .size(size)
-        .usage(vk::BufferUsageFlags::TRANSFER_SRC)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let buffer = device.create_buffer(&info, None)?;
-    let requirements = device.get_buffer_memory_requirements(buffer);
-    let allocation = match allocator.allocate(AllocationCreateDesc {
-        name: Some("mesh shader staging"),
-        requirements,
-        location: MemoryLocation::CpuToGpu,
-        linear: true,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }) {
-        Ok(allocation) => allocation,
-        Err(err) => {
-            device.destroy_buffer(buffer, None);
-            return Err(err.into());
-        }
-    };
-    if let Err(err) = device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) {
-        let _ = allocator.free(allocation);
-        device.destroy_buffer(buffer, None);
-        return Err(err.into());
-    }
-    Ok(BufferAllocation {
-        buffer,
-        allocation,
-        size,
-    })
-}
-
-unsafe fn copy_buffer_one_time(
-    device: &Device,
-    command_buffer: vk::CommandBuffer,
-    queue: vk::Queue,
-    fence: vk::Fence,
-    src: vk::Buffer,
-    dst: vk::Buffer,
-    size: u64,
-) -> Result<()> {
-    device.reset_fences(&[fence])?;
-    device.reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())?;
-    let begin =
-        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    device.begin_command_buffer(command_buffer, &begin)?;
-    let region = vk::BufferCopy::default().size(size);
-    device.cmd_copy_buffer(command_buffer, src, dst, &[region]);
-    device.end_command_buffer(command_buffer)?;
-    let command_buffers = [command_buffer];
-    let submit = vk::SubmitInfo::default().command_buffers(&command_buffers);
-    device.queue_submit(queue, &[submit], fence)?;
-    device.wait_for_fences(&[fence], true, u64::MAX)?;
-    device.reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())?;
-    device.reset_fences(&[fence])?;
-    Ok(())
-}
-
-unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::DescriptorSetLayout> {
-    let bindings = [
-        vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::MESH_EXT),
-        vk::DescriptorSetLayoutBinding::default()
-            .binding(1)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::MESH_EXT),
-        vk::DescriptorSetLayoutBinding::default()
-            .binding(2)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::TASK_EXT),
-    ];
-    let info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-    Ok(device.create_descriptor_set_layout(&info, None)?)
-}
-
-unsafe fn create_descriptor_pool(device: &Device) -> Result<vk::DescriptorPool> {
-    let pool_sizes = [vk::DescriptorPoolSize::default()
-        .ty(vk::DescriptorType::STORAGE_BUFFER)
-        .descriptor_count(3)];
-    let info = vk::DescriptorPoolCreateInfo::default()
-        .max_sets(1)
-        .pool_sizes(&pool_sizes);
-    Ok(device.create_descriptor_pool(&info, None)?)
-}
-
-unsafe fn allocate_descriptor_set(
-    device: &Device,
-    pool: vk::DescriptorPool,
-    layout: vk::DescriptorSetLayout,
-) -> Result<vk::DescriptorSet> {
-    let layouts = [layout];
-    let info = vk::DescriptorSetAllocateInfo::default()
-        .descriptor_pool(pool)
-        .set_layouts(&layouts);
-    device
-        .allocate_descriptor_sets(&info)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow!("vkAllocateDescriptorSets returned no descriptor set"))
-}
-
-unsafe fn update_descriptor_set(
-    device: &Device,
-    descriptor_set: vk::DescriptorSet,
-    vertex_buffer: &BufferAllocation,
-    index_buffer: &BufferAllocation,
-    draw_buffer: &BufferAllocation,
-) {
-    let buffers = [
-        vk::DescriptorBufferInfo::default()
-            .buffer(vertex_buffer.buffer)
-            .range(vertex_buffer.size),
-        vk::DescriptorBufferInfo::default()
-            .buffer(index_buffer.buffer)
-            .range(index_buffer.size),
-        vk::DescriptorBufferInfo::default()
-            .buffer(draw_buffer.buffer)
-            .range(draw_buffer.size),
-    ];
-    let writes = [
-        vk::WriteDescriptorSet::default()
-            .dst_set(descriptor_set)
-            .dst_binding(0)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&buffers[0..1]),
-        vk::WriteDescriptorSet::default()
-            .dst_set(descriptor_set)
-            .dst_binding(1)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&buffers[1..2]),
-        vk::WriteDescriptorSet::default()
-            .dst_set(descriptor_set)
-            .dst_binding(2)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&buffers[2..3]),
-    ];
-    device.update_descriptor_sets(&writes, &[]);
-}
-
-unsafe fn create_pipeline_layout(
-    device: &Device,
-    descriptor_set_layout: vk::DescriptorSetLayout,
-) -> Result<vk::PipelineLayout> {
-    let layouts = [descriptor_set_layout];
-    let push_constant_ranges = [vk::PushConstantRange::default()
-        .stage_flags(vk::ShaderStageFlags::MESH_EXT)
-        .offset(0)
-        .size(core::mem::size_of::<PushConstants>() as u32)];
-    let info = vk::PipelineLayoutCreateInfo::default()
-        .set_layouts(&layouts)
-        .push_constant_ranges(&push_constant_ranges);
-    Ok(device.create_pipeline_layout(&info, None)?)
 }
 
 fn mesh_clip_from_world() -> Mat4 {
@@ -822,155 +487,94 @@ fn mesh_clip_from_world() -> Mat4 {
     projection * view
 }
 
-unsafe fn create_mesh_pipeline(
-    device: &Device,
-    layout: vk::PipelineLayout,
-) -> Result<vk::Pipeline> {
-    let task = create_shader_module(device, include_bytes!("shaders/task.spv"))?;
-    let mesh = create_shader_module(device, include_bytes!("shaders/mesh.spv"))?;
-    let fragment = create_shader_module(device, include_bytes!("shaders/fragment.spv"))?;
-    let main = c"main";
-    let stages = [
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlagBits::TASK_EXT)
-            .module(task)
-            .name(main),
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlagBits::MESH_EXT)
-            .module(mesh)
-            .name(main),
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlagBits::FRAGMENT)
-            .module(fragment)
-            .name(main),
-    ];
-    let viewports = [vk::Viewport::default()
-        .y(HEIGHT as f32)
-        .width(WIDTH as f32)
-        .height(-(HEIGHT as f32))
-        .min_depth(0.0)
-        .max_depth(1.0)];
-    let scissors = [vk::Rect2D::default().extent(vk::Extent2D::default().width(64).height(64))];
-    let viewport_state = vk::PipelineViewportStateCreateInfo::default()
-        .viewports(&viewports)
-        .scissors(&scissors);
-    let rasterization_state = vk::PipelineRasterizationStateCreateInfo::default()
-        .polygon_mode(vk::PolygonMode::FILL)
-        .cull_mode(vk::CullModeFlags::NONE)
-        .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-        .line_width(1.0);
-    let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
-        .rasterization_samples(vk::SampleCountFlagBits::_1);
-    let color_attachment = [
-        vk::PipelineColorBlendAttachmentState::default().color_write_mask(
-            vk::ColorComponentFlags::R
-                | vk::ColorComponentFlags::G
-                | vk::ColorComponentFlags::B
-                | vk::ColorComponentFlags::A,
-        ),
-    ];
-    let color_blend_state =
-        vk::PipelineColorBlendStateCreateInfo::default().attachments(&color_attachment);
-    let formats = [vk::Format::R8G8B8A8_UNORM];
-    let mut rendering_info =
-        vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&formats);
-    let info = vk::GraphicsPipelineCreateInfo::default()
-        .stages(&stages)
-        .viewport_state(&viewport_state)
-        .rasterization_state(&rasterization_state)
-        .multisample_state(&multisample_state)
-        .color_blend_state(&color_blend_state)
-        .layout(layout)
-        .push_next(&mut rendering_info);
-    let result = device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
-    device.destroy_shader_module(fragment, None);
-    device.destroy_shader_module(mesh, None);
-    device.destroy_shader_module(task, None);
-    let pipelines = match result {
-        Ok(pipelines) => pipelines,
-        Err((pipelines, err)) => {
-            for pipeline in pipelines {
-                if !pipeline.is_null() {
-                    device.destroy_pipeline(pipeline, None);
-                }
-            }
-            return Err(anyhow!("vkCreateGraphicsPipelines failed: {err:?}"));
-        }
-    };
-    pipelines
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow!("vkCreateGraphicsPipelines returned no mesh pipeline"))
-}
-
-unsafe fn create_shader_module(device: &Device, bytes: &[u8]) -> Result<vk::ShaderModule> {
-    let code = spirv_words(bytes)?;
-    let create_info = vk::ShaderModuleCreateInfo::default().code(&code);
-    Ok(device.create_shader_module(&create_info, None)?)
-}
-
-fn spirv_words(bytes: &[u8]) -> Result<Vec<u32>> {
-    if !bytes.len().is_multiple_of(4) {
-        return Err(anyhow!("SPIR-V byte length is not divisible by 4"));
-    }
-    Ok(bytes
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-        .collect())
-}
-
-unsafe fn create_command_pool(device: &Device, queue_family: u32) -> Result<vk::CommandPool> {
-    let info = vk::CommandPoolCreateInfo::default()
-        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-        .queue_family_index(queue_family);
-    Ok(device.create_command_pool(&info, None)?)
-}
-
-unsafe fn allocate_command_buffer(
-    device: &Device,
-    pool: vk::CommandPool,
-) -> Result<vk::CommandBuffer> {
-    let info = vk::CommandBufferAllocateInfo::default()
-        .command_pool(pool)
-        .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(1);
-    device
-        .allocate_command_buffers(&info)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow!("vkAllocateCommandBuffers returned no command buffer"))
-}
-
-unsafe fn create_fence(device: &Device) -> Result<vk::Fence> {
-    let info = vk::FenceCreateInfo::default();
-    Ok(device.create_fence(&info, None)?)
-}
-
-unsafe fn verify_and_write_ppm(
+/// A storage buffer holding `values`, addressable by a descriptor in the heap.
+unsafe fn create_storage_buffer<T: bytemuck::Pod>(
+    gpu: &Gpu,
     allocator: &mut Allocator,
-    allocation: &Allocation,
-    path: &std::path::Path,
-) -> Result<()> {
-    let flags = allocator.allocation_memory_flags(allocation)?;
-    let mut mapped = allocator.map(allocation)?;
-    if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-        mapped.invalidate()?;
+    name: &'static str,
+    values: &[T],
+) -> Result<MappedBuffer> {
+    unsafe {
+        let data: &[u8] = bytemuck::cast_slice(values);
+        let mut buffer = create_mapped_buffer(
+            gpu,
+            allocator,
+            name,
+            data.len() as u64,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+            // The address in a storage buffer descriptor has to be a multiple of this.
+            gpu.storage_buffer_alignment,
+            MemoryLocation::CpuToGpu,
+        )?;
+        buffer.bytes().copy_from_slice(data);
+        Ok(buffer)
     }
-    let bytes = mapped.as_bytes();
+}
+
+/// A host-visible buffer with a device address, mapped until it is freed. `alignment` is
+/// what the device address has to be a multiple of.
+unsafe fn create_mapped_buffer(
+    gpu: &Gpu,
+    allocator: &mut Allocator,
+    name: &'static str,
+    size: u64,
+    usage: vk::BufferUsageFlags,
+    alignment: u64,
+    location: MemoryLocation,
+) -> Result<MappedBuffer> {
+    unsafe {
+        let device = &gpu.device;
+        let buffer = device.create_buffer(
+            &vk::BufferCreateInfo::default()
+                .size(size)
+                .usage(usage | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS),
+            None,
+        )?;
+        let mut requirements = device.get_buffer_memory_requirements(buffer);
+        requirements.alignment = requirements.alignment.max(alignment);
+        let allocation = allocator.allocate(AllocationCreateDesc {
+            name: Some(name),
+            requirements,
+            location,
+            linear: true,
+            // Required for vkGetBufferDeviceAddress.
+            memory_allocate_flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
+            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        })?;
+        device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
+        if !allocator
+            .allocation_memory_flags(&allocation)?
+            .contains(vk::MemoryPropertyFlags::HOST_COHERENT)
+        {
+            bail!("this example needs host-coherent memory");
+        }
+        let bytes = allocator.map_persistent(&allocation)?.as_ptr();
+        let address = device
+            .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer));
+        Ok(MappedBuffer {
+            buffer,
+            allocation,
+            address,
+            bytes,
+            size,
+        })
+    }
+}
+
+fn verify_and_write_ppm(bytes: &[u8], path: &std::path::Path) -> Result<()> {
     let pixels = bytes.chunks_exact(4).collect::<Vec<_>>();
     let colored_pixels = pixels
         .iter()
         .filter(|px| px[0] > 32 || px[1] > 32 || px[2] > 32)
         .count();
     if colored_pixels < 128 {
-        return Err(anyhow!(
-            "mesh shader draw covered too few pixels: {colored_pixels}"
-        ));
+        bail!("mesh shader draw covered too few pixels: {colored_pixels}");
     }
 
     let center = pixels[(HEIGHT as usize / 2) * WIDTH as usize + WIDTH as usize / 2];
     if center[0] <= 16 && center[1] <= 16 && center[2] <= 16 {
-        return Err(anyhow!("mesh shader draw left the image center black"));
+        bail!("mesh shader draw left the image center black");
     }
 
     for &(x, y) in &[
@@ -981,24 +585,208 @@ unsafe fn verify_and_write_ppm(
     ] {
         let px = pixels[y * WIDTH as usize + x];
         if px[0] > 16 || px[1] > 16 || px[2] > 16 {
-            return Err(anyhow!(
-                "mesh shader draw colored a clear corner pixel at ({x}, {y})"
-            ));
+            bail!("mesh shader draw colored a clear corner pixel at ({x}, {y})");
         }
     }
 
     let mut writer = BufWriter::new(File::create(path)?);
-    writeln!(writer, "P6\n{} {}\n255", WIDTH, HEIGHT)?;
+    writeln!(writer, "P6\n{WIDTH} {HEIGHT}\n255")?;
     for pixel in pixels {
         writer.write_all(&pixel[..3])?;
     }
     Ok(())
 }
 
-fn has_extension(properties: &[vk::ExtensionProperties], name: &std::ffi::CStr) -> bool {
-    properties
+unsafe fn create_shader_module(device: &Device, bytes: &[u8]) -> Result<vk::ShaderModule> {
+    if !bytes.len().is_multiple_of(4) {
+        bail!("SPIR-V size is not a multiple of four bytes");
+    }
+    let code = bytes
+        .chunks_exact(4)
+        .map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]]))
+        .collect::<Vec<_>>();
+    unsafe {
+        Ok(
+            device
+                .create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&code), None)?,
+        )
+    }
+}
+
+fn has_extension(available: &[vk::ExtensionProperties], name: &CStr) -> bool {
+    available
         .iter()
-        .any(|property| property.extension_name_as_c_str() == Ok(name))
+        .any(|extension| extension.extension_name_as_c_str() == Ok(name))
+}
+
+/// `None` when no device can run the example.
+unsafe fn create_gpu() -> Result<Option<Gpu>> {
+    unsafe {
+        let entry = Entry::load()?;
+
+        let validation = c"VK_LAYER_KHRONOS_validation";
+        let has_validation = entry
+            .enumerate_instance_layer_properties()?
+            .iter()
+            .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
+        let instance_extensions = entry.enumerate_instance_extension_properties(None)?;
+        let debug = has_validation && has_extension(&instance_extensions, vk::EXT_DEBUG_UTILS_NAME);
+        let mut layer_names = Vec::new();
+        let mut extension_names = Vec::new();
+        if debug {
+            layer_names.push(vk::CStrPtr::new(validation));
+            extension_names.push(vk::CStrPtr::new(vk::EXT_DEBUG_UTILS_NAME));
+        }
+
+        // With Vulkan 1.4 in use, neither extension needs another one.
+        let api_version = vk::API_VERSION_1_4;
+        let app = vk::ApplicationInfo::default()
+            .application_name(c"mesh-shader")
+            .api_version(api_version);
+        let instance = entry.create_instance(
+            &vk::InstanceCreateInfo::default()
+                .application_info(&app)
+                .enabled_layer_names(&layer_names)
+                .enabled_extension_names(&extension_names),
+            None,
+        )?;
+        let messenger = if debug {
+            instance.create_debug_utils_messenger_ext(
+                &vk::DebugUtilsMessengerCreateInfoEXT::default()
+                    .message_severity(
+                        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                            | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+                    )
+                    .message_type(
+                        vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                            | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+                    )
+                    .pfn_user_callback(Some(debug_callback)),
+                None,
+            )?
+        } else {
+            vk::DebugUtilsMessengerEXT::null()
+        };
+
+        let device_extensions = [vk::EXT_MESH_SHADER_NAME, vk::EXT_DESCRIPTOR_HEAP_NAME];
+        let mut selected = None;
+        for physical_device in instance.enumerate_physical_devices()? {
+            let properties = instance.get_physical_device_properties(physical_device);
+            let extensions =
+                instance.enumerate_device_extension_properties(physical_device, None)?;
+            if properties.api_version < api_version
+                || !device_extensions
+                    .iter()
+                    .all(|name| has_extension(&extensions, name))
+            {
+                continue;
+            }
+            let mut mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+            let mut heap = vk::PhysicalDeviceDescriptorHeapFeaturesEXT::default();
+            let mut features = vk::PhysicalDeviceFeatures2::default()
+                .push_next(&mut mesh)
+                .push_next(&mut heap);
+            instance.get_physical_device_features2(physical_device, &mut features);
+            let family = instance
+                .get_physical_device_queue_family_properties(physical_device)
+                .iter()
+                .position(|family| family.queue_flags.contains(vk::QueueFlags::GRAPHICS));
+            if let Some(family) = family
+                && mesh.task_shader != vk::FALSE
+                && mesh.mesh_shader != vk::FALSE
+                && heap.descriptor_heap != vk::FALSE
+            {
+                println!(
+                    "using {}",
+                    properties.device_name_as_c_str()?.to_string_lossy()
+                );
+                selected = Some((
+                    physical_device,
+                    family as u32,
+                    properties.limits.min_storage_buffer_offset_alignment,
+                ));
+                break;
+            }
+        }
+        let Some((physical_device, queue_family, storage_buffer_alignment)) = selected else {
+            if !messenger.is_null() {
+                instance.destroy_debug_utils_messenger_ext(messenger, None);
+            }
+            instance.destroy_instance(None);
+            return Ok(None);
+        };
+
+        let mut heap_properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default();
+        let mut properties =
+            vk::PhysicalDeviceProperties2::default().push_next(&mut heap_properties);
+        instance.get_physical_device_properties2(physical_device, &mut properties);
+        // Detach the copy from the chain it was filled through.
+        heap_properties.p_next = std::ptr::null_mut();
+        let priorities = [1.0];
+        let queues = [vk::DeviceQueueCreateInfo::default()
+            .queue_family_index(queue_family)
+            .queue_priorities(&priorities)];
+        let extension_names = device_extensions.map(vk::CStrPtr::new);
+        let mut mesh_features = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
+            .task_shader(true)
+            .mesh_shader(true);
+        let mut heap_features =
+            vk::PhysicalDeviceDescriptorHeapFeaturesEXT::default().descriptor_heap(true);
+        // Core since 1.2 and 1.3; a Vulkan 1.4 device has all three.
+        let mut vulkan12 =
+            vk::PhysicalDeviceVulkan12Features::default().buffer_device_address(true);
+        let mut vulkan13 = vk::PhysicalDeviceVulkan13Features::default()
+            .synchronization2(true)
+            .dynamic_rendering(true);
+        let device = instance.create_device(
+            physical_device,
+            &vk::DeviceCreateInfo::default()
+                .queue_create_infos(&queues)
+                .enabled_extension_names(&extension_names)
+                .push_next(&mut mesh_features)
+                .push_next(&mut heap_features)
+                .push_next(&mut vulkan12)
+                .push_next(&mut vulkan13),
+            None,
+        )?;
+        let queue = device.get_device_queue(queue_family, 0);
+
+        Ok(Some(Gpu {
+            instance,
+            messenger,
+            physical_device,
+            device,
+            queue,
+            queue_family,
+            heap_properties,
+            storage_buffer_alignment,
+        }))
+    }
+}
+
+impl Gpu {
+    unsafe fn destroy(self) {
+        unsafe {
+            self.device.destroy_device(None);
+            if !self.messenger.is_null() {
+                self.instance
+                    .destroy_debug_utils_messenger_ext(self.messenger, None);
+            }
+            self.instance.destroy_instance(None);
+        }
+    }
+}
+
+unsafe extern "system" fn debug_callback(
+    _severity: vk::DebugUtilsMessageSeverityFlagBitsEXT,
+    _types: vk::DebugUtilsMessageTypeFlagsEXT,
+    data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
+    _user_data: *mut c_void,
+) -> vk::Bool32 {
+    // SAFETY: Vulkan passes a valid callback data pointer with a NUL-terminated message.
+    let message = unsafe { CStr::from_ptr((*data).p_message) };
+    eprintln!("validation: {}", message.to_string_lossy());
+    vk::FALSE
 }
 
 /// Example images go to `target/example-output/`, never into the source tree.

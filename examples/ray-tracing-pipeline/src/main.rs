@@ -1,3 +1,13 @@
+//! A ray tracing pipeline that traces one triangle, with `VK_EXT_descriptor_heap`.
+//!
+//! The ray generation shader (`shaders/raygen.slang`) declares an acceleration structure
+//! and an output buffer with `set = 0` and bindings 0 and 1, and a push constant block.
+//! There is no descriptor set and no pipeline layout. Both descriptors are written into
+//! the resource heap, the pipeline is created with a mapping from each binding to the
+//! byte offset of its descriptor, and `vkCmdPushDataEXT` supplies the push constants.
+//!
+//! The image goes to `target/example-output/ray_tracing.ppm`.
+
 #![allow(unsafe_op_in_unsafe_fn)]
 
 use anyhow::{Result, anyhow};
@@ -6,6 +16,7 @@ use std::ffi::{CStr, CString, c_void};
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use vulkan::{Device, Entry, Instance, vk};
+use vulkan_alloc::descriptor_heap::{DescriptorSlots, ResourceHeapPlan};
 use vulkan_alloc::{
     Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc,
     MemoryLocation,
@@ -13,6 +24,7 @@ use vulkan_alloc::{
 
 const WIDTH: u32 = 128;
 const HEIGHT: u32 = 128;
+const OUTPUT_BYTES: u64 = (WIDTH * HEIGHT * 4) as u64;
 
 fn main() -> Result<()> {
     unsafe {
@@ -25,7 +37,9 @@ fn main() -> Result<()> {
         let instance = create_instance(&entry, &instance_extensions)?;
         let debug_messenger = create_debug_messenger(&instance, debug_utils_enabled)?;
         let Some(selection) = pick_physical_device(&instance)? else {
-            println!("skipped: no device with KHR ray tracing pipeline support");
+            println!(
+                "skipped: no Vulkan 1.4 device with ray tracing pipelines and descriptor heaps"
+            );
             if !debug_messenger.is_null() {
                 instance.destroy_debug_utils_messenger_ext(debug_messenger, None);
             }
@@ -47,7 +61,16 @@ fn main() -> Result<()> {
         let command_pool = create_command_pool(&device, selection.queue_family)?;
         let command_buffer = allocate_command_buffer(&device, command_pool)?;
         let fence = create_fence(&device)?;
-        let output = create_output_buffer(&device, &mut allocator)?;
+        let output = create_buffer_allocation(
+            &device,
+            &mut allocator,
+            "ray tracing output",
+            OUTPUT_BYTES,
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            // The address in a storage buffer descriptor has to be a multiple of this.
+            selection.storage_buffer_alignment,
+            MemoryLocation::GpuToCpu,
+        )?;
         initialize_output(&mut allocator, &output.allocation)?;
         let scene = create_scene_acceleration_structures(
             &device,
@@ -57,18 +80,43 @@ fn main() -> Result<()> {
             fence,
             &selection.acceleration_structure_properties,
         )?;
-        let descriptor_set_layout = create_descriptor_set_layout(&device)?;
-        let descriptor_pool = create_descriptor_pool(&device)?;
-        let descriptor_set =
-            allocate_descriptor_set(&device, descriptor_pool, descriptor_set_layout)?;
-        update_descriptor_set(
+
+        // The resource heap: one descriptor for the acceleration structure and one for
+        // the output buffer, then the range the implementation reserves for itself.
+        let mut plan = ResourceHeapPlan::new(&selection.heap_properties);
+        let slots = plan.buffers(2)?;
+        let heap_layout = plan.finish()?;
+        // The acceleration structure goes into a slot sized for a buffer descriptor:
+        // both hold an address range. Ask for the exact size instead of assuming it fits.
+        let acceleration_structure_descriptor_size = instance
+            .get_physical_device_descriptor_size_ext(
+                selection.physical_device,
+                vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+            );
+        if acceleration_structure_descriptor_size > slots.descriptor_size {
+            return Err(anyhow!(
+                "an acceleration structure descriptor needs {acceleration_structure_descriptor_size} bytes, a buffer slot has {}",
+                slots.descriptor_size
+            ));
+        }
+        let heap = create_buffer_allocation(
             &device,
-            descriptor_set,
-            scene.top_level.handle,
-            output.buffer,
-        );
-        let pipeline_layout = create_pipeline_layout(&device, descriptor_set_layout)?;
-        let pipeline = create_ray_tracing_pipeline(&device, pipeline_layout)?;
+            &mut allocator,
+            "ray tracing resource heap",
+            heap_layout.size,
+            vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            heap_layout.alignment,
+            MemoryLocation::CpuToGpu,
+        )?;
+        write_descriptors(
+            &device,
+            &mut allocator,
+            &heap,
+            &slots,
+            &scene.top_level,
+            &output,
+        )?;
+        let pipeline = create_ray_tracing_pipeline(&device, &slots)?;
         let shader_binding_table = create_shader_binding_table_buffer(
             &device,
             &mut allocator,
@@ -83,14 +131,9 @@ fn main() -> Result<()> {
             vk::PipelineBindPoint::RAY_TRACING_KHR,
             pipeline,
         );
-        let descriptor_sets = [descriptor_set];
-        device.cmd_bind_descriptor_sets(
+        device.cmd_bind_resource_heap_ext(
             command_buffer,
-            vk::PipelineBindPoint::RAY_TRACING_KHR,
-            pipeline_layout,
-            0,
-            &descriptor_sets,
-            &[],
+            &heap_layout.bind_info(buffer_device_address(&device, heap.buffer))?,
         );
         let push_constants = RayTracingPushConstants {
             vertex_address: buffer_device_address(&device, scene.vertex_buffer.buffer),
@@ -103,12 +146,13 @@ fn main() -> Result<()> {
             background_top: [0.24, 0.35, 0.58],
             _pad2: 0.0,
         };
-        device.cmd_push_constants(
+        // The shader's push constant block reads the push data from offset 0.
+        device.cmd_push_data_ext(
             command_buffer,
-            pipeline_layout,
-            vk::ShaderStageFlags::RAYGEN_KHR,
-            0,
-            bytemuck::bytes_of(&push_constants),
+            &vk::PushDataInfoEXT::default().data(
+                vk::HostAddressRangeConstEXT::default()
+                    .address(bytemuck::bytes_of(&push_constants)),
+            ),
         );
         let address_info =
             vk::BufferDeviceAddressInfo::default().buffer(shader_binding_table.buffer);
@@ -145,7 +189,7 @@ fn main() -> Result<()> {
             .dst_access_mask(vk::AccessFlags::HOST_READ)
             .buffer(output.buffer)
             .offset(0)
-            .size((WIDTH * HEIGHT * 4) as u64);
+            .size(OUTPUT_BYTES);
         device.cmd_pipeline_barrier(
             command_buffer,
             vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
@@ -167,9 +211,8 @@ fn main() -> Result<()> {
         )?;
 
         device.destroy_pipeline(pipeline, None);
-        device.destroy_pipeline_layout(pipeline_layout, None);
-        device.destroy_descriptor_pool(descriptor_pool, None);
-        device.destroy_descriptor_set_layout(descriptor_set_layout, None);
+        device.destroy_buffer(heap.buffer, None);
+        allocator.free(heap.allocation)?;
         device.destroy_fence(fence, None);
         device.destroy_command_pool(command_pool, None);
         scene.destroy(&device, &mut allocator)?;
@@ -195,6 +238,8 @@ struct PhysicalDeviceSelection {
     ray_tracing_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'static>,
     acceleration_structure_properties:
         vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'static>,
+    heap_properties: vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'static>,
+    storage_buffer_alignment: u64,
 }
 
 struct BufferAllocation {
@@ -205,6 +250,7 @@ struct BufferAllocation {
 struct AccelerationStructureAllocation {
     handle: vk::AccelerationStructureKHR,
     buffer: BufferAllocation,
+    size: u64,
     build_scratch_size: u64,
 }
 
@@ -318,7 +364,8 @@ unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instanc
     let app_info = vk::ApplicationInfo::default()
         .application_name(app_name.as_c_str())
         .engine_name(app_name.as_c_str())
-        .api_version(vk::make_api_version(0, 1, 2, 0));
+        // With Vulkan 1.4 in use, VK_EXT_descriptor_heap needs no other extension.
+        .api_version(vk::API_VERSION_1_4);
     let create_info = vk::InstanceCreateInfo::default()
         .application_info(&app_info)
         .enabled_layer_names(&enabled_layer_names)
@@ -339,13 +386,11 @@ unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
     let has_validation = available
         .iter()
         .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
-    if has_validation {
-        Ok(vec![validation])
+    Ok(if has_validation {
+        vec![validation]
     } else {
-        Err(anyhow!(
-            "VK_LAYER_KHRONOS_validation is required for this example"
-        ))
-    }
+        Vec::new()
+    })
 }
 
 unsafe fn create_debug_messenger(
@@ -386,7 +431,7 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
         vk::KHR_DEFERRED_HOST_OPERATIONS_NAME,
         vk::KHR_ACCELERATION_STRUCTURE_NAME,
         vk::KHR_RAY_TRACING_PIPELINE_NAME,
-        vk::KHR_BUFFER_DEVICE_ADDRESS_NAME,
+        vk::EXT_DESCRIPTOR_HEAP_NAME,
     ];
     let mut best = None;
     for physical_device in instance.enumerate_physical_devices()? {
@@ -403,17 +448,20 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
         let mut acceleration_structure_features =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
         let mut ray_tracing_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
+        let mut heap_features = vk::PhysicalDeviceDescriptorHeapFeaturesEXT::default();
         let shader_int64 = {
             let mut features2 = vk::PhysicalDeviceFeatures2::default()
                 .push_next(&mut buffer_device_address_features)
                 .push_next(&mut acceleration_structure_features)
-                .push_next(&mut ray_tracing_features);
+                .push_next(&mut ray_tracing_features)
+                .push_next(&mut heap_features);
             instance.get_physical_device_features2(physical_device, &mut features2);
             features2.features.shader_int64
         };
         if ray_tracing_features.ray_tracing_pipeline == 0
             || acceleration_structure_features.acceleration_structure == 0
             || buffer_device_address_features.buffer_device_address == 0
+            || heap_features.descriptor_heap == 0
             || shader_int64 == 0
         {
             continue;
@@ -422,10 +470,12 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
             vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
         let mut acceleration_structure_properties =
             vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
+        let mut heap_properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default();
         {
             let mut properties2 = vk::PhysicalDeviceProperties2::default()
                 .push_next(&mut ray_tracing_properties)
-                .push_next(&mut acceleration_structure_properties);
+                .push_next(&mut acceleration_structure_properties)
+                .push_next(&mut heap_properties);
             instance.get_physical_device_properties2(physical_device, &mut properties2);
         }
 
@@ -437,6 +487,9 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
             continue;
         };
         let properties = instance.get_physical_device_properties(physical_device);
+        if properties.api_version < vk::API_VERSION_1_4 {
+            continue;
+        }
         let score = match properties.device_type {
             vk::PhysicalDeviceType::DISCRETE_GPU => 3,
             vk::PhysicalDeviceType::INTEGRATED_GPU => 2,
@@ -454,6 +507,8 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
                     queue_family: queue_family as u32,
                     ray_tracing_properties,
                     acceleration_structure_properties,
+                    heap_properties,
+                    storage_buffer_alignment: properties.limits.min_storage_buffer_offset_alignment,
                 },
             ));
         }
@@ -474,7 +529,7 @@ unsafe fn create_device_and_queue(
         vk::CStrPtr::new(vk::KHR_DEFERRED_HOST_OPERATIONS_NAME),
         vk::CStrPtr::new(vk::KHR_ACCELERATION_STRUCTURE_NAME),
         vk::CStrPtr::new(vk::KHR_RAY_TRACING_PIPELINE_NAME),
-        vk::CStrPtr::new(vk::KHR_BUFFER_DEVICE_ADDRESS_NAME),
+        vk::CStrPtr::new(vk::EXT_DESCRIPTOR_HEAP_NAME),
     ];
     let mut buffer_device_address_features =
         vk::PhysicalDeviceBufferDeviceAddressFeatures::default().buffer_device_address(true);
@@ -482,6 +537,8 @@ unsafe fn create_device_and_queue(
         vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default().acceleration_structure(true);
     let mut ray_tracing_features =
         vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default().ray_tracing_pipeline(true);
+    let mut heap_features =
+        vk::PhysicalDeviceDescriptorHeapFeaturesEXT::default().descriptor_heap(true);
     let enabled_features = vk::PhysicalDeviceFeatures::default().shader_int64(true);
     let create_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queue_info)
@@ -489,7 +546,8 @@ unsafe fn create_device_and_queue(
         .enabled_features(&enabled_features)
         .push_next(&mut buffer_device_address_features)
         .push_next(&mut acceleration_structure_features)
-        .push_next(&mut ray_tracing_features);
+        .push_next(&mut ray_tracing_features)
+        .push_next(&mut heap_features);
     let device = instance.create_device(physical_device, &create_info, None)?;
     let queue = device.get_device_queue(queue_family, 0);
     Ok((device, queue))
@@ -766,8 +824,11 @@ unsafe fn create_acceleration_structure(
         sizes.acceleration_structure_size,
         vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        // The address that goes into a descriptor heap has to be a multiple of 256
+        // (VUID-VkResourceDescriptorInfoEXT-type-11454). The acceleration structure
+        // starts at offset 0 of this buffer, so the buffer is what gets aligned.
+        256,
         MemoryLocation::GpuOnly,
-        vk::MemoryAllocateFlags::DEVICE_ADDRESS,
     )?;
     let create_info = vk::AccelerationStructureCreateInfoKHR::default()
         .buffer(buffer.buffer)
@@ -784,6 +845,7 @@ unsafe fn create_acceleration_structure(
     Ok(AccelerationStructureAllocation {
         handle,
         buffer,
+        size: sizes.acceleration_structure_size,
         build_scratch_size: sizes.build_scratch_size,
     })
 }
@@ -794,15 +856,23 @@ unsafe fn create_buffer_allocation(
     name: &'static str,
     size: u64,
     usage: vk::BufferUsageFlags,
+    alignment: u64,
     location: MemoryLocation,
-    memory_allocate_flags: vk::MemoryAllocateFlags,
 ) -> Result<BufferAllocation> {
+    // Memory for a buffer whose address is taken has to be allocated for that.
+    let memory_allocate_flags = if usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
+        vk::MemoryAllocateFlags::DEVICE_ADDRESS
+    } else {
+        vk::MemoryAllocateFlags::empty()
+    };
     let info = vk::BufferCreateInfo::default()
         .size(size)
         .usage(usage)
         .sharing_mode(vk::SharingMode::EXCLUSIVE);
     let buffer = device.create_buffer(&info, None)?;
-    let requirements = device.get_buffer_memory_requirements(buffer);
+    let mut requirements = device.get_buffer_memory_requirements(buffer);
+    // What the device address of the buffer has to be a multiple of.
+    requirements.alignment = requirements.alignment.max(alignment);
     let allocation = match allocator.allocate(AllocationCreateDesc {
         name: Some(name),
         requirements,
@@ -842,8 +912,8 @@ unsafe fn create_gpu_buffer_from_data<T: bytemuck::Pod>(
         "ray tracing GPU upload target",
         bytes.len() as u64,
         usage | vk::BufferUsageFlags::TRANSFER_DST,
+        1,
         MemoryLocation::GpuOnly,
-        vk::MemoryAllocateFlags::DEVICE_ADDRESS,
     )?;
     let staging = create_buffer_allocation(
         device,
@@ -851,8 +921,8 @@ unsafe fn create_gpu_buffer_from_data<T: bytemuck::Pod>(
         "ray tracing staging buffer",
         bytes.len() as u64,
         vk::BufferUsageFlags::TRANSFER_SRC,
+        1,
         MemoryLocation::CpuToGpu,
-        vk::MemoryAllocateFlags::empty(),
     )?;
     upload_pod_slice(allocator, &staging.allocation, values)?;
     copy_buffer_one_time(
@@ -987,133 +1057,58 @@ unsafe fn create_shader_binding_table_buffer(
     Ok(BufferAllocation { buffer, allocation })
 }
 
-unsafe fn create_output_buffer(
+/// Writes the descriptors of the acceleration structure and the output buffer into the
+/// heap, one per slot.
+unsafe fn write_descriptors(
     device: &Device,
     allocator: &mut Allocator,
-) -> Result<BufferAllocation> {
-    let info = vk::BufferCreateInfo::default()
-        .size((WIDTH * HEIGHT * core::mem::size_of::<u32>() as u32) as u64)
-        .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let buffer = device.create_buffer(&info, None)?;
-    let requirements = device.get_buffer_memory_requirements(buffer);
-    let allocation = match allocator.allocate(AllocationCreateDesc {
-        name: Some("ray tracing output"),
-        requirements,
-        location: MemoryLocation::GpuToCpu,
-        linear: true,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }) {
-        Ok(allocation) => allocation,
-        Err(err) => {
-            device.destroy_buffer(buffer, None);
-            return Err(err.into());
-        }
-    };
-    if let Err(err) = device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) {
-        let _ = allocator.free(allocation);
-        device.destroy_buffer(buffer, None);
-        return Err(err.into());
-    }
-    Ok(BufferAllocation { buffer, allocation })
-}
-
-unsafe fn create_descriptor_set_layout(device: &Device) -> Result<vk::DescriptorSetLayout> {
-    let bindings = [
-        vk::DescriptorSetLayoutBinding::default()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR),
-        vk::DescriptorSetLayoutBinding::default()
-            .binding(1)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR),
-    ];
-    let info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-    Ok(device.create_descriptor_set_layout(&info, None)?)
-}
-
-unsafe fn create_descriptor_pool(device: &Device) -> Result<vk::DescriptorPool> {
-    let pool_sizes = [
-        vk::DescriptorPoolSize::default()
+    heap: &BufferAllocation,
+    slots: &DescriptorSlots,
+    top_level: &AccelerationStructureAllocation,
+    output: &BufferAllocation,
+) -> Result<()> {
+    // The descriptor of an acceleration structure holds the address of the acceleration
+    // structure itself, not the address of the buffer it was created in.
+    let top_level_address = device.get_acceleration_structure_device_address_khr(
+        &vk::AccelerationStructureDeviceAddressInfoKHR::default()
+            .acceleration_structure(top_level.handle),
+    );
+    let top_level_range = vk::DeviceAddressRangeKHR::default()
+        .address(top_level_address)
+        .size(top_level.size);
+    let output_range = vk::DeviceAddressRangeKHR::default()
+        .address(buffer_device_address(device, output.buffer))
+        .size(OUTPUT_BYTES);
+    let descriptors = [
+        vk::ResourceDescriptorInfoEXT::default()
             .ty(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-            .descriptor_count(1),
-        vk::DescriptorPoolSize::default()
+            .data(vk::ResourceDescriptorDataEXT::address_range(
+                &top_level_range,
+            )),
+        vk::ResourceDescriptorInfoEXT::default()
             .ty(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(1),
+            .data(vk::ResourceDescriptorDataEXT::address_range(&output_range)),
     ];
-    let info = vk::DescriptorPoolCreateInfo::default()
-        .max_sets(1)
-        .pool_sizes(&pool_sizes);
-    Ok(device.create_descriptor_pool(&info, None)?)
+
+    let flags = allocator.allocation_memory_flags(&heap.allocation)?;
+    let mut mapped = allocator.map(&heap.allocation)?;
+    let destinations = slots
+        .slices(mapped.as_bytes_mut())
+        .ok_or_else(|| anyhow!("the resource heap is smaller than its layout"))?
+        .map(|bytes| vk::HostAddressRangeEXT::default().address(bytes))
+        .collect::<Vec<_>>();
+    device.write_resource_descriptors_ext(&descriptors, &destinations)?;
+    if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
+        mapped.flush()?;
+    }
+    Ok(())
 }
 
-unsafe fn allocate_descriptor_set(
-    device: &Device,
-    pool: vk::DescriptorPool,
-    layout: vk::DescriptorSetLayout,
-) -> Result<vk::DescriptorSet> {
-    let layouts = [layout];
-    let info = vk::DescriptorSetAllocateInfo::default()
-        .descriptor_pool(pool)
-        .set_layouts(&layouts);
-    device
-        .allocate_descriptor_sets(&info)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow!("vkAllocateDescriptorSets returned no descriptor set"))
-}
-
-unsafe fn update_descriptor_set(
-    device: &Device,
-    descriptor_set: vk::DescriptorSet,
-    acceleration_structure: vk::AccelerationStructureKHR,
-    buffer: vk::Buffer,
-) {
-    let acceleration_structures = [acceleration_structure];
-    let mut acceleration_structure_info = vk::WriteDescriptorSetAccelerationStructureKHR::default()
-        .acceleration_structures(&acceleration_structures);
-    let buffers = [vk::DescriptorBufferInfo::default()
-        .buffer(buffer)
-        .range((WIDTH * HEIGHT * core::mem::size_of::<u32>() as u32) as u64)];
-    let writes = [
-        vk::WriteDescriptorSet::default()
-            .push_next(&mut acceleration_structure_info)
-            .dst_set(descriptor_set)
-            .dst_binding(0)
-            .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-            .descriptor_count(1),
-        vk::WriteDescriptorSet::default()
-            .dst_set(descriptor_set)
-            .dst_binding(1)
-            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-            .buffer_info(&buffers),
-    ];
-    device.update_descriptor_sets(&writes, &[]);
-}
-
-unsafe fn create_pipeline_layout(
-    device: &Device,
-    descriptor_set_layout: vk::DescriptorSetLayout,
-) -> Result<vk::PipelineLayout> {
-    let set_layouts = [descriptor_set_layout];
-    let push_constant_ranges = [vk::PushConstantRange::default()
-        .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
-        .offset(0)
-        .size(core::mem::size_of::<RayTracingPushConstants>() as u32)];
-    let info = vk::PipelineLayoutCreateInfo::default()
-        .set_layouts(&set_layouts)
-        .push_constant_ranges(&push_constant_ranges);
-    Ok(device.create_pipeline_layout(&info, None)?)
-}
-
+/// A ray tracing pipeline without a pipeline layout. `slots` is where, in the resource
+/// heap, the descriptors of bindings 0 and 1 are.
 unsafe fn create_ray_tracing_pipeline(
     device: &Device,
-    layout: vk::PipelineLayout,
+    slots: &DescriptorSlots,
 ) -> Result<vk::Pipeline> {
     let raygen = create_shader_module(device, include_bytes!("shaders/raygen.spv"))?;
     let miss = create_shader_module(device, include_bytes!("shaders/miss.spv"))?;
@@ -1121,11 +1116,41 @@ unsafe fn create_ray_tracing_pipeline(
     let raygen_main = c"raygenMain";
     let miss_main = c"missMain";
     let closest_hit_main = c"closestHitMain";
+
+    // Only the ray generation shader uses resources. Each of its bindings is the
+    // descriptor at a fixed byte offset of the resource heap.
+    let mapping = |binding: u32, resource: vk::SpirvResourceTypeFlagBitsEXT| {
+        let offset = slots
+            .offset(binding)
+            .ok_or_else(|| anyhow!("the resource heap has no slot {binding}"))?;
+        Ok::<_, anyhow::Error>(
+            vk::DescriptorSetAndBindingMappingEXT::default()
+                .descriptor_set(0)
+                .first_binding(binding)
+                .binding_count(1)
+                .resource_mask(resource.into())
+                .source(vk::DescriptorMappingSourceEXT::HEAP_WITH_CONSTANT_OFFSET)
+                .source_data(vk::DescriptorMappingSourceDataEXT::constant_offset(
+                    vk::DescriptorMappingSourceConstantOffsetEXT::default()
+                        .heap_offset(u32::try_from(offset)?),
+                )),
+        )
+    };
+    let mappings = [
+        mapping(0, vk::SpirvResourceTypeFlagBitsEXT::ACCELERATION_STRUCTURE)?,
+        mapping(
+            1,
+            vk::SpirvResourceTypeFlagBitsEXT::READ_WRITE_STORAGE_BUFFER,
+        )?,
+    ];
+    let mut raygen_mappings =
+        vk::ShaderDescriptorSetAndBindingMappingInfoEXT::default().mappings(&mappings);
     let stages = [
         vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlagBits::RAYGEN_KHR)
             .module(raygen)
-            .name(raygen_main),
+            .name(raygen_main)
+            .push_next(&mut raygen_mappings),
         vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlagBits::MISS_KHR)
             .module(miss)
@@ -1155,11 +1180,14 @@ unsafe fn create_ray_tracing_pipeline(
             .any_hit_shader(vk::SHADER_UNUSED_KHR)
             .intersection_shader(vk::SHADER_UNUSED_KHR),
     ];
+    // `DESCRIPTOR_HEAP_EXT` is what allows the layout to be null.
+    let mut flags = vk::PipelineCreateFlags2CreateInfo::default()
+        .flags(vk::PipelineCreateFlags2::DESCRIPTOR_HEAP_EXT);
     let info = vk::RayTracingPipelineCreateInfoKHR::default()
         .stages(&stages)
         .groups(&groups)
         .max_pipeline_ray_recursion_depth(1)
-        .layout(layout);
+        .push_next(&mut flags);
     let result = device.create_ray_tracing_pipelines_khr(
         vk::DeferredOperationKHR::null(),
         vk::PipelineCache::null(),
@@ -1249,8 +1277,7 @@ unsafe fn verify_and_write_ppm(
     if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
         mapped.invalidate()?;
     }
-    let pixels =
-        bytemuck::cast_slice::<u8, u32>(mapped.byte_range(0, (WIDTH * HEIGHT * 4) as usize));
+    let pixels = bytemuck::cast_slice::<u8, u32>(mapped.byte_range(0, OUTPUT_BYTES as usize));
     let hit_pixels = pixels
         .iter()
         .filter(|&&px| (px & 255) > 120 || ((px >> 8) & 255) > 120)
