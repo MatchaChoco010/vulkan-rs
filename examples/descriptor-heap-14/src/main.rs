@@ -7,6 +7,9 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::mem::ManuallyDrop;
 use vulkan::{Device, Entry, Instance, vk};
+use vulkan_alloc::descriptor_heap::{
+    DescriptorHeapLayout, DescriptorSlots, ResourceHeapPlan, SamplerHeapPlan,
+};
 use vulkan_alloc::{
     Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc,
     MemoryLocation,
@@ -82,21 +85,23 @@ struct ImageAllocation {
     allocation: Allocation,
 }
 
+/// Where things are in the resource heap. The shaders index it with untyped pointers:
+/// buffers in units of the buffer descriptor size, images in units of the image
+/// descriptor size.
 struct ResourceHeapLayout {
-    instances_index: u32,
+    /// Slot 0 is the instance buffer, which the shader reads at index 0. Slot 1 is the
+    /// material buffer.
+    buffers: DescriptorSlots,
+    textures: DescriptorSlots,
     materials_index: u32,
     texture_indices: [u32; TEXTURE_COUNT],
-    buffer_descriptor_size: u64,
-    image_descriptor_size: u64,
-    reserved_range_offset: u64,
-    heap_size: u64,
+    heap: DescriptorHeapLayout,
 }
 
 struct SamplerHeapLayout {
+    samplers: DescriptorSlots,
     sampler_index: u32,
-    sampler_descriptor_size: u64,
-    reserved_range_offset: u64,
-    heap_size: u64,
+    heap: DescriptorHeapLayout,
 }
 
 fn main() -> Result<()> {
@@ -135,20 +140,20 @@ fn main() -> Result<()> {
 
         let (vertices, indices) = sphere_mesh(24, 16);
         let instances = instance_data();
-        let resource_layout = resource_heap_layout(&selection.descriptor_heap_properties);
-        let sampler_layout = sampler_heap_layout(&selection.descriptor_heap_properties);
+        let resource_layout = resource_heap_layout(&selection.descriptor_heap_properties)?;
+        let sampler_layout = sampler_heap_layout(&selection.descriptor_heap_properties)?;
 
         let resource_heap = create_descriptor_heap_buffer(
             &device,
             &mut allocator,
             "descriptor heap resource heap",
-            resource_layout.heap_size,
+            resource_layout.heap.size,
         )?;
         let sampler_heap = create_descriptor_heap_buffer(
             &device,
             &mut allocator,
             "descriptor heap sampler heap",
-            sampler_layout.heap_size,
+            sampler_layout.heap.size,
         )?;
 
         let vertex_buffer = create_gpu_buffer_from_data(
@@ -247,8 +252,7 @@ fn main() -> Result<()> {
             &resource_layout,
             &sampler_heap,
             &sampler_layout,
-            &selection.descriptor_heap_properties,
-        );
+        )?;
         barrier_descriptor_heaps(
             &device,
             command_buffer,
@@ -337,8 +341,7 @@ fn main() -> Result<()> {
             &resource_layout,
             &sampler_heap,
             &sampler_layout,
-            &selection.descriptor_heap_properties,
-        );
+        )?;
         device.cmd_draw_indexed(
             command_buffer,
             indices.len() as u32,
@@ -609,57 +612,41 @@ unsafe fn create_device_and_queue(
 
 fn resource_heap_layout(
     props: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>,
-) -> ResourceHeapLayout {
-    let buffer_size = props.buffer_descriptor_size.max(1);
-    let image_size = props.image_descriptor_size.max(1);
-    let buffer_alignment = lcm(buffer_size, props.buffer_descriptor_alignment.max(1));
-    let image_alignment = lcm(image_size, props.image_descriptor_alignment.max(1));
-
-    let instances_offset = 0;
-    let mut cursor = buffer_size;
-    cursor = align_up(cursor, buffer_alignment);
-    let materials_offset = cursor;
-    cursor += buffer_size;
-
-    cursor = align_up(cursor, image_alignment);
-    let texture0_offset = cursor;
-    cursor = align_up(texture0_offset + image_size, image_alignment);
-    let texture1_offset = cursor;
-    cursor += image_size;
-    let reserved_range_offset = align_up(cursor, props.resource_heap_alignment.max(1));
-    let heap_size = align_up(
-        reserved_range_offset + props.min_resource_heap_reserved_range,
-        props.resource_heap_alignment.max(1),
-    );
-    ResourceHeapLayout {
-        instances_index: (instances_offset / buffer_size) as u32,
-        materials_index: (materials_offset / buffer_size) as u32,
-        texture_indices: [
-            (texture0_offset / image_size) as u32,
-            (texture1_offset / image_size) as u32,
-        ],
-        buffer_descriptor_size: buffer_size,
-        image_descriptor_size: image_size,
-        reserved_range_offset,
-        heap_size,
+) -> Result<ResourceHeapLayout> {
+    let mut plan = ResourceHeapPlan::new(props);
+    let buffers = plan.buffers(2)?;
+    let textures = plan.images(TEXTURE_COUNT as u32)?;
+    let heap = plan.finish()?;
+    let index = |slots: &DescriptorSlots, slot| {
+        slots
+            .index(slot)
+            .ok_or_else(|| anyhow!("the resource heap has no slot {slot}"))
+    };
+    if index(&buffers, 0)? != 0 {
+        return Err(anyhow!("the shader expects the instance buffer at index 0"));
     }
+    Ok(ResourceHeapLayout {
+        materials_index: index(&buffers, 1)?,
+        texture_indices: [index(&textures, 0)?, index(&textures, 1)?],
+        buffers,
+        textures,
+        heap,
+    })
 }
 
 fn sampler_heap_layout(
     props: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>,
-) -> SamplerHeapLayout {
-    let sampler_size = props.sampler_descriptor_size.max(1);
-    let reserved_range_offset = align_up(sampler_size, props.sampler_heap_alignment.max(1));
-    let heap_size = align_up(
-        reserved_range_offset + props.min_sampler_heap_reserved_range,
-        props.sampler_heap_alignment.max(1),
-    );
-    SamplerHeapLayout {
-        sampler_index: 0,
-        sampler_descriptor_size: sampler_size,
-        reserved_range_offset,
-        heap_size,
-    }
+) -> Result<SamplerHeapLayout> {
+    let mut plan = SamplerHeapPlan::new(props);
+    let samplers = plan.samplers(1)?;
+    let heap = plan.finish()?;
+    Ok(SamplerHeapLayout {
+        sampler_index: samplers
+            .index(0)
+            .ok_or_else(|| anyhow!("the sampler heap has no slot"))?,
+        samplers,
+        heap,
+    })
 }
 
 unsafe fn create_descriptor_heap_buffer(
@@ -1064,23 +1051,17 @@ unsafe fn write_resource_heap_descriptors(
 
     let flags = allocator.allocation_memory_flags(&heap.allocation)?;
     let mut mapped = allocator.map(&heap.allocation)?;
-    for (index, descriptor) in [
-        layout.instances_index as usize,
-        layout.materials_index as usize,
-    ]
-    .into_iter()
-    .zip(range_descriptors.iter())
-    {
-        let offset = index * layout.buffer_descriptor_size as usize;
-        let dst = mapped.byte_range_mut(offset, layout.buffer_descriptor_size as usize);
-        let output = [vk::HostAddressRangeEXT::default().address(dst)];
-        device.write_resource_descriptors_ext(core::slice::from_ref(descriptor), &output)?;
-    }
-    for (i, descriptor) in image_descriptors.iter().enumerate() {
-        let offset = layout.texture_indices[i] as usize * layout.image_descriptor_size as usize;
-        let dst = mapped.byte_range_mut(offset, layout.image_descriptor_size as usize);
-        let output = [vk::HostAddressRangeEXT::default().address(dst)];
-        device.write_resource_descriptors_ext(core::slice::from_ref(descriptor), &output)?;
+    // One call per run: every descriptor of the run goes to its own slice of the heap.
+    for (slots, descriptors) in [
+        (&layout.buffers, &range_descriptors[..]),
+        (&layout.textures, &image_descriptors[..]),
+    ] {
+        let destinations = slots
+            .slices(mapped.as_bytes_mut())
+            .ok_or_else(|| anyhow!("the resource heap is smaller than its layout"))?
+            .map(|bytes| vk::HostAddressRangeEXT::default().address(bytes))
+            .collect::<Vec<_>>();
+        device.write_resource_descriptors_ext(descriptors, &destinations)?;
     }
     if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
         mapped.flush()?;
@@ -1105,9 +1086,11 @@ unsafe fn write_sampler_heap_descriptors(
         .max_lod(0.0);
     let flags = allocator.allocation_memory_flags(&heap.allocation)?;
     let mut mapped = allocator.map(&heap.allocation)?;
-    let size = layout.sampler_descriptor_size as usize;
-    let dst = mapped.byte_range_mut(layout.sampler_index as usize * size, size);
-    let output = [vk::HostAddressRangeEXT::default().address(dst)];
+    let destination = layout
+        .samplers
+        .bytes(mapped.as_bytes_mut(), 0)
+        .ok_or_else(|| anyhow!("the sampler heap is smaller than its layout"))?;
+    let output = [vk::HostAddressRangeEXT::default().address(destination)];
     device.write_sampler_descriptors_ext(core::slice::from_ref(&sampler), &output)?;
     if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
         mapped.flush()?;
@@ -1133,31 +1116,23 @@ unsafe fn bind_descriptor_heaps(
     resource_layout: &ResourceHeapLayout,
     sampler_heap: &BufferAllocation,
     sampler_layout: &SamplerHeapLayout,
-    props: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>,
-) {
+) -> Result<()> {
+    // `bind_info` checks the alignment of the address and fills in the reserved range.
     let resource_address = device.get_buffer_device_address(
         &vk::BufferDeviceAddressInfo::default().buffer(resource_heap.buffer),
     );
-    let resource_range = vk::DeviceAddressRangeKHR::default()
-        .address(resource_address)
-        .size(resource_layout.heap_size);
-    let resource_bind = vk::BindHeapInfoEXT::default()
-        .heap_range(resource_range)
-        .reserved_range_offset(resource_layout.reserved_range_offset)
-        .reserved_range_size(props.min_resource_heap_reserved_range);
-    device.cmd_bind_resource_heap_ext(command_buffer, &resource_bind);
-
+    device.cmd_bind_resource_heap_ext(
+        command_buffer,
+        &resource_layout.heap.bind_info(resource_address)?,
+    );
     let sampler_address = device.get_buffer_device_address(
         &vk::BufferDeviceAddressInfo::default().buffer(sampler_heap.buffer),
     );
-    let sampler_range = vk::DeviceAddressRangeKHR::default()
-        .address(sampler_address)
-        .size(sampler_layout.heap_size);
-    let sampler_bind = vk::BindHeapInfoEXT::default()
-        .heap_range(sampler_range)
-        .reserved_range_offset(sampler_layout.reserved_range_offset)
-        .reserved_range_size(props.min_sampler_heap_reserved_range);
-    device.cmd_bind_sampler_heap_ext(command_buffer, &sampler_bind);
+    device.cmd_bind_sampler_heap_ext(
+        command_buffer,
+        &sampler_layout.heap.bind_info(sampler_address)?,
+    );
+    Ok(())
 }
 
 unsafe fn barrier_descriptor_heaps(
@@ -1177,7 +1152,7 @@ unsafe fn barrier_descriptor_heaps(
         .dst_access_mask(vk::AccessFlags2::RESOURCE_HEAP_READ_EXT)
         .buffer(resource_heap.buffer)
         .offset(0)
-        .size(resource_layout.heap_size);
+        .size(resource_layout.heap.size);
     let sampler_barrier = vk::BufferMemoryBarrier2::default()
         .src_stage_mask(vk::PipelineStageFlags2::HOST)
         .src_access_mask(vk::AccessFlags2::HOST_WRITE)
@@ -1185,7 +1160,7 @@ unsafe fn barrier_descriptor_heaps(
         .dst_access_mask(vk::AccessFlags2::SAMPLER_HEAP_READ_EXT)
         .buffer(sampler_heap.buffer)
         .offset(0)
-        .size(sampler_layout.heap_size);
+        .size(sampler_layout.heap.size);
     let barriers = [resource_barrier, sampler_barrier];
     let dependency = vk::DependencyInfo::default().buffer_memory_barriers(&barriers);
     device.cmd_pipeline_barrier2(command_buffer, &dependency);
@@ -1615,31 +1590,6 @@ fn has_extension(properties: &[vk::ExtensionProperties], name: &CStr) -> bool {
     properties
         .iter()
         .any(|property| property.extension_name_as_c_str() == Ok(name))
-}
-
-fn align_up(value: u64, alignment: u64) -> u64 {
-    if alignment <= 1 {
-        value
-    } else {
-        value.div_ceil(alignment) * alignment
-    }
-}
-
-fn lcm(a: u64, b: u64) -> u64 {
-    if a == 0 || b == 0 {
-        1
-    } else {
-        a / gcd(a, b) * b
-    }
-}
-
-fn gcd(mut a: u64, mut b: u64) -> u64 {
-    while b != 0 {
-        let next = a % b;
-        a = b;
-        b = next;
-    }
-    a
 }
 
 /// Example images go to `target/example-output/`, never into the source tree.
