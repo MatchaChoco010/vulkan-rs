@@ -47,10 +47,16 @@
 //!
 //! # Mapping
 //!
-//! There are two ways to map, and they must not be mixed for one mapping:
+//! There are three ways to map. Pick one per use; do not release a mapping made one way
+//! with the call of another.
 //!
 //! - [`Allocator::map`] returns a [`MappedAllocation`] guard that unmaps when dropped.
-//!   Do **not** call [`Allocator::unmap_memory`] for it.
+//!   Do **not** call [`Allocator::unmap_memory`] for it. The guard borrows the
+//!   allocator, so it suits short accesses.
+//! - [`Allocator::map_persistent`] maps the allocation until it is freed and returns a
+//!   pointer that borrows nothing. This is the form for a buffer that stays mapped for
+//!   its whole life, such as a descriptor heap or a per-frame uniform buffer.
+//!   [`Allocator::free`] releases the mapping.
 //! - [`Allocator::map_memory`] returns a raw pointer and must be paired with exactly one
 //!   [`Allocator::unmap_memory`].
 //!
@@ -82,12 +88,18 @@
 //! decided elsewhere. Allocate it with `vkAllocateMemory` directly. Memory to be
 //! *exported* can come from the allocator: set
 //! [`AllocationCreateDesc::export_handle_types`].
+//!
+//! # Descriptor heaps
+//!
+//! [`descriptor_heap`] computes the byte layout of `VK_EXT_descriptor_heap` heaps: where
+//! each descriptor goes and where the range reserved for the implementation sits.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+pub mod descriptor_heap;
+
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ffi::c_void;
 use std::fmt;
 use std::ptr::NonNull;
-use std::sync::Arc;
 
 use vulkan::{Device, vk};
 
@@ -481,7 +493,7 @@ unsafe impl Send for Allocator {}
 /// Cuts allocations out of `VkDeviceMemory` blocks. See the [crate documentation](crate)
 /// for the order of destruction and for what happens to leaked allocations.
 pub struct Allocator {
-    device: Arc<Device>,
+    device: Device,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
     non_coherent_atom_size: u64,
     buffer_image_granularity: u64,
@@ -498,7 +510,7 @@ impl Allocator {
             })
             .collect();
         Self {
-            device: Arc::new(desc.device.clone()),
+            device: desc.device.clone(),
             memory_properties: desc.memory_properties,
             non_coherent_atom_size: desc.non_coherent_atom_size.max(1),
             buffer_image_granularity: desc.buffer_image_granularity.max(1),
@@ -507,8 +519,9 @@ impl Allocator {
         }
     }
 
-    fn device(&self) -> Arc<Device> {
-        Arc::clone(&self.device)
+    /// A clone of the device wrapper, which is cheap: its function table is shared.
+    fn device(&self) -> Device {
+        self.device.clone()
     }
 
     /// Allocates raw Vulkan device memory from this allocator.
@@ -571,6 +584,7 @@ impl Allocator {
     /// The allocation must have been allocated by this allocator, must not currently be
     /// mapped through this allocator, and must not be used by any live Vulkan object.
     pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), AllocationError> {
+        let device = self.device();
         let memory = {
             let memory_type = self
                 .memory_types
@@ -585,6 +599,15 @@ impl Allocator {
                 return Err(AllocationError::InvalidAllocation);
             }
             block.validate_allocation(&allocation)?;
+            // A persistent mapping ends with the allocation.
+            if block.persistent.remove(&allocation.allocation_id) {
+                block.unmark_mapped(allocation.allocation_id)?;
+                block.map_count -= 1;
+                if block.map_count == 0 {
+                    unsafe { device.unmap_memory(block.memory) };
+                    block.mapped_ptr = None;
+                }
+            }
             if block.is_allocation_mapped(allocation.allocation_id) {
                 return Err(AllocationError::InvalidAllocation);
             }
@@ -605,7 +628,7 @@ impl Allocator {
         };
         if let Some(memory) = memory {
             unsafe {
-                self.device().free_memory(memory, None);
+                device.free_memory(memory, None);
             }
         }
         Ok(())
@@ -684,6 +707,46 @@ impl Allocator {
             allocation,
             ptr,
         })
+    }
+
+    /// Maps the allocation for as long as it lives and returns the address of its first
+    /// byte. The allocation has [`Allocation::size`] bytes.
+    ///
+    /// Unlike the guard of [`Allocator::map`], the pointer borrows nothing: keep it next
+    /// to the buffer it belongs to. It stays valid until the allocation is passed to
+    /// [`Allocator::free`], which releases the mapping, or until
+    /// [`Allocator::free_all`]. Calling this again for the same allocation returns the
+    /// same pointer. Do not call [`Allocator::unmap_memory`] for it.
+    ///
+    /// # Safety
+    ///
+    /// The caller must stay inside the allocation, must not use the pointer after the
+    /// allocation is freed, and must uphold Vulkan's host access rules for the memory.
+    pub unsafe fn map_persistent(
+        &mut self,
+        allocation: &Allocation,
+    ) -> Result<NonNull<u8>, AllocationError> {
+        if let Some(pointer) = self.persistent_ptr(allocation) {
+            return Ok(pointer);
+        }
+        let pointer = unsafe { self.map_memory(allocation) }?;
+        self.block_mut(allocation)?
+            .persistent
+            .insert(allocation.allocation_id);
+        NonNull::new(pointer.cast::<u8>()).ok_or(AllocationError::InvalidAllocation)
+    }
+
+    /// The pointer [`Allocator::map_persistent`] returned for this allocation, or `None`
+    /// if the allocation is not persistently mapped.
+    pub fn persistent_ptr(&self, allocation: &Allocation) -> Option<NonNull<u8>> {
+        let block = self.block(allocation).ok()?;
+        if !block.persistent.contains(&allocation.allocation_id) {
+            return None;
+        }
+        let offset = usize::try_from(allocation.offset()).ok()?;
+        let base = block.mapped_ptr?.cast::<u8>();
+        // SAFETY: the allocation lies inside the mapped block.
+        Some(unsafe { base.add(offset) })
     }
 
     /// Releases one map reference taken with [`Allocator::map_memory`].
@@ -889,6 +952,7 @@ impl Allocator {
             map_count: 0,
             mapped_allocations: HashMap::new(),
             names: HashMap::new(),
+            persistent: HashSet::new(),
         };
         let Some(suballocation) = block
             .suballocator
@@ -1163,6 +1227,9 @@ struct MemoryBlock {
     mapped_allocations: HashMap<u64, usize>,
     /// Names given in `AllocationCreateDesc`, by allocation id. Used to report leaks.
     names: HashMap<u64, Box<str>>,
+    /// Allocations mapped with `map_persistent`. Each holds one map reference that
+    /// `free` releases.
+    persistent: HashSet<u64>,
 }
 
 impl MemoryBlock {
@@ -2128,6 +2195,7 @@ mod tests {
             map_count: 0,
             mapped_allocations: HashMap::new(),
             names: HashMap::new(),
+            persistent: HashSet::new(),
         };
 
         block.mark_mapped(1).unwrap();
@@ -2162,6 +2230,7 @@ mod tests {
             map_count: 0,
             mapped_allocations: HashMap::new(),
             names: HashMap::new(),
+            persistent: HashSet::new(),
         };
         let suballocation = block.suballocator.allocate(128, 64).unwrap();
         let make_allocation = || Allocation {
@@ -2221,6 +2290,7 @@ mod tests {
                     map_count: 0,
                     mapped_allocations: HashMap::new(),
                     names: HashMap::new(),
+                    persistent: HashSet::new(),
                 }),
                 Some(MemoryBlock {
                     memory: vk::DeviceMemory(12),
@@ -2233,6 +2303,7 @@ mod tests {
                     map_count: 0,
                     mapped_allocations: HashMap::new(),
                     names: HashMap::new(),
+                    persistent: HashSet::new(),
                 }),
             ],
         };
@@ -2275,6 +2346,7 @@ mod tests {
                     map_count: 0,
                     mapped_allocations: HashMap::new(),
                     names: HashMap::new(),
+                    persistent: HashSet::new(),
                 }),
             ],
         };
@@ -2314,6 +2386,7 @@ mod tests {
                     map_count: 0,
                     mapped_allocations: HashMap::new(),
                     names: HashMap::new(),
+                    persistent: HashSet::new(),
                 })],
             },
             MemoryTypeAllocator {
@@ -2329,6 +2402,7 @@ mod tests {
                     map_count: 0,
                     mapped_allocations: HashMap::new(),
                     names: HashMap::new(),
+                    persistent: HashSet::new(),
                 })],
             },
         ];
@@ -2372,6 +2446,7 @@ mod tests {
             map_count: 0,
             mapped_allocations: HashMap::new(),
             names: HashMap::new(),
+            persistent: HashSet::new(),
         };
         let a = block.suballocator.allocate(256, 1).unwrap();
         let b = block.suballocator.allocate(256, 1).unwrap();
@@ -2448,6 +2523,7 @@ mod tests {
                     map_count: 0,
                     mapped_allocations: HashMap::new(),
                     names: HashMap::new(),
+                    persistent: HashSet::new(),
                 })],
             },
         ];

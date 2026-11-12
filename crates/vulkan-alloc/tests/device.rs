@@ -403,6 +403,86 @@ fn free_all_releases_memory_that_still_has_live_allocations() {
     // Nothing is left to report on drop, and the device has no memory to complain about.
 }
 
+/// A buffer that stays mapped for its whole life: the pointer borrows nothing, and
+/// freeing the allocation ends the mapping.
+#[test]
+fn persistent_mappings_last_until_the_allocation_is_freed() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut allocator = gpu.allocator();
+    unsafe {
+        let first = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
+        let second = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
+        let requirements = gpu.device.get_buffer_memory_requirements(first);
+        let a = allocator
+            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
+            .unwrap();
+        let b = allocator
+            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
+            .unwrap();
+        gpu.device
+            .bind_buffer_memory(first, a.memory(), a.offset())
+            .unwrap();
+        gpu.device
+            .bind_buffer_memory(second, b.memory(), b.offset())
+            .unwrap();
+
+        assert!(allocator.persistent_ptr(&a).is_none());
+        let pointer = allocator.map_persistent(&a).unwrap();
+        // The allocator is free for other work while the mapping lives.
+        let other = allocator.map_persistent(&b).unwrap();
+        assert_ne!(pointer, other);
+        assert_eq!(allocator.map_persistent(&a).unwrap(), pointer);
+        assert_eq!(allocator.persistent_ptr(&a), Some(pointer));
+
+        let bytes = std::slice::from_raw_parts_mut(pointer.as_ptr(), a.size() as usize);
+        bytes[..4].copy_from_slice(&[9, 8, 7, 6]);
+        {
+            // The guard form sees the same memory and can be used alongside.
+            let mapped = allocator.map(&a).unwrap();
+            assert_eq!(mapped.byte_range(0, 4), &[9, 8, 7, 6]);
+        }
+        assert_eq!(allocator.persistent_ptr(&a), Some(pointer));
+
+        // Freeing a persistently mapped allocation is not an error: it ends the mapping.
+        gpu.device.destroy_buffer(first, None);
+        allocator.free(a).unwrap();
+        // `b` shares the block and is still mapped at the same address.
+        assert_eq!(allocator.persistent_ptr(&b), Some(other));
+        std::slice::from_raw_parts_mut(other.as_ptr(), 4).copy_from_slice(&[1, 2, 3, 4]);
+
+        gpu.device.destroy_buffer(second, None);
+        allocator.free(b).unwrap();
+    }
+    assert!(allocator.is_empty());
+}
+
+/// Host-only memory cannot be mapped persistently either: an error, not a panic.
+#[test]
+fn persistent_mapping_of_device_local_memory_is_an_error() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut allocator = gpu.allocator();
+    unsafe {
+        let buffer = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
+        let allocation = allocator
+            .allocate(desc(
+                gpu.device.get_buffer_memory_requirements(buffer),
+                MemoryLocation::GpuOnly,
+            ))
+            .unwrap();
+        let host_visible = allocator
+            .allocation_memory_flags(&allocation)
+            .unwrap()
+            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+        // Integrated and software devices have no memory that is not host-visible.
+        if !host_visible {
+            assert!(allocator.map_persistent(&allocation).is_err());
+            assert!(allocator.persistent_ptr(&allocation).is_none());
+        }
+        gpu.device.destroy_buffer(buffer, None);
+        allocator.free(allocation).unwrap();
+    }
+}
+
 #[test]
 fn allocator_is_send() {
     fn assert_send<T: Send>() {}
