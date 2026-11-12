@@ -77,10 +77,25 @@ jobs:
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # The examples print what the validation layer reports and carry on, so a message
+      # has to fail the step here. An example that skipped itself shows in the summary.
       - name: Run headless examples on lavapipe
+        shell: bash
         run: |
-          cargo run -p vulkan-headless-triangle
-          cargo run -p vulkan-compute-buffer
+          log="$RUNNER_TEMP/examples.log"
+          for example in headless-triangle compute-buffer; do
+            cargo run -p "vulkan-$example" 2>&1 | tee -a "$log"
+          done
+          {
+            echo "### Examples"
+            echo '```'
+            grep -E "^(skipped|wrote|all [0-9]+ values match)" "$log" | sed -E 's#/[^ ]*/target/#target/#' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if grep -E "Validation Error|VUID-" "$log"; then
+            echo "::error::an example produced a validation message"
+            exit 1
+          fi
 
       - name: Upload example images
         if: always()
