@@ -333,12 +333,14 @@ unsafe fn device_supports_shader_draw_parameters(
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
 ) -> bool {
-    let mut vulkan11 = vk::PhysicalDeviceVulkan11Features::default();
+    // The instance asks for Vulkan 1.1. `VkPhysicalDeviceVulkan11Features` holds the same
+    // bit but was only added in 1.2, so the 1.1 struct is the one to use here.
+    let mut draw_parameters = vk::PhysicalDeviceShaderDrawParametersFeatures::default();
     {
-        let mut features2 = vk::PhysicalDeviceFeatures2::default().push_next(&mut vulkan11);
+        let mut features2 = vk::PhysicalDeviceFeatures2::default().push_next(&mut draw_parameters);
         instance.get_physical_device_features2(physical_device, &mut features2);
     }
-    vulkan11.shader_draw_parameters == vk::TRUE
+    draw_parameters.shader_draw_parameters == vk::TRUE
 }
 
 unsafe fn find_graphics_queue_family(
@@ -361,11 +363,11 @@ unsafe fn create_device_and_queue(
     let queue_info = [vk::DeviceQueueCreateInfo::default()
         .queue_family_index(queue_family)
         .queue_priorities(&priorities)];
-    let mut vulkan11_features =
-        vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
+    let mut draw_parameters =
+        vk::PhysicalDeviceShaderDrawParametersFeatures::default().shader_draw_parameters(true);
     let create_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queue_info)
-        .push_next(&mut vulkan11_features);
+        .push_next(&mut draw_parameters);
     let device = instance.create_device(physical_device, &create_info, None)?;
     let queue = device.get_device_queue(queue_family, 0);
     Ok((device, queue))
