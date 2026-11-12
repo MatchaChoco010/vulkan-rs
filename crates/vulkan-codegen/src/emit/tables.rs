@@ -2,7 +2,8 @@
 //! texel layout of formats and the dependencies of extensions.
 
 use super::{header, w};
-use crate::model::{Depends, Model, parse_version};
+use crate::model::{Depends, Dispatch, Model, parse_version};
+use crate::naming::{command_name, enum_variant_name};
 use std::collections::BTreeMap;
 use vulkan_registry::Extension;
 
@@ -196,6 +197,104 @@ pub fn emit_extension_table(model: &Model<'_>) -> String {
     out
 }
 
+/// The `command` module, with one `CommandInfo` constant per command, and the
+/// `COMMANDS` table. Like `EXTENSIONS`, it is not gated on platform features: it only
+/// holds names and result codes.
+pub fn emit_command_table(model: &Model<'_>) -> String {
+    let result_enum = model
+        .ir
+        .enums
+        .iter()
+        .find(|e| e.name == "VkResult")
+        .expect("VkResult");
+    let result = |code: &str| {
+        let field = result_enum
+            .fields
+            .iter()
+            .find(|f| f.name == code || f.aliases.iter().any(|a| a == code))
+            .unwrap_or_else(|| panic!("unknown result code {code}"));
+        // A result code behind a platform feature could not be named here.
+        match field.protect {
+            None => format!(
+                "VkResult::{}",
+                enum_variant_name("VkResult", &field.name, &model.ir.vendor_tags)
+            ),
+            Some(_) => format!("VkResult({})", field.value),
+        }
+    };
+    let codes = |codes: &[String]| {
+        codes
+            .iter()
+            .map(|code| result(code))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let mut commands = model.ir.commands.iter().collect::<Vec<_>>();
+    // `CommandInfo::get` does a binary search with `str`'s ordering, which is bytewise.
+    commands.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+
+    let mut out = header(&[]);
+    w!(
+        out,
+        "/// One [`CommandInfo`] per command, named after the wrapper method."
+    );
+    w!(out, "pub mod command {{");
+    w!(out, "    use crate::vk::*;\n");
+    for c in &commands {
+        let level = match model.dispatch(c) {
+            Dispatch::Entry => "Entry",
+            Dispatch::Instance => "Instance",
+            Dispatch::Device => "Device",
+        };
+        let version = match c.version.as_deref() {
+            None => "None".to_string(),
+            Some(name) => format!(
+                "Some({})",
+                version_expr(name).unwrap_or_else(|| panic!("{}: version {name}", c.name))
+            ),
+        };
+        let extensions = c
+            .extensions
+            .iter()
+            .map(|name| format!("c\"{name}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        w!(out, "    /// `{}`", c.name);
+        w!(
+            out,
+            "    pub const {}: CommandInfo = CommandInfo {{",
+            command_name(&c.name).to_ascii_uppercase()
+        );
+        w!(out, "        name: \"{}\",", c.name);
+        w!(out, "        level: CommandLevel::{level},");
+        w!(
+            out,
+            "        success_codes: &[{}],",
+            codes(&c.success_codes)
+        );
+        w!(out, "        error_codes: &[{}],", codes(&c.error_codes));
+        w!(out, "        version: {version},");
+        w!(out, "        extensions: &[{extensions}],");
+        w!(out, "    }};");
+    }
+    w!(out, "}}\n");
+    w!(
+        out,
+        "/// Every command of the registry, sorted by name. See [`CommandInfo::get`]."
+    );
+    w!(out, "pub const COMMANDS: &[CommandInfo] = &[");
+    for c in &commands {
+        w!(
+            out,
+            "    command::{},",
+            command_name(&c.name).to_ascii_uppercase()
+        );
+    }
+    w!(out, "];");
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,6 +407,53 @@ mod tests {
         let mut ir = formats();
         ir.formats[2].components[0].numeric_format = "UFIXED".to_string();
         emit_formats(&Model::new(&ir));
+    }
+
+    #[test]
+    fn command_table_lists_result_codes_and_providers() {
+        use crate::test_support::{field, result_command};
+        use vulkan_registry::Handle;
+        let mut ir = registry();
+        ir.handles.push(Handle {
+            name: "VkQueue".to_string(),
+            dispatchable: true,
+            ..Default::default()
+        });
+        let code = |name: &str, value: &str| EnumField {
+            name: name.to_string(),
+            value: value.to_string(),
+            ..Default::default()
+        };
+        let results = ir.enums.iter_mut().find(|e| e.name == "VkResult").unwrap();
+        results.fields = vec![
+            code("VK_SUCCESS", "0"),
+            code("VK_SUBOPTIMAL_KHR", "1000001003"),
+            code("VK_ERROR_DEVICE_LOST", "-4"),
+        ];
+        let mut present = result_command(
+            "vkQueuePresentKHR",
+            &["VK_SUCCESS", "VK_SUBOPTIMAL_KHR"],
+            vec![field("queue", "VkQueue")],
+        );
+        present.device = true;
+        present.error_codes = vec!["VK_ERROR_DEVICE_LOST".to_string()];
+        present.extensions = vec!["VK_KHR_swapchain".to_string()];
+        let mut wait =
+            crate::test_support::command("vkQueueWaitIdle2", vec![field("queue", "VkQueue")]);
+        wait.device = true;
+        wait.version = Some("VK_VERSION_1_3".to_string());
+        ir.commands = vec![wait, present];
+        let out = squash(&emit_command_table(&Model::new(&ir)));
+        assert!(out.contains(
+            "pub const QUEUE_PRESENT_KHR: CommandInfo = CommandInfo { name: \"vkQueuePresentKHR\", level: CommandLevel::Device, success_codes: &[VkResult::SUCCESS, VkResult::SUBOPTIMAL_KHR], error_codes: &[VkResult::ERROR_DEVICE_LOST], version: None, extensions: &[c\"VK_KHR_swapchain\"], };"
+        ));
+        assert!(out.contains(
+            "name: \"vkQueueWaitIdle2\", level: CommandLevel::Device, success_codes: &[], error_codes: &[], version: Some(make_api_version(0, 1, 3, 0)), extensions: &[],"
+        ));
+        // Sorted by C name for the binary search.
+        assert!(out.contains(
+            "pub const COMMANDS: &[CommandInfo] = &[ command::QUEUE_PRESENT_KHR, command::QUEUE_WAIT_IDLE2, ];"
+        ));
     }
 
     #[test]

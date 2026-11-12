@@ -193,17 +193,42 @@ pub(crate) fn c_str_from_chars(
 pub(crate) fn debug_enum(
     f: &mut fmt::Formatter<'_>,
     type_name: &str,
+    name: Option<&str>,
     value: i32,
-    names: &[(i32, &str)],
 ) -> fmt::Result {
-    match names.iter().find(|(known, _)| *known == value) {
-        Some((_, name)) => f.write_str(name),
+    match name {
+        Some(name) => f.write_str(name),
         None => write!(f, "{type_name}({value})"),
     }
 }
 
+/// Looks `value` up in a table that is sorted by value.
+pub(crate) fn name_of<T: Copy + Ord>(
+    variants: &[(T, &'static str)],
+    value: T,
+) -> Option<&'static str> {
+    variants
+        .binary_search_by(|(candidate, _)| candidate.cmp(&value))
+        .ok()
+        .map(|index| variants[index].1)
+}
+
+/// Looks `name` up among the canonical names, then among the aliases.
+pub(crate) fn value_of<T: Copy>(
+    variants: &[(T, &'static str)],
+    aliases: &[(T, &'static str)],
+    name: &str,
+) -> Option<T> {
+    variants
+        .iter()
+        .chain(aliases)
+        .find(|(_, candidate)| *candidate == name)
+        .map(|(value, _)| *value)
+}
+
 /// Prints set flag bits by name, joined with ` | `, and unknown bits as one hex number.
-fn debug_flags(
+/// `names` may also hold multi-bit masks and zero, which are skipped.
+pub(crate) fn debug_flags(
     f: &mut fmt::Formatter<'_>,
     value: u64,
     names: impl Iterator<Item = (u64, &'static str)>,
@@ -214,7 +239,7 @@ fn debug_flags(
     let mut rest = value;
     let mut first = true;
     for (bit, name) in names {
-        if rest & bit != 0 {
+        if bit.count_ones() == 1 && rest & bit != 0 {
             if !first {
                 f.write_str(" | ")?;
             }
@@ -230,26 +255,6 @@ fn debug_flags(
         write!(f, "{rest:#x}")?;
     }
     Ok(())
-}
-
-pub(crate) fn debug_flags64(
-    f: &mut fmt::Formatter<'_>,
-    value: u64,
-    names: &[(u64, &'static str)],
-) -> fmt::Result {
-    debug_flags(f, value, names.iter().copied())
-}
-
-pub(crate) fn debug_flags32(
-    f: &mut fmt::Formatter<'_>,
-    value: u32,
-    names: &[(u32, &'static str)],
-) -> fmt::Result {
-    debug_flags(
-        f,
-        u64::from(value),
-        names.iter().map(|&(bit, name)| (u64::from(bit), name)),
-    )
 }
 
 /// `VK_MAKE_API_VERSION`
@@ -277,10 +282,12 @@ pub const fn api_version_patch(version: u32) -> u32 {
     version & 0xfff
 }
 
+mod command_meta;
 mod extension;
 mod format;
 pub mod generated;
 
+pub use command_meta::*;
 pub use extension::*;
 pub use format::*;
 pub use generated::*;
