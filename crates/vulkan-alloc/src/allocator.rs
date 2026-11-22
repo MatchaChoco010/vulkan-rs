@@ -42,10 +42,10 @@ pub struct AllocatorCreateDesc<'a> {
     ///
     /// It must be a power of two, as Vulkan requires of this limit. Such an allocation is
     /// aligned to the larger of this value and the alignment of its requirements, which
-    /// is a multiple of both only when both are powers of two. With a value that is not a
-    /// power of two, the offset of such an allocation need not be a multiple of the
-    /// alignment its requirements ask for, and a flushed or invalidated range can reach
-    /// into another allocation.
+    /// is a multiple of both when both are powers of two. With a value that is not a power
+    /// of two, the offset of such an allocation need not be a multiple of the alignment
+    /// its requirements ask for, nor of this value, and a flushed or invalidated range can
+    /// reach into another allocation.
     pub non_coherent_atom_size: u64,
     /// The size in bytes of each shared `VkDeviceMemory` block. 0 is treated as 1.
     ///
