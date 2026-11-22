@@ -5,13 +5,14 @@
 //! `COLOR_ATTACHMENT_OPTIMAL` and back to `PRESENT_SRC_KHR` with barriers of its own.
 //!
 //! The swapchain parameters a compositor or an HDR-aware client cares about can be
-//! chosen from the environment. The surface's support for each is printed at startup.
+//! chosen from the environment; any other value is an error. The surface's support for
+//! each is printed at startup.
 //!
 //! - `VULKAN_EXAMPLE_PRESENT_MODE`: `fifo` (default), `fifo_relaxed`, `immediate`
 //!   (tearing) or `mailbox`.
 //! - `VULKAN_EXAMPLE_COLOR_SPACE`: `srgb` (default), `hdr10` (BT.2020 PQ, with
 //!   `VK_EXT_hdr_metadata` when available) or `scrgb` (extended linear sRGB).
-//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames.
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1.
 //!
 //! The shader always writes the same values, so the triangle is only colorimetrically
 //! right in `srgb`. The point of the other modes is the swapchain setup.
@@ -32,7 +33,7 @@ use vulkan_example_common::window::surface::Surface;
 use vulkan_example_common::window::swapchain::Swapchain;
 use vulkan_example_common::window::{self, Renderer, WaylandWindow};
 
-use color_space::{choose_surface_format, set_hdr_metadata};
+use color_space::{ColorSpace, choose_surface_format, set_hdr_metadata};
 use pipeline::Vertex;
 
 const VERTICES: [Vertex; 3] = [
@@ -50,9 +51,22 @@ const VERTICES: [Vertex; 3] = [
     },
 ];
 
+/// What the environment asks for, read before the window opens.
+struct Settings {
+    present_mode: vk::PresentModeKHR,
+    color_space: ColorSpace,
+}
+
 fn main() -> Result<()> {
+    let settings = Settings {
+        present_mode: present_mode::requested_present_mode()?,
+        color_space: color_space::requested_color_space()?,
+    };
     // A failure to destroy something on the way out also fails the run.
-    vulkan_example_common::device::finish(window::run::<App>("vulkan wayland dynamic rendering"))
+    vulkan_example_common::device::finish(window::run::<App>(
+        "vulkan wayland dynamic rendering",
+        settings,
+    ))
 }
 
 /// The fields drop in order: what depends on the swapchain, then the frame, the buffer
@@ -67,6 +81,7 @@ struct App {
     present_mode: vk::PresentModeKHR,
     /// `VK_EXT_hdr_metadata` is enabled on the device.
     hdr_metadata: bool,
+    color_space: ColorSpace,
     surface: Surface,
     gpu: Gpu,
 }
@@ -114,7 +129,13 @@ impl Target {
 }
 
 impl Renderer for App {
-    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D) -> Result<Self> {
+    type Settings = Settings;
+
+    unsafe fn new(
+        window: WaylandWindow,
+        window_extent: vk::Extent2D,
+        settings: &Settings,
+    ) -> Result<Self> {
         unsafe {
             // Every object is destroyed when it goes out of scope, also when a step fails
             // and `?` returns early.
@@ -125,8 +146,9 @@ impl Renderer for App {
                 surface.handle,
                 extensions.surface_maintenance1,
             )?;
-            let surface_format = choose_surface_format(&gpu, surface.handle)?;
-            let present_mode = present_mode::choose_present_mode(&gpu, surface.handle)?;
+            let surface_format = choose_surface_format(&gpu, surface.handle, settings.color_space)?;
+            let present_mode =
+                present_mode::choose_present_mode(&gpu, surface.handle, settings.present_mode)?;
             println!(
                 "swapchain: {:?} / {:?}, present mode {:?}",
                 surface_format.format, surface_format.color_space, present_mode
@@ -159,6 +181,7 @@ impl Renderer for App {
                 pipeline_layout,
                 present_mode,
                 hdr_metadata: extensions.hdr_metadata,
+                color_space: settings.color_space,
                 surface,
                 gpu,
             })
@@ -226,7 +249,8 @@ impl Renderer for App {
             self.gpu.device.device_wait_idle()?;
             // The old swapchain goes first: a surface has one swapchain at a time.
             self.target = None;
-            let surface_format = choose_surface_format(&self.gpu, self.surface.handle)?;
+            let surface_format =
+                choose_surface_format(&self.gpu, self.surface.handle, self.color_space)?;
             self.target = Some(Target::new(
                 &self.gpu,
                 self.surface.handle,

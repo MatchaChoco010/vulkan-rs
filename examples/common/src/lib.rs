@@ -7,6 +7,7 @@
 
 pub mod commands;
 pub mod device;
+pub mod env;
 pub mod extensions;
 #[cfg(all(test, target_pointer_width = "64"))]
 mod fake;

@@ -1,21 +1,57 @@
 use anyhow::{Context, Result};
 use vulkan::{Device, vk};
 use vulkan_example_common::device::Gpu;
+use vulkan_example_common::env::{one_of, parsed_var};
 
-/// The format and color space for the swapchain, following `VULKAN_EXAMPLE_COLOR_SPACE`.
-/// Falls back to 8-bit sRGB when the surface does not offer the requested one.
+/// What `VULKAN_EXAMPLE_COLOR_SPACE` asks for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ColorSpace {
+    Srgb,
+    Hdr10,
+    Scrgb,
+}
+
+/// The values of `VULKAN_EXAMPLE_COLOR_SPACE`.
+const COLOR_SPACES: [(&str, ColorSpace); 3] = [
+    ("srgb", ColorSpace::Srgb),
+    ("hdr10", ColorSpace::Hdr10),
+    ("scrgb", ColorSpace::Scrgb),
+];
+
+/// The color space that `VULKAN_EXAMPLE_COLOR_SPACE` asks for, sRGB when it is not set.
+/// An error for a value that is not one of [`COLOR_SPACES`].
+pub fn requested_color_space() -> Result<ColorSpace> {
+    let requested = parsed_var("VULKAN_EXAMPLE_COLOR_SPACE", |value| {
+        one_of(value, &COLOR_SPACES)
+    })?;
+    Ok(requested.unwrap_or(ColorSpace::Srgb))
+}
+
+/// How `VULKAN_EXAMPLE_COLOR_SPACE` spells `color_space`.
+fn name(color_space: ColorSpace) -> &'static str {
+    COLOR_SPACES
+        .iter()
+        .find(|(_, listed)| *listed == color_space)
+        .map_or("srgb", |(name, _)| name)
+}
+
+/// The format and color space for the swapchain in the color space `wanted`. Falls back
+/// to 8-bit sRGB when the surface does not offer it.
 pub unsafe fn choose_surface_format(
     gpu: &Gpu,
     surface: vk::SurfaceKHR,
+    wanted: ColorSpace,
 ) -> Result<vk::SurfaceFormatKHR> {
     let formats = unsafe {
         gpu.instance
             .get_physical_device_surface_formats_khr(gpu.physical_device, surface)
     }?;
-    let wanted = std::env::var("VULKAN_EXAMPLE_COLOR_SPACE").unwrap_or_default();
-    let (chosen, offered) = pick_surface_format(&formats, &wanted)?;
-    if !offered && !matches!(wanted.as_str(), "" | "srgb") {
-        println!("color space `{wanted}` is not offered by the surface; using sRGB");
+    let (chosen, offered) = pick_surface_format(&formats, wanted)?;
+    if !offered && wanted != ColorSpace::Srgb {
+        println!(
+            "color space `{}` is not offered by the surface; using sRGB",
+            name(wanted)
+        );
     }
     Ok(chosen)
 }
@@ -27,11 +63,11 @@ const SRGB: (vk::ColorSpaceKHR, &[vk::Format]) = (
 );
 
 /// The color space that `wanted` asks for and the formats that go with it, in order of
-/// preference. `None` for `srgb` and for anything else.
-fn wanted_candidates(wanted: &str) -> Option<(vk::ColorSpaceKHR, &'static [vk::Format])> {
+/// preference. `None` for sRGB, which is the fallback anyway.
+fn wanted_candidates(wanted: ColorSpace) -> Option<(vk::ColorSpaceKHR, &'static [vk::Format])> {
     match wanted {
         // BT.2020 primaries with the PQ transfer function; needs 10 bits or more.
-        "hdr10" => Some((
+        ColorSpace::Hdr10 => Some((
             vk::ColorSpaceKHR::HDR10_ST2084_EXT,
             &[
                 vk::Format::A2B10G10R10_UNORM_PACK32,
@@ -40,11 +76,11 @@ fn wanted_candidates(wanted: &str) -> Option<(vk::ColorSpaceKHR, &'static [vk::F
             ],
         )),
         // sRGB primaries, linear, values outside [0, 1] allowed.
-        "scrgb" => Some((
+        ColorSpace::Scrgb => Some((
             vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
             &[vk::Format::R16G16B16A16_SFLOAT],
         )),
-        _ => None,
+        ColorSpace::Srgb => None,
     }
 }
 
@@ -53,7 +89,7 @@ fn wanted_candidates(wanted: &str) -> Option<(vk::ColorSpaceKHR, &'static [vk::F
 /// whether a candidate of `wanted` was found. An error when the surface offers no format.
 fn pick_surface_format(
     formats: &[vk::SurfaceFormatKHR],
-    wanted: &str,
+    wanted: ColorSpace,
 ) -> Result<(vk::SurfaceFormatKHR, bool)> {
     let find = |(color_space, candidates): (vk::ColorSpaceKHR, &[vk::Format])| {
         candidates.iter().find_map(|&format| {
@@ -108,7 +144,7 @@ mod tests {
         vk::Format::R16G16B16A16_SFLOAT,
         vk::Format::B8G8R8A8_SRGB,
     ];
-    const COLOR_SPACES: [vk::ColorSpaceKHR; 3] = [
+    const SURFACE_COLOR_SPACES: [vk::ColorSpaceKHR; 3] = [
         vk::ColorSpaceKHR::SRGB_NONLINEAR,
         vk::ColorSpaceKHR::HDR10_ST2084_EXT,
         vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
@@ -131,7 +167,7 @@ mod tests {
             (0..next(7))
                 .map(|_| vk::SurfaceFormatKHR {
                     format: FORMATS[next(FORMATS.len())],
-                    color_space: COLOR_SPACES[next(COLOR_SPACES.len())],
+                    color_space: SURFACE_COLOR_SPACES[next(SURFACE_COLOR_SPACES.len())],
                 })
                 .collect()
         })
@@ -139,7 +175,7 @@ mod tests {
 
     /// The documented preference as one ranked list: the candidates of `wanted`, then
     /// those of 8-bit sRGB.
-    fn preference(wanted: &str) -> Vec<(vk::Format, vk::ColorSpaceKHR)> {
+    fn preference(wanted: ColorSpace) -> Vec<(vk::Format, vk::ColorSpaceKHR)> {
         wanted_candidates(wanted)
             .into_iter()
             .chain([SRGB])
@@ -151,36 +187,56 @@ mod tests {
 
     #[test]
     fn picks_the_most_preferred_offered_format_and_fails_only_on_an_empty_list() {
-        for wanted in ["", "srgb", "hdr10", "scrgb", "unknown"] {
+        for (_, wanted) in COLOR_SPACES {
             let ranked = preference(wanted);
             let wanted_count = wanted_candidates(wanted).map_or(0, |(_, formats)| formats.len());
             for formats in format_lists() {
                 let listed = formats.iter().copied().map(pair).collect::<Vec<_>>();
                 let picked = pick_surface_format(&formats, wanted);
                 if formats.is_empty() {
-                    assert!(picked.is_err(), "`{wanted}`: an empty list gave a format");
+                    assert!(picked.is_err(), "{wanted:?}: an empty list gave a format");
                     continue;
                 }
                 let (picked, offered) = picked.unwrap();
                 let picked = pair(picked);
                 assert!(
                     listed.contains(&picked),
-                    "`{wanted}`: {picked:?} is not in {listed:?}"
+                    "{wanted:?}: {picked:?} is not in {listed:?}"
                 );
                 let best = ranked
                     .iter()
                     .position(|candidate| listed.contains(candidate));
                 match best {
                     Some(rank) => {
-                        assert_eq!(picked, ranked[rank], "`{wanted}` from {listed:?}");
-                        assert_eq!(offered, rank < wanted_count, "`{wanted}` from {listed:?}");
+                        assert_eq!(picked, ranked[rank], "{wanted:?} from {listed:?}");
+                        assert_eq!(offered, rank < wanted_count, "{wanted:?} from {listed:?}");
                     }
                     None => {
-                        assert_eq!(picked, listed[0], "`{wanted}` from {listed:?}");
-                        assert!(!offered, "`{wanted}` from {listed:?}");
+                        assert_eq!(picked, listed[0], "{wanted:?} from {listed:?}");
+                        assert!(!offered, "{wanted:?} from {listed:?}");
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_color_space_is_named_once_and_other_values_are_errors() {
+        for (index, (name, color_space)) in COLOR_SPACES.iter().enumerate() {
+            assert_eq!(one_of(name, &COLOR_SPACES).unwrap(), *color_space, "{name}");
+            assert_eq!(super::name(*color_space), *name);
+            assert!(
+                COLOR_SPACES[index + 1..]
+                    .iter()
+                    .all(|(other_name, other)| other_name != name && other != color_space),
+                "{name} is listed twice"
+            );
+        }
+        for value in ["", "sRGB", "HDR10", "hdr", "pq", "scRGB", "linear"] {
+            assert!(
+                one_of(value, &COLOR_SPACES).is_err(),
+                "{value:?} was accepted"
+            );
         }
     }
 }

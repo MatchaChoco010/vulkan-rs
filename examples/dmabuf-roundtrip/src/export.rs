@@ -6,7 +6,9 @@ use vulkan::{Device, vk};
 use vulkan_alloc::{AllocationCreateDesc, AllocationScheme, MemoryLocation};
 use vulkan_example_common::commands::submit_and_wait;
 use vulkan_example_common::device::{Gpu, Owned};
-use vulkan_example_common::image::{create_image_view, subresource_range};
+use vulkan_example_common::image::{
+    create_image_view, drm_format_modifier, is_linear_image, subresource_range,
+};
 use vulkan_example_common::memory::Image;
 
 use crate::{BACKGROUND, DMA_BUF, Dmabuf, FORMAT, HEIGHT, Plane, RECTANGLE, WIDTH};
@@ -83,6 +85,9 @@ unsafe fn create_exportable_image(gpu: &Gpu) -> Result<Owned<Image>> {
             .push_next(&mut modifier_list)
             .push_next(&mut external);
         let image = gpu.own(device.create_image(&image_info, None)?);
+        // The driver chose one of the candidates, which may be DRM_FORMAT_MOD_LINEAR;
+        // that makes the image a linear resource.
+        let modifier = drm_format_modifier(device, *image)?;
 
         // vulkan-alloc gives exportable memory its own VkDeviceMemory, so the exported
         // fd refers to this image only.
@@ -92,7 +97,7 @@ unsafe fn create_exportable_image(gpu: &Gpu) -> Result<Owned<Image>> {
                 name: Some("exported image"),
                 requirements,
                 location: MemoryLocation::GpuOnly,
-                linear: false,
+                linear: is_linear_image(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT, modifier),
                 memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                 export_handle_types: DMA_BUF.into(),
                 allocation_scheme: AllocationScheme::DedicatedImage(*image),

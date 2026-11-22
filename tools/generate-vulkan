@@ -366,7 +366,8 @@ def build_ir(vk, allow_non_sdk_tag: bool):
 #
 # Khronos builds the reference pages from these blocks. For each block this dumps the
 # short description and the list items that start with the name of a member, a parameter
-# or an enumerant.
+# or an enumerant. Some types describe their values in a table instead, so the tables that
+# name an enumerant are dumped as well, whether they are in a block or not.
 
 SPEC_CONDITIONAL = re.compile(r"^(ifdef|ifndef)::([^\[]*)\[(.*)\]\s*$")
 SPEC_END_CONDITIONAL = re.compile(r"^endif::[^\[]*\[\]\s*$")
@@ -386,6 +387,8 @@ SPEC_IMAGE_TITLE = re.compile(r"^image::.*\btitle=\"([^\"]+)\"")
 SPEC_BARE_REFERENCE = re.compile(r"<<([\w.-]+)>>")
 SPEC_PASSTHROUGH = re.compile(r"^pass:\w*\[(.*)\]$")
 SPEC_BLOCK_DELIMITERS = ("--", "====", "****", "----", "....", "|===", "|====", "++++")
+SPEC_TABLE_DELIMITER = re.compile(r"^\|={3,}\s*$")
+SPEC_BLOCK_HEADER = re.compile(r"^(?:\[.*\]|\.[^\s.].*)\s*$")
 
 
 def defined_spec_attributes(vk) -> set[str]:
@@ -557,11 +560,37 @@ def spec_anchor_titles(sources: list[Path]) -> dict[str, str]:
     return titles
 
 
+def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, str]]) -> list[dict]:
+    """The tables (`|===` blocks) that name an enumerant, as AsciiDoc text that starts
+    with the attribute, anchor and title lines above the table, and the reference page
+    block that each one is in, if any, and the source file."""
+    tables = []
+    index = 0
+    while index < len(lines):
+        if not SPEC_TABLE_DELIMITER.match(lines[index]):
+            index += 1
+            continue
+        delimiter = lines[index].strip()
+        end = index + 1
+        while end < len(lines) and lines[end].strip() != delimiter:
+            end += 1
+        start = index
+        while start > 0 and SPEC_BLOCK_HEADER.match(lines[start - 1]):
+            start -= 1
+        if any("ename:" in line for line in lines[index + 1 : end]):
+            page = next((name for first, last, name in page_blocks if first < index < last), None)
+            tables.append({"file": file, "page": page, "text": "\n".join(lines[start : end + 1])})
+        index = end + 1
+    return tables
+
+
 def build_docs(defined: set[str]):
     pages = {}
+    tables = []
     sources = sorted([*DOCS.glob("chapters/**/*.adoc"), *DOCS.glob("appendices/**/*.adoc")])
     for source in sources:
         lines = list(spec_lines(source, defined))
+        page_blocks = []
         index = 0
         while index < len(lines):
             refpage = SPEC_REFPAGE.match(lines[index])
@@ -583,9 +612,12 @@ def build_docs(defined: set[str]):
                 "kind": attributes.get("type", ""),
                 "desc": attributes.get("desc", "").strip(),
                 "aliases": attributes.get("alias", "").split(),
+                "file": str(source.relative_to(DOCS)),
                 "items": spec_described_items(lines[index + 2 : end]),
             }
+            page_blocks.append((index, end, name))
             index = end + 1
+        tables.extend(spec_tables(str(source.relative_to(DOCS)), lines, page_blocks))
     if not pages:
         raise RuntimeError("third_party/vulkan-docs has no reference page blocks")
     all_titles = spec_anchor_titles(sources)
@@ -593,11 +625,14 @@ def build_docs(defined: set[str]):
     for page in pages.values():
         for text in (page["desc"], *(item["text"] for item in page["items"])):
             referenced.update(SPEC_BARE_REFERENCE.findall(text))
+    for table in tables:
+        referenced.update(SPEC_BARE_REFERENCE.findall(table["text"]))
     return {
         "commit": git(["-C", str(DOCS), "rev-parse", "--short=12", "HEAD"]),
         "attributes": dict(sorted(spec_attributes(defined).items())),
         "titles": {name: all_titles[name] for name in sorted(referenced) if name in all_titles},
         "pages": [pages[name] for name in sorted(pages)],
+        "tables": tables,
     }
 
 

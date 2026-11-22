@@ -5,6 +5,7 @@ use vulkan_alloc::{Allocation, AllocationCreateDesc, AllocationScheme, MemoryLoc
 
 use crate::commands::submit_and_wait;
 use crate::device::{Destroy, Gpu, GpuOwner, Owned};
+use crate::image::{DRM_FORMAT_MOD_LINEAR, drm_format_modifier, is_linear_image};
 
 /// A buffer bound to memory from the allocator of a [`Gpu`].
 pub struct Buffer {
@@ -139,6 +140,15 @@ fn check_fits(len: usize, size: u64) -> Result<()> {
     Ok(())
 }
 
+/// The size of a buffer for `data`. An error for no data: a buffer cannot be empty.
+fn upload_size(data: &[u8]) -> Result<u64> {
+    ensure!(
+        !data.is_empty(),
+        "there is no data to upload, and a buffer cannot be empty"
+    );
+    Ok(u64::try_from(data.len())?)
+}
+
 /// The device size `size` as a length on the host, whose `usize` may be narrower.
 fn host_len<T: TryFrom<u64>>(size: u64) -> Result<T> {
     T::try_from(size).map_err(|_| anyhow!("{size} bytes do not fit into the host's address space"))
@@ -166,7 +176,7 @@ pub unsafe fn upload_aligned_buffer(
 ) -> Result<Owned<Buffer>> {
     unsafe {
         let device = &gpu.device;
-        let size = data.len() as u64;
+        let size = upload_size(data)?;
         let staging = create_buffer(
             gpu,
             "staging buffer",
@@ -217,6 +227,8 @@ pub struct MappedBuffer {
     pub allocation: Allocation,
     pub size: u64,
     bytes: NonNull<u8>,
+    /// `size` as a host length.
+    len: usize,
 }
 
 impl Owned<MappedBuffer> {
@@ -229,7 +241,7 @@ impl Owned<MappedBuffer> {
         let buffer: &MappedBuffer = self;
         // SAFETY: the mapping lives as long as the buffer, which `self` owns, and the
         // exclusive borrow of `self` is the only way to these bytes.
-        unsafe { std::slice::from_raw_parts_mut(buffer.bytes.as_ptr(), buffer.size as usize) }
+        unsafe { std::slice::from_raw_parts_mut(buffer.bytes.as_ptr(), buffer.len) }
     }
 }
 
@@ -257,6 +269,8 @@ pub unsafe fn create_mapped_buffer(
     alignment: u64,
 ) -> Result<Owned<MappedBuffer>> {
     unsafe {
+        // The host has to be able to address all of it.
+        let len = host_len(size)?;
         let buffer =
             create_aligned_buffer(gpu, name, size, usage, MemoryLocation::CpuToGpu, alignment)?;
         let bytes =
@@ -271,6 +285,7 @@ pub unsafe fn create_mapped_buffer(
             allocation,
             size,
             bytes,
+            len,
         }))
     }
 }
@@ -310,13 +325,19 @@ pub unsafe fn create_image(
     unsafe {
         let device = &gpu.device;
         let image = gpu.own(device.create_image(info, None)?);
+        // A DRM-modifier image is linear or not by the modifier it was given.
+        let modifier = if info.tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
+            drm_format_modifier(device, *image)?
+        } else {
+            DRM_FORMAT_MOD_LINEAR
+        };
         let requirements = device.get_image_memory_requirements(*image);
         let allocation = gpu.with_allocator(|allocator| {
             allocator.allocate(AllocationCreateDesc {
                 name: Some(name),
                 requirements,
                 location: MemoryLocation::GpuOnly,
-                linear: info.tiling == vk::ImageTiling::LINEAR,
+                linear: is_linear_image(info.tiling, modifier),
                 memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                 export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
                 allocation_scheme: AllocationScheme::GpuAllocatorManaged,
@@ -339,6 +360,14 @@ pub unsafe fn create_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_upload_has_the_size_of_its_data_and_no_data_is_an_error() {
+        assert!(upload_size(&[]).is_err());
+        for len in [1, 2, 3, 255, 256, 4097] {
+            assert_eq!(upload_size(&vec![0; len]).unwrap(), len as u64);
+        }
+    }
 
     const SIZES: [u64; 9] = [
         0,

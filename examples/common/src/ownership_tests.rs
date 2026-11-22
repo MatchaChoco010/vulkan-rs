@@ -78,6 +78,19 @@ unsafe fn setup(entry: &Entry) -> Result<()> {
                 vk::ImageUsageFlags::COLOR_ATTACHMENT,
             ),
         )?;
+        let linear_image = create_image(
+            &gpu,
+            "DRM-modifier image",
+            &image_info_2d(
+                vk::Format::R8G8B8A8_UNORM,
+                vk::Extent2D {
+                    width: 4,
+                    height: 4,
+                },
+                vk::ImageUsageFlags::TRANSFER_SRC,
+            )
+            .tiling(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT),
+        )?;
         let view = create_image_view(
             &gpu,
             image.image,
@@ -119,7 +132,7 @@ unsafe fn setup(entry: &Entry) -> Result<()> {
             let frame = crate::window::frame::Frame::new(&gpu)?;
             drop((frame, swapchain));
         }
-        drop((pipeline, view, vertices));
+        drop((pipeline, view, linear_image, vertices));
         Ok(())
     }
 }

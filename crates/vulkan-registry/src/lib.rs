@@ -46,6 +46,7 @@ pub struct Docs {
     pub attributes: BTreeMap<String, String>,
     pub titles: BTreeMap<String, String>,
     pub pages: Vec<DocPage>,
+    pub tables: Vec<DocTable>,
 }
 
 impl Docs {
@@ -67,12 +68,20 @@ pub struct DocPage {
     pub kind: String,
     pub desc: String,
     pub aliases: Vec<String>,
+    pub file: String,
     pub items: Vec<DocItem>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct DocItem {
     pub name: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DocTable {
+    pub file: String,
+    pub page: Option<String>,
     pub text: String,
 }
 

@@ -242,6 +242,7 @@ unsafe extern "system" fn get_device_proc_addr(
         b"vkGetSwapchainImagesKHR" => get_swapchain_images,
         b"vkGetBufferMemoryRequirements" => get_memory_requirements,
         b"vkGetImageMemoryRequirements" => get_memory_requirements,
+        b"vkGetImageDrmFormatModifierPropertiesEXT" => get_image_drm_format_modifier_properties,
         b"vkBindBufferMemory" => bind_memory,
         b"vkBindImageMemory" => bind_memory,
         b"vkMapMemory" => map_memory,
@@ -550,6 +551,19 @@ unsafe extern "system" fn get_memory_requirements(
             memory_type_bits: 0b11,
         };
     }
+}
+
+/// Every DRM-modifier image has `DRM_FORMAT_MOD_LINEAR`.
+unsafe extern "system" fn get_image_drm_format_modifier_properties(
+    _device: u64,
+    _image: u64,
+    properties: *mut vk::ImageDrmFormatModifierPropertiesEXT<'_>,
+) -> vk::VkResult {
+    if fails() {
+        return result(true);
+    }
+    unsafe { (*properties).drm_format_modifier = 0 };
+    vk::VkResult::SUCCESS
 }
 
 unsafe extern "system" fn bind_memory(

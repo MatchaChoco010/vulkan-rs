@@ -134,6 +134,10 @@ impl GpuOwner {
     /// Calls `f` with the allocator for the memory of buffers and images. The allocator
     /// is borrowed only for the call, since the [`Owned`] buffers and images borrow it
     /// again to free their memory.
+    ///
+    /// # Panics
+    ///
+    /// When called from within `f` of another call, which already borrows the allocator.
     pub fn with_allocator<T>(&self, f: impl FnOnce(&mut Allocator) -> T) -> T {
         f(&mut self.allocator.borrow_mut())
     }
@@ -183,8 +187,13 @@ pub fn cleanup_failed(message: impl Display) {
 /// The result of an example's run: `result`, or an error when destroying an object
 /// failed on the way, so that the process exits with a failing status either way.
 pub fn finish(result: Result<()>) -> Result<()> {
+    finish_with(result, CLEANUP_FAILED.load(Ordering::Relaxed))
+}
+
+/// [`finish`], given whether a cleanup failed.
+fn finish_with(result: Result<()>, cleanup_failed: bool) -> Result<()> {
     result?;
-    if CLEANUP_FAILED.load(Ordering::Relaxed) {
+    if cleanup_failed {
         bail!("destroying objects failed, as printed above");
     }
     Ok(())
@@ -311,6 +320,17 @@ pub unsafe fn supports_extensions(
     Ok(names.iter().all(|name| has_extension(&available, name)))
 }
 
+/// Whether a physical device that reports `api_version` and the device extensions
+/// `available` has at least `required_version` and every extension in `required`.
+pub fn meets_requirements(
+    api_version: u32,
+    available: &[vk::ExtensionProperties],
+    required_version: u32,
+    required: &[&CStr],
+) -> bool {
+    api_version >= required_version && required.iter().all(|name| has_extension(available, name))
+}
+
 /// The first queue family that supports all of `flags`.
 pub unsafe fn find_queue_family(
     instance: &Instance,
@@ -326,6 +346,34 @@ pub unsafe fn find_queue_family(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_run_fails_when_it_failed_or_a_cleanup_failed() {
+        for run_fails in [false, true] {
+            for cleanup_fails in [false, true] {
+                let result = if run_fails {
+                    Err(anyhow::anyhow!("the run failed"))
+                } else {
+                    Ok(())
+                };
+                let finished = finish_with(result, cleanup_fails);
+                assert_eq!(
+                    finished.is_err(),
+                    run_fails || cleanup_fails,
+                    "run fails: {run_fails}, cleanup fails: {cleanup_fails}"
+                );
+                if run_fails {
+                    assert_eq!(finished.unwrap_err().to_string(), "the run failed");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_reported_cleanup_failure_is_remembered() {
+        cleanup_failed("a test reports a cleanup failure");
+        assert!(CLEANUP_FAILED.load(Ordering::Relaxed));
+    }
     use std::ffi::c_void;
     use std::ptr;
 

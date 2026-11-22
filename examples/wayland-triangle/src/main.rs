@@ -6,7 +6,8 @@
 //! needs no barrier of its own. The render pass, the framebuffers and the pipeline,
 //! whose viewport is fixed, depend on the swapchain and are recreated with it.
 //!
-//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames.
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1. Any other value is
+//!   an error.
 //!
 //! `examples/wayland-dynamic-rendering` draws the same triangle without a render pass.
 
@@ -41,7 +42,7 @@ const VERTICES: [Vertex; 3] = [
 
 fn main() -> Result<()> {
     // A failure to destroy something on the way out also fails the run.
-    vulkan_example_common::device::finish(window::run::<App>("vulkan wayland triangle"))
+    vulkan_example_common::device::finish(window::run::<App>("vulkan wayland triangle", ()))
 }
 
 /// The fields drop in order: what depends on the swapchain, then the frame, the buffer
@@ -96,7 +97,9 @@ impl Target {
 }
 
 impl Renderer for App {
-    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D) -> Result<Self> {
+    type Settings = ();
+
+    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D, _: &()) -> Result<Self> {
         unsafe {
             // Every object is destroyed when it goes out of scope, also when a step fails
             // and `?` returns early.
