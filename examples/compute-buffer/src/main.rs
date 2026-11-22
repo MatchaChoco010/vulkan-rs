@@ -21,7 +21,6 @@ mod pipeline;
 
 use anyhow::{Context, Result, bail};
 use vulkan::vk;
-use vulkan_alloc::MemoryLocation;
 use vulkan_alloc::descriptor_heap::ResourceHeapPlan;
 use vulkan_example_common::commands::submit_and_wait;
 use vulkan_example_common::memory::{
@@ -54,7 +53,6 @@ unsafe fn run() -> Result<()> {
             "values",
             BUFFER_BYTES,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             1,
         )?;
         for (index, word) in values.bytes().chunks_exact_mut(4).enumerate() {
@@ -72,7 +70,6 @@ unsafe fn run() -> Result<()> {
             "resource heap",
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             layout.alignment,
         )?;
 

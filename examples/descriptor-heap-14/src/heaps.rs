@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use vulkan::{Device, vk};
+use vulkan_alloc::Allocator;
 use vulkan_alloc::descriptor_heap::{
     DescriptorHeapLayout, DescriptorSlots, ResourceHeapPlan, SamplerHeapPlan,
 };
-use vulkan_alloc::{Allocator, MemoryLocation};
 use vulkan_example_common::image::subresource_range;
 use vulkan_example_common::memory::{
     Buffer, Image, MappedBuffer, buffer_device_address, create_mapped_buffer,
@@ -103,7 +103,6 @@ pub unsafe fn create_heap(
             name,
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             layout.alignment,
         )
     }

@@ -301,6 +301,53 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn cpu_to_gpu_chooses_coherent_memory_whenever_an_allowed_type_is_coherent() {
+        let visible = vk::MemoryPropertyFlags::HOST_VISIBLE;
+        let coherent = vk::MemoryPropertyFlags::HOST_COHERENT;
+        let cached = vk::MemoryPropertyFlags::HOST_CACHED;
+        let local = vk::MemoryPropertyFlags::DEVICE_LOCAL;
+        let kinds = [
+            local,
+            visible,
+            visible | cached,
+            visible | coherent,
+            visible | coherent | cached,
+            local | visible,
+            local | visible | cached,
+            local | visible | coherent,
+        ];
+        let mut checked = 0;
+        for combination in 0..kinds.len().pow(4) {
+            let flags = (0..4)
+                .map(|position| kinds[combination / kinds.len().pow(position) % kinds.len()])
+                .collect::<Vec<_>>();
+            let properties = memory_properties(&flags);
+            for memory_type_bits in 1..16u32 {
+                let allowed = |index: &usize| memory_type_bits & (1 << index) != 0;
+                if !(0..flags.len())
+                    .filter(allowed)
+                    .any(|index| flags[index].contains(visible | coherent))
+                {
+                    continue;
+                }
+                let index = find_memory_type_index(
+                    &properties,
+                    memory_type_bits,
+                    MemoryLocation::CpuToGpu.required_flags(),
+                    MemoryLocation::CpuToGpu.preferred_flags(),
+                )
+                .expect("a host-visible type is allowed");
+                assert!(
+                    flags[index as usize].contains(visible | coherent),
+                    "types {flags:?}, allowed {memory_type_bits:#06b}: chose type {index}"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0);
+    }
+
+    #[test]
     fn preferred_memory_type_score_counts_matching_flags() {
         let properties = memory_properties(&[
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,

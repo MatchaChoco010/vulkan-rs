@@ -25,7 +25,8 @@ use vulkan_example_common::image::{
     copy_image_to_buffer, create_image_view, image_info_2d, subresource_range,
 };
 use vulkan_example_common::memory::{
-    MappedBuffer, buffer_device_address, create_allocator, create_image, create_mapped_buffer,
+    Buffer, MappedBuffer, buffer_device_address, create_allocator, create_buffer, create_image,
+    create_mapped_buffer, read_buffer,
 };
 use vulkan_example_common::output::{output_path, write_rgba_ppm};
 
@@ -116,14 +117,13 @@ unsafe fn run() -> Result<()> {
             create_storage_buffer(device, &mut allocator, "indices", &MESH_INDICES, alignment)?,
             create_storage_buffer(device, &mut allocator, "draws", &MESH_DRAWS, alignment)?,
         ];
-        let mut readback = create_mapped_buffer(
+        let readback = create_buffer(
             device,
             &mut allocator,
             "readback",
             IMAGE_BYTES,
             vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuToCpu,
-            1,
         )?;
 
         // The resource heap: three buffer descriptors, then the range the implementation
@@ -137,7 +137,6 @@ unsafe fn run() -> Result<()> {
             "resource heap",
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             layout.alignment,
         )?;
 
@@ -218,9 +217,10 @@ unsafe fn run() -> Result<()> {
             Ok(())
         })?;
 
-        verify(readback.bytes())?;
+        let pixels = read_buffer(&mut allocator, &readback)?;
+        verify(&pixels)?;
         let path = output_path("mesh_shader.ppm")?;
-        write_rgba_ppm(&path, EXTENT.width, EXTENT.height, readback.bytes())?;
+        write_rgba_ppm(&path, EXTENT.width, EXTENT.height, &pixels)?;
         println!("wrote {}", path.display());
 
         device.destroy_pipeline(pipeline, None);
@@ -264,7 +264,6 @@ unsafe fn create_storage_buffer<T: bytemuck::Pod>(
             name,
             data.len() as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             alignment,
         )?;
         buffer.bytes().copy_from_slice(data);
@@ -326,13 +325,13 @@ unsafe fn prepare_color_attachment(
     }
 }
 
-/// Copies the rendered image to `readback`, where the host can read it once the
+/// Copies the rendered image to `readback`, where [`read_buffer`] can read it once the
 /// submission is waited for.
 unsafe fn copy_to_readback(
     device: &Device,
     command_buffer: vk::CommandBuffer,
     image: vk::Image,
-    readback: &MappedBuffer,
+    readback: &Buffer,
 ) {
     let to_transfer = [vk::ImageMemoryBarrier2::default()
         .src_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
