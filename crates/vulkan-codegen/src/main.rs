@@ -25,7 +25,6 @@ fn main() {
     for dir in [GENERATED_SRC, GENERATED_TESTS] {
         let dir = root.join(dir);
         fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create {}: {e}", dir.display()));
-        // Remove files that an older generator version wrote and this one no longer does.
         for entry in fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
             let path = entry.expect("directory entry").path();
             if path.is_file() && !expected.contains(&path) {
@@ -45,8 +44,6 @@ fn main() {
     );
 }
 
-/// Generated items are gated on Cargo features named after registry platforms. A new
-/// platform in the registry must get a feature before the output can compile.
 fn check_features(root: &Path, ir: &Registry) {
     let manifest_path = root.join("crates/vulkan/Cargo.toml");
     let manifest = fs::read_to_string(&manifest_path)

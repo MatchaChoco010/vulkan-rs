@@ -1,11 +1,11 @@
 error[E0597]: `priorities` does not live long enough
-  --> tests/ui/fail/nested_struct.rs:9:73
+  --> tests/ui/fail/nested_struct.rs:8:73
    |
- 8 |         let priorities = [1.0];
+ 7 |         let priorities = [1.0];
    |             ---------- binding `priorities` declared here
- 9 |         queues = [vk::DeviceQueueCreateInfo::default().queue_priorities(&priorities)];
+ 8 |         queues = [vk::DeviceQueueCreateInfo::default().queue_priorities(&priorities)];
    |                                                                         ^^^^^^^^^^^ borrowed value does not live long enough
-10 |     }
+ 9 |     }
    |     - `priorities` dropped here while still borrowed
-11 |     info = vk::DeviceCreateInfo::default().queue_create_infos(&queues);
+10 |     info = vk::DeviceCreateInfo::default().queue_create_infos(&queues);
    |                                                               ------- borrow later used here

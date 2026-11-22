@@ -52,6 +52,11 @@ jobs:
       - name: Format
         run: cargo fmt --check
 
+      # Comments are not allowed in the Rust sources under crates/. This also runs as
+      # part of the workspace tests; it is a step of its own so that it fails early.
+      - name: No comments under crates/
+        run: cargo test -p source-lint
+
       - name: Generated files are up to date
         run: ./tools/generate-vulkan --check
 

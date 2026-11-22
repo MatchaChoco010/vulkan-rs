@@ -1,4 +1,3 @@
-//! A struct in the `pNext` chain must outlive the root.
 use vulkan::vk;
 
 fn main() {

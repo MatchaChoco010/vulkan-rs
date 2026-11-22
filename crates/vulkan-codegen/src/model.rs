@@ -1,14 +1,7 @@
-//! Registry analysis shared by all emitters: type lookup, alias resolution, C to Rust
-//! type mapping, lifetime analysis and command dispatch levels.
-
 use crate::naming::{const_name, type_name};
 use std::collections::{BTreeMap, BTreeSet};
 use vulkan_registry::{Command, Field, Registry, Struct};
 
-/// Types that are declared by hand in `crates/vulkan/src/vk/mod.rs` because they come from
-/// platform headers, not from the registry. A registry type outside of this list and
-/// outside of the registry's own types aborts generation, so a new platform type cannot
-/// slip in unnoticed.
 const EXTERNAL_TYPES: &[&str] = &[
     "AHardwareBuffer",
     "ANativeWindow",
@@ -55,8 +48,6 @@ const EXTERNAL_TYPES: &[&str] = &[
     "zx_handle_t",
 ];
 
-/// The [`EXTERNAL_TYPES`] that are plain values (integers or pointers as typedefs) rather
-/// than opaque structs. They can be returned by value and borrowed like any integer.
 const EXTERNAL_VALUE_TYPES: &[&str] = &[
     "DWORD",
     "GgpFrameToken",
@@ -85,14 +76,10 @@ const EXTERNAL_VALUE_TYPES: &[&str] = &[
     "zx_handle_t",
 ];
 
-/// Where a command's function pointer is loaded from.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Dispatch {
-    /// Global commands, loaded with a null instance.
     Entry,
-    /// Loaded with `vkGetInstanceProcAddr(instance, ..)`.
     Instance,
-    /// Loaded with `vkGetDeviceProcAddr(device, ..)`.
     Device,
 }
 
@@ -115,7 +102,6 @@ impl Dispatch {
         }
     }
 
-    /// The handle that the wrapper type owns and passes implicitly.
     pub fn self_handle(self) -> Option<&'static str> {
         match self {
             Dispatch::Entry => None,
@@ -125,14 +111,10 @@ impl Dispatch {
     }
 }
 
-/// A C type as it appears in a member or parameter declaration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CType {
-    /// Base type name, e.g. `VkBuffer`, `char`, `wl_display`.
     pub base: String,
-    /// One entry per pointer level, innermost first. `true` when the pointee is `const`.
     pub pointers: Vec<bool>,
-    /// Fixed-size array dimensions, outermost first.
     pub arrays: Vec<String>,
 }
 
@@ -163,12 +145,10 @@ impl CType {
         self.pointers.len()
     }
 
-    /// Constness of the outermost pointee, i.e. what `*const` / `*mut` of the whole type is.
     pub fn outer_const(&self) -> bool {
         self.pointers.last().copied().unwrap_or(false)
     }
 
-    /// `const` qualifier of the base type (meaningful for arrays passed as parameters).
     pub fn base_const(full_ty: &str) -> bool {
         full_ty
             .split('*')
@@ -263,29 +243,22 @@ impl<'a> Model<'a> {
         self.func_pointers.contains(name) || name.starts_with("PFN_")
     }
 
-    /// Platform types declared by hand in `vk/mod.rs`.
     pub fn is_external(&self, name: &str) -> bool {
         EXTERNAL_TYPES.contains(&name)
     }
 
-    /// Types that Rust must never form a reference to: `void` and platform structs that
-    /// are declared as uninhabited enums or as aliases of `c_void`.
     pub fn is_opaque(&self, name: &str) -> bool {
         name == "void" || (self.is_external(name) && !EXTERNAL_VALUE_TYPES.contains(&name))
     }
 
-    /// A struct needs a lifetime parameter when it can hold a borrowed pointer, directly or
-    /// through a nested struct or union.
     pub fn has_lifetime(&self, name: &str) -> bool {
         self.lifetimes.contains(self.canonical(name))
     }
 
-    /// Structs made only of plain values: integers, floats, enums, flags and handles.
     pub fn derives_partial_eq(&self, name: &str) -> bool {
         self.plain_eq.contains(self.canonical(name))
     }
 
-    /// Like [`Self::derives_partial_eq`], and without floats.
     pub fn derives_eq_hash(&self, name: &str) -> bool {
         self.plain_hash.contains(self.canonical(name))
     }
@@ -319,7 +292,6 @@ impl<'a> Model<'a> {
     }
 
     fn compute_plain(&self) -> (BTreeSet<&'a str>, BTreeSet<&'a str>) {
-        // Start from "everything is plain" and remove offenders until stable.
         let candidates = || {
             self.ir
                 .structs
@@ -344,7 +316,6 @@ impl<'a> Model<'a> {
                             if let Some(nested) = self.structs.get(base) {
                                 return !nested.union && set.contains(base);
                             }
-                            // Platform typedefs may be raw pointers.
                             if self.is_external(base) || base == "VkRemoteAddressNV" {
                                 return false;
                             }
@@ -361,8 +332,6 @@ impl<'a> Model<'a> {
         (shrink(true), shrink(false))
     }
 
-    /// Rust type for a base C type. `lifetime` is what to write for struct lifetimes
-    /// (`'a`, `'_` or `'static`).
     pub fn base_ty(&self, name: &str, lifetime: &str) -> String {
         let name = self.canonical(name);
         match name {
@@ -405,7 +374,6 @@ impl<'a> Model<'a> {
         }
     }
 
-    /// Rust type of a struct member as stored in the `#[repr(C)]` struct.
     pub fn member_ty(&self, m: &Field, lifetime: &str) -> String {
         let ty = CType::of(m);
         let mut out = self.pointer_ty(&ty, lifetime);
@@ -415,7 +383,6 @@ impl<'a> Model<'a> {
         out
     }
 
-    /// Rust type of a command parameter in the C ABI. Arrays decay to pointers.
     pub fn param_ty(&self, p: &Field, lifetime: &str) -> String {
         let ty = CType::of(p);
         let mut out = self.pointer_ty(&ty, lifetime);
@@ -433,7 +400,6 @@ impl<'a> Model<'a> {
         out
     }
 
-    /// Rust type for `full_ty` without arrays, e.g. `*const *const c_char`.
     pub fn pointer_ty(&self, ty: &CType, lifetime: &str) -> String {
         let mut out = self.base_ty(&ty.base, lifetime);
         for is_const in &ty.pointers {
@@ -442,7 +408,6 @@ impl<'a> Model<'a> {
         out
     }
 
-    /// Rust type for a C return type such as `void`, `VkResult` or `void*`.
     pub fn return_ty(&self, name: &str) -> String {
         if name == "void" {
             return "()".to_string();
@@ -463,7 +428,6 @@ impl<'a> Model<'a> {
         }
     }
 
-    /// Constants that are used as array lengths are emitted as `usize`.
     pub fn array_len_constants(&self) -> BTreeSet<&'a str> {
         let mut names = BTreeSet::new();
         for s in &self.ir.structs {
@@ -488,8 +452,6 @@ impl<'a> Model<'a> {
     }
 
     pub fn dispatch(&self, c: &Command) -> Dispatch {
-        // vkGetDeviceProcAddr takes a VkDevice but is the bootstrap for the device table,
-        // so it has to come from vkGetInstanceProcAddr.
         if c.name == "vkGetDeviceProcAddr" {
             return Dispatch::Instance;
         }
@@ -515,7 +477,6 @@ impl<'a> Model<'a> {
         }
     }
 
-    /// Cargo feature for a platform protect macro such as `VK_USE_PLATFORM_WAYLAND_KHR`.
     pub fn feature(&self, protect: &str) -> String {
         if protect == "VK_ENABLE_BETA_EXTENSIONS" {
             return "beta".to_string();
@@ -528,7 +489,6 @@ impl<'a> Model<'a> {
             .unwrap_or_else(|| panic!("unhandled Vulkan protect macro: {protect}"))
     }
 
-    /// All Cargo features that gate generated items, sorted.
     pub fn features(&self) -> Vec<String> {
         let mut features = self
             .ir
@@ -549,10 +509,8 @@ impl<'a> Model<'a> {
     }
 }
 
-/// A parsed `depends` expression of an extension.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Depends {
-    /// `VK_VERSION_1_2` as (major, minor).
     Version(u32, u32),
     Extension(String),
     All(Vec<Depends>),
@@ -560,9 +518,6 @@ pub enum Depends {
 }
 
 impl Depends {
-    /// Parses the registry notation: names joined by `+` (and) and `,` (or), which have
-    /// equal precedence and associate to the left, with parentheses for grouping. This
-    /// is the grammar of Khronos' `parse_dependency.py`.
     pub fn parse(text: &str) -> Self {
         let tokens = Self::tokens(text);
         let mut position = 0;
@@ -599,7 +554,6 @@ impl Depends {
         while let Some(op) = tokens.get(*position).filter(|t| *t == "+" || *t == ",") {
             *position += 1;
             let right = Self::term(tokens, position, text);
-            // Fold `a+b+c` into one node instead of nesting.
             left = match (op.as_str(), left) {
                 ("+", Depends::All(mut all)) => {
                     all.push(right);
@@ -644,24 +598,9 @@ impl Depends {
     }
 }
 
-/// `VK_VERSION_1_3` to `(1, 3)`.
 pub fn parse_version(name: &str) -> Option<(u32, u32)> {
     let (major, minor) = name.strip_prefix("VK_VERSION_")?.split_once('_')?;
     Some((major.parse().ok()?, minor.parse().ok()?))
-}
-
-/// Short reference line for doc comments.
-pub fn provided_by(extensions: &[String], version: Option<&str>) -> String {
-    let mut parts = Vec::new();
-    if let Some(version) = version {
-        parts.push(format!("`{version}`"));
-    }
-    parts.extend(extensions.iter().map(|e| format!("`{e}`")));
-    if parts.is_empty() {
-        String::new()
-    } else {
-        format!("Provided by {}.", parts.join(", "))
-    }
 }
 
 #[cfg(test)]
@@ -750,7 +689,6 @@ mod tests {
             Depends::parse("VK_KHR_a+VK_KHR_b+VK_KHR_c"),
             Depends::All(vec![ext("VK_KHR_a"), ext("VK_KHR_b"), ext("VK_KHR_c")])
         );
-        // `a+b,c` is `(a+b),c`, and `a,b+c` is `(a,b)+c`.
         assert_eq!(
             Depends::parse("VK_KHR_a+VK_KHR_b,VK_VERSION_1_1"),
             Depends::Any(vec![
@@ -765,7 +703,6 @@ mod tests {
                 ext("VK_KHR_c"),
             ])
         );
-        // VK_EXT_descriptor_heap in vulkan-sdk-1.4.363.0.
         assert_eq!(
             Depends::parse(
                 "((VK_KHR_extended_flags,VK_KHR_maintenance5)+(VK_KHR_buffer_device_address,VK_VERSION_1_2),VK_VERSION_1_4)"
@@ -799,8 +736,6 @@ mod tests {
         assert!(model.is_opaque("void"));
         assert!(model.is_opaque("wl_display"));
         assert!(model.is_opaque("Display"));
-        // HANDLE is a pointer-sized value and zx_handle_t an integer: both can be
-        // written through `&mut` and returned by value.
         assert!(model.is_external("HANDLE") && !model.is_opaque("HANDLE"));
         assert!(!model.is_opaque("zx_handle_t"));
         assert!(!model.is_opaque("uint32_t"));

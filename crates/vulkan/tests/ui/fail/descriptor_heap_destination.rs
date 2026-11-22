@@ -1,4 +1,3 @@
-//! The host memory a descriptor is written to must outlive the range that names it.
 use vulkan::vk;
 
 fn main() {

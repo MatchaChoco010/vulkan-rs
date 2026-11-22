@@ -1,4 +1,3 @@
-//! A create info cannot be returned past the locals it points to.
 use vulkan::vk;
 
 fn make<'a>() -> vk::DeviceQueueCreateInfo<'a> {

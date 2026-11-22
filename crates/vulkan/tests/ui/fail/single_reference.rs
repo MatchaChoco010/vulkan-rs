@@ -1,4 +1,3 @@
-//! A single struct stored by pointer (`Option<&T>` in spirit) must outlive the struct.
 use vulkan::vk;
 
 fn main() {

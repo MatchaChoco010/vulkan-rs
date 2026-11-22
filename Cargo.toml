@@ -4,6 +4,7 @@ members = [
     "crates/vulkan-alloc",
     "crates/vulkan-codegen",
     "crates/vulkan-registry",
+    "crates/source-lint",
     "examples/*",
 ]
 resolver = "3"
@@ -14,6 +15,9 @@ version = "0.3.1+vulkan-sdk-1.4.363.0"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/MatchaChoco010/vulkan-rs"
+
+[workspace.lints.clippy]
+missing_safety_doc = "allow"
 
 [workspace.dependencies]
 vulkan = { path = "crates/vulkan", version = "0.3.1", default-features = false }

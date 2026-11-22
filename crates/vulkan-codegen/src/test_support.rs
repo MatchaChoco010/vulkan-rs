@@ -1,5 +1,3 @@
-//! Builders for small synthetic registries used by unit tests.
-
 use vulkan_registry::{Command, Enum, Field, Registry, Struct};
 
 pub fn registry() -> Registry {
@@ -9,7 +7,6 @@ pub fn registry() -> Registry {
         headers_tag: "vulkan-sdk-1.4.1.0".to_string(),
         headers_commit: "000000000000".to_string(),
         vendor_tags: ["KHR", "EXT", "NV"].iter().map(|s| s.to_string()).collect(),
-        // Enums that the emitters refer to by name.
         enums: ["VkStructureType", "VkResult", "VkObjectType"]
             .iter()
             .map(|name| Enum {
@@ -22,7 +19,6 @@ pub fn registry() -> Registry {
     }
 }
 
-/// A field from a C declaration type such as `const VkFoo*`.
 pub fn field(name: &str, full_ty: &str) -> Field {
     let ty = full_ty
         .replace('*', " ")
@@ -60,7 +56,6 @@ pub fn structure(name: &str, members: Vec<Field>) -> Struct {
     }
 }
 
-/// A struct that starts with `sType` and `pNext`.
 pub fn tagged(name: &str, s_type: &str, mut members: Vec<Field>) -> Struct {
     let mut all = vec![
         field("sType", "VkStructureType"),

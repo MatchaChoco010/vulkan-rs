@@ -1,4 +1,3 @@
-//! SPIR-V words must outlive the create info.
 use vulkan::vk;
 
 fn main() {

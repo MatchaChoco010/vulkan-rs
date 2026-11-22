@@ -1,4 +1,3 @@
-//! An output array inside a query struct stays mutably borrowed while the struct is in use.
 use vulkan::vk;
 
 fn query(_: &mut vk::DrmFormatModifierPropertiesListEXT<'_>) {}

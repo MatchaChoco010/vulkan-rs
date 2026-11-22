@@ -1,5 +1,3 @@
-//! Shape of the generated API, checked without a Vulkan implementation.
-
 use std::ffi::CStr;
 use std::mem::{align_of, size_of};
 use vulkan::vk::{self, Handle};
@@ -59,7 +57,6 @@ fn string_arrays_are_pointer_compatible() {
 #[test]
 fn push_next_prepends_and_overwrites_the_pushed_struct_p_next() {
     let mut vulkan11 = vk::PhysicalDeviceVulkan11Features::default();
-    // A stale pointer in the pushed struct must not be followed.
     let mut vulkan12 = vk::PhysicalDeviceVulkan12Features {
         p_next: std::ptr::dangling_mut(),
         ..Default::default()
@@ -73,6 +70,27 @@ fn push_next_prepends_and_overwrites_the_pushed_struct_p_next() {
     assert_eq!(features.p_next, vulkan12_ptr);
     assert_eq!(vulkan12.p_next, vulkan11_ptr);
     assert!(vulkan11.p_next.is_null());
+}
+
+struct ExtendsDeviceCreateInfo<T>(std::marker::PhantomData<T>);
+
+trait FallbackWhenNotExtending {
+    const EXTENDS: bool = false;
+}
+
+impl<T> FallbackWhenNotExtending for ExtendsDeviceCreateInfo<T> {}
+
+impl<T: vk::Extends<vk::DeviceCreateInfo<'static>>> ExtendsDeviceCreateInfo<T> {
+    const EXTENDS: bool = true;
+}
+
+#[test]
+fn only_structs_the_registry_lists_as_extending_the_root_can_be_pushed() {
+    let extends = [
+        ExtendsDeviceCreateInfo::<vk::PhysicalDeviceVulkan12Features<'static>>::EXTENDS,
+        ExtendsDeviceCreateInfo::<vk::PresentInfoKHR<'static>>::EXTENDS,
+    ];
+    assert_eq!(extends, [true, false]);
 }
 
 #[test]
@@ -129,7 +147,6 @@ fn bit_fields_round_trip() {
     );
     assert_eq!(size_of::<vk::AccelerationStructureInstanceKHR>(), 64);
 
-    // Out-of-range values are truncated to the field width.
     let truncated = vk::AccelerationStructureInstanceKHR::default().mask(0x1ff);
     assert_eq!(truncated.get_mask(), 0xff);
     assert_eq!(truncated.get_instance_custom_index(), 0);
@@ -160,7 +177,6 @@ fn fixed_arrays_have_typed_readers() {
 
     let memory = vk::PhysicalDeviceMemoryProperties::default().memory_type_count(2);
     assert_eq!(memory.memory_types_as_slice().len(), 2);
-    // A count beyond the array is clamped instead of reading out of bounds.
     let memory = memory.memory_type_count(1000);
     assert_eq!(memory.memory_types_as_slice().len(), vk::MAX_MEMORY_TYPES);
 }
@@ -226,7 +242,6 @@ fn flags_have_set_operations() {
         usage ^ vk::ImageUsageFlags::SAMPLED,
         vk::ImageUsageFlags::TRANSFER_DST
     );
-    // Single bits combine into the flags type.
     let stages: vk::ShaderStageFlags =
         vk::ShaderStageFlagBits::VERTEX | vk::ShaderStageFlagBits::FRAGMENT;
     assert_eq!(stages.as_raw(), 0x11);
@@ -269,7 +284,6 @@ fn versions_and_extension_names() {
     );
 }
 
-/// The crate version records the Vulkan-Headers tag it was generated from.
 #[test]
 fn crate_version_metadata_matches_generated_headers_tag() {
     let (_, metadata) = env!("CARGO_PKG_VERSION")
@@ -349,15 +363,12 @@ fn command_wrappers_have_pointer_free_signatures() {
     let _: EnumerateExtensions = Entry::enumerate_instance_extension_properties;
 }
 
-/// Array parameters are pointers in the C ABI, never by-value arrays.
 #[test]
 fn array_parameters_use_the_c_abi() {
     let _: vk::PFN_vkCmdSetBlendConstants =
         None::<unsafe extern "system" fn(vk::CommandBuffer, *const [f32; 4])>;
 }
 
-/// `vkGetExternalComputeQueueDataNV` takes a child handle of the device, so it is loaded
-/// with `vkGetDeviceProcAddr`.
 #[test]
 fn commands_on_child_handles_are_device_level() {
     let _ = Device::get_external_compute_queue_data_nv;
@@ -376,8 +387,6 @@ fn wayland_surface_takes_raw_display_and_surface() {
     let _ = Instance::create_wayland_surface_khr;
 }
 
-/// Direct-to-display output (DRM/KMS). Acquiring a display needs DRM master, so only
-/// the shapes are checked here.
 #[test]
 fn display_commands_have_expected_signatures() {
     type AcquireDrmDisplay =
@@ -400,7 +409,6 @@ fn display_commands_have_expected_signatures() {
     let _: GetDisplays = Instance::get_physical_device_display_properties_khr;
 }
 
-/// Present mode switching and tearing control without recreating the swapchain.
 #[test]
 fn swapchain_maintenance_structs_chain_into_swapchain_and_present() {
     let modes = [
@@ -426,15 +434,12 @@ fn swapchain_maintenance_structs_chain_into_swapchain_and_present() {
         .push_next(&mut mode_info);
     assert_eq!(present.swapchain_count, 1);
 
-    // The EXT names are aliases of the promoted KHR types.
     let _: vk::SwapchainPresentModesCreateInfoEXT<'_> =
         vk::SwapchainPresentModesCreateInfoKHR::default();
     let _ = Device::set_hdr_metadata_ext;
     let _ = Device::release_swapchain_images_khr;
 }
 
-/// `vk::Format::info` is generated from the registry's `<formats>`, which the C headers
-/// do not carry.
 #[test]
 fn formats_know_their_texel_layout() {
     use vk::{ChromaSubsampling, ComponentName, NumericFormat};
@@ -454,7 +459,6 @@ fn formats_know_their_texel_layout() {
     assert_eq!(rgba.aspects(), vk::ImageAspectFlags::COLOR);
     assert!(rgba.has_alpha() && !rgba.is_srgb() && !rgba.is_compressed());
     assert!(vk::Format::B8G8R8A8_SRGB.info().unwrap().is_srgb());
-    // Same class: one can be viewed as the other.
     assert_eq!(vk::Format::B8G8R8A8_SRGB.info().unwrap().class, rgba.class);
 
     let depth_stencil = vk::Format::D24_UNORM_S8_UINT.info().unwrap();
@@ -467,7 +471,6 @@ fn formats_know_their_texel_layout() {
         vk::ImageAspectFlags::DEPTH
     );
 
-    // NV12: full-resolution luma, half-resolution interleaved chroma.
     let nv12 = vk::Format::G8_B8R8_2PLANE_420_UNORM.info().unwrap();
     assert_eq!(nv12.chroma, Some(ChromaSubsampling::_420));
     assert_eq!(nv12.plane_count(), 2);
@@ -482,7 +485,6 @@ fn formats_know_their_texel_layout() {
         width: 960,
         height: 540,
     };
-    // `assert!` instead of `assert_eq!`: structs have `Debug` only with the `debug` feature.
     assert!(nv12.plane_extent(0, full) == Some(full));
     assert!(nv12.plane_extent(1, full) == Some(half));
     assert!(nv12.plane_extent(2, full).is_none());
@@ -509,7 +511,6 @@ fn formats_know_their_texel_layout() {
         [2, 10, 10, 10]
     );
 
-    // `info` is usable in constants.
     const BLOCK: u32 = match vk::Format::R16G16B16A16_SFLOAT.info() {
         Some(info) => info.block_size,
         None => 0,
@@ -517,9 +518,6 @@ fn formats_know_their_texel_layout() {
     assert_eq!(BLOCK, 8);
 }
 
-/// Sanity of the whole table: in an uncompressed single-plane format the components fit
-/// in the block. They need not fill it: `X8_D24`, `R10X6` and `E5B9G9R9` have bits that
-/// are not a component.
 #[test]
 fn format_component_bits_fit_in_the_block() {
     let mut checked = 0;
@@ -541,13 +539,11 @@ fn format_component_bits_fit_in_the_block() {
     assert!(checked > 100);
 }
 
-/// Extension dependencies come from the registry's `depends` attribute.
 #[test]
 fn extensions_know_their_dependencies() {
     use std::ffi::CStr;
     use vk::{Dependency, ExtensionInfo, ExtensionLevel};
 
-    // The table is sorted, which `get` relies on, and has no duplicates.
     assert!(
         vk::EXTENSIONS
             .windows(2)
@@ -573,8 +569,6 @@ fn extensions_know_their_dependencies() {
     assert_eq!(surface.level, ExtensionLevel::Instance);
     assert!(surface.dependencies_met(vk::API_VERSION_1_0, enabled(&[])));
 
-    // VK_EXT_descriptor_heap: usable on 1.4 alone; on 1.3 it needs VK_KHR_maintenance5,
-    // and the buffer device address dependency is covered by the 1.2 promotion.
     let heap = ExtensionInfo::get(vk::EXT_DESCRIPTOR_HEAP_NAME).unwrap();
     assert!(heap.dependencies_met(vk::API_VERSION_1_4, enabled(&[])));
     assert!(!heap.dependencies_met(vk::API_VERSION_1_3, enabled(&[])));
@@ -585,19 +579,15 @@ fn extensions_know_their_dependencies() {
         "(((VK_KHR_extended_flags,VK_KHR_maintenance5)+(VK_KHR_buffer_device_address,VK_VERSION_1_2)),VK_VERSION_1_4)"
     );
 
-    // Promotion: a dependency on a promoted extension is met by the core version.
     let maintenance5 = ExtensionInfo::get(vk::KHR_MAINTENANCE_5_NAME).unwrap();
     assert_eq!(maintenance5.promoted_to_version, Some(vk::API_VERSION_1_4));
     let dynamic_rendering = Dependency::Extension(c"VK_KHR_dynamic_rendering");
     assert!(dynamic_rendering.is_met(vk::API_VERSION_1_3, &|_: &CStr| false));
     assert!(!dynamic_rendering.is_met(vk::API_VERSION_1_2, &|_: &CStr| false));
 
-    // Platform extensions are listed whatever features are enabled.
     assert!(ExtensionInfo::get(c"VK_KHR_win32_surface").is_some());
 }
 
-/// Member and parameter names that are Rust keywords get a conventional spelling
-/// instead of a raw identifier: `type` is `ty`.
 #[test]
 fn keyword_members_have_plain_names() {
     let size = vk::DescriptorPoolSize::default()
@@ -606,8 +596,6 @@ fn keyword_members_have_plain_names() {
     assert_eq!(size.ty, vk::DescriptorType::SAMPLED_IMAGE);
 }
 
-/// Enum values and flag bits map to and from the names of their constants. A layer that
-/// takes names from a script, or prints values back to it, needs no table of its own.
 #[test]
 fn enums_map_to_and_from_names() {
     assert_eq!(
@@ -626,7 +614,6 @@ fn enums_map_to_and_from_names() {
     assert_eq!(vk::Format::from_name("r16g16b16a16_sfloat"), None);
     assert_eq!(vk::Format::from_name("NOT_A_FORMAT"), None);
 
-    // Unknown values have no name, which is also what `is_known` says.
     assert_eq!(vk::Format::from_raw(-7).name(), None);
     assert!(!vk::Format::from_raw(-7).is_known());
     assert!(vk::Format::UNDEFINED.is_known());
@@ -636,12 +623,10 @@ fn enums_map_to_and_from_names() {
         Some("ERROR_DEVICE_LOST")
     );
 
-    // An alias is accepted by name, and reports the canonical name.
     let alias = vk::PresentModeKHR::from_name("FIFO_LATEST_READY_EXT").unwrap();
     assert_eq!(alias, vk::PresentModeKHR::FIFO_LATEST_READY);
     assert_eq!(alias.name(), Some("FIFO_LATEST_READY"));
 
-    // The table is sorted by value and round-trips, for every enum that has one.
     for (value, name) in vk::Format::variants() {
         assert_eq!(value.name(), Some(*name));
         assert_eq!(vk::Format::from_name(name), Some(*value));
@@ -666,12 +651,10 @@ fn flags_know_their_bits() {
         Some(vk::ImageUsageFlags::COLOR_ATTACHMENT)
     );
     assert_eq!(vk::ImageUsageFlags::SAMPLED.name(), Some("SAMPLED"));
-    // A combination is not a named constant.
     assert_eq!(
         (vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE).name(),
         None
     );
-    // Multi-bit masks and zero are named constants too.
     assert_eq!(
         vk::ShaderStageFlags::from_name("ALL_GRAPHICS"),
         Some(vk::ShaderStageFlags::ALL_GRAPHICS)
@@ -688,7 +671,6 @@ fn flags_know_their_bits() {
     assert!(vk::ImageUsageFlags::empty().is_known());
     const _: vk::ImageUsageFlags = vk::ImageUsageFlags::all();
 
-    // 64-bit flags and the single-bit types work the same way.
     assert_eq!(
         vk::AccessFlags2::from_name("SHADER_READ"),
         Some(vk::AccessFlags2::SHADER_READ)
@@ -701,7 +683,6 @@ fn flags_know_their_bits() {
     assert!(vk::SampleCountFlagBits::_4.is_known());
 }
 
-/// What a shader has to declare to read a format.
 #[test]
 fn formats_know_their_shader_numeric_type() {
     use vk::{NumericFormat, ShaderNumericType};
@@ -733,7 +714,6 @@ fn formats_know_their_shader_numeric_type() {
         None
     );
 
-    // Depth reads as float and stencil as unsigned integer, from the same image.
     let depth_stencil = vk::Format::D24_UNORM_S8_UINT;
     assert_eq!(
         shader_type(depth_stencil, vk::ImageAspectFlags::DEPTH),
@@ -754,8 +734,6 @@ fn formats_know_their_shader_numeric_type() {
     assert_eq!(NumericFormat::Bool.shader_type(), None);
 }
 
-/// Which commands can report a lost device, and what provides a command, from the
-/// registry.
 #[test]
 fn commands_know_their_result_codes() {
     use vk::{CommandInfo, CommandLevel, VkResult};
@@ -767,7 +745,6 @@ fn commands_know_their_result_codes() {
     assert!(submit.can_return(VkResult::ERROR_DEVICE_LOST));
     assert!(!submit.can_return(VkResult::ERROR_SURFACE_LOST_KHR));
 
-    // Recording a command cannot fail at all.
     let draw = vk::command::CMD_DRAW;
     assert!(!draw.returns_result());
     assert!(!draw.can_return(VkResult::ERROR_DEVICE_LOST));
@@ -789,8 +766,6 @@ fn commands_know_their_result_codes() {
         CommandLevel::Instance
     );
 
-    // The table is sorted, which `get` relies on, and includes platform commands
-    // whatever features are enabled.
     assert!(
         vk::COMMANDS
             .windows(2)
@@ -802,7 +777,6 @@ fn commands_know_their_result_codes() {
     assert!(CommandInfo::get("vkCreateWin32SurfaceKHR").is_some());
     assert!(CommandInfo::get("vkNoSuchCommand").is_none());
 
-    // How many commands can lose the device: a sanity bound, not an exact count.
     let lossy = vk::COMMANDS
         .iter()
         .filter(|info| info.can_return(VkResult::ERROR_DEVICE_LOST))
@@ -810,8 +784,6 @@ fn commands_know_their_result_codes() {
     assert!(lossy > 20 && lossy < vk::COMMANDS.len() / 2, "{lossy}");
 }
 
-/// `Device` and `Instance` share their function pointer table, so a clone is a handle
-/// and a couple of reference counts, not a copy of several kilobytes.
 #[test]
 fn wrappers_are_cheap_to_clone() {
     assert!(std::mem::size_of::<vk::DeviceFn>() > 4096);

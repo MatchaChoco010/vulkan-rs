@@ -1,4 +1,3 @@
-//! `void*` with a size member is borrowed as bytes.
 use vulkan::vk;
 
 fn main() {

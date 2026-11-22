@@ -1,4 +1,3 @@
-//! The array of string pointers must outlive the struct.
 use vulkan::vk;
 
 fn main() {

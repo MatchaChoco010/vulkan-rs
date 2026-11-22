@@ -1,13 +1,3 @@
-//! Cross-checks the generated bindings against the Khronos C headers.
-//!
-//! `tests/generated/layout.c` is compiled with the host C compiler against
-//! `third_party/vulkan/include` and prints what C sees: struct sizes, alignments, member
-//! offsets, bit-field positions and constant values. This test compares that with what
-//! Rust sees in `tests/generated/layout_table.rs`.
-//!
-//! The test needs the Vulkan-Headers submodule and a C compiler (`$CC`, default `cc`).
-//! Without them it is skipped, unless `VULKAN_RS_REQUIRE_LAYOUT_TEST` is set, which CI does.
-
 #[path = "generated/layout_table.rs"]
 mod table;
 
@@ -28,7 +18,6 @@ struct CFacts {
     values: HashMap<String, i64>,
 }
 
-/// Compiles and runs `layout.c`. `Err` explains why that was not possible.
 fn c_facts() -> Result<CFacts, String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let include = manifest_dir.join("../../third_party/vulkan/include");
@@ -50,7 +39,6 @@ fn c_facts() -> Result<CFacts, String> {
         .arg(&exe)
         .output()
         .map_err(|e| format!("cannot run C compiler `{cc}`: {e}"))?;
-    // A compile error means the generated C is wrong, which must fail the test.
     assert!(
         output.status.success(),
         "{cc} failed on {}:\n{}",
@@ -162,7 +150,6 @@ fn bindings_match_c_headers() {
         mismatches.len(),
         mismatches.join("\n")
     );
-    // Guard against a table that is accidentally empty.
     assert!(table::STRUCTS.len() > 1000);
     assert!(table::BIT_FIELDS.len() > 100);
     assert!(table::VALUES.len() > 5000);

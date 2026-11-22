@@ -1,4 +1,3 @@
-//! One struct cannot be linked into two chains, or twice into one.
 use vulkan::vk;
 
 fn main() {

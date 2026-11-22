@@ -1,99 +1,3 @@
-//! A suballocator for `VkDeviceMemory`, built on the `vulkan` crate.
-//!
-//! Vulkan implementations allow only a few thousand `VkDeviceMemory` objects, so memory
-//! for buffers and images is cut out of larger blocks. [`Allocator`] does that with a
-//! TLSF free list per memory type.
-//!
-//! ```no_run
-//! # use vulkan::{vk, Device, Instance};
-//! # use vulkan_alloc::*;
-//! # unsafe fn example(instance: &Instance, physical_device: vk::PhysicalDevice, device: &Device)
-//! # -> Result<(), Box<dyn std::error::Error>> { unsafe {
-//! let mut allocator = Allocator::new(AllocatorCreateDesc::new(
-//!     device,
-//!     instance.get_physical_device_memory_properties(physical_device),
-//!     instance.get_physical_device_properties(physical_device),
-//! ));
-//!
-//! let buffer = device.create_buffer(
-//!     &vk::BufferCreateInfo::default()
-//!         .size(1024)
-//!         .usage(vk::BufferUsageFlags::UNIFORM_BUFFER),
-//!     None,
-//! )?;
-//! let allocation = allocator.allocate(AllocationCreateDesc {
-//!     name: Some("uniforms"),
-//!     requirements: device.get_buffer_memory_requirements(buffer),
-//!     location: MemoryLocation::CpuToGpu,
-//!     linear: true, // buffers are linear; images with optimal tiling are not
-//!     memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-//!     export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-//!     allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-//! })?;
-//! device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
-//!
-//! {
-//!     // `map` returns a guard. Dropping the guard unmaps; there is nothing else to call.
-//!     let mut mapped = allocator.map(&allocation)?;
-//!     mapped.byte_range_mut(0, 4).copy_from_slice(&[1, 2, 3, 4]);
-//! }
-//!
-//! // Tear down in this order: resource, allocation, allocator, device.
-//! device.destroy_buffer(buffer, None);
-//! allocator.free(allocation)?;
-//! drop(allocator);
-//! # Ok(()) } }
-//! ```
-//!
-//! # Mapping
-//!
-//! There are three ways to map. Pick one per use; do not release a mapping made one way
-//! with the call of another.
-//!
-//! - [`Allocator::map`] returns a [`MappedAllocation`] guard that unmaps when dropped.
-//!   Do **not** call [`Allocator::unmap_memory`] for it. The guard borrows the
-//!   allocator, so it suits short accesses.
-//! - [`Allocator::map_persistent`] maps the allocation until it is freed and returns a
-//!   pointer that borrows nothing. This is the form for a buffer that stays mapped for
-//!   its whole life, such as a descriptor heap or a per-frame uniform buffer.
-//!   [`Allocator::free`] releases the mapping.
-//! - [`Allocator::map_memory`] returns a raw pointer and must be paired with exactly one
-//!   [`Allocator::unmap_memory`].
-//!
-//! # Order of destruction
-//!
-//! The allocator keeps a copy of the [`Device`] wrapper, but a `Device` is a handle and
-//! a function table, not an owner: nothing stops `destroy_device` from being called
-//! while the allocator is alive. The caller keeps the order.
-//!
-//! 1. Destroy the buffers and images.
-//! 2. [`Allocator::free`] their allocations, or call [`Allocator::free_all`].
-//! 3. Drop the allocator.
-//! 4. Destroy the device.
-//!
-//! Dropping the allocator does not call into Vulkan, so dropping it after the device was
-//! destroyed is harmless. Calling [`Allocator::free`] or [`Allocator::free_all`] after
-//! that is not.
-//!
-//! # Leaks
-//!
-//! Dropping an allocator that still has live allocations does not panic. It reports
-//! them through the [`log`] crate and leaves their memory to the device, because that
-//! memory may still back resources that are in use. See [`Allocator::live_allocations`]
-//! and [`Allocator::free_all`].
-//!
-//! # What does not go through the allocator
-//!
-//! Imported memory, such as a dma-buf received from a client, has a size and layout
-//! decided elsewhere. Allocate it with `vkAllocateMemory` directly. Memory to be
-//! *exported* can come from the allocator: set
-//! [`AllocationCreateDesc::export_handle_types`].
-//!
-//! # Descriptor heaps
-//!
-//! [`descriptor_heap`] computes the byte layout of `VK_EXT_descriptor_heap` heaps: where
-//! each descriptor goes and where the range reserved for the implementation sits.
-
 pub mod descriptor_heap;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -103,11 +7,7 @@ use std::ptr::NonNull;
 
 use vulkan::{Device, vk};
 
-// A moderate default block size keeps the number of VkDeviceMemory objects low without making
-// small examples reserve hundreds of MiB per memory type.
 const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
-// Do not split a tail smaller than this; tiny free blocks add fragmentation but are rarely useful
-// for Vulkan resources because alignment requirements are commonly at least this large.
 const MIN_SPLIT_SIZE: u64 = 256;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -185,9 +85,6 @@ pub struct AllocationCreateDesc<'a> {
     pub location: MemoryLocation,
     pub linear: bool,
     pub memory_allocate_flags: vk::MemoryAllocateFlags,
-    /// Handle types the memory can be exported as (`VkExportMemoryAllocateInfo`), e.g.
-    /// `DMA_BUF_EXT`. A non-empty value gives the allocation its own `VkDeviceMemory`,
-    /// because an exported handle refers to the whole memory object.
     pub export_handle_types: vk::ExternalMemoryHandleTypeFlags,
     pub allocation_scheme: AllocationScheme,
 }
@@ -247,12 +144,6 @@ impl Allocation {
     }
 }
 
-/// A mapped allocation, returned by [`Allocator::map`].
-///
-/// This is a guard: **dropping it unmaps**. Do not call [`Allocator::unmap_memory`] for
-/// a mapping made with [`Allocator::map`]; that would release a mapping this guard still
-/// owns. The guard borrows the allocator, so nothing else can be allocated, freed or
-/// mapped until it is dropped.
 #[must_use = "dropping the guard unmaps the allocation"]
 pub struct MappedAllocation<'a> {
     allocator: &'a mut Allocator,
@@ -265,72 +156,40 @@ impl MappedAllocation<'_> {
         self.ptr.as_ptr().cast()
     }
 
-    /// # Safety
-    ///
-    /// The caller must uphold Vulkan host/device synchronization for the mapped allocation and
-    /// ensure no mutable host access aliases the returned bytes for the duration of the borrow.
     pub unsafe fn as_bytes(&self) -> &[u8] {
         unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), self.allocation.size() as usize) }
     }
 
-    /// # Safety
-    ///
-    /// The caller must uphold Vulkan host/device synchronization for the mapped allocation and
-    /// ensure the returned mutable byte slice is the only host access to this mapped range for
-    /// the duration of the borrow.
     pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe {
             core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.allocation.size() as usize)
         }
     }
 
-    /// The bytes `offset..offset + size` of the allocation.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the range is not inside the allocation. Use
-    /// [`MappedAllocation::try_byte_range`] when the range comes from untrusted input.
     pub fn byte_range(&self, offset: usize, size: usize) -> &[u8] {
         self.try_byte_range(offset, size)
             .expect("mapped byte range exceeds allocation size")
     }
 
-    /// See [`MappedAllocation::byte_range`].
     pub fn byte_range_mut(&mut self, offset: usize, size: usize) -> &mut [u8] {
         self.try_byte_range_mut(offset, size)
             .expect("mapped byte range exceeds allocation size")
     }
 
-    /// The bytes `offset..offset + size` of the allocation, or `None` if the range is not
-    /// inside the allocation.
     pub fn try_byte_range(&self, offset: usize, size: usize) -> Option<&[u8]> {
         let end = offset.checked_add(size)?;
-        // SAFETY: the guard borrows the allocator mutably, so nothing else maps or
-        // unmaps this memory through it while the slice is alive.
         unsafe { self.as_bytes() }.get(offset..end)
     }
 
-    /// See [`MappedAllocation::try_byte_range`].
     pub fn try_byte_range_mut(&mut self, offset: usize, size: usize) -> Option<&mut [u8]> {
         let end = offset.checked_add(size)?;
-        // SAFETY: as in `try_byte_range`, and `&mut self` makes this the only host access.
         unsafe { self.as_bytes_mut() }.get_mut(offset..end)
     }
 
-    /// # Safety
-    ///
-    /// The caller must ensure all host writes that need to become visible to the device are
-    /// complete and that Vulkan synchronization requirements for flushing this mapped range are
-    /// satisfied.
     pub unsafe fn flush(&mut self) -> Result<(), AllocationError> {
         unsafe { self.allocator.flush_allocation(self.allocation) }
     }
 
-    /// # Safety
-    ///
-    /// The caller must ensure device writes that need to become visible to the host are complete
-    /// and that Vulkan synchronization requirements for invalidating this mapped range are
-    /// satisfied.
     pub unsafe fn invalidate(&mut self) -> Result<(), AllocationError> {
         unsafe { self.allocator.invalidate_allocation(self.allocation) }
     }
@@ -409,10 +268,8 @@ pub enum MemoryRegionState {
     },
 }
 
-/// An allocation that has not been freed. See [`Allocator::live_allocations`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveAllocation {
-    /// [`AllocationCreateDesc::name`] of the allocation.
     pub name: Option<String>,
     pub memory: vk::DeviceMemory,
     pub offset: u64,
@@ -434,7 +291,6 @@ enum DedicatedResource {
     Image(vk::Image),
 }
 
-/// What a new `VkDeviceMemory` has to be allocated with.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct BlockRequest {
     dedicated: DedicatedResource,
@@ -443,7 +299,6 @@ struct BlockRequest {
 }
 
 impl BlockRequest {
-    /// Dedicated and exportable allocations are never suballocated.
     fn needs_own_block(self) -> bool {
         self.dedicated != DedicatedResource::None || !self.export_handle_types.is_empty()
     }
@@ -486,12 +341,8 @@ impl From<AllocationScheme> for DedicatedResource {
     }
 }
 
-// SAFETY: the only non-`Send` state is the mapped pointer of each block, which is plain
-// data owned by the allocator; all access goes through `&mut self`.
 unsafe impl Send for Allocator {}
 
-/// Cuts allocations out of `VkDeviceMemory` blocks. See the [crate documentation](crate)
-/// for the order of destruction and for what happens to leaked allocations.
 pub struct Allocator {
     device: Device,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
@@ -519,26 +370,10 @@ impl Allocator {
         }
     }
 
-    /// A clone of the device wrapper, which is cheap: its function table is shared.
     fn device(&self) -> Device {
         self.device.clone()
     }
 
-    /// Allocates raw Vulkan device memory from this allocator.
-    ///
-    /// Create the Vulkan resource, query its memory requirements, pass those
-    /// requirements here together with whether the resource is linear, then bind the
-    /// returned allocation to the resource yourself. Use [`AllocationScheme`] to request
-    /// dedicated allocation when the resource requires or benefits from it.
-    ///
-    /// # Safety
-    ///
-    /// The caller must bind and use the returned memory according to Vulkan's memory
-    /// requirements, must account for dedicated-allocation requirements when using raw
-    /// requirements, and must not use the allocation after passing it to
-    /// [`Allocator::free`]. Allocations that are still live when the allocator is dropped
-    /// are reported and their memory is left to the device; see the `Drop` notes on
-    /// [`Allocator`].
     pub unsafe fn allocate(
         &mut self,
         desc: AllocationCreateDesc<'_>,
@@ -577,12 +412,6 @@ impl Allocator {
         Ok(allocation)
     }
 
-    /// Frees a raw allocation returned by [`Allocator::allocate`].
-    ///
-    /// # Safety
-    ///
-    /// The allocation must have been allocated by this allocator, must not currently be
-    /// mapped through this allocator, and must not be used by any live Vulkan object.
     pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), AllocationError> {
         let device = self.device();
         let memory = {
@@ -599,7 +428,6 @@ impl Allocator {
                 return Err(AllocationError::InvalidAllocation);
             }
             block.validate_allocation(&allocation)?;
-            // A persistent mapping ends with the allocation.
             if block.persistent.remove(&allocation.allocation_id) {
                 block.unmark_mapped(allocation.allocation_id)?;
                 block.map_count -= 1;
@@ -634,19 +462,6 @@ impl Allocator {
         Ok(())
     }
 
-    /// Maps the allocation and returns a pointer to the allocation's start.
-    ///
-    /// Internally the containing `VkDeviceMemory` block is mapped once and reference
-    /// counted per allocation.
-    ///
-    /// Every successful call must be paired with exactly one [`Allocator::unmap_memory`].
-    /// Prefer [`Allocator::map`], which returns a guard that unmaps on drop and cannot
-    /// be left unpaired.
-    ///
-    /// # Safety
-    ///
-    /// The caller must only read/write bytes within the allocation range and must call
-    /// [`Allocator::unmap_memory`] once for each successful call.
     pub unsafe fn map_memory(
         &mut self,
         allocation: &Allocation,
@@ -686,16 +501,6 @@ impl Allocator {
         Ok(unsafe { ptr.as_ptr().cast::<u8>().add(offset).cast() })
     }
 
-    /// Maps the allocation and returns a guard that unmaps it on drop.
-    ///
-    /// Do not call [`Allocator::unmap_memory`] for a mapping made here: the returned
-    /// [`MappedAllocation`] does it when it goes out of scope.
-    ///
-    /// # Safety
-    ///
-    /// The caller must uphold Vulkan's host access rules for the memory while the guard
-    /// is alive: nothing else, including the device, may write the bytes that are read
-    /// through the guard.
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
@@ -709,19 +514,6 @@ impl Allocator {
         })
     }
 
-    /// Maps the allocation for as long as it lives and returns the address of its first
-    /// byte. The allocation has [`Allocation::size`] bytes.
-    ///
-    /// Unlike the guard of [`Allocator::map`], the pointer borrows nothing: keep it next
-    /// to the buffer it belongs to. It stays valid until the allocation is passed to
-    /// [`Allocator::free`], which releases the mapping, or until
-    /// [`Allocator::free_all`]. Calling this again for the same allocation returns the
-    /// same pointer. Do not call [`Allocator::unmap_memory`] for it.
-    ///
-    /// # Safety
-    ///
-    /// The caller must stay inside the allocation, must not use the pointer after the
-    /// allocation is freed, and must uphold Vulkan's host access rules for the memory.
     pub unsafe fn map_persistent(
         &mut self,
         allocation: &Allocation,
@@ -736,8 +528,6 @@ impl Allocator {
         NonNull::new(pointer.cast::<u8>()).ok_or(AllocationError::InvalidAllocation)
     }
 
-    /// The pointer [`Allocator::map_persistent`] returned for this allocation, or `None`
-    /// if the allocation is not persistently mapped.
     pub fn persistent_ptr(&self, allocation: &Allocation) -> Option<NonNull<u8>> {
         let block = self.block(allocation).ok()?;
         if !block.persistent.contains(&allocation.allocation_id) {
@@ -745,21 +535,9 @@ impl Allocator {
         }
         let offset = usize::try_from(allocation.offset()).ok()?;
         let base = block.mapped_ptr?.cast::<u8>();
-        // SAFETY: the allocation lies inside the mapped block.
         Some(unsafe { base.add(offset) })
     }
 
-    /// Releases one map reference taken with [`Allocator::map_memory`].
-    ///
-    /// This is not the counterpart of [`Allocator::map`], whose guard unmaps by itself.
-    /// Calling it for an allocation that is not mapped returns
-    /// [`AllocationError::InvalidAllocation`].
-    ///
-    /// # Safety
-    ///
-    /// `allocation` must have a currently active mapping created by this allocator, and
-    /// no pointer returned by the matching map call may be used after this call releases
-    /// the final reference for the underlying memory block.
     pub unsafe fn unmap_memory(&mut self, allocation: &Allocation) -> Result<(), AllocationError> {
         let device = self.device();
         let block = self.block_mut(allocation)?;
@@ -793,25 +571,11 @@ impl Allocator {
             .ok_or(AllocationError::InvalidAllocation)
     }
 
-    /// Flushes a mapped allocation's non-coherent memory range.
-    ///
-    /// # Safety
-    ///
-    /// The allocation must currently be mapped through this allocator. The caller remains
-    /// responsible for Vulkan synchronization and for calling this only when flushing is
-    /// valid for the memory type and usage.
     pub unsafe fn flush_allocation(&self, allocation: &Allocation) -> Result<(), AllocationError> {
         let range = self.mapped_range(allocation)?;
         Ok(unsafe { self.device().flush_mapped_memory_ranges(&[range]) }?)
     }
 
-    /// Invalidates a mapped allocation's non-coherent memory range.
-    ///
-    /// # Safety
-    ///
-    /// The allocation must currently be mapped through this allocator. The caller remains
-    /// responsible for Vulkan synchronization and for calling this only when invalidating
-    /// is valid for the memory type and usage.
     pub unsafe fn invalidate_allocation(
         &self,
         allocation: &Allocation,
@@ -840,7 +604,6 @@ impl Allocator {
         self.live_allocation_count() == 0
     }
 
-    /// Every allocation that has not been freed, with the name it was created with.
     pub fn live_allocations(&self) -> Vec<LiveAllocation> {
         let mut live = Vec::new();
         for memory_type in &self.memory_types {
@@ -864,24 +627,11 @@ impl Allocator {
         live
     }
 
-    /// Frees every `VkDeviceMemory` of this allocator, including memory that still holds
-    /// live allocations, and returns how many allocations were still live.
-    ///
-    /// This is the shutdown path for an owner that cannot guarantee that everything was
-    /// freed, such as a host running untrusted scripts: destroy or stop using the
-    /// resources first, then call this before destroying the device.
-    ///
-    /// # Safety
-    ///
-    /// No buffer or image bound to memory of this allocator may be used afterwards, and
-    /// no command that uses such a resource may still be executing. Outstanding
-    /// [`Allocation`] values must not be used again.
     pub unsafe fn free_all(&mut self) -> usize {
         let live = self.live_allocation_count();
         let device = self.device();
         for memory_type in &mut self.memory_types {
             for block in memory_type.blocks.drain(..).flatten() {
-                // Freeing a mapped VkDeviceMemory unmaps it implicitly.
                 unsafe { device.free_memory(block.memory, None) };
             }
         }
@@ -909,8 +659,6 @@ impl Allocator {
                 .enumerate()
                 .filter_map(|(index, block)| block.as_mut().map(|block| (index, block)))
             {
-                // A block can only be shared by allocations that asked for the same kind
-                // of memory: the flags were fixed when its VkDeviceMemory was allocated.
                 if block.resource_class != resource_class
                     || block.dedicated
                     || block.memory_allocate_flags != request.memory_allocate_flags
@@ -1141,14 +889,6 @@ fn snapshot_from_memory_types(
     }
 }
 
-/// Dropping an allocator that still has live allocations does not panic and does not
-/// free their memory.
-///
-/// The memory may still back buffers and images that are in use, so freeing it here
-/// could turn a leak into a use-after-free in the driver. Instead the leak is reported
-/// through the [`log`] crate at `error` level, with the names from
-/// [`AllocationCreateDesc::name`], and the `VkDeviceMemory` objects stay alive until the
-/// device is destroyed. Call [`Allocator::free_all`] to release them explicitly.
 impl Drop for Allocator {
     fn drop(&mut self) {
         let live = self.live_allocations();
@@ -1225,10 +965,7 @@ struct MemoryBlock {
     mapped_ptr: Option<NonNull<c_void>>,
     map_count: usize,
     mapped_allocations: HashMap<u64, usize>,
-    /// Names given in `AllocationCreateDesc`, by allocation id. Used to report leaks.
     names: HashMap<u64, Box<str>>,
-    /// Allocations mapped with `map_persistent`. Each holds one map reference that
-    /// `free` releases.
     persistent: HashSet<u64>,
 }
 

@@ -1,5 +1,3 @@
-//! A descriptor to be written into a heap borrows through a union and two levels of
-//! structs: the image view description must outlive the descriptor info.
 use vulkan::vk;
 
 fn main() {

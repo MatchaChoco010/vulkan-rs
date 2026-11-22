@@ -1,4 +1,3 @@
-//! The same shapes as `ui/fail`, with every borrow alive: all of this must compile.
 use std::ffi::CString;
 use vulkan::vk;
 
@@ -36,14 +35,12 @@ fn main() {
     let image = vk::DescriptorImageInfo::default();
     let _get = vk::DescriptorGetInfoEXT::default().data(vk::DescriptorDataEXT::sampled_image(&image));
 
-    // Output chains: once the root is no longer used, the chained structs are readable.
     let mut out12 = vk::PhysicalDeviceVulkan12Features::default();
     let mut features2 = vk::PhysicalDeviceFeatures2::default().push_next(&mut out12);
     query(&mut features2);
     let _anisotropy = features2.features.sampler_anisotropy;
     let _timeline = out12.timeline_semaphore;
 
-    // Output arrays: the two-call idiom inside a pNext struct.
     let mut modifiers = [vk::DrmFormatModifierPropertiesEXT::default(); 4];
     let mut list = vk::DrmFormatModifierPropertiesListEXT::default()
         .drm_format_modifier_properties(&mut modifiers);
@@ -52,7 +49,6 @@ fn main() {
     let count = list.drm_format_modifier_count as usize;
     let _written = &modifiers[..count.min(modifiers.len())];
 
-    // Descriptor heap: what is written, and where to.
     let view = vk::ImageViewCreateInfo::default();
     let image_descriptor = vk::ImageDescriptorInfoEXT::default().view(&view);
     let _descriptor = vk::ResourceDescriptorInfoEXT::default()
@@ -64,7 +60,6 @@ fn main() {
     let _push_data = vk::PushDataInfoEXT::default()
         .data(vk::HostAddressRangeConstEXT::default().address(&push));
 
-    // Structs without pointers have no lifetime and can be stored anywhere.
     static EXTENT: vk::Extent2D = vk::Extent2D {
         width: 1,
         height: 1,

@@ -1,4 +1,3 @@
-//! Pointer to pointer: the strings must outlive the array of pointers to them.
 use std::ffi::CString;
 use vulkan::vk;
 
