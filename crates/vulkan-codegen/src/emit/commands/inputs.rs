@@ -36,6 +36,7 @@ impl Input {
 pub(super) struct Inputs {
     by_param: Vec<Option<Input>>,
     pub(super) checks: String,
+    pub(super) notes: Vec<String>,
     pub(super) has_slices_of_slices: bool,
 }
 
@@ -60,6 +61,7 @@ impl Inputs {
             inner_lens,
             caller_owns_every_pointer: can_defer(model, c),
             checks: String::new(),
+            notes: Vec::new(),
         };
         let by_param = (0..params.len())
             .map(|index| (!outputs.contains(&index)).then(|| planner.input(index)))
@@ -67,6 +69,7 @@ impl Inputs {
         Self {
             by_param,
             checks: planner.checks,
+            notes: planner.notes,
             has_slices_of_slices: !planner.inner_lens.is_empty()
                 && !planner.caller_owns_every_pointer,
         }
@@ -134,6 +137,7 @@ struct Planner<'a> {
     inner_lens: BTreeMap<usize, (usize, String)>,
     caller_owns_every_pointer: bool,
     checks: String,
+    notes: Vec<String>,
 }
 
 impl Planner<'_> {
@@ -260,7 +264,13 @@ impl Planner<'_> {
         if shares_a_count_param || (p.len.is_some() && !opaque) {
             self.assert_struct_member_len(p);
             self.assert_pointed_count_len(p);
-            return slice(self.model, p, ty);
+            let uncounted = !shares_a_count_param && !self.names_its_length(p);
+            if uncounted {
+                self.notes.push(format!(
+                    "An empty `{name}` is passed as a null pointer, because no parameter passes its length."
+                ));
+            }
+            return slice(self.model, p, ty, uncounted);
         }
         if p.null_terminated && ty.base == "char" && ty.outer_const() {
             return if p.optional {
@@ -277,6 +287,14 @@ impl Planner<'_> {
             return Input::passed_through(&name, self.model.param_ty(p, "'_"));
         }
         reference(self.model, p, ty)
+    }
+
+    fn names_its_length(&self, p: &Field) -> bool {
+        let Some(len) = p.len.as_deref() else {
+            return false;
+        };
+        let owner = struct_member_len(Some(len)).map_or(len, |(owner, _)| owner);
+        self.params.iter().any(|q| q.name == owner)
     }
 
     fn assert_pointed_count_len(&mut self, p: &Field) {
@@ -319,7 +337,7 @@ impl Planner<'_> {
     }
 }
 
-fn slice(model: &Model<'_>, p: &Field, ty: &CType) -> Input {
+fn slice(model: &Model<'_>, p: &Field, ty: &CType, null_if_empty: bool) -> Input {
     let name = argument_name(p);
     let (element, cast) = match ty.base.as_str() {
         "void" => ("u8".to_string(), ".cast()"),
@@ -328,16 +346,23 @@ fn slice(model: &Model<'_>, p: &Field, ty: &CType) -> Input {
     let borrow = Borrow::of_pointer(ty.outer_const());
     let as_ptr = borrow.slice_as_ptr();
     let slice_ty = borrow.reference("", &format!("[{element}]"));
-    if !p.optional {
-        return Input::argument(&name, slice_ty, format!("{name}.{as_ptr}(){cast}"));
-    }
     let null = null_ptr(ty.outer_const());
+    let pointer = |slice: &str| {
+        if null_if_empty {
+            format!("if {slice}.is_empty() {{ {null} }} else {{ {slice}.{as_ptr}(){cast} }}")
+        } else {
+            format!("{slice}.{as_ptr}(){cast}")
+        }
+    };
+    if !p.optional {
+        return Input::argument(&name, slice_ty, pointer(&name));
+    }
     let reborrowed = match borrow {
         Borrow::Shared => name.clone(),
         Borrow::Exclusive => format!("{name}.as_mut()"),
     };
     Input::Argument {
-        pass: format!("{reborrowed}.map_or({null}, |x| x.{as_ptr}(){cast})"),
+        pass: format!("{reborrowed}.map_or({null}, |x| {})", pointer("x")),
         ty: format!("Option<{slice_ty}>"),
         rebinds_mutably: borrow == Borrow::Exclusive,
         name,
