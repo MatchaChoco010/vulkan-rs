@@ -1,4 +1,4 @@
-use super::{argument_name, inner_len, struct_member_len, value_count_param};
+use super::{argument_name, can_defer, inner_len, struct_member_len, value_count_param};
 use crate::emit::{Borrow, w};
 use crate::model::{CType, Model, is_opaque, null_ptr};
 use crate::naming::field_name;
@@ -58,6 +58,7 @@ impl Inputs {
             params,
             slices_of_count: slices_of_count(params, outputs, &inner_lens),
             inner_lens,
+            caller_owns_every_pointer: can_defer(model, c),
             checks: String::new(),
         };
         let by_param = (0..params.len())
@@ -66,7 +67,8 @@ impl Inputs {
         Self {
             by_param,
             checks: planner.checks,
-            has_slices_of_slices: !planner.inner_lens.is_empty(),
+            has_slices_of_slices: !planner.inner_lens.is_empty()
+                && !planner.caller_owns_every_pointer,
         }
     }
 
@@ -130,6 +132,7 @@ struct Planner<'a> {
     params: &'a [Field],
     slices_of_count: BTreeMap<usize, Vec<usize>>,
     inner_lens: BTreeMap<usize, (usize, String)>,
+    caller_owns_every_pointer: bool,
     checks: String,
 }
 
@@ -142,6 +145,14 @@ impl Planner<'_> {
             return self.slice_len(p, &slices);
         }
         if let Some((owner, member)) = self.inner_lens.get(&index).cloned() {
+            if self.caller_owns_every_pointer {
+                let element = self.model.base_ty(&ty.base, "'_");
+                return Input::argument(
+                    &name,
+                    format!("&[*const {element}]"),
+                    format!("{name}.as_ptr()"),
+                );
+            }
             return self.slice_of_slices(p, &ty, owner, &member);
         }
         if ty.is_array() {
