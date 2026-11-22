@@ -12,10 +12,12 @@ pub type CAMetalLayer = c_void;
 pub enum Display {}
 /// Win32 `DWORD`: a 32-bit unsigned integer.
 pub type DWORD = u32;
-/// `GgpFrameToken` of the Google Games Platform (`<ggp_c/vulkan_types.h>`).
+/// `GgpFrameToken` of the Google Games Platform (`<ggp_c/vulkan_types.h>`): a 64-bit
+/// unsigned integer.
 pub type GgpFrameToken = u64;
-/// `GgpStreamDescriptor` of the Google Games Platform (`<ggp_c/vulkan_types.h>`).
-pub type GgpStreamDescriptor = u64;
+/// `GgpStreamDescriptor` of the Google Games Platform (`<ggp_c/vulkan_types.h>`): a 32-bit
+/// unsigned integer.
+pub type GgpStreamDescriptor = u32;
 /// Win32 `HANDLE`.
 pub type HANDLE = *mut c_void;
 /// Win32 `HINSTANCE`: a module instance handle.

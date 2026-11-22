@@ -387,6 +387,43 @@ fn wayland_surface_takes_raw_display_and_surface() {
     let _ = Instance::create_wayland_surface_khr;
 }
 
+#[cfg(all(feature = "ggp", target_pointer_width = "64"))]
+#[test]
+fn ggp_structs_have_the_layout_of_the_ggp_types() {
+    use std::mem::offset_of;
+
+    assert_eq!(
+        size_of::<vk::GgpStreamDescriptor>(),
+        size_of::<u32>(),
+        "GgpStreamDescriptor is a uint32_t"
+    );
+    assert_eq!(
+        size_of::<vk::GgpFrameToken>(),
+        size_of::<u64>(),
+        "GgpFrameToken is a uint64_t"
+    );
+
+    type StreamDescriptorInfo = vk::StreamDescriptorSurfaceCreateInfoGGP<'static>;
+    assert_eq!(offset_of!(StreamDescriptorInfo, flags), 16);
+    assert_eq!(
+        offset_of!(StreamDescriptorInfo, stream_descriptor),
+        20,
+        "streamDescriptor follows the 32-bit flags without padding"
+    );
+    assert_eq!(size_of::<StreamDescriptorInfo>(), 24);
+    assert_eq!(align_of::<StreamDescriptorInfo>(), 8);
+
+    type FrameToken = vk::PresentFrameTokenGGP<'static>;
+    assert_eq!(offset_of!(FrameToken, frame_token), 16);
+    assert_eq!(size_of::<FrameToken>(), 24);
+    assert_eq!(align_of::<FrameToken>(), 8);
+
+    let info = StreamDescriptorInfo::default().stream_descriptor(u32::MAX);
+    assert_eq!(info.stream_descriptor, u32::MAX);
+    let token = FrameToken::default().frame_token(u64::MAX);
+    assert_eq!(token.frame_token, u64::MAX);
+}
+
 #[test]
 fn display_commands_have_expected_signatures() {
     type AcquireDrmDisplay =
