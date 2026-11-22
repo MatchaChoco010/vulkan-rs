@@ -23,6 +23,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         ty,
         statements,
         note,
+        errors,
     } = match &shape {
         Shape::PassThrough => call.passes_through(),
         Shape::ReturnsValue { out } => call.returns_value(*out),
@@ -53,7 +54,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         &cfg,
         c,
         note.trim_end(),
-        ty.contains("Result<"),
+        errors.or_else(|| ty.contains("Result<").then(|| error_codes(model, &cfg, c))),
         inputs.checks.contains("assert_eq!"),
     );
     format!(
@@ -74,20 +75,10 @@ fn doc(
     cfg: &Cfg,
     c: &Command,
     note: &str,
-    returns_result: bool,
+    errors: Option<String>,
     checks_lengths: bool,
 ) -> Doc {
     let raw = raw_name(c);
-    let errors = if !returns_result {
-        String::new()
-    } else if c.error_codes.is_empty() {
-        "Returns the result code of the command if it is an error.".to_string()
-    } else {
-        format!(
-            "Returns the result code of the command if it is an error. The registry lists {} for it.",
-            codes(model, cfg, &c.error_codes)
-        )
-    };
     let lengths = if checks_lengths {
         " Also panics if the slices do not have the lengths that the command needs: slices that it counts with one parameter have to be equally long, and a slice whose length it reads from another argument has to have that length."
     } else {
@@ -100,10 +91,21 @@ fn doc(
             called(model, cfg, c),
             provided(model, cfg, c)
         ))
-        .section("Errors", errors)
+        .section("Errors", errors.unwrap_or_default())
         .section("Safety", format!("The same as for [`Self::{raw}`]."))
         .section("Panics", format!("{}{lengths}", not_loaded(c)))
         .alias(&c.name)
+}
+
+fn error_codes(model: &Model<'_>, cfg: &Cfg, c: &Command) -> String {
+    if c.error_codes.is_empty() {
+        "Returns the result code of the command if it is an error.".to_string()
+    } else {
+        format!(
+            "Returns the result code of the command if it is an error. The registry lists {} for it.",
+            codes(model, cfg, &c.error_codes)
+        )
+    }
 }
 
 fn codes(model: &Model<'_>, cfg: &Cfg, codes: &[String]) -> String {
@@ -114,6 +116,7 @@ struct Returned {
     ty: String,
     statements: String,
     note: String,
+    errors: Option<String>,
 }
 
 impl Returned {
@@ -122,7 +125,13 @@ impl Returned {
             ty: ty.into(),
             statements: statements.into() + "\n",
             note: String::new(),
+            errors: None,
         }
+    }
+
+    fn errors(mut self, errors: impl Into<String>) -> Self {
+        self.errors = Some(errors.into());
+        self
     }
 
     fn note(mut self, note: impl Into<String>) -> Self {
@@ -199,9 +208,13 @@ impl Call<'_> {
         ])
     }
 
-    fn may_create_only_some_elements(&self) -> bool {
-        self.success_codes()
-            .contains("VK_PIPELINE_COMPILE_REQUIRED")
+    fn other_success_codes(&self) -> Vec<String> {
+        self.c
+            .success_codes
+            .iter()
+            .filter(|code| self.model.result_code(code) != "VK_SUCCESS")
+            .cloned()
+            .collect()
     }
 
     fn passes_through(&self) -> Returned {
@@ -376,7 +389,25 @@ impl Call<'_> {
             )
             .note(format!("{written}."));
         }
-        if self.may_create_only_some_elements() {
+        if self.has_success_codes_besides_success() {
+            let cfg = self.model.cfg(self.c.protect.as_deref());
+            let errors = if self.c.error_codes.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    ", which the registry lists as {}",
+                    codes(self.model, &cfg, &self.c.error_codes)
+                )
+            };
+            let handles = if self.model.is_handle(&self.params[out].ty) {
+                " The elements that the command could not create are null handles; the others are valid and have to be destroyed."
+            } else {
+                ""
+            };
+            let errors = format!(
+                "Returns the result code of the command, together with the elements, if it is not `VK_SUCCESS`: another success code, which the registry lists as {}, or an error code{errors}.{handles}",
+                codes(self.model, &cfg, &self.other_success_codes())
+            );
             return Returned::new(
                 format!("core::result::Result<Vec<{element}>, (Vec<{element}>, VkResult)>"),
                 format!(
@@ -387,7 +418,8 @@ impl Call<'_> {
             )
             .note(format!(
                 "{written}. Any result other than `VK_SUCCESS` is returned as the error, together with the same elements."
-            ));
+            ))
+            .errors(errors);
         }
         Returned::new(
             format!("crate::vk::Result<Vec<{element}>>"),

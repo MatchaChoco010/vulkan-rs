@@ -55717,12 +55717,16 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_SHADER_NV`](VkResult::ERROR_INVALID_SHADER_NV),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -55975,11 +55979,15 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -56270,11 +56278,15 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -56483,12 +56495,16 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_SHADER_NV`](VkResult::ERROR_INVALID_SHADER_NV),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -57065,12 +57081,18 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR),
+    /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR) or
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS`](VkResult::ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -57117,12 +57139,16 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_SHADER_NV`](VkResult::ERROR_INVALID_SHADER_NV),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -57530,17 +57556,22 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCreateShadersEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateShadersEXT.html)
     /// through [`Self::create_shaders_ext_raw`], which describes the parameters. Returns the
-    /// elements that the command writes to `pShaders`. The command is provided by
+    /// elements that the command writes to `pShaders`. Any result other than `VK_SUCCESS` is
+    /// returned as the error, together with the same elements. The command is provided by
     /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_INCOMPATIBLE_SHADER_BINARY_EXT`](VkResult::INCOMPATIBLE_SHADER_BINARY_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INITIALIZATION_FAILED`](VkResult::ERROR_INITIALIZATION_FAILED),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -57555,18 +57586,21 @@ impl crate::Device {
         &self,
         create_infos: &[ShaderCreateInfoEXT<'_>],
         allocator: Option<&AllocationCallbacks<'_>>,
-    ) -> crate::vk::Result<Vec<ShaderEXT>> {
+    ) -> core::result::Result<Vec<ShaderEXT>, (Vec<ShaderEXT>, VkResult)> {
         unsafe {
             let create_info_count_len: usize = create_infos.len();
             let mut values: Vec<ShaderEXT> = alloc::vec![Default::default(); create_info_count_len];
-            self.create_shaders_ext_raw(
+            let result = self.create_shaders_ext_raw(
                 create_info_count_len as u32,
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
-            )
-            .into_result()?;
-            Ok(values)
+            );
+            if result == VkResult::SUCCESS {
+                Ok(values)
+            } else {
+                Err((values, result))
+            }
         }
     }
     /// Create multiple swapchains that share presentable images.

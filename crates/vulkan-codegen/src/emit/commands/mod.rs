@@ -726,6 +726,8 @@ mod tests {
         for code in [
             "VK_PIPELINE_COMPILE_REQUIRED",
             "VK_PIPELINE_COMPILE_REQUIRED_EXT",
+            "VK_INCOMPATIBLE_SHADER_BINARY_EXT",
+            "VK_TIMEOUT",
         ] {
             let create = only(result_command(
                 "vkCreateGraphicsPipelines",
@@ -752,7 +754,7 @@ mod tests {
         }
         let other_handles = only(result_command(
             "vkCompileProgramsNV",
-            &["VK_SUCCESS", "VK_PIPELINE_COMPILE_REQUIRED"],
+            &["VK_SUCCESS", "VK_INCOMPATIBLE_SHADER_BINARY_EXT"],
             vec![
                 field("device", "VkDevice"),
                 field("programCount", "uint32_t"),
@@ -763,6 +765,16 @@ mod tests {
         assert!(generate(&other_handles).contains(
             "pub unsafe fn compile_programs_nv(&self, sources: &[Buffer]) -> core::result::Result<Vec<Fence>, (Vec<Fence>, VkResult)> {"
         ));
+        let documented = emit(&Model::new(&other_handles))
+            .split_whitespace()
+            .filter(|word| *word != "///")
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            documented.contains("if it is not `VK_SUCCESS`: another success code, which the registry lists as `VK_INCOMPATIBLE_SHADER_BINARY_EXT`, or an error code."),
+            "{documented}"
+        );
+        assert!(!documented.contains("if it is an error"), "{documented}");
         let without_the_code = only(result_command(
             "vkCreateComputePipelines",
             &["VK_SUCCESS"],
@@ -1035,6 +1047,7 @@ mod tests {
                     "vkCreateGraphicsPipelines",
                     "vkCreateRayTracingPipelinesKHR",
                     "vkCreateRayTracingPipelinesNV",
+                    "vkCreateShadersEXT",
                 ]),
             ),
             (
