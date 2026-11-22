@@ -69309,17 +69309,17 @@ pub struct PhysicalDeviceFloatControlsProperties<'a> {
     /// whether, and how, rounding modes can be set independently for different bit widths.
     pub rounding_mode_independence: ShaderFloatControlsIndependence,
     /// `shaderSignedZeroInfNanPreserveFloat16` is a boolean value indicating whether sign of a
-    /// zero, Nan##s and `\pm\infty` can be preserved in 16-bit floating-point computations. It also
+    /// zero, Nans and `\pm\infty` can be preserved in 16-bit floating-point computations. It also
     /// indicates whether the `SignedZeroInfNanPreserve` execution mode can be used for 16-bit
     /// floating-point types.
     pub shader_signed_zero_inf_nan_preserve_float16: Bool32,
     /// `shaderSignedZeroInfNanPreserveFloat32` is a boolean value indicating whether sign of a
-    /// zero, Nan##s and `\pm\infty` can be preserved in 32-bit floating-point computations. It also
+    /// zero, Nans and `\pm\infty` can be preserved in 32-bit floating-point computations. It also
     /// indicates whether the `SignedZeroInfNanPreserve` execution mode can be used for 32-bit
     /// floating-point types.
     pub shader_signed_zero_inf_nan_preserve_float32: Bool32,
     /// `shaderSignedZeroInfNanPreserveFloat64` is a boolean value indicating whether sign of a
-    /// zero, Nan##s and `\pm\infty` can be preserved in 64-bit floating-point computations. It also
+    /// zero, Nans and `\pm\infty` can be preserved in 64-bit floating-point computations. It also
     /// indicates whether the `SignedZeroInfNanPreserve` execution mode can be used for 64-bit
     /// floating-point types.
     pub shader_signed_zero_inf_nan_preserve_float64: Bool32,
@@ -95864,17 +95864,17 @@ pub struct PhysicalDeviceVulkan12Properties<'a> {
     /// whether, and how, rounding modes can be set independently for different bit widths.
     pub rounding_mode_independence: ShaderFloatControlsIndependence,
     /// `shaderSignedZeroInfNanPreserveFloat16` is a boolean value indicating whether sign of a
-    /// zero, Nan##s and `\pm\infty` can be preserved in 16-bit floating-point computations. It also
+    /// zero, Nans and `\pm\infty` can be preserved in 16-bit floating-point computations. It also
     /// indicates whether the `SignedZeroInfNanPreserve` execution mode can be used for 16-bit
     /// floating-point types.
     pub shader_signed_zero_inf_nan_preserve_float16: Bool32,
     /// `shaderSignedZeroInfNanPreserveFloat32` is a boolean value indicating whether sign of a
-    /// zero, Nan##s and `\pm\infty` can be preserved in 32-bit floating-point computations. It also
+    /// zero, Nans and `\pm\infty` can be preserved in 32-bit floating-point computations. It also
     /// indicates whether the `SignedZeroInfNanPreserve` execution mode can be used for 32-bit
     /// floating-point types.
     pub shader_signed_zero_inf_nan_preserve_float32: Bool32,
     /// `shaderSignedZeroInfNanPreserveFloat64` is a boolean value indicating whether sign of a
-    /// zero, Nan##s and `\pm\infty` can be preserved in 64-bit floating-point computations. It also
+    /// zero, Nans and `\pm\infty` can be preserved in 64-bit floating-point computations. It also
     /// indicates whether the `SignedZeroInfNanPreserve` execution mode can be used for 64-bit
     /// floating-point types.
     pub shader_signed_zero_inf_nan_preserve_float64: Bool32,

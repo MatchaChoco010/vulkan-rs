@@ -215,6 +215,7 @@ struct Markup {
     cross_reference: Regex,
     attribute_reference: Regex,
     labelled_url: Regex,
+    unconstrained_role: Regex,
     role: Regex,
     macro_prefix: Regex,
     normative: Regex,
@@ -231,6 +232,7 @@ impl Markup {
             cross_reference: regex(r"(?s)<<([^,>]*)(?:,(.*?))?>>"),
             attribute_reference: regex(r"\{([\w-]+)\}"),
             labelled_url: regex(r"(?:link:)?(https?://[^\s\[]+)\[([^\]]*)\]"),
+            unconstrained_role: regex(r"(?s)\[[\w.-]+\]##(.+?)##"),
             role: regex(r"\[[\w.-]+\]#"),
             macro_prefix: regex(
                 r"\b(?:pname|ptext|sname|stext|slink|fname|ftext|flink|ename|etext|elink|dname|dlink|tname|tlink|basetype|code|apiext|reflink|tag|attr|latexmath):",
@@ -612,6 +614,7 @@ impl Specification {
                 label => label.to_string(),
             }
         });
+        let text = markup.unconstrained_role.replace_all(&text, "$1");
         let text = markup.role.replace_all(&text, "");
         markup.macro_prefix.replace_all(&text, "").into_owned()
     }
@@ -2184,5 +2187,157 @@ fn checker_reports_each_other_kind_of_defect() {
     ];
     for (defect, replace, with, report) in cases {
         assert_reported(defect, replace, with, report);
+    }
+}
+
+struct Leftovers {
+    code_span: Regex,
+    link_target: Regex,
+    patterns: Vec<(&'static str, Regex)>,
+}
+
+impl Leftovers {
+    fn new() -> Self {
+        let macros = "pname|ptext|sname|stext|fname|ftext|etext|dname|tname|code|slink|elink|tlink|basetype|ename|flink|dlink|apiext|reflink|tag|attr|latexmath|can|cannot|may|must|optional|optionally|required|should|undefined";
+        Self {
+            code_span: regex(r"``.*?``|`[^`\n]*`"),
+            link_target: regex(r"\]\([^)\s]*\)"),
+            patterns: vec![
+                ("an unconstrained mark `##`", regex("##")),
+                ("a role span", regex(r"\\?\[[A-Za-z0-9._-]+\\?\]#")),
+                (
+                    "a double hyphen that AsciiDoc replaces with an em dash",
+                    regex(r"(?m)(?:^|\s)--(?:\s|$)|\w--\w"),
+                ),
+                (
+                    "a macro with a bracketed argument",
+                    regex(r"\b[a-z]+:\\?\["),
+                ),
+                (
+                    "a specification macro",
+                    regex(&format!(r"\b(?:{macros}):\S")),
+                ),
+                ("a cross reference", regex("<<|>>")),
+                ("an anchor", regex(r"\\?\[\\?\[")),
+                (
+                    "a preprocessor directive",
+                    regex(r"\b(?:ifdef|ifndef|endif|include)::"),
+                ),
+                (
+                    "an attribute reference",
+                    regex(r"\{[A-Za-z][A-Za-z0-9_-]*\}"),
+                ),
+            ],
+        }
+    }
+
+    fn found(&self, doc: &str) -> Vec<&'static str> {
+        let text = self.code_span.replace_all(doc, "");
+        let text = self.link_target.replace_all(&text, "]");
+        self.patterns
+            .iter()
+            .filter(|(_, pattern)| pattern.is_match(&text))
+            .map(|(what, _)| *what)
+            .collect()
+    }
+}
+
+fn doc_blocks(source: &str) -> Vec<String> {
+    let mut blocks = Vec::<String>::new();
+    let mut in_block = false;
+    for line in source.lines() {
+        match line.trim_start().strip_prefix("///") {
+            Some(doc) => {
+                if !in_block {
+                    blocks.push(String::new());
+                }
+                let block = blocks.last_mut().expect("a block");
+                block.push_str(doc.strip_prefix(' ').unwrap_or(doc));
+                block.push('\n');
+                in_block = true;
+            }
+            None => in_block = false,
+        }
+    }
+    blocks
+}
+
+fn asciidoc_leftovers(source: &str) -> Vec<String> {
+    let leftovers = Leftovers::new();
+    doc_blocks(source)
+        .iter()
+        .flat_map(|doc| {
+            leftovers
+                .found(doc)
+                .into_iter()
+                .map(move |what| format!("{what} in `{}`", flat(doc)))
+        })
+        .collect()
+}
+
+#[test]
+fn generated_documentation_has_no_asciidoc_left() {
+    let directory = workspace_root().join("crates/vulkan/src/vk/generated");
+    let mut checked = 0;
+    let mut failures = Vec::new();
+    for entry in fs::read_dir(&directory).expect("read the generated sources") {
+        let path = entry.expect("directory entry").path();
+        let source = fs::read_to_string(&path).expect("read a generated source");
+        checked += doc_blocks(&source).len();
+        failures.extend(asciidoc_leftovers(&source).into_iter().map(|failure| {
+            let file = path.file_name().unwrap_or_default().to_string_lossy();
+            format!("{file}: {failure}")
+        }));
+    }
+    assert!(checked > 10_000, "only {checked} doc comments were checked");
+    assert!(
+        failures.is_empty(),
+        "{} generated doc comments keep AsciiDoc markup:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn asciidoc_left_in_documentation_is_reported() {
+    for (doc, what) in [
+        ("/// zero, Nan##s and", "an unconstrained mark `##`"),
+        ("/// the [eq]#x# value", "a role span"),
+        ("/// the \\[eq\\]#x# value", "a role span"),
+        ("/// parameters -- no substitution", "a double hyphen"),
+        ("/// parameters --\n/// no substitution", "a double hyphen"),
+        ("/// a word--word", "a double hyphen"),
+        (
+            "/// press kbd:\\[Ctrl\\]",
+            "a macro with a bracketed argument",
+        ),
+        ("/// see pname:width", "a specification macro"),
+        ("/// it must:be", "a specification macro"),
+        ("/// see <<fundamentals>>", "a cross reference"),
+        ("/// [[anchor]]text", "an anchor"),
+        ("/// ifdef::VK_KHR_surface[]", "a preprocessor directive"),
+        ("/// {maxBlockSize} bytes", "an attribute reference"),
+    ] {
+        let found = asciidoc_leftovers(&format!("{doc}\npub struct Thing;\n"));
+        assert!(
+            found.iter().any(|failure| failure.starts_with(what)),
+            "`{doc}` is not reported as {what}: {found:?}"
+        );
+    }
+}
+
+#[test]
+fn markdown_that_resembles_asciidoc_is_not_reported() {
+    for doc in [
+        "/// `a ## b` and ``x`##`y``",
+        "/// `--flag`, `a -- b` and `pname:x`",
+        "/// [`VkExtent2D`](Extent2D) and [the registry](https://a.b/c--d#x)",
+        "/// a set {0, 1} and `{x}`",
+        "/// i \\< 2 \\<\\< 3 and a - b and --- and a-- b",
+        "/// # Safety\n///\n/// - must be valid",
+        "/// note: \\[x\\] and the C:\\\\path",
+    ] {
+        let found = asciidoc_leftovers(&format!("{doc}\npub struct Thing;\n"));
+        assert!(found.is_empty(), "`{doc}` is reported: {found:?}");
     }
 }

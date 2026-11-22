@@ -9,10 +9,10 @@ pub(crate) use tables::{Table, read as read_table};
 
 use crate::model::{Cfg, Model, parse_version};
 use crate::naming::type_name;
-use asciidoc::{Converted, Converter, Link};
+use asciidoc::{Converted, Converter, Link, Unsupported};
 use std::collections::BTreeSet;
 use tables::Cell;
-use vulkan_registry::DocPage;
+use vulkan_registry::{DocPage, DocTable};
 
 pub(crate) const REFERENCE_PAGES: &str = "https://docs.vulkan.org/refpages/latest/refpages/source/";
 
@@ -84,11 +84,36 @@ impl<'a> Model<'a> {
         }
     }
 
-    fn markdown(&self, from: &Cfg, own: &str, text: &str) -> String {
+    fn markdown(&self, from: &Cfg, page: &str, own: &str, text: &str) -> String {
         self.try_markdown(from, own, text)
             .unwrap_or_else(|unsupported| {
-                panic!("the description of {own} has no Markdown form ({unsupported:?}): {text}")
+                panic!(
+                    "the description of {own} on the page {page} has no Markdown form \
+                     ({unsupported:?}): {text}"
+                )
             })
+    }
+
+    fn cell_markdown(
+        &self,
+        from: &Cfg,
+        source: &DocTable,
+        item: &str,
+        text: &str,
+    ) -> Option<String> {
+        match self.try_markdown(from, item, text) {
+            Ok(markdown) => Some(markdown),
+            Err(Unsupported::UnknownMacro(name)) => panic!(
+                "a table of {} uses the AsciiDoc macro `{name}:`, which the generator does not \
+                 know: {text}",
+                source.page.as_deref().unwrap_or(&source.file)
+            ),
+            Err(unread @ (Unsupported::EscapedSpan | Unsupported::Passthrough)) => panic!(
+                "a table of {} has markup that the generator does not read ({unread:?}): {text}",
+                source.page.as_deref().unwrap_or(&source.file)
+            ),
+            Err(_) => None,
+        }
     }
 
     fn try_markdown(&self, from: &Cfg, own: &str, text: &str) -> Converted {
@@ -112,13 +137,13 @@ impl<'a> Model<'a> {
 
     pub(crate) fn summary(&self, from: &Cfg, c_name: &str) -> Option<String> {
         let page = self.page(c_name)?;
-        let summary = self.markdown(from, c_name, &page.desc);
+        let summary = self.markdown(from, &page.name, c_name, &page.desc);
         (!summary.trim().is_empty()).then(|| sentence(&summary))
     }
 
     pub(crate) fn described(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
-        let text = &self
-            .page(owner)?
+        let page = self.page(owner)?;
+        let text = &page
             .items
             .iter()
             .find(|described| described.name == item)?
@@ -136,11 +161,11 @@ impl<'a> Model<'a> {
                 lead.push('\n');
             }
         }
-        let mut blocks = vec![Block::Text(self.markdown(from, item, &lead))];
+        let mut blocks = vec![Block::Text(self.markdown(from, &page.name, item, &lead))];
         if !nested.is_empty() {
             let items = nested
                 .into_iter()
-                .map(|(level, text)| (level, self.markdown(from, item, &text)))
+                .map(|(level, text)| (level, self.markdown(from, &page.name, item, &text)))
                 .collect();
             blocks.push(Block::List(items));
         }
@@ -184,8 +209,8 @@ impl<'a> Model<'a> {
                     Some(table_page) => !outside && *table_page == page.name,
                     None => outside && source.file == page.file && about_the_type(table),
                 })
-                .flat_map(|(_, table)| table.rows.iter().map(move |row| (table, row)))
-                .filter(|(_, row)| value_named(row) == Some(item))
+                .flat_map(|(source, table)| table.rows.iter().map(move |row| (*source, table, row)))
+                .filter(|(_, _, row)| value_named(row) == Some(item))
                 .collect::<Vec<_>>()
         };
         let mut rows = rows_in(false);
@@ -194,13 +219,20 @@ impl<'a> Model<'a> {
         }
         let blocks = rows
             .into_iter()
-            .filter_map(|(table, row)| self.table_row(from, item, table, row))
+            .filter_map(|(source, table, row)| self.table_row(from, source, item, table, row))
             .flatten()
             .collect::<Vec<_>>();
         (!blocks.is_empty()).then_some(blocks)
     }
 
-    fn table_row(&self, from: &Cfg, item: &str, table: &Table, row: &[Cell]) -> Option<Vec<Block>> {
+    fn table_row(
+        &self,
+        from: &Cfg,
+        source: &DocTable,
+        item: &str,
+        table: &Table,
+        row: &[Cell],
+    ) -> Option<Vec<Block>> {
         let header = table.header.as_ref()?;
         let mut items = Vec::new();
         for (label, cell) in header.iter().zip(row).skip(1) {
@@ -210,17 +242,15 @@ impl<'a> Model<'a> {
             if lines.is_empty() {
                 continue;
             }
-            let label = self
-                .try_markdown(from, item, without_emphasis(label.single_line()?))
-                .ok()?;
+            let label =
+                self.cell_markdown(from, source, item, without_emphasis(label.single_line()?))?;
             if label.trim().is_empty() {
                 return None;
             }
             let mut lines = lines
                 .iter()
-                .map(|line| self.try_markdown(from, item, line))
-                .collect::<Result<Vec<_>, _>>()
-                .ok()?;
+                .map(|line| self.cell_markdown(from, source, item, line))
+                .collect::<Option<Vec<_>>>()?;
             if lines.len() == 1 {
                 items.push((0, format!("{label}: {}", lines.remove(0))));
             } else {
@@ -234,7 +264,7 @@ impl<'a> Model<'a> {
         let lead = match &table.title {
             Some(title) => format!(
                 "`{item}` in the table “{}” of the specification:",
-                self.try_markdown(from, item, title).ok()?
+                self.cell_markdown(from, source, item, title)?
             ),
             None => format!("`{item}` in a table of the specification:"),
         };
@@ -553,12 +583,57 @@ mod tests {
 
     #[test]
     #[should_panic(
-        expected = "the description of height has no Markdown form (Attribute(\"unknown\"))"
+        expected = "the description of height on the page VkExtent2D has no Markdown form (Attribute(\"unknown\"))"
     )]
     fn text_that_cannot_be_converted_aborts_generation() {
         let (ir, docs) = (ir(), docs());
         let model = Model::with_docs(&ir, &docs);
         model.described(&Cfg::default(), "VkExtent2D", "height");
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "the description of height on the page VkExtent2D has no Markdown form (UnknownMacro(\"kbd\"))"
+    )]
+    fn an_unknown_macro_in_a_description_aborts_generation() {
+        let (ir, mut docs) = (ir(), docs());
+        docs.pages[0].items[1].text = "pname:height is kbd:[Ctrl].".to_string();
+        let model = Model::with_docs(&ir, &docs);
+        model.described(&Cfg::default(), "VkExtent2D", "height");
+    }
+
+    #[test]
+    #[should_panic(expected = "a table of VkShade uses the AsciiDoc macro `kbd:`")]
+    fn an_unknown_macro_in_a_table_aborts_generation() {
+        let (ir, mut docs) = (ir(), docs());
+        docs.tables[0].text = docs.tables[0].text.replace(
+            "|ename:VK_SHADE_PALE |none |",
+            "|ename:VK_SHADE_PALE |kbd:[none] |",
+        );
+        let model = Model::with_docs(&ir, &docs);
+        model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_PALE");
+    }
+
+    #[test]
+    fn unread_markup_in_a_table_aborts_generation() {
+        for (cell, unread) in [("\\#none#", "EscapedSpan"), ("+none +x+", "Passthrough")] {
+            let (ir, mut docs) = (ir(), docs());
+            docs.tables[0].text = docs.tables[0].text.replace(
+                "|ename:VK_SHADE_PALE |none |",
+                &format!("|ename:VK_SHADE_PALE |{cell} |"),
+            );
+            let model = Model::with_docs(&ir, &docs);
+            let message = crate::test_support::catch_quietly(|| {
+                model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_PALE")
+            })
+            .expect_err(&format!("`{cell}` in a table cell is accepted"));
+            assert!(
+                message.contains(&format!(
+                    "a table of VkShade has markup that the generator does not read ({unread})"
+                )),
+                "{message}"
+            );
+        }
     }
 
     #[test]

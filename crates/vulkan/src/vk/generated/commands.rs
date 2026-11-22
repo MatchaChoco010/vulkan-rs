@@ -15832,7 +15832,7 @@ impl crate::Device {
     ///
     /// - `pAllocateInfo` is a pointer to a [`VkMemoryAllocateInfo`](MemoryAllocateInfo) structure
     ///   describing parameters of the allocation. A successfully returned allocation must use the
-    ///   requested parameters -- no substitution is permitted by the implementation.
+    ///   requested parameters — no substitution is permitted by the implementation.
     /// - `pAllocator` controls host memory allocation as described in the Memory Allocation
     ///   chapter.
     /// - `pMemory` is a pointer to a [`VkDeviceMemory`](DeviceMemory) handle in which information
