@@ -57,7 +57,7 @@ impl EntryFn {
                     Instance::null(),
                     c"vkEnumerateInstanceVersion".as_ptr(),
                 )),
-                get_instance_proc_addr,
+                get_instance_proc_addr: Some(get),
             }
         }
     }
