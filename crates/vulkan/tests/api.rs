@@ -72,6 +72,27 @@ fn push_next_prepends_and_overwrites_the_pushed_struct_p_next() {
     assert!(vulkan11.p_next.is_null());
 }
 
+struct ExtendsDeviceCreateInfo<T>(std::marker::PhantomData<T>);
+
+trait FallbackWhenNotExtending {
+    const EXTENDS: bool = false;
+}
+
+impl<T> FallbackWhenNotExtending for ExtendsDeviceCreateInfo<T> {}
+
+impl<T: vk::Extends<vk::DeviceCreateInfo<'static>>> ExtendsDeviceCreateInfo<T> {
+    const EXTENDS: bool = true;
+}
+
+#[test]
+fn only_structs_the_registry_lists_as_extending_the_root_can_be_pushed() {
+    let extends = [
+        ExtendsDeviceCreateInfo::<vk::PhysicalDeviceVulkan12Features<'static>>::EXTENDS,
+        ExtendsDeviceCreateInfo::<vk::PresentInfoKHR<'static>>::EXTENDS,
+    ];
+    assert_eq!(extends, [true, false]);
+}
+
 #[test]
 fn defaults_use_vulkan_neutral_values() {
     let barrier = vk::ImageMemoryBarrier2::default();
