@@ -409,7 +409,7 @@ mod tests {
             )
         );
         assert!(out.contains(
-            "self.cmd_bind_vertex_buffers2_raw(command_buffer, first_binding, binding_count_len as u32, buffers.as_ptr(), offsets.as_ptr(), sizes.map_or(core::ptr::null(), |x| x.as_ptr()))"
+            "self.cmd_bind_vertex_buffers2_raw(command_buffer, first_binding, len_as_count(binding_count_len, \"vkCmdBindVertexBuffers2\", \"bindingCount\"), buffers.as_ptr(), offsets.as_ptr(), sizes.map_or(core::ptr::null(), |x| x.as_ptr()))"
         ));
     }
 
@@ -683,7 +683,7 @@ mod tests {
             &Docs::default(),
             "vkCmdSetSampleMaskEXT",
             &["vkCmdSetMasksNV"],
-            "self.cmd_set_sample_mask_ext_raw(command_buffer, samples, sample_mask.map_or(core::ptr::null(), |x| if x.is_empty() { core::ptr::null() } else { x.as_ptr() }), if version_data.is_empty() { core::ptr::null() } else { version_data.as_ptr() }, word_count_len as u32, words.map_or(core::ptr::null(), |x| x.as_ptr()))",
+            "self.cmd_set_sample_mask_ext_raw(command_buffer, samples, sample_mask.map_or(core::ptr::null(), |x| if x.is_empty() { core::ptr::null() } else { x.as_ptr() }), if version_data.is_empty() { core::ptr::null() } else { version_data.as_ptr() }, len_as_count(word_count_len, \"vkCmdSetSampleMaskEXT\", \"wordCount\"), words.map_or(core::ptr::null(), |x| x.as_ptr()))",
         );
         let documented = emit(&Model::new(&ir))
             .split_whitespace()
@@ -715,6 +715,80 @@ mod tests {
             BTreeSet::from(["vkCmdSetSampleMaskEXT"]),
             "crates/vulkan/tests/uncounted_slices.rs checks each of these wrappers"
         );
+    }
+
+    #[test]
+    fn counts_narrower_than_usize_are_checked_and_sizes_are_not() {
+        let mut ir = base();
+        for (name, ty) in [
+            ("vkCmdSetWordsNV", "uint32_t"),
+            ("vkCmdSetBytesNV", "uint8_t"),
+            ("vkCmdSetDataNV", "size_t"),
+            ("vkCmdUpdateDataNV", "VkDeviceSize"),
+        ] {
+            ir.commands.push(device(command(
+                name,
+                vec![
+                    field("commandBuffer", "VkCommandBuffer"),
+                    field("size", ty),
+                    counted("pValues", "const void*", "size"),
+                ],
+            )));
+        }
+        let out = generate(&ir);
+        for (name, raw) in [
+            ("vkCmdSetWordsNV", "cmd_set_words_nv_raw"),
+            ("vkCmdSetBytesNV", "cmd_set_bytes_nv_raw"),
+        ] {
+            assert!(
+                out.contains(&format!(
+                    "self.{raw}(command_buffer, len_as_count(size_len, \"{name}\", \"size\"), values.as_ptr().cast())"
+                )),
+                "{name}: {out}"
+            );
+        }
+        assert!(out.contains(
+            "self.cmd_set_data_nv_raw(command_buffer, size_len, values.as_ptr().cast())"
+        ));
+        assert!(out.contains(
+            "self.cmd_update_data_nv_raw(command_buffer, size_len as DeviceSize, values.as_ptr().cast())"
+        ));
+        let documented = emit(&Model::new(&ir))
+            .split_whitespace()
+            .filter(|word| *word != "///")
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            documented
+                .matches("Also panics if `values` has more elements than `size`, a `")
+                .count(),
+            2,
+            "{documented}"
+        );
+        assert!(documented.contains(
+            "Also panics if `values` has more elements than `size`, a `uint32_t`, can count."
+        ));
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_check_every_count_narrower_than_usize() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut checked = 0;
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            for narrow in ["u8", "u16", "u32", "i8", "i16", "i32"] {
+                assert!(
+                    !out.contains(&format!("_len as {narrow}")),
+                    "{}: a slice length is cast to {narrow} without a check: {out}",
+                    c.name
+                );
+            }
+            checked += out.matches("len_as_count(").count();
+        }
+        assert!(checked > 0, "the registry has counts narrower than usize");
     }
 
     fn only(c: Command) -> Registry {
@@ -980,7 +1054,7 @@ mod tests {
             "let parts_pointers = parts.iter().map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr())).collect::<Vec<_>>();"
         ));
         assert!(out.contains(
-            "self.cmd_assemble_widgets_nv_raw(command_buffer, batch_count_len as u32, batches.as_ptr(), first_indices.as_ptr(), parts_pointers.as_ptr(), limits_pointers.as_ptr())"
+            "self.cmd_assemble_widgets_nv_raw(command_buffer, len_as_count(batch_count_len, \"vkCmdAssembleWidgetsNV\", \"batchCount\"), batches.as_ptr(), first_indices.as_ptr(), parts_pointers.as_ptr(), limits_pointers.as_ptr())"
         ));
         assert_generated_alike_under_other_names(
             &ir,
@@ -1330,7 +1404,7 @@ mod tests {
         ));
         assert!(out.contains("assert_eq!(parts.len(), batch_count_len,"));
         assert!(out.contains(
-            "let result = self.join_widgets_nv_raw(deferred_operation, batch_count_len as u32, batches.as_ptr(), parts.as_ptr()); result.into_result()?; Ok(result)"
+            "let result = self.join_widgets_nv_raw(deferred_operation, len_as_count(batch_count_len, \"vkJoinWidgetsNV\", \"batchCount\"), batches.as_ptr(), parts.as_ptr()); result.into_result()?; Ok(result)"
         ));
         assert_generated_alike_under_other_names(
             &ir,
@@ -1376,7 +1450,7 @@ mod tests {
             "pub unsafe fn create_ray_tracing_pipelines_khr(&self, deferred_operation: DeferredOperationKHR, pipeline_cache: PipelineCache, create_infos: &[GraphicsPipelineCreateInfo<'_>], pipelines: &mut [Pipeline]) -> crate::vk::Result<VkResult> { unsafe { let create_info_count_len: usize = create_infos.len(); assert_eq!(pipelines.len(), create_info_count_len,",
         );
         assert!(generate(&create).contains(
-            "let result = self.create_ray_tracing_pipelines_khr_raw(deferred_operation, pipeline_cache, create_info_count_len as u32, create_infos.as_ptr(), pipelines.as_mut_ptr()); result.into_result()?; Ok(result)"
+            "let result = self.create_ray_tracing_pipelines_khr_raw(deferred_operation, pipeline_cache, len_as_count(create_info_count_len, \"vkCreateRayTracingPipelinesKHR\", \"createInfoCount\"), create_infos.as_ptr(), pipelines.as_mut_ptr()); result.into_result()?; Ok(result)"
         ));
     }
 
@@ -1690,11 +1764,17 @@ mod tests {
                 "Bool32",
                 "self",
                 "handle",
+                "len_as_count",
             ];
             let passed = raw_call_arguments(&out, &raw_name(c));
             assert_eq!(passed.len(), params.len(), "{}: {passed:?}", c.name);
             for argument in passed {
-                for word in argument
+                let without_messages = argument
+                    .split('"')
+                    .step_by(2)
+                    .collect::<Vec<_>>()
+                    .join("\"\"");
+                for word in without_messages
                     .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
                     .filter(|word| !word.is_empty())
                 {

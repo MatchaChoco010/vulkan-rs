@@ -80,6 +80,7 @@ mod base_types;
 mod c_str;
 mod chain;
 mod command_meta;
+mod count;
 mod extension;
 mod format;
 /// The items generated from the Vulkan registry, re-exported at the root of
@@ -97,6 +98,7 @@ pub(crate) use c_str::c_str_from_chars;
 pub(crate) use chain::push_chain;
 pub use chain::{Extends, TaggedStructure};
 pub use command_meta::*;
+pub(crate) use count::len_as_count;
 pub use extension::*;
 pub use format::*;
 pub use generated::*;

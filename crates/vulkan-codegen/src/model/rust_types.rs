@@ -49,6 +49,13 @@ impl<'a> Model<'a> {
         c_scalar(name).map(|(_, scalar)| scalar)
     }
 
+    pub(crate) fn holds_every_slice_len(&self, name: &str) -> bool {
+        matches!(
+            self.canonical(name),
+            "size_t" | "uint64_t" | "int64_t" | "VkDeviceSize" | "VkDeviceAddress" | "VkFlags64"
+        )
+    }
+
     pub(crate) fn base_ty(&self, name: &str, lifetime: &str) -> String {
         let name = self.canonical(name);
         if name == "void" {

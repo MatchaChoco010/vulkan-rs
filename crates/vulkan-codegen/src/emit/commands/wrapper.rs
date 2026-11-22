@@ -68,6 +68,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         note.trim_end(),
         errors.or_else(|| ty.contains("Result<").then(|| error_codes(model, &cfg, c))),
         inputs.checks.contains("assert_eq!"),
+        &inputs.narrowed_counts,
     );
     format!(
         "{doc}{cfg}pub unsafe fn {name}(&self{signature}){arrow} {{
@@ -89,6 +90,7 @@ fn doc(
     note: &str,
     errors: Option<String>,
     checks_lengths: bool,
+    narrowed_counts: &[String],
 ) -> Doc {
     let raw = raw_name(c);
     let lengths = if checks_lengths {
@@ -108,7 +110,14 @@ fn doc(
             "Safety",
             with_deferred_safety(model, c, format!("The same as for [`Self::{raw}`].")),
         )
-        .section("Panics", format!("{}{lengths}", not_loaded(c)))
+        .section(
+            "Panics",
+            [not_loaded(c) + lengths]
+                .into_iter()
+                .chain(narrowed_counts.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
         .alias(&c.name)
 }
 

@@ -34,21 +34,39 @@ impl<'s> CountedArrays<'s> {
             .any(|other| other.name != m.name)
     }
 
-    fn slice_doc(&self, count: &Field, m: &Field, of: &str) -> Doc {
+    fn slice_doc(&self, model: &Model<'_>, count: &Field, m: &Field, of: &str) -> Doc {
         let doc = Doc::new().text(format!(
             "Sets {} to the start of a slice of {of} and {} to its length.",
             field_link(&m.name),
             field_link(&count.name)
         ));
-        if !self.shares_its_count(count, m) {
-            return doc;
-        }
-        doc.section(
-            "Panics",
-            format!(
+        let mut panics = Vec::new();
+        if self.shares_its_count(count, m) {
+            panics.push(format!(
                 "Panics if another array that shares `{}` is already set and the slice has a different length.",
                 count.name
-            ),
+            ));
+        }
+        if !model.holds_every_slice_len(&count.ty) {
+            panics.push(format!(
+                "Panics if the slice has more elements than `{}`, a `{}`, can count.",
+                count.name, count.ty
+            ));
+        }
+        if panics.is_empty() {
+            return doc;
+        }
+        doc.section("Panics", panics.join(" "))
+    }
+
+    fn set_count(&self, model: &Model<'_>, count: &Field, m: &Field) -> String {
+        let field = field_name(&count.name);
+        if model.holds_every_slice_len(&count.ty) {
+            return format!("self.{field} = value.len() as _;");
+        }
+        format!(
+            "self.{field} = len_as_count(value.len(), \"{}::{}\", \"{}\");",
+            self.s.name, m.name, count.name
         )
     }
 
@@ -218,12 +236,12 @@ fn pointer_setter(
             _ => (pointee.as_str(), "", "elements"),
         };
         (
-            counted.slice_doc(count, m, of),
+            counted.slice_doc(model, count, m, of),
             borrow.reference("'a", &format!("[{element}]")),
             format!(
-                "{}self.{} = value.len() as _; self.{field} = value.{as_ptr}(){cast};",
+                "{}{} self.{field} = value.{as_ptr}(){cast};",
                 counted.assert_same_length_as_the_others(count, m),
-                field_name(&count.name)
+                counted.set_count(model, count, m)
             ),
         )
     } else if m.len.as_deref() == Some(SPIRV_WORD_COUNT) {
@@ -315,13 +333,13 @@ fn pointer_array_setter(
         )
     };
     Some(Setter {
-        doc: counted.slice_doc(count, m, of),
+        doc: counted.slice_doc(model, count, m, of),
         name: pointer_setter_method_name(m, names),
         value_ty: format!("&'a [{element}]"),
         assignments: format!(
-            "{}self.{} = value.len() as _; self.{} = value.as_ptr().cast();",
+            "{}{} self.{} = value.as_ptr().cast();",
             counted.assert_same_length_as_the_others(count, m),
-            field_name(&count.name),
+            counted.set_count(model, count, m),
             field_name(&m.name)
         ),
     })
@@ -388,7 +406,7 @@ mod tests {
         }
         assert!(
             squashed.contains(
-                "pub fn words(mut self, value: &'a [u32]) -> Self { self.word_count = value.len() as _; self.p_words = value.as_ptr(); self }"
+                "pub fn words(mut self, value: &'a [u32]) -> Self { self.word_count = len_as_count(value.len(), \"VkMasksInfo::pWords\", \"wordCount\"); self.p_words = value.as_ptr(); self }"
             ),
             "{squashed}"
         );
