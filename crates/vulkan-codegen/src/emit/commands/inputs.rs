@@ -211,7 +211,6 @@ impl Planner<'_> {
             0 if self.model.canonical(&p.ty) == "VkBool32" => {
                 Input::argument(&name, "bool", format!("{name} as Bool32"))
             }
-            0 => Input::passed_through(&name, self.model.base_ty(&p.ty, "'_")),
             1 => self.pointer(p, &ty),
             _ => Input::passed_through(&name, self.model.param_ty(p, "'_")),
         }

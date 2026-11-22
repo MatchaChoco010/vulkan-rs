@@ -1,6 +1,6 @@
 use super::{CType, Model, Scalar};
 use std::collections::BTreeSet;
-use vulkan_registry::{Field, Struct};
+use vulkan_registry::Field;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub(super) enum Floats {
@@ -66,18 +66,14 @@ impl<'a> Model<'a> {
             return false;
         }
         let base = self.canonical(&m.ty);
-        if let Some(nested) = self.structs.get(base) {
-            return is_struct(nested) && plain_structs.contains(base);
+        if self.structs.contains_key(base) {
+            return plain_structs.contains(base);
         }
         if self.has_opaque_representation(base) {
             return false;
         }
         floats == Floats::Allowed || self.scalar(base) != Some(Scalar::Float)
     }
-}
-
-fn is_struct(s: &Struct) -> bool {
-    !s.union
 }
 
 #[cfg(test)]
@@ -115,6 +111,28 @@ mod tests {
         assert!(!model.has_lifetime("VkCallbacks"));
         assert_eq!(model.base_ty("VkOuter", "'a"), "Outer<'a>");
         assert_eq!(model.base_ty("VkExtent2D", "'a"), "Extent2D");
+    }
+
+    #[test]
+    fn a_structure_that_holds_a_union_derives_no_comparison_trait() {
+        let mut ir = registry();
+        let mut value = structure(
+            "VkValue",
+            vec![field("integer", "uint32_t"), field("other", "uint32_t")],
+        );
+        value.union = true;
+        ir.structs.push(value);
+        ir.structs.push(structure(
+            "VkHolder",
+            vec![field("kind", "uint32_t"), field("value", "VkValue")],
+        ));
+        ir.structs
+            .push(structure("VkOuter", vec![field("holder", "VkHolder")]));
+        let model = Model::new(&ir);
+        for name in ["VkValue", "VkHolder", "VkOuter"] {
+            assert!(!model.derives_partial_eq(name), "{name}");
+            assert!(!model.derives_eq_hash(name), "{name}");
+        }
     }
 
     #[test]

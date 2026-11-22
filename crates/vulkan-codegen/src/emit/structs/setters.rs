@@ -249,7 +249,6 @@ pub(super) fn member_methods(
             value_ty: "bool".to_string(),
             assignments: format!("self.{field} = value as Bool32;"),
         },
-        0 => value_setter(model, m, names),
         1 => pointer_setter(model, s, m, &ty, counted, names),
         _ => pointer_array_setter(model, s, m, &ty, counted, names)
             .unwrap_or_else(|| value_setter(model, m, names)),
