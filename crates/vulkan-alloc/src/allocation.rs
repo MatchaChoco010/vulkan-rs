@@ -141,9 +141,18 @@ impl Allocation {
         self.offset
     }
 
-    /// The size of the range in bytes. It is at least the requested size and can be
-    /// larger, when a remainder too small to be used for anything else was added to the
-    /// range.
+    /// The size of the range in bytes, at least the requested size
+    /// (`requirements.size`).
+    ///
+    /// In a shared block, when fewer than 256 free bytes would be left right after the
+    /// requested size, those bytes are added to the range, so the size is at most the
+    /// requested size plus 255. In a shared block of 256 bytes or less, for example, a
+    /// request of 1 byte takes the whole block. An allocation with a
+    /// `VkDeviceMemory` of its own (dedicated, exportable or zero-initialized) has
+    /// exactly the requested size. Padding before the range that aligns
+    /// [`Allocation::offset`] is not part of the range, however small it is: it stays a
+    /// free gap left by alignment, which other allocations can use (see
+    /// [`AllocatorStats::free_bytes`](crate::AllocatorStats::free_bytes)).
     pub fn size(&self) -> u64 {
         self.size
     }
