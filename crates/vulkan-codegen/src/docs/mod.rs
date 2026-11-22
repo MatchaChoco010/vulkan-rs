@@ -1,13 +1,16 @@
 pub(crate) mod asciidoc;
 mod links;
 mod render;
+mod tables;
 
 pub(crate) use links::Links;
 pub(crate) use render::{Block, Doc};
+pub(crate) use tables::{Table, read as read_table};
 
 use crate::model::{Cfg, Model, parse_version};
 use crate::naming::type_name;
-use asciidoc::{Converter, Link};
+use asciidoc::{Converted, Converter, Link};
+use tables::Cell;
 use vulkan_registry::DocPage;
 
 pub(crate) const REFERENCE_PAGES: &str = "https://docs.vulkan.org/refpages/latest/refpages/source/";
@@ -81,6 +84,13 @@ impl<'a> Model<'a> {
     }
 
     fn markdown(&self, from: &Cfg, own: &str, text: &str) -> String {
+        self.try_markdown(from, own, text)
+            .unwrap_or_else(|unsupported| {
+                panic!("the description of {own} has no Markdown form ({unsupported:?}): {text}")
+            })
+    }
+
+    fn try_markdown(&self, from: &Cfg, own: &str, text: &str) -> Converted {
         let resolve = |link: Link, name: &str| {
             if name == own {
                 return None;
@@ -97,9 +107,6 @@ impl<'a> Model<'a> {
             resolve: &resolve,
         }
         .inline(text)
-        .unwrap_or_else(|unsupported| {
-            panic!("the description of {own} has no Markdown form ({unsupported:?}): {text}")
-        })
     }
 
     pub(crate) fn summary(&self, from: &Cfg, c_name: &str) -> Option<String> {
@@ -137,6 +144,70 @@ impl<'a> Model<'a> {
             blocks.push(Block::List(items));
         }
         Some(blocks)
+    }
+
+    pub(crate) fn tabulated(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
+        let cell = format!("ename:{item}");
+        let rows_in = |page: Option<&str>| {
+            self.tables
+                .iter()
+                .filter(|(table_page, _)| *table_page == page)
+                .flat_map(|(_, table)| table.rows.iter().map(move |row| (table, row)))
+                .filter(|(_, row)| row.first().and_then(Cell::single_line) == Some(cell.as_str()))
+                .collect::<Vec<_>>()
+        };
+        let mut rows = match self.page(owner) {
+            Some(page) => rows_in(Some(&page.name)),
+            None => Vec::new(),
+        };
+        if rows.is_empty() {
+            rows = rows_in(None);
+        }
+        let blocks = rows
+            .into_iter()
+            .filter_map(|(table, row)| self.table_row(from, item, table, row))
+            .flatten()
+            .collect::<Vec<_>>();
+        (!blocks.is_empty()).then_some(blocks)
+    }
+
+    fn table_row(&self, from: &Cfg, item: &str, table: &Table, row: &[Cell]) -> Option<Vec<Block>> {
+        let header = table.header.as_ref()?;
+        let mut items = Vec::new();
+        for (label, cell) in header.iter().zip(row).skip(1) {
+            let Cell::Lines(lines) = cell else {
+                return None;
+            };
+            if lines.is_empty() {
+                continue;
+            }
+            let label = self.try_markdown(from, item, label.single_line()?).ok()?;
+            if label.trim().is_empty() {
+                return None;
+            }
+            let mut lines = lines
+                .iter()
+                .map(|line| self.try_markdown(from, item, line))
+                .collect::<Result<Vec<_>, _>>()
+                .ok()?;
+            if lines.len() == 1 {
+                items.push((0, format!("{label}: {}", lines.remove(0))));
+            } else {
+                items.push((0, format!("{label}:")));
+                items.extend(lines.into_iter().map(|line| (1, line)));
+            }
+        }
+        if items.is_empty() {
+            return None;
+        }
+        let lead = match &table.title {
+            Some(title) => format!(
+                "`{item}` in the table “{}” of the specification:",
+                self.try_markdown(from, item, title).ok()?
+            ),
+            None => format!("`{item}` in a table of the specification:"),
+        };
+        Some(vec![Block::Text(lead), Block::List(items)])
     }
 
     pub(crate) fn provenance(
@@ -192,7 +263,7 @@ mod tests {
     use super::*;
     use crate::test_support::{registry, structure};
     use std::collections::BTreeMap;
-    use vulkan_registry::{DocItem, Docs, Enum, EnumField};
+    use vulkan_registry::{DocItem, DocTable, Docs, Enum, EnumField};
 
     fn docs() -> Docs {
         Docs {
@@ -215,6 +286,45 @@ mod tests {
                             text: "pname:height is {unknown}.".to_string(),
                         },
                     ],
+                },
+                DocPage {
+                    name: "VkShade".to_string(),
+                    kind: "enums".to_string(),
+                    desc: "Shades of a color".to_string(),
+                    ..Default::default()
+                },
+            ],
+            tables: vec![
+                DocTable {
+                    page: Some("VkShade".to_string()),
+                    text: [
+                        ".Shades and Their Extents",
+                        "[options=\"header\",cols=\"2,1,1\"]",
+                        "|====",
+                        "|elink:VkShade |Extent [eq]#(w {times} h)# |Mixes",
+                        "|ename:VK_SHADE_LIGHT |slink:VkExtent2D, not ename:VK_SHADE_LIGHT",
+                        "|[eq]#a~0~# +",
+                        "[eq]#b~0~#",
+                        "|ename:VK_SHADE_DARK |{unknown} |",
+                        "|ename:VK_SHADE_PALE |none |",
+                        "|ename:VK_SHADE_GREY |grey m|code",
+                        "|====",
+                    ]
+                    .join("\n"),
+                },
+                DocTable {
+                    page: None,
+                    text: "[cols=\"1,1\",options=\"header\"]\n|===\n|Shade |Use\n|ename:VK_SHADE_PALE |never\n|ename:VK_SHADE_DEEP |always\n|==="
+                        .to_string(),
+                },
+                DocTable {
+                    page: None,
+                    text: "|===\n|ename:VK_SHADE_BARE |without a header\n|===".to_string(),
+                },
+                DocTable {
+                    page: Some("VkExtent2D".to_string()),
+                    text: "[options=\"header\"]\n|===\n|Shade |Use\n|ename:VK_SHADE_FOREIGN |elsewhere\n|==="
+                        .to_string(),
                 },
             ],
         }
@@ -305,6 +415,77 @@ mod tests {
         let (ir, docs) = (ir(), docs());
         let model = Model::with_docs(&ir, &docs);
         model.described(&Cfg::default(), "VkExtent2D", "height");
+    }
+
+    #[test]
+    fn a_value_named_in_a_table_row_is_described_by_the_other_cells_under_their_headers() {
+        let (ir, docs) = (ir(), docs());
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_LIGHT"),
+            Some(vec![
+                Block::Text(
+                    "`VK_SHADE_LIGHT` in the table “Shades and Their Extents” of the specification:"
+                        .to_string()
+                ),
+                Block::List(vec![
+                    (
+                        0,
+                        "Extent (w × h): [`VkExtent2D`](Extent2D), not `VK_SHADE_LIGHT`".to_string()
+                    ),
+                    (0, "Mixes:".to_string()),
+                    (1, "a<sub>0</sub>".to_string()),
+                    (1, "b<sub>0</sub>".to_string()),
+                ]),
+            ])
+        );
+        assert_eq!(
+            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_PALE"),
+            Some(vec![
+                Block::Text(
+                    "`VK_SHADE_PALE` in the table “Shades and Their Extents” of the specification:"
+                        .to_string()
+                ),
+                Block::List(vec![(0, "Extent (w × h): none".to_string())]),
+            ]),
+            "a table on the page of the type is preferred and an empty cell is left out"
+        );
+    }
+
+    #[test]
+    fn tables_outside_reference_pages_describe_values_that_the_page_has_no_row_for() {
+        let (ir, docs) = (ir(), docs());
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_DEEP"),
+            Some(vec![
+                Block::Text("`VK_SHADE_DEEP` in a table of the specification:".to_string()),
+                Block::List(vec![(0, "Use: always".to_string())]),
+            ])
+        );
+        assert_eq!(
+            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_FOREIGN"),
+            None,
+            "a table on the page of another item does not describe the value"
+        );
+    }
+
+    #[test]
+    fn rows_that_cannot_be_understood_leave_the_value_undescribed() {
+        let (ir, docs) = (ir(), docs());
+        let model = Model::with_docs(&ir, &docs);
+        for value in [
+            "VK_SHADE_DARK",
+            "VK_SHADE_GREY",
+            "VK_SHADE_BARE",
+            "VK_SHADE_MISSING",
+        ] {
+            assert_eq!(
+                model.tabulated(&Cfg::default(), "VkShade", value),
+                None,
+                "{value}"
+            );
+        }
     }
 
     #[test]

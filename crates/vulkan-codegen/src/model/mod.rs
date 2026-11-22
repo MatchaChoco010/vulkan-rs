@@ -13,7 +13,7 @@ pub(crate) use dispatch::Dispatch;
 pub(crate) use platform::{is_opaque, is_platform_type};
 pub(crate) use rust_types::Scalar;
 
-use crate::docs::Links;
+use crate::docs::{Links, Table, read_table};
 use crate::naming::enum_variant_name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -25,6 +25,7 @@ pub(crate) struct Model<'a> {
     pub(crate) ir: &'a Registry,
     pub(crate) docs: &'a Docs,
     pub(crate) pages: BTreeMap<&'a str, &'a DocPage>,
+    pub(crate) tables: Vec<(Option<&'a str>, Table)>,
     pub(crate) command_aliases: BTreeMap<&'a str, &'a str>,
     pub(crate) links: Links,
     structs: BTreeMap<&'a str, &'a Struct>,
@@ -77,6 +78,11 @@ impl<'a> Model<'a> {
             ir,
             docs,
             pages: pages.collect(),
+            tables: docs
+                .tables
+                .iter()
+                .filter_map(|table| Some((table.page.as_deref(), read_table(&table.text)?)))
+                .collect(),
             command_aliases: command_aliases.collect(),
             links: Links::default(),
             structs: ir.structs.iter().map(|s| (s.name.as_str(), s)).collect(),
