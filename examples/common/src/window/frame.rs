@@ -103,6 +103,43 @@ pub fn after_present_error(error: vk::VkResult) -> AfterPresentError {
     }
 }
 
+/// What [`Frame::draw`] does after `vkQueueSubmit` returned an error for the work of
+/// the frame, which waits for `image_available` and signals the fence.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AfterSubmitError {
+    /// Nothing was submitted, and the implementation left everything that the call
+    /// referenced as it was: `image_available` is still signaled, and the fence is
+    /// still unsignaled. The frame submits work that waits for the semaphore and
+    /// signals the fence, which the next frame waits for, and returns the error.
+    ConsumeSignal,
+    /// The device is lost, or the result says nothing about the state of the semaphore
+    /// and the fence. A wait for a semaphore that may have no signal pending is not
+    /// valid, and neither is a second submission with a fence that may be in use, so
+    /// the frame submits nothing: it returns the error and is broken.
+    Broken,
+}
+
+/// The action for each result that `vkQueueSubmit` can fail with.
+///
+/// The specification says: "If `vkQueueSubmit` fails, it may return
+/// `VK_ERROR_OUT_OF_HOST_MEMORY` or `VK_ERROR_OUT_OF_DEVICE_MEMORY`. If it does, the
+/// implementation must ensure that the state and contents of any resources or
+/// synchronization primitives referenced by the submitted command buffers and any
+/// semaphores referenced by `pSubmits` is unaffected by the call or its failure. If
+/// `vkQueueSubmit` fails in such a way that the implementation is unable to make that
+/// guarantee, the implementation must return `VK_ERROR_DEVICE_LOST`."
+///
+/// It says nothing of that kind for `VK_ERROR_UNKNOWN` and
+/// `VK_ERROR_VALIDATION_FAILED`.
+pub fn after_submit_error(error: vk::VkResult) -> AfterSubmitError {
+    match error {
+        vk::VkResult::ERROR_OUT_OF_HOST_MEMORY | vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY => {
+            AfterSubmitError::ConsumeSignal
+        }
+        _ => AfterSubmitError::Broken,
+    }
+}
+
 /// The command buffer and synchronization of the one frame in flight: each frame waits
 /// until the device has finished the one before.
 ///
@@ -118,8 +155,9 @@ pub fn after_present_error(error: vk::VkResult) -> AfterPresentError {
 ///   [`Frame::draw`] returns an error instead of waiting for a fence that nothing will
 ///   signal. That is so when the work that restores the state cannot be submitted or
 ///   the fence cannot be replaced, as on a lost device or for lack of memory, and when
-///   a present or an acquire fails with a result that says nothing about the state of
-///   the semaphores ([`AfterPresentError::Broken`], [`AfterAcquireError::Broken`]).
+///   a submission, a present or an acquire fails with a result that says nothing
+///   about the state of the semaphores ([`AfterSubmitError::Broken`],
+///   [`AfterPresentError::Broken`], [`AfterAcquireError::Broken`]).
 ///
 /// The device must be done with the frame before it is dropped. The fields drop in
 /// order, the reverse of creation.
@@ -263,7 +301,12 @@ impl Frame {
                 .command_buffers(&command_buffers)
                 .signal_semaphores(&signal_semaphores);
             if let Err(error) = device.queue_submit(gpu.queue, &[submit], in_flight) {
-                self.recover(gpu, *self.image_available, wait_stage, in_flight);
+                match after_submit_error(error) {
+                    AfterSubmitError::ConsumeSignal => {
+                        self.recover(gpu, *self.image_available, wait_stage, in_flight);
+                    }
+                    AfterSubmitError::Broken => self.broken.set(true),
+                }
                 return Err(error.into());
             }
 
@@ -472,6 +515,38 @@ mod tests {
         }
     }
 
+    /// The same for `vkQueueSubmit`.
+    #[test]
+    fn every_error_code_of_submit_has_the_action_that_the_specification_asks_for() {
+        let expected = listed(&[
+            (
+                VkResult::ERROR_OUT_OF_HOST_MEMORY,
+                AfterSubmitError::ConsumeSignal,
+            ),
+            (
+                VkResult::ERROR_OUT_OF_DEVICE_MEMORY,
+                AfterSubmitError::ConsumeSignal,
+            ),
+            (VkResult::ERROR_DEVICE_LOST, AfterSubmitError::Broken),
+            (VkResult::ERROR_UNKNOWN, AfterSubmitError::Broken),
+            (VkResult::ERROR_VALIDATION_FAILED, AfterSubmitError::Broken),
+        ]);
+        let command = vk::command::QUEUE_SUBMIT;
+        assert_eq!(
+            sorted(command.error_codes),
+            expected.keys().copied().collect::<Vec<_>>(),
+            "the error codes that the registry lists for {}",
+            command.name
+        );
+        for code in command.error_codes {
+            assert_eq!(
+                after_submit_error(*code),
+                expected[&code.as_raw()],
+                "{code:?}"
+            );
+        }
+    }
+
     /// A result that the registry does not list as an error code of the command says
     /// nothing about the semaphores, whatever its sign.
     #[test]
@@ -489,6 +564,7 @@ mod tests {
         ];
         for code in not_listed {
             for command in [
+                vk::command::QUEUE_SUBMIT,
                 vk::command::QUEUE_PRESENT_KHR,
                 vk::command::ACQUIRE_NEXT_IMAGE_KHR,
             ] {
@@ -506,6 +582,11 @@ mod tests {
             assert_eq!(
                 after_acquire_error(code),
                 AfterAcquireError::Broken,
+                "{code:?}"
+            );
+            assert_eq!(
+                after_submit_error(code),
+                AfterSubmitError::Broken,
                 "{code:?}"
             );
         }

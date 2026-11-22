@@ -563,6 +563,83 @@ fn a_frame_does_what_each_error_code_of_a_present_asks_for() {
     }
 }
 
+/// What the specification says about each error code that the registry lists for
+/// `vkQueueSubmit`: whether the submission, with its wait for the semaphore and its
+/// signal of the fence, was enqueued (both where it does not say), and whether a frame
+/// can go on.
+///
+/// - `VK_ERROR_OUT_OF_HOST_MEMORY`, `VK_ERROR_OUT_OF_DEVICE_MEMORY`: not enqueued, and
+///   everything that the call referenced is as it was.
+/// - `VK_ERROR_DEVICE_LOST`: returned when the implementation cannot guarantee that.
+///   `VK_ERROR_UNKNOWN`, `VK_ERROR_VALIDATION_FAILED`: nothing is said.
+#[cfg(feature = "window")]
+const SUBMIT_ERRORS: [(vk::VkResult, &[bool], bool); 5] = [
+    (vk::VkResult::ERROR_OUT_OF_HOST_MEMORY, &[false], true),
+    (vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY, &[false], true),
+    (vk::VkResult::ERROR_DEVICE_LOST, &[false, true], false),
+    (vk::VkResult::ERROR_UNKNOWN, &[false, true], false),
+    (vk::VkResult::ERROR_VALIDATION_FAILED, &[false, true], false),
+];
+
+/// The submission of a frame fails with each error code that the registry lists for
+/// it, in each state that the specification allows the semaphores and the fence to be
+/// left in. The frame must not wait for a semaphore that has no signal pending or give
+/// its fence to a second submission, and the next frames run, or fail without calling
+/// Vulkan, as [`SUBMIT_ERRORS`] says.
+#[cfg(feature = "window")]
+#[test]
+fn a_frame_does_what_each_error_code_of_a_submission_asks_for() {
+    let sorted = |codes: &[vk::VkResult]| {
+        let mut codes = codes.iter().map(|code| code.as_raw()).collect::<Vec<_>>();
+        codes.sort_unstable();
+        codes
+    };
+    assert_eq!(
+        sorted(&SUBMIT_ERRORS.map(|(error, _, _)| error)),
+        sorted(vk::command::QUEUE_SUBMIT.error_codes),
+        "the error codes that the registry lists for vkQueueSubmit"
+    );
+    let entry = fake::entry();
+    let submit = failing_calls_of_a_frame(&entry) - 2;
+    for (error, enqueued_states, goes_on) in SUBMIT_ERRORS {
+        for &enqueued in enqueued_states {
+            fake::reset(None);
+            fake::fail_submits_with(error, enqueued);
+            let arm = || fake::fail_from_now(Some(submit));
+            let Draws {
+                failed,
+                first,
+                later,
+                later_calls,
+            } = unsafe { draw_after(&entry, arm) }.unwrap();
+            let report = fake::report();
+            let case = format!("{error:?}, enqueued: {enqueued}");
+            assert!(failed, "{case}: the submission did not fail");
+            assert!(
+                format!("{first:?}").contains(&format!("{error:?}")),
+                "{case}: the frame reports the error of the submission: {first:?}"
+            );
+            assert!(report.misuse.is_empty(), "{case}: {:?}", report.misuse);
+            assert!(
+                report.leaked.is_empty(),
+                "{case}: leaked {:?}",
+                report.leaked
+            );
+            for (index, result) in later.iter().enumerate() {
+                assert_eq!(
+                    result.is_ok(),
+                    goes_on,
+                    "{case}: frame {} after the failure: {result:?}",
+                    index + 1
+                );
+            }
+            if !goes_on {
+                assert_eq!(later_calls, 0, "{case}: an unusable frame calls nothing");
+            }
+        }
+    }
+}
+
 #[cfg(feature = "window")]
 #[test]
 fn a_frame_whose_recovery_fails_too_reports_its_first_error_and_never_hangs() {
