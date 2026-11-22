@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
-use vulkan::{Device, vk};
-use vulkan_alloc::{Allocator, MemoryLocation};
+use vulkan::vk;
+use vulkan_alloc::MemoryLocation;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::memory::{
     Buffer, buffer_device_address, create_aligned_buffer, write_buffer,
 };
@@ -11,7 +12,7 @@ use crate::pipeline::GROUP_COUNT;
 /// the ray generation shader, the miss shader and the hit group. No record holds more
 /// than the group handle, since the shaders take no parameters from the table.
 pub struct ShaderBindingTable {
-    buffer: Buffer,
+    _buffer: Owned<Buffer>,
     pub raygen: vk::StridedDeviceAddressRegionKHR,
     pub miss: vk::StridedDeviceAddressRegionKHR,
     pub hit: vk::StridedDeviceAddressRegionKHR,
@@ -21,8 +22,7 @@ pub struct ShaderBindingTable {
 
 impl ShaderBindingTable {
     pub unsafe fn new(
-        device: &Device,
-        allocator: &mut Allocator,
+        gpu: &Gpu,
         pipeline: vk::Pipeline,
         properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'_>,
     ) -> Result<Self> {
@@ -35,7 +35,7 @@ impl ShaderBindingTable {
                 .context("the shader group base alignment is zero")?;
 
             let mut handles = vec![0; handle_size * GROUP_COUNT as usize];
-            device.get_ray_tracing_shader_group_handles_khr(
+            gpu.device.get_ray_tracing_shader_group_handles_khr(
                 pipeline,
                 0,
                 GROUP_COUNT,
@@ -50,8 +50,7 @@ impl ShaderBindingTable {
             }
 
             let buffer = create_aligned_buffer(
-                device,
-                allocator,
+                gpu,
                 "shader binding table",
                 table.len() as u64,
                 vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
@@ -59,14 +58,13 @@ impl ShaderBindingTable {
                 MemoryLocation::CpuToGpu,
                 base_alignment,
             )?;
-            let address = buffer_device_address(device, buffer.buffer);
+            let address = buffer_device_address(gpu, buffer.buffer);
             if !address.is_multiple_of(base_alignment) {
-                buffer.destroy(device, allocator)?;
                 bail!(
                     "shader binding table address {address:#x} is not aligned to {base_alignment}"
                 );
             }
-            write_buffer(allocator, &buffer, &table)?;
+            write_buffer(gpu, &buffer, &table)?;
 
             let region = |record: u64| {
                 vk::StridedDeviceAddressRegionKHR::default()
@@ -75,16 +73,12 @@ impl ShaderBindingTable {
                     .size(record_stride)
             };
             Ok(Self {
-                buffer,
+                _buffer: buffer,
                 raygen: region(0),
                 miss: region(1),
                 hit: region(2),
                 callable: vk::StridedDeviceAddressRegionKHR::default(),
             })
         }
-    }
-
-    pub unsafe fn destroy(self, device: &Device, allocator: &mut Allocator) -> Result<()> {
-        unsafe { self.buffer.destroy(device, allocator) }
     }
 }

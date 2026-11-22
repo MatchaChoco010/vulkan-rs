@@ -1,27 +1,30 @@
 use anyhow::{Result, ensure};
-use vulkan::{Device, vk};
+use vulkan::vk;
 
-use crate::device::Gpu;
+use crate::device::{Gpu, Owned};
 use crate::image::create_image_view;
 
-/// A swapchain with a view and a semaphore for each of its images.
+/// A swapchain with a view and a semaphore for each of its images. Dropping it destroys
+/// the views and the semaphores, then the swapchain; the device must be done with all of
+/// them. It must be dropped before the surface it was created for.
 pub struct Swapchain {
+    gpu: Gpu,
     pub handle: vk::SwapchainKHR,
     pub format: vk::SurfaceFormatKHR,
     pub extent: vk::Extent2D,
     pub images: Vec<vk::Image>,
-    pub image_views: Vec<vk::ImageView>,
+    pub image_views: Vec<Owned<vk::ImageView>>,
     /// Signaled when the rendering to the image is done, waited on by its present.
     /// There is one per image rather than per frame: the present gives no signal when
     /// it is done with its semaphore, but once the image is acquired again, it is.
-    pub render_finished: Vec<vk::Semaphore>,
+    pub render_finished: Vec<Owned<vk::Semaphore>>,
 }
 
 impl Swapchain {
     /// A swapchain of color attachments for `surface`, in `format` and `present_mode`,
     /// both of which the surface has to support. `window_extent` is the size of the
     /// window, which the swapchain takes when the surface leaves the size to it, as
-    /// Wayland surfaces do.
+    /// Wayland surfaces do. The surface must have no other swapchain.
     pub unsafe fn new(
         gpu: &Gpu,
         surface: vk::SurfaceKHR,
@@ -48,62 +51,42 @@ impl Swapchain {
                 .present_mode(present_mode)
                 .clipped(true)
                 .old_swapchain(vk::SwapchainKHR::null());
-            let handle = gpu.device.create_swapchain_khr(&info, None)?;
-
             let mut swapchain = Self {
-                handle,
+                gpu: gpu.clone(),
+                handle: gpu.device.create_swapchain_khr(&info, None)?,
                 format,
                 extent,
                 images: Vec::new(),
                 image_views: Vec::new(),
                 render_finished: Vec::new(),
             };
-            if let Err(error) = swapchain.create_per_image(&gpu.device) {
-                swapchain.destroy(&gpu.device);
-                return Err(error);
+            swapchain.images = gpu.device.get_swapchain_images_khr(swapchain.handle)?;
+            for &image in &swapchain.images {
+                swapchain.image_views.push(create_image_view(
+                    gpu,
+                    image,
+                    format.format,
+                    vk::ImageAspectFlags::COLOR,
+                )?);
+                swapchain.render_finished.push(
+                    gpu.own(
+                        gpu.device
+                            .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?,
+                    ),
+                );
             }
             Ok(swapchain)
         }
     }
+}
 
-    unsafe fn create_per_image(&mut self, device: &Device) -> Result<()> {
-        unsafe {
-            self.images = device.get_swapchain_images_khr(self.handle)?;
-            for &image in &self.images {
-                self.image_views.push(create_image_view(
-                    device,
-                    image,
-                    self.format.format,
-                    vk::ImageAspectFlags::COLOR,
-                )?);
-            }
-            for _ in &self.images {
-                self.render_finished
-                    .push(device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?);
-            }
-            Ok(())
-        }
-    }
-
-    /// Destroys the views, the semaphores and the swapchain, and leaves `self` empty,
-    /// so that destroying it again does nothing. An example can then destroy its
-    /// swapchain on exit whether or not the last recreation of it succeeded.
-    ///
-    /// The device must be done with all of them.
-    pub unsafe fn destroy(&mut self, device: &Device) {
-        unsafe {
-            for view in self.image_views.drain(..) {
-                device.destroy_image_view(view, None);
-            }
-            for semaphore in self.render_finished.drain(..) {
-                device.destroy_semaphore(semaphore, None);
-            }
-            if !self.handle.is_null() {
-                device.destroy_swapchain_khr(self.handle, None);
-                self.handle = vk::SwapchainKHR::null();
-            }
-            self.images.clear();
-        }
+impl Drop for Swapchain {
+    fn drop(&mut self) {
+        self.image_views.clear();
+        self.render_finished.clear();
+        // SAFETY: the swapchain was created from this device, and what was created from
+        // its images is gone.
+        unsafe { self.gpu.device.destroy_swapchain_khr(self.handle, None) };
     }
 }
 

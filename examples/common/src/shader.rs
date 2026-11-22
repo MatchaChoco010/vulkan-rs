@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use std::collections::BTreeSet;
-use vulkan::{Device, vk};
+use vulkan::vk;
+
+use crate::device::{Gpu, Owned};
 
 /// SPIR-V as the 32-bit words Vulkan takes. `include_bytes!` gives no alignment
 /// guarantee, so the bytes are copied rather than reinterpreted.
@@ -52,10 +54,10 @@ pub fn spirv_capabilities(bytes: &[u8]) -> Result<BTreeSet<u32>> {
     Ok(capabilities)
 }
 
-pub unsafe fn create_shader_module(device: &Device, spirv: &[u8]) -> Result<vk::ShaderModule> {
+pub unsafe fn create_shader_module(gpu: &Gpu, spirv: &[u8]) -> Result<Owned<vk::ShaderModule>> {
     let code = spirv_words(spirv)?;
     let info = vk::ShaderModuleCreateInfo::default().code(&code);
-    Ok(unsafe { device.create_shader_module(&info, None) }?)
+    unsafe { Ok(gpu.own(gpu.device.create_shader_module(&info, None)?)) }
 }
 
 #[cfg(test)]

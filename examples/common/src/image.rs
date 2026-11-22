@@ -1,6 +1,8 @@
 use anyhow::Result;
 use vulkan::{Device, vk};
 
+use crate::device::{Gpu, Owned};
+
 /// A 2D image with one mip level, one array layer and one sample, in optimal tiling.
 pub fn image_info_2d(
     format: vk::Format,
@@ -60,17 +62,17 @@ pub fn subresource_range(aspect: vk::ImageAspectFlags) -> vk::ImageSubresourceRa
 
 /// A 2D view of the first mip level and array layer.
 pub unsafe fn create_image_view(
-    device: &Device,
+    gpu: &Gpu,
     image: vk::Image,
     format: vk::Format,
     aspect: vk::ImageAspectFlags,
-) -> Result<vk::ImageView> {
+) -> Result<Owned<vk::ImageView>> {
     let info = vk::ImageViewCreateInfo::default()
         .image(image)
         .view_type(vk::ImageViewType::_2D)
         .format(format)
         .subresource_range(subresource_range(aspect));
-    Ok(unsafe { device.create_image_view(&info, None) }?)
+    unsafe { Ok(gpu.own(gpu.device.create_image_view(&info, None)?)) }
 }
 
 /// Records a copy of the first mip level and array layer of a color image, which must be

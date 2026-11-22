@@ -1,74 +1,57 @@
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use std::ptr::NonNull;
-use vulkan::{Device, vk};
-use vulkan_alloc::{
-    Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc,
-    MemoryLocation,
-};
+use vulkan::vk;
+use vulkan_alloc::{Allocation, AllocationCreateDesc, AllocationScheme, MemoryLocation};
 
 use crate::commands::submit_and_wait;
-use crate::device::Gpu;
+use crate::device::{Destroy, Gpu, GpuOwner, Owned};
 use crate::image::{DRM_FORMAT_MOD_LINEAR, drm_format_modifier, is_linear_image};
 
-/// The allocator must be dropped before the device is destroyed.
-pub unsafe fn create_allocator(gpu: &Gpu) -> Allocator {
-    unsafe {
-        let instance = &gpu.instance;
-        Allocator::new(AllocatorCreateDesc::new(
-            &gpu.device,
-            instance.get_physical_device_memory_properties(gpu.physical_device),
-            instance.get_physical_device_properties(gpu.physical_device),
-        ))
-    }
-}
-
-/// A buffer bound to memory from the allocator.
+/// A buffer bound to memory from the allocator of a [`Gpu`].
 pub struct Buffer {
     pub buffer: vk::Buffer,
     pub allocation: Allocation,
     pub size: u64,
 }
 
-impl Buffer {
-    pub unsafe fn destroy(self, device: &Device, allocator: &mut Allocator) -> Result<()> {
+impl Destroy for Buffer {
+    unsafe fn destroy(self, gpu: &GpuOwner) {
         unsafe {
-            device.destroy_buffer(self.buffer, None);
-            allocator.free(self.allocation)?;
+            gpu.device.destroy_buffer(self.buffer, None);
+            gpu.free(self.allocation);
         }
-        Ok(())
     }
 }
 
-/// A buffer of `size` bytes in memory from `allocator`. If the buffer can be used with a
-/// device address, its memory is allocated for that.
+/// A buffer of `size` bytes in memory from the allocator. If the buffer can be used with
+/// a device address, its memory is allocated for that.
 pub unsafe fn create_buffer(
-    device: &Device,
-    allocator: &mut Allocator,
+    gpu: &Gpu,
     name: &str,
     size: u64,
     usage: vk::BufferUsageFlags,
     location: MemoryLocation,
-) -> Result<Buffer> {
-    unsafe { create_aligned_buffer(device, allocator, name, size, usage, location, 1) }
+) -> Result<Owned<Buffer>> {
+    unsafe { create_aligned_buffer(gpu, name, size, usage, location, 1) }
 }
 
 /// Like [`create_buffer`], for a buffer whose device address has to be a multiple of
 /// `alignment`, as the address in a descriptor has to be.
 pub unsafe fn create_aligned_buffer(
-    device: &Device,
-    allocator: &mut Allocator,
+    gpu: &Gpu,
     name: &str,
     size: u64,
     usage: vk::BufferUsageFlags,
     location: MemoryLocation,
     alignment: u64,
-) -> Result<Buffer> {
+) -> Result<Owned<Buffer>> {
     unsafe {
-        let buffer = device.create_buffer(
+        let device = &gpu.device;
+        let buffer = gpu.own(device.create_buffer(
             &vk::BufferCreateInfo::default().size(size).usage(usage),
             None,
-        )?;
-        let mut requirements = device.get_buffer_memory_requirements(buffer);
+        )?);
+        let mut requirements = device.get_buffer_memory_requirements(*buffer);
         requirements.alignment = requirements.alignment.max(alignment);
         // Memory bound to a buffer whose address is taken has to be allocated for that.
         let memory_allocate_flags = if usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
@@ -76,48 +59,45 @@ pub unsafe fn create_aligned_buffer(
         } else {
             vk::MemoryAllocateFlags::empty()
         };
-        let allocation = match allocator.allocate(AllocationCreateDesc {
-            name: Some(name),
-            requirements,
-            location,
-            linear: true,
-            memory_allocate_flags,
-            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-        }) {
-            Ok(allocation) => allocation,
-            Err(error) => {
-                device.destroy_buffer(buffer, None);
-                return Err(error.into());
-            }
-        };
-        if let Err(error) =
-            device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
-        {
-            let _ = allocator.free(allocation);
-            device.destroy_buffer(buffer, None);
-            return Err(error.into());
-        }
-        Ok(Buffer {
-            buffer,
+        let allocation = gpu.with_allocator(|allocator| {
+            allocator.allocate(AllocationCreateDesc {
+                name: Some(name),
+                requirements,
+                location,
+                linear: true,
+                memory_allocate_flags,
+                export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            })
+        })?;
+        // From here the buffer and its memory go together.
+        let buffer = gpu.own(Buffer {
+            buffer: buffer.into_inner(),
             allocation,
             size,
-        })
+        });
+        device.bind_buffer_memory(
+            buffer.buffer,
+            buffer.allocation.memory(),
+            buffer.allocation.offset(),
+        )?;
+        Ok(buffer)
     }
 }
 
-pub unsafe fn buffer_device_address(device: &Device, buffer: vk::Buffer) -> vk::DeviceAddress {
+pub unsafe fn buffer_device_address(gpu: &Gpu, buffer: vk::Buffer) -> vk::DeviceAddress {
     unsafe {
-        device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
+        gpu.device
+            .get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
     }
 }
 
 /// Copies `bytes` to the start of a host-visible buffer. An error when they are more
 /// than the buffer holds; its allocation may be larger, but the device sees only the
 /// buffer.
-pub unsafe fn write_buffer(allocator: &mut Allocator, buffer: &Buffer, bytes: &[u8]) -> Result<()> {
-    unsafe {
-        check_fits(bytes.len(), buffer.size)?;
+pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<()> {
+    check_fits(bytes.len(), buffer.size)?;
+    gpu.with_allocator(|allocator| unsafe {
         let coherent = allocator
             .allocation_memory_flags(&buffer.allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
@@ -130,13 +110,13 @@ pub unsafe fn write_buffer(allocator: &mut Allocator, buffer: &Buffer, bytes: &[
             mapped.flush()?;
         }
         Ok(())
-    }
+    })
 }
 
 /// The contents of a host-visible buffer that the device has written. The writes must
 /// have been made visible to the host, with a barrier to `HOST` and a wait.
-pub unsafe fn read_buffer(allocator: &mut Allocator, buffer: &Buffer) -> Result<Vec<u8>> {
-    unsafe {
+pub unsafe fn read_buffer(gpu: &Gpu, buffer: &Buffer) -> Result<Vec<u8>> {
+    gpu.with_allocator(|allocator| unsafe {
         let coherent = allocator
             .allocation_memory_flags(&buffer.allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
@@ -148,7 +128,7 @@ pub unsafe fn read_buffer(allocator: &mut Allocator, buffer: &Buffer) -> Result<
             .byte_range(0, host_len(buffer.size)?)
             .context("the buffer is larger than its allocation")?
             .to_vec())
-    }
+    })
 }
 
 /// Checks that `len` bytes fit into a buffer of `size` bytes.
@@ -178,39 +158,35 @@ fn host_len<T: TryFrom<u64>>(size: u64) -> Result<T> {
 /// `usage` is what the buffer is used for after the upload.
 pub unsafe fn upload_buffer(
     gpu: &Gpu,
-    allocator: &mut Allocator,
     name: &str,
     usage: vk::BufferUsageFlags,
     data: &[u8],
-) -> Result<Buffer> {
-    unsafe { upload_aligned_buffer(gpu, allocator, name, usage, data, 1) }
+) -> Result<Owned<Buffer>> {
+    unsafe { upload_aligned_buffer(gpu, name, usage, data, 1) }
 }
 
 /// Like [`upload_buffer`], for a buffer whose device address has to be a multiple of
 /// `alignment`.
 pub unsafe fn upload_aligned_buffer(
     gpu: &Gpu,
-    allocator: &mut Allocator,
     name: &str,
     usage: vk::BufferUsageFlags,
     data: &[u8],
     alignment: u64,
-) -> Result<Buffer> {
+) -> Result<Owned<Buffer>> {
     unsafe {
         let device = &gpu.device;
         let size = upload_size(data)?;
         let staging = create_buffer(
-            device,
-            allocator,
+            gpu,
             "staging buffer",
             size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             MemoryLocation::CpuToGpu,
         )?;
-        write_buffer(allocator, &staging, data)?;
+        write_buffer(gpu, &staging, data)?;
         let buffer = create_aligned_buffer(
-            device,
-            allocator,
+            gpu,
             name,
             size,
             usage | vk::BufferUsageFlags::TRANSFER_DST,
@@ -241,7 +217,6 @@ pub unsafe fn upload_aligned_buffer(
             );
             Ok(())
         })?;
-        staging.destroy(device, allocator)?;
         Ok(buffer)
     }
 }
@@ -256,21 +231,27 @@ pub struct MappedBuffer {
     len: usize,
 }
 
-impl MappedBuffer {
+impl Owned<MappedBuffer> {
+    /// The mapped bytes of the buffer.
+    ///
     /// # Safety
     ///
-    /// The buffer must be alive, and the device must not be accessing the memory.
+    /// The device must not be accessing the memory.
     pub unsafe fn bytes(&mut self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.bytes.as_ptr(), self.len) }
+        let buffer: &MappedBuffer = self;
+        // SAFETY: the mapping lives as long as the buffer, which `self` owns, and the
+        // exclusive borrow of `self` is the only way to these bytes.
+        unsafe { std::slice::from_raw_parts_mut(buffer.bytes.as_ptr(), buffer.len) }
     }
+}
 
-    pub unsafe fn destroy(self, device: &Device, allocator: &mut Allocator) -> Result<()> {
+impl Destroy for MappedBuffer {
+    unsafe fn destroy(self, gpu: &GpuOwner) {
         unsafe {
-            device.destroy_buffer(self.buffer, None);
+            gpu.device.destroy_buffer(self.buffer, None);
             // Freeing a persistently mapped allocation also ends its mapping.
-            allocator.free(self.allocation)?;
+            gpu.free(self.allocation);
         }
-        Ok(())
     }
 }
 
@@ -281,43 +262,36 @@ impl MappedBuffer {
 /// type. `GpuToCpu` memory may not be coherent; read it back with [`read_buffer`]
 /// instead.
 pub unsafe fn create_mapped_buffer(
-    device: &Device,
-    allocator: &mut Allocator,
+    gpu: &Gpu,
     name: &str,
     size: u64,
     usage: vk::BufferUsageFlags,
     alignment: u64,
-) -> Result<MappedBuffer> {
+) -> Result<Owned<MappedBuffer>> {
     unsafe {
         // The host has to be able to address all of it.
         let len = host_len(size)?;
-        let buffer = create_aligned_buffer(
-            device,
-            allocator,
-            name,
+        let buffer =
+            create_aligned_buffer(gpu, name, size, usage, MemoryLocation::CpuToGpu, alignment)?;
+        let bytes =
+            map_coherent(gpu, &buffer.allocation).with_context(|| format!("mapping {name}"))?;
+        let Buffer {
+            buffer,
+            allocation,
             size,
-            usage,
-            MemoryLocation::CpuToGpu,
-            alignment,
-        )?;
-        match map_coherent(allocator, &buffer.allocation) {
-            Ok(bytes) => Ok(MappedBuffer {
-                buffer: buffer.buffer,
-                allocation: buffer.allocation,
-                size: buffer.size,
-                bytes,
-                len,
-            }),
-            Err(error) => {
-                let _ = buffer.destroy(device, allocator);
-                Err(error.context(format!("mapping {name}")))
-            }
-        }
+        } = buffer.into_inner();
+        Ok(gpu.own(MappedBuffer {
+            buffer,
+            allocation,
+            size,
+            bytes,
+            len,
+        }))
     }
 }
 
-unsafe fn map_coherent(allocator: &mut Allocator, allocation: &Allocation) -> Result<NonNull<u8>> {
-    unsafe {
+unsafe fn map_coherent(gpu: &Gpu, allocation: &Allocation) -> Result<NonNull<u8>> {
+    gpu.with_allocator(|allocator| unsafe {
         if !allocator
             .allocation_memory_flags(allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT)
@@ -325,68 +299,61 @@ unsafe fn map_coherent(allocator: &mut Allocator, allocation: &Allocation) -> Re
             bail!("the memory is not host-coherent");
         }
         Ok(allocator.map_persistent(allocation)?)
-    }
+    })
 }
 
-/// An image bound to device-local memory from the allocator.
+/// An image bound to device-local memory from the allocator of a [`Gpu`].
 pub struct Image {
     pub image: vk::Image,
     pub allocation: Allocation,
 }
 
-impl Image {
-    pub unsafe fn destroy(self, device: &Device, allocator: &mut Allocator) -> Result<()> {
+impl Destroy for Image {
+    unsafe fn destroy(self, gpu: &GpuOwner) {
         unsafe {
-            device.destroy_image(self.image, None);
-            allocator.free(self.allocation)?;
+            gpu.device.destroy_image(self.image, None);
+            gpu.free(self.allocation);
         }
-        Ok(())
     }
 }
 
 pub unsafe fn create_image(
-    device: &Device,
-    allocator: &mut Allocator,
+    gpu: &Gpu,
     name: &str,
     info: &vk::ImageCreateInfo<'_>,
-) -> Result<Image> {
+) -> Result<Owned<Image>> {
     unsafe {
-        let image = device.create_image(info, None)?;
+        let device = &gpu.device;
+        let image = gpu.own(device.create_image(info, None)?);
         // A DRM-modifier image is linear or not by the modifier it was given.
         let modifier = if info.tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
-            match drm_format_modifier(device, image) {
-                Ok(modifier) => modifier,
-                Err(error) => {
-                    device.destroy_image(image, None);
-                    return Err(error);
-                }
-            }
+            drm_format_modifier(device, *image)?
         } else {
             DRM_FORMAT_MOD_LINEAR
         };
-        let allocation = match allocator.allocate(AllocationCreateDesc {
-            name: Some(name),
-            requirements: device.get_image_memory_requirements(image),
-            location: MemoryLocation::GpuOnly,
-            linear: is_linear_image(info.tiling, modifier),
-            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-        }) {
-            Ok(allocation) => allocation,
-            Err(error) => {
-                device.destroy_image(image, None);
-                return Err(error.into());
-            }
-        };
-        if let Err(error) =
-            device.bind_image_memory(image, allocation.memory(), allocation.offset())
-        {
-            let _ = allocator.free(allocation);
-            device.destroy_image(image, None);
-            return Err(error.into());
-        }
-        Ok(Image { image, allocation })
+        let requirements = device.get_image_memory_requirements(*image);
+        let allocation = gpu.with_allocator(|allocator| {
+            allocator.allocate(AllocationCreateDesc {
+                name: Some(name),
+                requirements,
+                location: MemoryLocation::GpuOnly,
+                linear: is_linear_image(info.tiling, modifier),
+                memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            })
+        })?;
+        // From here the image and its memory go together.
+        let image = gpu.own(Image {
+            image: image.into_inner(),
+            allocation,
+        });
+        device.bind_image_memory(
+            image.image,
+            image.allocation.memory(),
+            image.allocation.offset(),
+        )?;
+        Ok(image)
     }
 }
 

@@ -1,11 +1,11 @@
 use anyhow::{Result, bail};
 use std::ffi::CStr;
-use vulkan::{Device, Entry, Instance, vk};
+use vulkan::{Entry, vk};
 use vulkan_example_common::device::{Gpu, meets_requirements, pick_physical_device};
-use vulkan_example_common::instance::{create_instance, destroy_instance};
+use vulkan_example_common::instance::{VulkanInstance, create_instance};
 use vulkan_example_common::window::WaylandWindow;
 use vulkan_example_common::window::surface::{
-    WAYLAND_SURFACE_EXTENSIONS, create_wayland_surface, find_present_queue_family,
+    Surface, WAYLAND_SURFACE_EXTENSIONS, create_wayland_surface, find_present_queue_family,
 };
 
 /// The shaders are SPIR-V 1.3, which needs Vulkan 1.1.
@@ -14,10 +14,10 @@ const DEVICE_EXTENSIONS: [&CStr; 1] = [vk::KHR_SWAPCHAIN_NAME];
 
 /// A Vulkan 1.1 device with a queue that draws and presents to a surface of `window`,
 /// and that surface.
-pub unsafe fn create_gpu(window: WaylandWindow) -> Result<(Gpu, vk::SurfaceKHR)> {
+pub unsafe fn create_gpu(window: WaylandWindow) -> Result<(Gpu, Surface)> {
     unsafe {
         let entry = Entry::load()?;
-        let (instance, messenger) = create_instance(
+        let instance = create_instance(
             &entry,
             c"vulkan-wayland-triangle",
             API_VERSION,
@@ -32,18 +32,15 @@ pub unsafe fn create_gpu(window: WaylandWindow) -> Result<(Gpu, vk::SurfaceKHR)>
             if !can_run(properties.api_version, &extensions) {
                 return Ok(None);
             }
-            find_present_queue_family(&instance, physical_device, surface)
+            find_present_queue_family(&instance, physical_device, surface.handle)
         })?;
         let Some((physical_device, queue_family)) = selected else {
-            instance.destroy_surface_khr(surface, None);
-            destroy_instance(instance, messenger);
             bail!(
                 "no Vulkan 1.1 physical device draws and presents to the surface with VK_KHR_swapchain"
             );
         };
 
-        let device = create_device(&instance, physical_device, queue_family)?;
-        let gpu = Gpu::new(instance, messenger, physical_device, device, queue_family);
+        let gpu = create_device(instance, physical_device, queue_family)?;
         Ok((gpu, surface))
     }
 }
@@ -55,10 +52,10 @@ fn can_run(api_version: u32, extensions: &[vk::ExtensionProperties]) -> bool {
 }
 
 unsafe fn create_device(
-    instance: &Instance,
+    instance: VulkanInstance,
     physical_device: vk::PhysicalDevice,
     queue_family: u32,
-) -> Result<Device> {
+) -> Result<Gpu> {
     let priorities = [1.0];
     let queues = [vk::DeviceQueueCreateInfo::default()
         .queue_family_index(queue_family)
@@ -67,7 +64,7 @@ unsafe fn create_device(
     let info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queues)
         .enabled_extension_names(&extension_names);
-    Ok(unsafe { instance.create_device(physical_device, &info, None) }?)
+    unsafe { Gpu::create(instance, physical_device, queue_family, &info) }
 }
 
 #[cfg(test)]

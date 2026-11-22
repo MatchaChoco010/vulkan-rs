@@ -23,13 +23,13 @@ mod pipeline;
 mod present_mode;
 mod surface_support;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use vulkan::{Device, vk};
-use vulkan_alloc::Allocator;
-use vulkan_example_common::device::Gpu;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::image::subresource_range;
-use vulkan_example_common::memory::{Buffer, create_allocator, upload_buffer};
+use vulkan_example_common::memory::{Buffer, upload_buffer};
 use vulkan_example_common::window::frame::{Frame, SwapchainStatus};
+use vulkan_example_common::window::surface::Surface;
 use vulkan_example_common::window::swapchain::Swapchain;
 use vulkan_example_common::window::{self, Renderer, WaylandWindow};
 
@@ -62,25 +62,70 @@ fn main() -> Result<()> {
         present_mode: present_mode::requested_present_mode()?,
         color_space: color_space::requested_color_space()?,
     };
-    window::run::<App>("vulkan wayland dynamic rendering", settings)
+    // A failure to destroy something on the way out also fails the run.
+    vulkan_example_common::device::finish(window::run::<App>(
+        "vulkan wayland dynamic rendering",
+        settings,
+    ))
 }
 
+/// The fields drop in order: what depends on the swapchain, then the frame, the buffer
+/// and the layout, then the surface, which goes after its swapchain and before the
+/// window. The device and the instance go once nothing holds them any more.
 struct App {
-    gpu: Gpu,
+    /// `None` after a recreation of the swapchain failed.
+    target: Option<Target>,
+    frame: Frame,
+    vertex_buffer: Owned<Buffer>,
+    pipeline_layout: Owned<vk::PipelineLayout>,
+    present_mode: vk::PresentModeKHR,
     /// `VK_EXT_hdr_metadata` is enabled on the device.
     hdr_metadata: bool,
-    allocator: Allocator,
-    surface: vk::SurfaceKHR,
-    present_mode: vk::PresentModeKHR,
     color_space: ColorSpace,
-    swapchain: Swapchain,
+    surface: Surface,
+    gpu: Gpu,
+}
+
+/// The swapchain and the pipeline, whose viewport is the swapchain's size, which are
+/// recreated together. The fields drop in order, the reverse of creation.
+struct Target {
+    pipeline: Owned<vk::Pipeline>,
     /// The layout each swapchain image was left in: `UNDEFINED` until it is first drawn
     /// to, `PRESENT_SRC_KHR` after.
     image_layouts: Vec<vk::ImageLayout>,
-    frame: Frame,
-    vertex_buffer: Buffer,
-    pipeline_layout: vk::PipelineLayout,
-    pipeline: vk::Pipeline,
+    swapchain: Swapchain,
+}
+
+impl Target {
+    unsafe fn new(
+        gpu: &Gpu,
+        surface: vk::SurfaceKHR,
+        surface_format: vk::SurfaceFormatKHR,
+        present_mode: vk::PresentModeKHR,
+        hdr_metadata: bool,
+        pipeline_layout: vk::PipelineLayout,
+        window_extent: vk::Extent2D,
+    ) -> Result<Self> {
+        unsafe {
+            let swapchain =
+                Swapchain::new(gpu, surface, surface_format, present_mode, window_extent)?;
+            if hdr_metadata {
+                set_hdr_metadata(&gpu.device, swapchain.handle, surface_format.color_space);
+            }
+            let image_layouts = vec![vk::ImageLayout::UNDEFINED; swapchain.images.len()];
+            let pipeline = pipeline::create_pipeline(
+                gpu,
+                surface_format.format,
+                pipeline_layout,
+                swapchain.extent,
+            )?;
+            Ok(Self {
+                pipeline,
+                image_layouts,
+                swapchain,
+            })
+        }
+    }
 }
 
 impl Renderer for App {
@@ -92,55 +137,53 @@ impl Renderer for App {
         settings: &Settings,
     ) -> Result<Self> {
         unsafe {
+            // Every object is destroyed when it goes out of scope, also when a step fails
+            // and `?` returns early.
             let (gpu, surface, extensions) = gpu::create_gpu(window)?;
-            let device = &gpu.device;
-            let mut allocator = create_allocator(&gpu);
 
-            surface_support::print_surface_support(&gpu, surface, extensions.surface_maintenance1)?;
-            let surface_format = choose_surface_format(&gpu, surface, settings.color_space)?;
+            surface_support::print_surface_support(
+                &gpu,
+                surface.handle,
+                extensions.surface_maintenance1,
+            )?;
+            let surface_format = choose_surface_format(&gpu, surface.handle, settings.color_space)?;
             let present_mode =
-                present_mode::choose_present_mode(&gpu, surface, settings.present_mode)?;
+                present_mode::choose_present_mode(&gpu, surface.handle, settings.present_mode)?;
             println!(
                 "swapchain: {:?} / {:?}, present mode {:?}",
                 surface_format.format, surface_format.color_space, present_mode
             );
-            let swapchain =
-                Swapchain::new(&gpu, surface, surface_format, present_mode, window_extent)?;
-            if extensions.hdr_metadata {
-                set_hdr_metadata(device, swapchain.handle, surface_format.color_space);
-            }
-            let image_layouts = vec![vk::ImageLayout::UNDEFINED; swapchain.images.len()];
-
-            let frame = Frame::new(device, gpu.queue_family)?;
+            let pipeline_layout = gpu.own(
+                gpu.device
+                    .create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)?,
+            );
             let vertex_buffer = upload_buffer(
                 &gpu,
-                &mut allocator,
                 "triangle vertex buffer",
                 vk::BufferUsageFlags::VERTEX_BUFFER,
                 bytemuck::cast_slice(&VERTICES),
             )?;
-            let pipeline_layout =
-                device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)?;
-            let pipeline = pipeline::create_pipeline(
-                device,
-                surface_format.format,
-                pipeline_layout,
-                swapchain.extent,
+            let frame = Frame::new(&gpu)?;
+            let target = Target::new(
+                &gpu,
+                surface.handle,
+                surface_format,
+                present_mode,
+                extensions.hdr_metadata,
+                *pipeline_layout,
+                window_extent,
             )?;
 
             Ok(Self {
-                gpu,
-                hdr_metadata: extensions.hdr_metadata,
-                allocator,
-                surface,
-                present_mode,
-                color_space: settings.color_space,
-                swapchain,
-                image_layouts,
+                target: Some(target),
                 frame,
                 vertex_buffer,
                 pipeline_layout,
-                pipeline,
+                present_mode,
+                hdr_metadata: extensions.hdr_metadata,
+                color_space: settings.color_space,
+                surface,
+                gpu,
             })
         }
     }
@@ -148,24 +191,25 @@ impl Renderer for App {
     unsafe fn draw(&mut self) -> Result<SwapchainStatus> {
         unsafe {
             let device = &self.gpu.device;
+            let target = self.target.as_mut().context("there is no swapchain")?;
             // The barrier into COLOR_ATTACHMENT_OPTIMAL starts at TOP_OF_PIPE, so the
             // frame has to wait for the image there for the transition to come after
             // the acquire.
             self.frame.draw(
                 &self.gpu,
-                &self.swapchain,
+                &target.swapchain,
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 |command_buffer, image_index| {
-                    let image = self.swapchain.images[image_index];
+                    let image = target.swapchain.images[image_index];
                     to_color_attachment(
                         device,
                         command_buffer,
                         image,
-                        self.image_layouts[image_index],
+                        target.image_layouts[image_index],
                     );
 
                     let color_attachments = [vk::RenderingAttachmentInfo::default()
-                        .image_view(self.swapchain.image_views[image_index])
+                        .image_view(*target.swapchain.image_views[image_index])
                         .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                         .load_op(vk::AttachmentLoadOp::CLEAR)
                         .store_op(vk::AttachmentStoreOp::STORE)
@@ -175,14 +219,14 @@ impl Renderer for App {
                     device.cmd_begin_rendering(
                         command_buffer,
                         &vk::RenderingInfo::default()
-                            .render_area(vk::Rect2D::default().extent(self.swapchain.extent))
+                            .render_area(vk::Rect2D::default().extent(target.swapchain.extent))
                             .layer_count(1)
                             .color_attachments(&color_attachments),
                     );
                     device.cmd_bind_pipeline(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline,
+                        *target.pipeline,
                     );
                     device.cmd_bind_vertex_buffers(
                         command_buffer,
@@ -194,7 +238,7 @@ impl Renderer for App {
                     device.cmd_end_rendering(command_buffer);
 
                     to_present(device, command_buffer, image);
-                    self.image_layouts[image_index] = vk::ImageLayout::PRESENT_SRC_KHR;
+                    target.image_layouts[image_index] = vk::ImageLayout::PRESENT_SRC_KHR;
                 },
             )
         }
@@ -203,58 +247,28 @@ impl Renderer for App {
     unsafe fn recreate_swapchain(&mut self, window_extent: vk::Extent2D) -> Result<()> {
         unsafe {
             self.gpu.device.device_wait_idle()?;
-            self.destroy_swapchain_resources();
-
-            let device = &self.gpu.device;
-            let surface_format = choose_surface_format(&self.gpu, self.surface, self.color_space)?;
-            self.swapchain = Swapchain::new(
+            // The old swapchain goes first: a surface has one swapchain at a time.
+            self.target = None;
+            let surface_format =
+                choose_surface_format(&self.gpu, self.surface.handle, self.color_space)?;
+            self.target = Some(Target::new(
                 &self.gpu,
-                self.surface,
+                self.surface.handle,
                 surface_format,
                 self.present_mode,
+                self.hdr_metadata,
+                *self.pipeline_layout,
                 window_extent,
-            )?;
-            if self.hdr_metadata {
-                set_hdr_metadata(device, self.swapchain.handle, surface_format.color_space);
-            }
-            self.image_layouts = vec![vk::ImageLayout::UNDEFINED; self.swapchain.images.len()];
-            self.pipeline = pipeline::create_pipeline(
-                device,
-                surface_format.format,
-                self.pipeline_layout,
-                self.swapchain.extent,
-            )?;
+            )?);
             Ok(())
         }
     }
 
-    unsafe fn destroy(mut self) -> Result<()> {
+    unsafe fn destroy(self) -> Result<()> {
         unsafe {
             let idle = self.gpu.device.device_wait_idle();
-            self.destroy_swapchain_resources();
-            let device = &self.gpu.device;
-            device.destroy_pipeline_layout(self.pipeline_layout, None);
-            self.frame.destroy(device);
-            let freed = self.vertex_buffer.destroy(device, &mut self.allocator);
-            drop(self.allocator);
-            self.gpu.instance.destroy_surface_khr(self.surface, None);
-            self.gpu.destroy();
-            window::first_error([idle.map_err(anyhow::Error::from), freed])
-        }
-    }
-}
-
-impl App {
-    /// Destroys the pipeline, whose viewport is the swapchain's size, and the swapchain.
-    /// A recreation that failed halfway leaves null handles, which this skips.
-    unsafe fn destroy_swapchain_resources(&mut self) {
-        unsafe {
-            let device = &self.gpu.device;
-            if !self.pipeline.is_null() {
-                device.destroy_pipeline(self.pipeline, None);
-                self.pipeline = vk::Pipeline::null();
-            }
-            self.swapchain.destroy(device);
+            drop(self);
+            Ok(idle?)
         }
     }
 }

@@ -9,10 +9,14 @@ pub mod commands;
 pub mod device;
 pub mod env;
 pub mod extensions;
+#[cfg(all(test, target_pointer_width = "64"))]
+mod fake;
 pub mod image;
 pub mod instance;
 pub mod memory;
 pub mod output;
+#[cfg(all(test, target_pointer_width = "64"))]
+mod ownership_tests;
 pub mod pipeline;
 pub mod shader;
 #[cfg(feature = "window")]

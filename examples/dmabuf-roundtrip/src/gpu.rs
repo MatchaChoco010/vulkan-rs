@@ -5,7 +5,7 @@ use vulkan_example_common::device::{
     Gpu, find_queue_family, pick_physical_device, supports_extensions,
 };
 use vulkan_example_common::extensions::has_extension;
-use vulkan_example_common::instance::{create_instance, destroy_instance};
+use vulkan_example_common::instance::create_instance;
 
 const DEVICE_EXTENSIONS: [&CStr; 4] = [
     vk::KHR_EXTERNAL_MEMORY_FD_NAME,
@@ -18,8 +18,7 @@ const DEVICE_EXTENSIONS: [&CStr; 4] = [
 pub unsafe fn create_gpu() -> Result<Gpu> {
     unsafe {
         let entry = Entry::load()?;
-        let (instance, messenger) =
-            create_instance(&entry, c"dmabuf-roundtrip", vk::API_VERSION_1_3, &[])?;
+        let instance = create_instance(&entry, c"dmabuf-roundtrip", vk::API_VERSION_1_3, &[])?;
 
         let selected = pick_physical_device(&instance, |physical_device, properties| {
             if properties.api_version < vk::API_VERSION_1_3
@@ -34,7 +33,6 @@ pub unsafe fn create_gpu() -> Result<Gpu> {
             ))
         })?;
         let Some((physical_device, queue_family)) = selected else {
-            destroy_instance(instance, messenger);
             return Err(anyhow!(
                 "no Vulkan 1.3 device supports dma-buf import and export with modifiers"
             ));
@@ -53,21 +51,15 @@ pub unsafe fn create_gpu() -> Result<Gpu> {
         let mut vulkan13 = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
             .synchronization2(true);
-        let device = instance.create_device(
+        Gpu::create(
+            instance,
             physical_device,
+            queue_family,
             &vk::DeviceCreateInfo::default()
                 .queue_create_infos(&queues)
                 .enabled_extension_names(&extension_names)
                 .push_next(&mut vulkan13),
-            None,
-        )?;
-        Ok(Gpu::new(
-            instance,
-            messenger,
-            physical_device,
-            device,
-            queue_family,
-        ))
+        )
     }
 }
 

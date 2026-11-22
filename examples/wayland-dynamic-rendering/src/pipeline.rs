@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::mem::{offset_of, size_of};
-use vulkan::{Device, vk};
+use vulkan::vk;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::pipeline::single_pipeline;
 use vulkan_example_common::shader::create_shader_module;
 
@@ -17,22 +18,22 @@ pub struct Vertex {
 /// Without a render pass, the pipeline is told the formats of the attachments it will
 /// draw to with `VkPipelineRenderingCreateInfo`; `vkCmdBeginRendering` has to match them.
 pub unsafe fn create_pipeline(
-    device: &Device,
+    gpu: &Gpu,
     format: vk::Format,
     layout: vk::PipelineLayout,
     extent: vk::Extent2D,
-) -> Result<vk::Pipeline> {
+) -> Result<Owned<vk::Pipeline>> {
     unsafe {
-        let vertex = create_shader_module(device, include_bytes!("shaders/triangle.vert.spv"))?;
-        let fragment = create_shader_module(device, include_bytes!("shaders/triangle.frag.spv"))?;
+        let vertex = create_shader_module(gpu, include_bytes!("shaders/triangle.vert.spv"))?;
+        let fragment = create_shader_module(gpu, include_bytes!("shaders/triangle.frag.spv"))?;
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::VERTEX)
-                .module(vertex)
+                .module(*vertex)
                 .name(c"main"),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::FRAGMENT)
-                .module(fragment)
+                .module(*fragment)
                 .name(c"main"),
         ];
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
@@ -93,9 +94,9 @@ pub unsafe fn create_pipeline(
             .color_blend_state(&color_blend)
             .layout(layout)
             .push_next(&mut rendering);
-        let result = device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
-        device.destroy_shader_module(vertex, None);
-        device.destroy_shader_module(fragment, None);
-        single_pipeline(device, result)
+        let result = gpu
+            .device
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
+        single_pipeline(gpu, result)
     }
 }

@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use vulkan::{Entry, vk};
 use vulkan_example_common::device::{Gpu, find_queue_family, pick_physical_device};
-use vulkan_example_common::instance::{create_instance, destroy_instance};
+use vulkan_example_common::instance::create_instance;
 
 /// A Vulkan 1.1 device with a graphics queue.
 pub unsafe fn create_gpu() -> Result<Gpu> {
@@ -9,8 +9,7 @@ pub unsafe fn create_gpu() -> Result<Gpu> {
         let entry = Entry::load()?;
         // The shaders are SPIR-V 1.3, which needs Vulkan 1.1.
         let api_version = vk::API_VERSION_1_1;
-        let (instance, messenger) =
-            create_instance(&entry, c"headless-triangle", api_version, &[])?;
+        let instance = create_instance(&entry, c"headless-triangle", api_version, &[])?;
 
         let selected = pick_physical_device(&instance, |physical_device, properties| {
             if properties.api_version < api_version {
@@ -23,7 +22,6 @@ pub unsafe fn create_gpu() -> Result<Gpu> {
             ))
         })?;
         let Some((physical_device, queue_family)) = selected else {
-            destroy_instance(instance, messenger);
             bail!("no Vulkan 1.1 physical device supports graphics");
         };
 
@@ -31,14 +29,12 @@ pub unsafe fn create_gpu() -> Result<Gpu> {
         let queues = [vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family)
             .queue_priorities(&priorities)];
-        let device = instance.create_device(physical_device, &device_create_info(&queues), None)?;
-        Ok(Gpu::new(
+        Gpu::create(
             instance,
-            messenger,
             physical_device,
-            device,
             queue_family,
-        ))
+            &device_create_info(&queues),
+        )
     }
 }
 

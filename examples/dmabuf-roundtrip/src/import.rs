@@ -3,18 +3,19 @@
 use anyhow::{Context, Result, bail};
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd};
 use vulkan::vk;
-use vulkan_alloc::{Allocator, MemoryLocation};
+use vulkan_alloc::MemoryLocation;
 use vulkan_example_common::commands::submit_and_wait;
-use vulkan_example_common::device::Gpu;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::image::{copy_image_to_buffer, subresource_range};
 use vulkan_example_common::memory::{create_buffer, read_buffer};
 
 use crate::{DMA_BUF, Dmabuf};
 
-/// An image whose memory is a dma-buf that the device imported.
+/// An image whose memory is a dma-buf that the device imported. The fields drop in
+/// order, the image before its memory.
 pub struct ImportedImage {
-    pub image: vk::Image,
-    pub memory: vk::DeviceMemory,
+    pub image: Owned<vk::Image>,
+    _memory: Owned<vk::DeviceMemory>,
 }
 
 /// Checks that the dma-buf can be imported, creates an image with exactly the layout it
@@ -90,16 +91,15 @@ pub unsafe fn import_image(gpu: &Gpu, dmabuf: Dmabuf) -> Result<ImportedImage> {
             .usage(usage)
             .push_next(&mut explicit)
             .push_next(&mut external);
-        let image = device.create_image(&image_info, None)?;
+        let image = gpu.own(device.create_image(&image_info, None)?);
 
         // 3. Import the fd as the image's memory. The memory type must be one that both
         //    the image and the dma-buf allow.
-        let requirements = device.get_image_memory_requirements(image);
+        let requirements = device.get_image_memory_requirements(*image);
         let mut fd_properties = vk::MemoryFdPropertiesKHR::default();
         device.get_memory_fd_properties_khr(DMA_BUF, dmabuf.fd.as_raw_fd(), &mut fd_properties)?;
         let type_bits = requirements.memory_type_bits & fd_properties.memory_type_bits;
         let Some(memory_type) = (0..u32::BITS).find(|index| type_bits & (1 << index) != 0) else {
-            device.destroy_image(image, None);
             bail!("no memory type fits both the image and the dma-buf");
         };
 
@@ -108,37 +108,33 @@ pub unsafe fn import_image(gpu: &Gpu, dmabuf: Dmabuf) -> Result<ImportedImage> {
         let mut import = vk::ImportMemoryFdInfoKHR::default()
             .handle_type(DMA_BUF)
             .fd(raw_fd);
-        let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(image);
+        let mut dedicated = vk::MemoryDedicatedAllocateInfo::default().image(*image);
         let allocate_info = vk::MemoryAllocateInfo::default()
             .allocation_size(requirements.size)
             .memory_type_index(memory_type)
             .push_next(&mut import)
             .push_next(&mut dedicated);
         let memory = match device.allocate_memory(&allocate_info, None) {
-            Ok(memory) => memory,
+            Ok(memory) => gpu.own(memory),
             Err(error) => {
                 drop(OwnedFd::from_raw_fd(raw_fd));
-                device.destroy_image(image, None);
                 return Err(error).context("importing the dma-buf");
             }
         };
-        device.bind_image_memory(image, memory, 0)?;
-        Ok(ImportedImage { image, memory })
+        device.bind_image_memory(*image, *memory, 0)?;
+        Ok(ImportedImage {
+            image,
+            _memory: memory,
+        })
     }
 }
 
 /// Copies an imported image into host memory as tightly packed BGRA.
-pub unsafe fn read_back(
-    gpu: &Gpu,
-    allocator: &mut Allocator,
-    image: &ImportedImage,
-    extent: vk::Extent2D,
-) -> Result<Vec<u8>> {
+pub unsafe fn read_back(gpu: &Gpu, image: &ImportedImage, extent: vk::Extent2D) -> Result<Vec<u8>> {
     unsafe {
         let device = &gpu.device;
         let buffer = create_buffer(
-            device,
-            allocator,
+            gpu,
             "readback",
             u64::from(extent.width) * u64::from(extent.height) * 4,
             vk::BufferUsageFlags::TRANSFER_DST,
@@ -156,13 +152,13 @@ pub unsafe fn read_back(
                 .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
                 .src_queue_family_index(vk::QUEUE_FAMILY_FOREIGN_EXT)
                 .dst_queue_family_index(gpu.queue_family)
-                .image(image.image)
+                .image(*image.image)
                 .subresource_range(subresource_range(vk::ImageAspectFlags::COLOR))];
             device.cmd_pipeline_barrier2(
                 command_buffer,
                 &vk::DependencyInfo::default().image_memory_barriers(&acquire),
             );
-            copy_image_to_buffer(device, command_buffer, image.image, extent, buffer.buffer);
+            copy_image_to_buffer(device, command_buffer, *image.image, extent, buffer.buffer);
             let to_host = [vk::BufferMemoryBarrier2::default()
                 .src_stage_mask(vk::PipelineStageFlags2::COPY)
                 .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
@@ -177,8 +173,6 @@ pub unsafe fn read_back(
             Ok(())
         })?;
 
-        let pixels = read_buffer(allocator, &buffer)?;
-        buffer.destroy(device, allocator)?;
-        Ok(pixels)
+        read_buffer(gpu, &buffer)
     }
 }

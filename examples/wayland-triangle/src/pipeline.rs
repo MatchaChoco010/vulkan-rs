@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::mem::{offset_of, size_of};
-use vulkan::{Device, vk};
+use vulkan::vk;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::pipeline::single_pipeline;
 use vulkan_example_common::shader::create_shader_module;
 use vulkan_example_common::window::swapchain::Swapchain;
@@ -14,7 +15,7 @@ pub struct Vertex {
 
 /// One color attachment that is cleared, drawn to, and left in `PRESENT_SRC_KHR` for
 /// the present.
-pub unsafe fn create_render_pass(device: &Device, format: vk::Format) -> Result<vk::RenderPass> {
+pub unsafe fn create_render_pass(gpu: &Gpu, format: vk::Format) -> Result<Owned<vk::RenderPass>> {
     let attachments = [vk::AttachmentDescription::default()
         .format(format)
         .samples(vk::SampleCountFlagBits::_1)
@@ -44,27 +45,27 @@ pub unsafe fn create_render_pass(device: &Device, format: vk::Format) -> Result<
         .attachments(&attachments)
         .subpasses(&subpasses)
         .dependencies(&dependencies);
-    Ok(unsafe { device.create_render_pass(&info, None) }?)
+    unsafe { Ok(gpu.own(gpu.device.create_render_pass(&info, None)?)) }
 }
 
 /// A framebuffer for each image of `swapchain`, in the same order.
 pub unsafe fn create_framebuffers(
-    device: &Device,
+    gpu: &Gpu,
     render_pass: vk::RenderPass,
     swapchain: &Swapchain,
-) -> Result<Vec<vk::Framebuffer>> {
+) -> Result<Vec<Owned<vk::Framebuffer>>> {
     swapchain
         .image_views
         .iter()
-        .map(|&view| {
-            let attachments = [view];
+        .map(|view| {
+            let attachments = [**view];
             let info = vk::FramebufferCreateInfo::default()
                 .render_pass(render_pass)
                 .attachments(&attachments)
                 .width(swapchain.extent.width)
                 .height(swapchain.extent.height)
                 .layers(1);
-            Ok(unsafe { device.create_framebuffer(&info, None) }?)
+            unsafe { Ok(gpu.own(gpu.device.create_framebuffer(&info, None)?)) }
         })
         .collect()
 }
@@ -72,22 +73,22 @@ pub unsafe fn create_framebuffers(
 /// A pipeline that reads [`Vertex`] from vertex buffer binding 0 and draws to the whole
 /// of an `extent`-sized framebuffer.
 pub unsafe fn create_pipeline(
-    device: &Device,
+    gpu: &Gpu,
     render_pass: vk::RenderPass,
     layout: vk::PipelineLayout,
     extent: vk::Extent2D,
-) -> Result<vk::Pipeline> {
+) -> Result<Owned<vk::Pipeline>> {
     unsafe {
-        let vertex = create_shader_module(device, include_bytes!("shaders/triangle.vert.spv"))?;
-        let fragment = create_shader_module(device, include_bytes!("shaders/triangle.frag.spv"))?;
+        let vertex = create_shader_module(gpu, include_bytes!("shaders/triangle.vert.spv"))?;
+        let fragment = create_shader_module(gpu, include_bytes!("shaders/triangle.frag.spv"))?;
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::VERTEX)
-                .module(vertex)
+                .module(*vertex)
                 .name(c"main"),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::FRAGMENT)
-                .module(fragment)
+                .module(*fragment)
                 .name(c"main"),
         ];
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
@@ -145,9 +146,9 @@ pub unsafe fn create_pipeline(
             .color_blend_state(&color_blend)
             .layout(layout)
             .render_pass(render_pass);
-        let result = device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
-        device.destroy_shader_module(vertex, None);
-        device.destroy_shader_module(fragment, None);
-        single_pipeline(device, result)
+        let result = gpu
+            .device
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
+        single_pipeline(gpu, result)
     }
 }

@@ -1,8 +1,8 @@
 use anyhow::{Result, ensure};
 use vulkan::{Device, vk};
-use vulkan_alloc::{Allocator, MemoryLocation};
+use vulkan_alloc::MemoryLocation;
 use vulkan_example_common::commands::submit_and_wait;
-use vulkan_example_common::device::Gpu;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::image::{image_info_2d, subresource_range};
 use vulkan_example_common::memory::{Image, create_buffer, create_image, write_buffer};
 
@@ -12,27 +12,24 @@ pub const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
 /// buffer and left in `SHADER_READ_ONLY_OPTIMAL` for the fragment shader.
 pub unsafe fn create_texture(
     gpu: &Gpu,
-    allocator: &mut Allocator,
     name: &str,
     extent: vk::Extent2D,
     texels: &[[u8; 4]],
-) -> Result<Image> {
+) -> Result<Owned<Image>> {
     unsafe {
         check_texel_count(texels.len(), extent)?;
         let device = &gpu.device;
         let bytes: &[u8] = bytemuck::cast_slice(texels);
         let staging = create_buffer(
-            device,
-            allocator,
+            gpu,
             "texture staging buffer",
             bytes.len() as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
             MemoryLocation::CpuToGpu,
         )?;
-        write_buffer(allocator, &staging, bytes)?;
+        write_buffer(gpu, &staging, bytes)?;
         let image = create_image(
-            device,
-            allocator,
+            gpu,
             name,
             &image_info_2d(
                 TEXTURE_FORMAT,
@@ -59,7 +56,6 @@ pub unsafe fn create_texture(
             image_barrier(device, command_buffer, image.image, to_shader);
             Ok(())
         })?;
-        staging.destroy(device, allocator)?;
         Ok(image)
     }
 }

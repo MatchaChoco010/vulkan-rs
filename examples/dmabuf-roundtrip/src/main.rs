@@ -19,7 +19,6 @@ mod import;
 use anyhow::{Result, bail};
 use std::os::fd::OwnedFd;
 use vulkan::vk;
-use vulkan_example_common::memory::create_allocator;
 use vulkan_example_common::output::{output_path, write_ppm};
 
 const WIDTH: u32 = 256;
@@ -51,17 +50,20 @@ struct Plane {
 
 fn main() -> Result<()> {
     // SAFETY: the example upholds the valid usage rules of the commands it calls; the
-    // validation layer, when installed, reports any violation.
-    unsafe { run() }
+    // validation layer, when installed, reports any violation. A failure to destroy
+    // something on the way out also fails the run.
+    vulkan_example_common::device::finish(unsafe { run() })
 }
 
 unsafe fn run() -> Result<()> {
     unsafe {
+        // Every object below is destroyed when it goes out of scope, in the reverse order
+        // of creation, also when a step fails and `?` returns early. The client's image
+        // outlives the compositor's import of its memory.
         let gpu = gpu::create_gpu()?;
         gpu::print_drm_nodes(&gpu)?;
-        let mut allocator = create_allocator(&gpu);
 
-        let (client_image, dmabuf) = export::render_and_export(&gpu, &mut allocator)?;
+        let (_client_image, dmabuf) = export::render_and_export(&gpu)?;
         println!(
             "exported {}x{} {:?}, modifier {:#018x}, {} plane(s), offset {} stride {}",
             dmabuf.width,
@@ -78,7 +80,7 @@ unsafe fn run() -> Result<()> {
             height: dmabuf.height,
         };
         let compositor_image = import::import_image(&gpu, dmabuf)?;
-        let pixels = import::read_back(&gpu, &mut allocator, &compositor_image, extent)?;
+        let pixels = import::read_back(&gpu, &compositor_image, extent)?;
         verify(&pixels, extent)?;
         let path = output_path("dmabuf_roundtrip.ppm")?;
         write_ppm(
@@ -90,12 +92,6 @@ unsafe fn run() -> Result<()> {
                 .map(|bgra| [bgra[2], bgra[1], bgra[0]]),
         )?;
         println!("imported pixels match; wrote {}", path.display());
-
-        gpu.device.destroy_image(compositor_image.image, None);
-        gpu.device.free_memory(compositor_image.memory, None);
-        client_image.destroy(&gpu.device, &mut allocator)?;
-        drop(allocator);
-        gpu.destroy();
         Ok(())
     }
 }

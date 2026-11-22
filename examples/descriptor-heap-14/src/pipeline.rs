@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::mem::{offset_of, size_of};
-use vulkan::{Device, vk};
+use vulkan::vk;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::pipeline::single_pipeline;
 use vulkan_example_common::shader::create_shader_module;
 
@@ -9,18 +10,18 @@ use crate::{COLOR_FORMAT, DEPTH_FORMAT, EXTENT};
 
 /// A graphics pipeline without a pipeline layout and without mappings: the fragment
 /// shader reaches its descriptors through the heaps by itself.
-pub unsafe fn create_pipeline(device: &Device) -> Result<vk::Pipeline> {
+pub unsafe fn create_pipeline(gpu: &Gpu) -> Result<Owned<vk::Pipeline>> {
     unsafe {
-        let vertex = create_shader_module(device, include_bytes!("shaders/vertex.spv"))?;
-        let fragment = create_shader_module(device, include_bytes!("shaders/fragment.spv"))?;
+        let vertex = create_shader_module(gpu, include_bytes!("shaders/vertex.spv"))?;
+        let fragment = create_shader_module(gpu, include_bytes!("shaders/fragment.spv"))?;
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::VERTEX)
-                .module(vertex)
+                .module(*vertex)
                 .name(c"main"),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::FRAGMENT)
-                .module(fragment)
+                .module(*fragment)
                 .name(c"main"),
         ];
 
@@ -123,10 +124,9 @@ pub unsafe fn create_pipeline(device: &Device) -> Result<vk::Pipeline> {
             .color_blend_state(&color_blend_state)
             .push_next(&mut rendering)
             .push_next(&mut flags);
-        let result = device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
-        for module in [fragment, vertex] {
-            device.destroy_shader_module(module, None);
-        }
-        single_pipeline(device, result)
+        let result = gpu
+            .device
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
+        single_pipeline(gpu, result)
     }
 }
