@@ -34,8 +34,13 @@ pub struct AllocatorCreateDesc<'a> {
     /// aligned to it, and flushed and invalidated ranges are rounded to it. 0 is treated
     /// as 1.
     pub non_coherent_atom_size: u64,
-    /// The size in bytes of each shared `VkDeviceMemory` block. An allocation larger than
-    /// this gets a block of its own size. 0 is treated as 1.
+    /// The size in bytes of each shared `VkDeviceMemory` block. 0 is treated as 1.
+    ///
+    /// In a memory type whose heap is smaller than this, shared blocks have the size of
+    /// the heap instead. The heap is the entry `heap_index` of the memory type in
+    /// [`AllocatorCreateDesc::memory_properties`]; it is used only if `heap_index` is
+    /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0.
+    /// An allocation larger than the resulting size gets a block of its own size.
     pub block_size: u64,
 }
 
@@ -128,9 +133,10 @@ impl Allocator {
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
     /// [`AllocationCreateDesc::memory_allocate_flags`]. Otherwise a new block is
     /// allocated with `vkAllocateMemory`: [`AllocatorCreateDesc::block_size`] bytes, or
-    /// the allocation's size if that is larger. Dedicated allocations, exportable
-    /// allocations and allocations whose [`AllocationCreateDesc::memory_allocate_flags`]
-    /// contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] always get a new
+    /// the size of the memory heap of the type if that is smaller, or the allocation's
+    /// size if that is larger than both. Dedicated allocations, exportable allocations
+    /// and allocations whose [`AllocationCreateDesc::memory_allocate_flags`] contain
+    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] always get a new
     /// `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
     ///
     /// # Errors
@@ -156,7 +162,8 @@ impl Allocator {
     ///   `protectedMemory` feature; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
-    ///   type; a block must not be larger than the memory heap of the chosen type; and
+    ///   type; `desc.requirements.size` must not be larger than the memory heap of the
+    ///   chosen type; and
     ///   the number of `VkDeviceMemory` objects on the device must stay below
     ///   `maxMemoryAllocationCount`.
     /// - For [`AllocationScheme::DedicatedBuffer`](crate::AllocationScheme::DedicatedBuffer)
@@ -519,6 +526,7 @@ impl Allocator {
         if requirements.size == 0 {
             return Err(AllocationError::OutOfMemory);
         }
+        let shared_block_size = self.shared_block_size(memory_type_index);
         let memory_type = self
             .memory_types
             .get_mut(memory_type_index as usize)
@@ -533,7 +541,7 @@ impl Allocator {
             return Ok(allocation);
         }
 
-        let block_size = request.block_size(requirements.size, self.block_size);
+        let block_size = request.block_size(requirements.size, shared_block_size);
         let mut block = unsafe {
             MemoryBlock::allocate(
                 &self.device,
@@ -584,6 +592,23 @@ impl Allocator {
     ) -> Result<vk::MappedMemoryRange<'static>, AllocationError> {
         self.block(allocation)?
             .mapped_range(allocation, self.non_coherent_atom_size)
+    }
+
+    fn shared_block_size(&self, memory_type_index: u32) -> u64 {
+        let heap_count = self
+            .memory_properties
+            .memory_heap_count
+            .min(vk::MAX_MEMORY_HEAPS as u32);
+        let heap_size = self
+            .memory_properties
+            .memory_types
+            .get(memory_type_index as usize)
+            .map(|memory_type| memory_type.heap_index)
+            .filter(|&heap_index| heap_index < heap_count)
+            .and_then(|heap_index| self.memory_properties.memory_heaps.get(heap_index as usize))
+            .map(|heap| heap.size)
+            .filter(|&size| size != 0);
+        heap_size.map_or(self.block_size, |heap_size| self.block_size.min(heap_size))
     }
 
     fn adjusted_requirements(

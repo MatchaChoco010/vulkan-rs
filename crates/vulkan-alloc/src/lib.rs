@@ -86,8 +86,8 @@
 //!
 //! [`Allocator::allocate`] picks a memory type, then places the allocation in an existing
 //! block of that type that has room and is compatible, or allocates a new block of
-//! [`AllocatorCreateDesc::block_size`] bytes (or of the allocation's size, if that is
-//! larger). Allocations that differ in [`AllocationCreateDesc::linear`] or
+//! [`AllocatorCreateDesc::block_size`] bytes, limited to the size of the type's memory
+//! heap (or of the allocation's size, if that is larger). Allocations that differ in [`AllocationCreateDesc::linear`] or
 //! [`AllocationCreateDesc::memory_allocate_flags`] never share a block. Dedicated
 //! allocations ([`AllocationScheme::DedicatedBuffer`], [`AllocationScheme::DedicatedImage`])
 //! exportable allocations ([`AllocationCreateDesc::export_handle_types`]) and
