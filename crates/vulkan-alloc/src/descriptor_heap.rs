@@ -102,9 +102,9 @@ pub enum HeapLayoutError {
     /// `reserved_offset + reserved_size` is larger than `size`.
     ReservedRangeOutsideHeap {
         /// [`DescriptorHeapLayout::reserved_offset`].
-        offset: u64,
+        reserved_offset: u64,
         /// [`DescriptorHeapLayout::reserved_size`].
-        size: u64,
+        reserved_size: u64,
         /// [`DescriptorHeapLayout::size`].
         heap_size: u64,
     },
@@ -138,13 +138,13 @@ impl fmt::Display for HeapLayoutError {
             ),
             Self::ZeroDescriptorSize => f.write_str("descriptor size is 0"),
             Self::ReservedRangeOutsideHeap {
-                offset,
-                size,
+                reserved_offset,
+                reserved_size,
                 heap_size,
             } => write!(
                 f,
-                "reserved range of {size} bytes at offset {offset} does not fit in a \
-                 descriptor heap of {heap_size} bytes"
+                "reserved range of {reserved_size} bytes at offset {reserved_offset} does not \
+                 fit in a descriptor heap of {heap_size} bytes"
             ),
             Self::NullAddress => f.write_str("descriptor heap address is 0"),
             Self::AddressRangeOverflow { address, size } => write!(
@@ -281,13 +281,13 @@ impl DescriptorHeapLayout {
     /// `address`, covering [`DescriptorHeapLayout::size`] bytes and naming the reserved
     /// range.
     ///
-    /// It checks what the layout and `address` alone can tell. It cannot check that
-    /// `address` is the address of a buffer created with `DESCRIPTOR_HEAP_EXT` usage and
-    /// at least [`DescriptorHeapLayout::size`] bytes long, that `size` and
-    /// `reserved_size` are within the device limits, or that `reserved_offset` is a
-    /// multiple of the descriptor alignments, which the layout does not store.
-    /// [`ResourceHeapPlan::finish`] and [`SamplerHeapPlan::finish`] make layouts that
-    /// meet the last two.
+    /// It checks what the layout and `address` alone can tell. It cannot check that the
+    /// range `address .. address + size` lies inside a buffer created with
+    /// `DESCRIPTOR_HEAP_EXT` usage, that [`DescriptorHeapLayout::alignment`] is the
+    /// alignment the device requires, that `size` and `reserved_size` are within the
+    /// device limits, or that `reserved_offset` is a multiple of the descriptor
+    /// alignments, which the layout does not store. [`ResourceHeapPlan::finish`] and
+    /// [`SamplerHeapPlan::finish`] make layouts that meet the last three.
     ///
     /// # Errors
     ///
@@ -310,8 +310,8 @@ impl DescriptorHeapLayout {
             .is_none_or(|end| end > self.size)
         {
             return Err(HeapLayoutError::ReservedRangeOutsideHeap {
-                offset: self.reserved_offset,
-                size: self.reserved_size,
+                reserved_offset: self.reserved_offset,
+                reserved_size: self.reserved_size,
                 heap_size: self.size,
             });
         }
@@ -1155,8 +1155,8 @@ mod tests {
                             {
                                 outcomes[0] += 1;
                                 Err(HeapLayoutError::ReservedRangeOutsideHeap {
-                                    offset: reserved_offset,
-                                    size: reserved_size,
+                                    reserved_offset,
+                                    reserved_size,
                                     heap_size: size,
                                 })
                             } else if u128::from(address) % u128::from(alignment.max(1)) != 0 {
