@@ -8,7 +8,7 @@ mod rust_types;
 
 pub(crate) use cfg::{BETA_PROTECT, Cfg};
 pub(crate) use ctype::{CType, null_ptr};
-pub(crate) use depends::{Depends, parse_version};
+pub(crate) use depends::{Depends, named_version, parse_version};
 pub(crate) use dispatch::Dispatch;
 pub(crate) use platform::{is_opaque, is_platform_type};
 pub(crate) use rust_types::Scalar;

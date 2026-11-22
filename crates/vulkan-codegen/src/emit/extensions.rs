@@ -1,6 +1,6 @@
 use super::{header, w};
 use crate::docs::{Doc, join_and, join_or};
-use crate::model::{Cfg, Depends, Model, parse_version};
+use crate::model::{Cfg, Depends, Model, named_version, parse_version};
 use crate::naming::{const_name, extension_name_const};
 use vulkan_registry::Extension;
 
@@ -32,11 +32,40 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
     out
 }
 
-fn successor(model: &Model<'_>, from: &Cfg, name: &str) -> String {
-    match parse_version(name) {
-        Some((major, minor)) => format!("Vulkan {major}.{minor}"),
-        None => model.link(from, name),
+enum Successor<'a> {
+    Version(u32, u32),
+    Extension(&'a str),
+}
+
+fn successor<'a>(model: &Model<'_>, ext: &Extension, field: &str, name: &'a str) -> Successor<'a> {
+    let used_in = || format!("the `{field}` of `{}`", ext.name);
+    if let Some((major, minor)) = named_version(name, used_in) {
+        return Successor::Version(major, minor);
     }
+    assert!(
+        is_registry_extension(model, name),
+        "{}: `{name}` in {} is not an extension of the registry",
+        ext.name,
+        used_in()
+    );
+    Successor::Extension(name)
+}
+
+fn is_registry_extension(model: &Model<'_>, name: &str) -> bool {
+    model.ir.extensions.iter().any(|ext| ext.name == name)
+}
+
+fn dependencies(model: &Model<'_>, ext: &Extension) -> Option<Depends> {
+    let text = ext.depends.as_deref()?;
+    let depends = Depends::parse(text);
+    for name in depends.extensions() {
+        assert!(
+            is_registry_extension(model, name),
+            "{}: `{name}` in dependency `{text}` is not an extension of the registry",
+            ext.name
+        );
+    }
+    Some(depends)
 }
 
 fn requirement(model: &Model<'_>, from: &Cfg, depends: &Depends, nested: bool) -> String {
@@ -68,22 +97,30 @@ fn name_doc(model: &Model<'_>, cfg: &Cfg, ext: &Extension) -> Doc {
     };
     let provisional = if ext.provisional { "provisional " } else { "" };
     let mut facts = Vec::new();
-    if let Some(depends) = ext.depends.as_deref() {
+    if let Some(depends) = dependencies(model, ext) {
         facts.push(format!(
             "Requires {}.",
-            requirement(model, cfg, &Depends::parse(depends), false)
+            requirement(model, cfg, &depends, false)
         ));
     }
-    for (verb, by) in [
-        ("Promoted to", &ext.promoted_to),
-        ("Deprecated by", &ext.deprecated_by),
-        ("Obsoleted by", &ext.obsoleted_by),
+    for (verb, field, by) in [
+        ("Promoted to", "promotedto", &ext.promoted_to),
+        ("Deprecated by", "deprecatedby", &ext.deprecated_by),
+        ("Obsoleted by", "obsoletedby", &ext.obsoleted_by),
     ] {
-        match by.as_deref() {
-            Some("") => facts.push(format!("{}.", verb.trim_end_matches(" by"))),
-            Some(name) => facts.push(format!("{verb} {}.", successor(model, cfg, name))),
-            None => {}
-        }
+        let named = match by.as_deref() {
+            Some("") => {
+                facts.push(format!("{}.", verb.trim_end_matches(" by")));
+                continue;
+            }
+            Some(name) => successor(model, ext, field, name),
+            None => continue,
+        };
+        let named = match named {
+            Successor::Version(major, minor) => format!("Vulkan {major}.{minor}"),
+            Successor::Extension(name) => model.link(cfg, name),
+        };
+        facts.push(format!("{verb} {named}."));
     }
     Doc::new()
         .text(format!(
@@ -145,16 +182,20 @@ fn lookup_table(model: &Model<'_>) -> String {
     );
     w!(out, "pub const EXTENSIONS: &[ExtensionInfo] = &[");
     for ext in extensions {
-        let depends = ext
-            .depends
-            .as_deref()
-            .map(|text| depends_expr(&Depends::parse(text)));
-        let promoted_to_version = ext.promoted_to.as_deref().and_then(api_version_expr);
-        let promoted_to_extension = ext
+        let depends = dependencies(model, ext).map(|depends| depends_expr(&depends));
+        let promoted_to = ext
             .promoted_to
             .as_deref()
-            .filter(|_| promoted_to_version.is_none())
-            .map(|name| format!("c\"{name}\""));
+            .filter(|name| !name.is_empty())
+            .map(|name| successor(model, ext, "promotedto", name));
+        let (promoted_to_version, promoted_to_extension) = match promoted_to {
+            Some(Successor::Version(major, minor)) => (
+                Some(format!("make_api_version(0, {major}, {minor}, 0)")),
+                None,
+            ),
+            Some(Successor::Extension(name)) => (None, Some(format!("c\"{name}\""))),
+            None => (None, None),
+        };
         w!(
             out,
             "ExtensionInfo {{
@@ -183,22 +224,99 @@ mod tests {
     use super::*;
     use crate::test_support::registry;
 
+    fn extension(
+        name: &str,
+        device: bool,
+        depends: Option<&str>,
+        promoted: Option<&str>,
+    ) -> Extension {
+        Extension {
+            name: name.to_string(),
+            name_macro: format!("{}_EXTENSION_NAME", name.to_uppercase()),
+            spec_version_macro: format!("{}_SPEC_VERSION", name.to_uppercase()),
+            spec_version: 1,
+            instance: !device,
+            device,
+            depends: depends.map(str::to_string),
+            promoted_to: promoted.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    fn emitted(extensions: Vec<Extension>) -> String {
+        let mut ir = registry();
+        ir.extensions = extensions;
+        squash(&emit(&Model::new(&ir)))
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "`VK_VERSION_1_2_3` in the `promotedto` of `VK_KHR_a` is not a version name"
+    )]
+    fn a_promotion_to_a_version_name_that_is_not_a_version_aborts_generation() {
+        emitted(vec![extension(
+            "VK_KHR_a",
+            true,
+            None,
+            Some("VK_VERSION_1_2_3"),
+        )]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "`VK_VERSION_01_2` in the `deprecatedby` of `VK_KHR_a` is not a version name"
+    )]
+    fn a_deprecation_by_a_version_name_that_is_not_a_version_aborts_generation() {
+        emitted(vec![Extension {
+            deprecated_by: Some("VK_VERSION_01_2".to_string()),
+            ..extension("VK_KHR_a", true, None, None)
+        }]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "`VK_VERSION_1_1024` in the `obsoletedby` of `VK_KHR_a` is not a version name"
+    )]
+    fn an_obsoletion_by_a_version_name_that_is_not_a_version_aborts_generation() {
+        emitted(vec![Extension {
+            obsoleted_by: Some("VK_VERSION_1_1024".to_string()),
+            ..extension("VK_KHR_a", true, None, None)
+        }]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "VK_KHR_a: `VK_KHR_missing` in dependency `VK_VERSION_1_1+VK_KHR_missing` is not an extension of the registry"
+    )]
+    fn a_dependency_on_an_extension_that_the_registry_does_not_have_aborts_generation() {
+        emitted(vec![extension(
+            "VK_KHR_a",
+            true,
+            Some("VK_VERSION_1_1+VK_KHR_missing"),
+            None,
+        )]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "VK_KHR_a: `VK_KHR_missing` in the `promotedto` of `VK_KHR_a` is not an extension of the registry"
+    )]
+    fn a_promotion_to_an_extension_that_the_registry_does_not_have_aborts_generation() {
+        emitted(vec![extension(
+            "VK_KHR_a",
+            true,
+            None,
+            Some("VK_KHR_missing"),
+        )]);
+    }
+
     #[test]
     fn extension_table_is_sorted_and_carries_dependencies() {
         let mut ir = registry();
-        let extension =
-            |name: &str, device: bool, depends: Option<&str>, promoted: Option<&str>| Extension {
-                name: name.to_string(),
-                name_macro: format!("{}_EXTENSION_NAME", name.to_uppercase()),
-                spec_version_macro: format!("{}_SPEC_VERSION", name.to_uppercase()),
-                spec_version: 1,
-                instance: !device,
-                device,
-                depends: depends.map(str::to_string),
-                promoted_to: promoted.map(str::to_string),
-                ..Default::default()
-            };
         ir.extensions = vec![
+            extension("VK_KHR_surface", false, None, None),
+            extension("VK_KHR_dynamic_rendering", true, None, None),
+            extension("VK_EXT_debug_utils", false, None, None),
             extension("VK_KHR_swapchain", true, Some("VK_KHR_surface"), None),
             extension(
                 "VK_KHR_maintenance5",

@@ -74,13 +74,7 @@ impl Depends {
             *position += 1;
             return inner;
         }
-        if token.starts_with("VK_VERSION_") {
-            let (major, minor) = parse_version(token).unwrap_or_else(|| {
-                panic!(
-                    "`{token}` in dependency `{text}` is not a version name of the form \
-                     `VK_VERSION_<major>_<minor>`"
-                )
-            });
+        if let Some((major, minor)) = named_version(token, || format!("dependency `{text}`")) {
             return Depends::Version(major, minor);
         }
         assert!(
@@ -89,24 +83,48 @@ impl Depends {
         );
         Depends::Extension(token.clone())
     }
+
+    pub(crate) fn extensions(&self) -> Vec<&str> {
+        match self {
+            Depends::Version(..) => Vec::new(),
+            Depends::Extension(name) => vec![name],
+            Depends::All(items) | Depends::Any(items) => {
+                items.iter().flat_map(Depends::extensions).collect()
+            }
+        }
+    }
 }
+
+const MAX_MAJOR: u32 = (1 << 7) - 1;
+const MAX_MINOR: u32 = (1 << 10) - 1;
 
 pub(crate) fn parse_version(name: &str) -> Option<(u32, u32)> {
     let (major, minor) = name.strip_prefix("VK_VERSION_")?.split_once('_')?;
-    let number = |digits: &str| {
-        digits
-            .bytes()
-            .all(|b| b.is_ascii_digit())
-            .then(|| digits.parse().ok())
-            .flatten()
-    };
-    Some((number(major)?, number(minor)?))
+    let (major, minor) = (major.parse::<u32>().ok()?, minor.parse::<u32>().ok()?);
+    (format!("VK_VERSION_{major}_{minor}") == name && major <= MAX_MAJOR && minor <= MAX_MINOR)
+        .then_some((major, minor))
+}
+
+pub(crate) fn named_version(name: &str, used_in: impl FnOnce() -> String) -> Option<(u32, u32)> {
+    if !name.starts_with("VK_VERSION_") {
+        return None;
+    }
+    let version = parse_version(name).unwrap_or_else(|| {
+        panic!(
+            "`{name}` in {} is not a version name of the form `VK_VERSION_<major>_<minor>` \
+             with a major version below {} and a minor version below {}",
+            used_in(),
+            MAX_MAJOR + 1,
+            MAX_MINOR + 1
+        )
+    });
+    Some(version)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::proptest_config;
+    use crate::test_support::{catch_quietly, proptest_config};
     use proptest::prelude::*;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -168,6 +186,52 @@ mod tests {
         Depends::parse("VK_KHR_a+VK_VERSION_1_2_3");
     }
 
+    #[test]
+    fn only_canonical_version_names_that_fit_an_api_version_are_versions() {
+        for (name, version) in [
+            ("VK_VERSION_1_0", (1, 0)),
+            ("VK_VERSION_1_1", (1, 1)),
+            ("VK_VERSION_1_2", (1, 2)),
+            ("VK_VERSION_1_3", (1, 3)),
+            ("VK_VERSION_1_4", (1, 4)),
+            ("VK_VERSION_0_0", (0, 0)),
+            ("VK_VERSION_127_1023", (127, 1023)),
+        ] {
+            assert_eq!(parse_version(name), Some(version), "{name}");
+        }
+        for name in [
+            "VK_VERSION_+1_2",
+            "VK_VERSION_1_+2",
+            "VK_VERSION_01_2",
+            "VK_VERSION_1_02",
+            "VK_VERSION_1_1024",
+            "VK_VERSION_128_0",
+            "VK_VERSION_4294967296_0",
+            "VK_VERSION_1_2_3",
+            "VK_VERSION_1",
+            "VK_VERSION_",
+            "VK_KHR_surface",
+        ] {
+            assert_eq!(parse_version(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn names_that_are_not_version_names_are_not_versions() {
+        assert_eq!(named_version("VK_KHR_surface", || unreachable!()), None);
+        assert_eq!(named_version("VKSC_VERSION_1_0", || unreachable!()), None);
+        assert_eq!(
+            named_version("VK_VERSION_1_3", || unreachable!()),
+            Some((1, 3))
+        );
+        let message = catch_quietly(|| named_version("VK_VERSION_128_0", || "a test".to_string()))
+            .expect_err("an out-of-range major version is accepted");
+        assert!(
+            message.contains("`VK_VERSION_128_0` in a test is not a version name"),
+            "{message}"
+        );
+    }
+
     const MALFORMED_NAMES: &[&str] = &[
         "VK_VERSION_1",
         "VK_VERSION_1_2_3",
@@ -177,6 +241,9 @@ mod tests {
         "VK_VERSION__1",
         "VK_VERSION_",
         "VK_VERSION_99999999999_0",
+        "VK_VERSION_01_2",
+        "VK_VERSION_1_1024",
+        "VK_VERSION_128_0",
         "VKSC_VERSION_1_0",
         "vk_KHR_surface",
         "KHR_surface",
@@ -401,7 +468,7 @@ mod tests {
             let tokens = mutated(&Printer::tokens(&tree, &choices, true), kind, at, replacement);
             let text = tokens.join(" ");
             prop_assert!(
-                std::panic::catch_unwind(|| Depends::parse(&text)).is_err(),
+                catch_quietly(|| Depends::parse(&text)).is_err(),
                 "`{}` is accepted", text
             );
         }
@@ -411,7 +478,7 @@ mod tests {
     fn empty_dependencies_abort_generation() {
         for text in ["", " ", "()", "(())"] {
             assert!(
-                std::panic::catch_unwind(|| Depends::parse(text)).is_err(),
+                catch_quietly(|| Depends::parse(text)).is_err(),
                 "`{text}` is accepted"
             );
         }
