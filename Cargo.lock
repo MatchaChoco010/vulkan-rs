@@ -1412,6 +1412,7 @@ dependencies = [
  "glam",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
