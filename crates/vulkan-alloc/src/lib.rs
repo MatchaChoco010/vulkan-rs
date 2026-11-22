@@ -131,7 +131,10 @@
 //! writes and [`Allocator::invalidate_allocation`] before host reads (or
 //! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). Allocations in
 //! such memory are aligned to `nonCoherentAtomSize`, so the atom-rounded range that is
-//! flushed or invalidated never reaches into another allocation.
+//! flushed or invalidated never reaches into another allocation. This holds because
+//! `nonCoherentAtomSize` and the alignments of memory requirements are powers of two,
+//! which [`AllocatorCreateDesc::non_coherent_atom_size`] and
+//! [`AllocationCreateDesc::requirements`] require.
 //!
 //! # Order of destruction
 //!

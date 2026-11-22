@@ -22,9 +22,10 @@ pub struct AllocationCreateDesc<'a> {
     /// of 0 is rejected with
     /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory).
     ///
-    /// The allocation's offset is a multiple of `alignment`. A caller may raise
-    /// `alignment`, for example to align a device address, but must keep it a power of
-    /// two, as Vulkan reports it: the allocator combines it with other alignments (see
+    /// The allocation's offset is a multiple of `alignment`, and an `alignment` of 0 is
+    /// treated as 1. A caller may raise `alignment`, for example to align a device
+    /// address, but must keep it a power of two, as Vulkan reports it: the allocator
+    /// combines it with other alignments (see
     /// [`AllocatorCreateDesc::non_coherent_atom_size`](crate::AllocatorCreateDesc::non_coherent_atom_size))
     /// by taking the largest.
     pub requirements: vk::MemoryRequirements,

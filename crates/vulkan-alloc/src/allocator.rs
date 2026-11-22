@@ -39,6 +39,13 @@ pub struct AllocatorCreateDesc<'a> {
     /// Allocations in memory types that are `HOST_VISIBLE` but not `HOST_COHERENT` are
     /// aligned to it, and flushed and invalidated ranges are rounded to it. 0 is treated
     /// as 1.
+    ///
+    /// It must be a power of two, as Vulkan requires of this limit. Such an allocation is
+    /// aligned to the larger of this value and the alignment of its requirements, which
+    /// is a multiple of both only when both are powers of two. With a value that is not a
+    /// power of two, the offset of such an allocation need not be a multiple of the
+    /// alignment its requirements ask for, and a flushed or invalidated range can reach
+    /// into another allocation.
     pub non_coherent_atom_size: u64,
     /// The size in bytes of each shared `VkDeviceMemory` block. 0 is treated as 1.
     ///
@@ -687,6 +694,232 @@ mod tests {
         Device::from_raw(handle, unsafe {
             vk::DeviceFn::load(Some(no_commands), handle)
         })
+    }
+
+    static NEXT_MEMORY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+    unsafe extern "system" fn allocate_memory(
+        _device: vk::Device,
+        _p_allocate_info: *const vk::MemoryAllocateInfo<'_>,
+        _p_allocator: *const vk::AllocationCallbacks<'_>,
+        p_memory: *mut vk::DeviceMemory,
+    ) -> vk::VkResult {
+        let handle = NEXT_MEMORY.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        unsafe { p_memory.write(vk::DeviceMemory(handle)) };
+        vk::VkResult::SUCCESS
+    }
+
+    unsafe extern "system" fn free_memory(
+        _device: vk::Device,
+        _memory: vk::DeviceMemory,
+        _p_allocator: *const vk::AllocationCallbacks<'_>,
+    ) {
+    }
+
+    unsafe extern "system" fn map_memory(
+        _device: vk::Device,
+        _memory: vk::DeviceMemory,
+        _offset: vk::DeviceSize,
+        _size: vk::DeviceSize,
+        _flags: vk::MemoryMapFlags,
+        pp_data: *mut *mut c_void,
+    ) -> vk::VkResult {
+        unsafe { pp_data.write(NonNull::<u64>::dangling().as_ptr().cast()) };
+        vk::VkResult::SUCCESS
+    }
+
+    unsafe extern "system" fn unmap_memory(_device: vk::Device, _memory: vk::DeviceMemory) {}
+
+    unsafe extern "system" fn memory_commands(
+        _device: vk::Device,
+        name: *const c_char,
+    ) -> vk::PFN_vkVoidFunction {
+        type Void = unsafe extern "system" fn();
+        unsafe {
+            match std::ffi::CStr::from_ptr(name).to_bytes() {
+                b"vkAllocateMemory" => Some(std::mem::transmute::<
+                    unsafe extern "system" fn(
+                        vk::Device,
+                        *const vk::MemoryAllocateInfo<'_>,
+                        *const vk::AllocationCallbacks<'_>,
+                        *mut vk::DeviceMemory,
+                    ) -> vk::VkResult,
+                    Void,
+                >(allocate_memory)),
+                b"vkFreeMemory" => Some(std::mem::transmute::<
+                    unsafe extern "system" fn(
+                        vk::Device,
+                        vk::DeviceMemory,
+                        *const vk::AllocationCallbacks<'_>,
+                    ),
+                    Void,
+                >(free_memory)),
+                b"vkMapMemory" => Some(std::mem::transmute::<
+                    unsafe extern "system" fn(
+                        vk::Device,
+                        vk::DeviceMemory,
+                        vk::DeviceSize,
+                        vk::DeviceSize,
+                        vk::MemoryMapFlags,
+                        *mut *mut c_void,
+                    ) -> vk::VkResult,
+                    Void,
+                >(map_memory)),
+                b"vkUnmapMemory" => Some(std::mem::transmute::<
+                    unsafe extern "system" fn(vk::Device, vk::DeviceMemory),
+                    Void,
+                >(unmap_memory)),
+                _ => None,
+            }
+        }
+    }
+
+    fn device_with_memory_commands() -> Device {
+        let handle = vk::Device::null();
+        Device::from_raw(handle, unsafe {
+            vk::DeviceFn::load(Some(memory_commands), handle)
+        })
+    }
+
+    #[test]
+    fn with_power_of_two_atoms_and_alignments_atom_rounded_ranges_never_reach_another_allocation() {
+        let device = device_with_memory_commands();
+        let mut memory_properties = vk::PhysicalDeviceMemoryProperties {
+            memory_type_count: 1,
+            memory_heap_count: 1,
+            ..Default::default()
+        };
+        memory_properties.memory_types[0].property_flags =
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED;
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let desc = |size: u64, alignment: u64| AllocationCreateDesc {
+            name: None,
+            requirements: vk::MemoryRequirements {
+                size,
+                alignment,
+                memory_type_bits: 1,
+            },
+            location: MemoryLocation::GpuToCpu,
+            linear: true,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        };
+        let mut checked_neighbours = 0;
+        for round in 0..48 {
+            let atom = match next() % 4 {
+                0 => 0,
+                _ => 1 << (next() % 13),
+            };
+            let block_size = [1000, 4096, 65536, 100_000][(next() % 4) as usize];
+            let create = || {
+                Allocator::new(AllocatorCreateDesc {
+                    device: &device,
+                    memory_properties,
+                    non_coherent_atom_size: atom,
+                    block_size,
+                })
+            };
+            let mut allocator = create();
+            let mut with_alignment_1 = create();
+            let mut live: Vec<(Allocation, Allocation, u64)> = Vec::new();
+            for step in 0..300 {
+                let context = format!("round {round} step {step}, atom {atom}");
+                if !live.is_empty() && (live.len() >= 40 || next() % 3 == 0) {
+                    let index = (next() % live.len() as u64) as usize;
+                    let (allocation, twin, _) = live.swap_remove(index);
+                    unsafe {
+                        allocator.unmap_memory(&allocation).unwrap();
+                        allocator.free(allocation).unwrap();
+                        with_alignment_1.free(twin).unwrap();
+                    }
+                } else {
+                    let size = 1 + next() % 3000;
+                    let alignment = match next() % 4 {
+                        0 => 0,
+                        _ => 1 << (next() % 11),
+                    };
+                    let (allocation, twin) = unsafe {
+                        (
+                            allocator.allocate(desc(size, alignment)).unwrap(),
+                            with_alignment_1
+                                .allocate(desc(size, alignment.max(1)))
+                                .unwrap(),
+                        )
+                    };
+                    assert_eq!(
+                        (allocation.offset(), allocation.size()),
+                        (twin.offset(), twin.size()),
+                        "{context}: an alignment of 0 must place allocations as an alignment of 1 does"
+                    );
+                    unsafe { allocator.map_memory(&allocation) }.unwrap();
+                    live.push((allocation, twin, alignment));
+                }
+
+                let snapshot = allocator.snapshot();
+                let block_sizes = snapshot
+                    .memory_types
+                    .iter()
+                    .flat_map(|memory_type| &memory_type.blocks)
+                    .map(|block| (block.memory, block.size))
+                    .collect::<std::collections::HashMap<_, _>>();
+                for (allocation, _, alignment) in &live {
+                    assert_eq!(
+                        allocation.offset() % (*alignment).max(1),
+                        0,
+                        "{context}: the offset {} is not a multiple of the requested alignment {alignment}",
+                        allocation.offset()
+                    );
+                    assert_eq!(
+                        allocation.offset() % atom.max(1),
+                        0,
+                        "{context}: the offset {} is not a multiple of the atom",
+                        allocation.offset()
+                    );
+                    let range = allocator.mapped_range(allocation).unwrap();
+                    let end = if range.size == vk::WHOLE_SIZE {
+                        block_sizes[&allocation.memory()]
+                    } else {
+                        range.offset + range.size
+                    };
+                    assert!(
+                        range.offset <= allocation.offset()
+                            && allocation.offset() + allocation.size() <= end,
+                        "{context}: the range {}..{end} does not cover the allocation",
+                        range.offset
+                    );
+                    for (other, _, _) in &live {
+                        if other == allocation || other.memory() != allocation.memory() {
+                            continue;
+                        }
+                        checked_neighbours += 1;
+                        assert!(
+                            end <= other.offset() || other.offset() + other.size() <= range.offset,
+                            "{context}: the range {}..{end} of the allocation at {} reaches into the allocation at {}..{}",
+                            range.offset,
+                            allocation.offset(),
+                            other.offset(),
+                            other.offset() + other.size()
+                        );
+                    }
+                }
+            }
+            for (allocation, twin, _) in live {
+                unsafe {
+                    allocator.unmap_memory(&allocation).unwrap();
+                    allocator.free(allocation).unwrap();
+                    with_alignment_1.free(twin).unwrap();
+                }
+            }
+            assert!(allocator.is_empty() && with_alignment_1.is_empty());
+        }
+        assert!(checked_neighbours > 10_000);
     }
 
     #[test]
