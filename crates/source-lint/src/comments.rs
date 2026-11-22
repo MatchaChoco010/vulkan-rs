@@ -1,4 +1,8 @@
-use ra_ap_rustc_lexer::{DocStyle, FrontmatterAllowed, TokenKind, strip_shebang, tokenize};
+use std::ops::Range;
+
+use ra_ap_rustc_lexer::{
+    DocStyle, FrontmatterAllowed, LiteralKind, TokenKind, strip_shebang, tokenize,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommentKind {
@@ -41,9 +45,34 @@ pub struct Comment {
 }
 
 struct CodeToken<'a> {
+    kind: TokenKind,
     text: &'a str,
     offset: usize,
     line: usize,
+}
+
+impl CodeToken<'_> {
+    fn is_named(&self, name: &str) -> bool {
+        match self.kind {
+            TokenKind::Ident => self.text == name,
+            TokenKind::RawIdent => self.text.strip_prefix("r#") == Some(name),
+            _ => false,
+        }
+    }
+
+    fn is_identifier(&self) -> bool {
+        matches!(self.kind, TokenKind::Ident | TokenKind::RawIdent)
+    }
+
+    fn is_string(&self) -> bool {
+        matches!(
+            self.kind,
+            TokenKind::Literal {
+                kind: LiteralKind::Str { .. } | LiteralKind::RawStr { .. },
+                ..
+            }
+        )
+    }
 }
 
 pub fn find_comments(source: &str) -> Vec<Comment> {
@@ -66,7 +95,12 @@ pub fn find_comments(source: &str) -> Vec<Comment> {
                 kind: CommentKind::of_comment_token(doc_style, CommentKind::Block),
             }),
             TokenKind::Whitespace => {}
-            _ => code.push(CodeToken { text, offset, line }),
+            kind => code.push(CodeToken {
+                kind,
+                text,
+                offset,
+                line,
+            }),
         }
         line += text.matches('\n').count();
         offset += text.len();
@@ -78,6 +112,7 @@ pub fn find_comments(source: &str) -> Vec<Comment> {
 
 fn doc_attributes(code: &[CodeToken<'_>]) -> Vec<Comment> {
     let mut found = Vec::new();
+    let mut found_attributes: Vec<Range<usize>> = Vec::new();
     for (hash_index, hash) in code.iter().enumerate() {
         if hash.text != "#" {
             continue;
@@ -98,9 +133,48 @@ fn doc_attributes(code: &[CodeToken<'_>]) -> Vec<Comment> {
                 line: hash.line,
                 kind: CommentKind::DocAttribute,
             });
+            found_attributes.push(open_index..close_index);
+        }
+    }
+    let in_macro_arguments = macro_arguments(code);
+    for (index, name) in code.iter().enumerate() {
+        let assigns_a_string = name.is_named("doc")
+            && code.get(index + 1).is_some_and(|equals| equals.text == "=")
+            && code.get(index + 2).is_some_and(CodeToken::is_string);
+        if assigns_a_string
+            && in_macro_arguments[index]
+            && !found_attributes
+                .iter()
+                .any(|attribute| attribute.contains(&index))
+        {
+            found.push(Comment {
+                offset: name.offset,
+                line: name.line,
+                kind: CommentKind::DocAttribute,
+            });
         }
     }
     found
+}
+
+fn macro_arguments(code: &[CodeToken<'_>]) -> Vec<bool> {
+    let mut inside = vec![false; code.len()];
+    for (bang_index, bang) in code.iter().enumerate() {
+        let invokes_a_macro = bang.text == "!"
+            && bang_index
+                .checked_sub(1)
+                .is_some_and(|name_index| code[name_index].is_identifier())
+            && code
+                .get(bang_index + 1)
+                .is_some_and(|open| matches!(open.text, "(" | "[" | "{"));
+        if !invokes_a_macro {
+            continue;
+        }
+        let open_index = bang_index + 1;
+        let close_index = matching_close(code, open_index).unwrap_or(code.len());
+        inside[open_index + 1..close_index].fill(true);
+    }
+    inside
 }
 
 fn matching_close(code: &[CodeToken<'_>], open_index: usize) -> Option<usize> {
@@ -122,9 +196,9 @@ fn matching_close(code: &[CodeToken<'_>], open_index: usize) -> Option<usize> {
 
 fn assigns_doc(attribute: &[CodeToken<'_>]) -> bool {
     match attribute {
-        [name, equals, ..] if name.text == "doc" && equals.text == "=" => true,
+        [name, equals, ..] if name.is_named("doc") && equals.text == "=" => true,
         [name, open, arguments @ .., close]
-            if name.text == "cfg_attr" && open.text == "(" && close.text == ")" =>
+            if name.is_named("cfg_attr") && open.text == "(" && close.text == ")" =>
         {
             split_top_level_commas(arguments)
                 .into_iter()
@@ -328,6 +402,219 @@ mod tests {
         assert_no_comments("let s = \"#[doc = \\\"x\\\"]\";");
         assert_no_comments("let s = r#\"#[doc = \"x\"]\"#;");
         assert_no_comments("let v = arr[doc = 1];");
+    }
+
+    const DOC_NAMES: [&str; 2] = ["doc", "r#doc"];
+    const CFG_ATTR_NAMES: [&str; 2] = ["cfg_attr", "r#cfg_attr"];
+    const STRING_VALUES: [&str; 5] = [
+        "\"x\"",
+        "r\"x\"",
+        "r#\"a \"quoted\" x\"#",
+        "\"first\nsecond\"",
+        "\"escaped \\\" doc = \\\"x\\\"\"",
+    ];
+    const GAPS: [&str; 4] = ["", " ", "\n", " \n\t "];
+
+    #[derive(Clone, Copy, Debug)]
+    enum DocContext {
+        Attribute(&'static str),
+        MacroArgument(&'static str),
+    }
+
+    const DOC_CONTEXTS: [DocContext; 10] = [
+        DocContext::Attribute("#[~META~]\npub fn f() {}\n"),
+        DocContext::Attribute("#![~META~]\n"),
+        DocContext::Attribute("m! {~#[~META~]~struct S;~}\n"),
+        DocContext::MacroArgument("with!~(~META~);\n"),
+        DocContext::MacroArgument("with![~META~];\n"),
+        DocContext::MacroArgument("with!~{~META~}\n"),
+        DocContext::MacroArgument("crate::m::with!(~META~);\n"),
+        DocContext::MacroArgument("r#with!{~META~}\n"),
+        DocContext::MacroArgument("outer! {~#[derive(Debug)]~inner!(~META~)~}\n"),
+        DocContext::MacroArgument("fn f() {~with!(~META~);~}\n"),
+    ];
+
+    #[derive(Default)]
+    struct GeneratedSource {
+        text: String,
+        doc_names: Vec<usize>,
+    }
+
+    impl GeneratedSource {
+        fn push(&mut self, text: &str) {
+            self.text.push_str(text);
+        }
+
+        fn push_doc(&mut self, name: &str, gap: &str, value: &str) {
+            self.doc_names.push(self.text.len());
+            self.text.push_str(&format!("{name}{gap}={gap}{value}"));
+        }
+
+        fn line_of(&self, offset: usize) -> usize {
+            1 + self.text[..offset].matches('\n').count()
+        }
+    }
+
+    struct DocCase {
+        name: &'static str,
+        value: &'static str,
+        gap: &'static str,
+        cfg_attr_depth: usize,
+        both_spellings: bool,
+        context: DocContext,
+    }
+
+    impl DocCase {
+        fn push_meta(&self, source: &mut GeneratedSource) {
+            let gap = self.gap;
+            for level in 0..self.cfg_attr_depth {
+                source.push(CFG_ATTR_NAMES[level % 2]);
+                source.push(&format!("({gap}all(),{gap}inline,{gap}"));
+            }
+            source.push_doc(self.name, gap, self.value);
+            if self.both_spellings {
+                let other = DOC_NAMES.iter().find(|name| **name != self.name).unwrap();
+                source.push(&format!(",{gap}"));
+                source.push_doc(other, gap, self.value);
+            }
+            for _ in 0..self.cfg_attr_depth {
+                source.push(&format!("{gap})"));
+            }
+        }
+
+        fn source(&self) -> (GeneratedSource, Vec<usize>) {
+            let template = match self.context {
+                DocContext::Attribute(template) | DocContext::MacroArgument(template) => template,
+            };
+            let (before, after) = template.split_once("META").unwrap();
+            let mut source = GeneratedSource::default();
+            source.push("fn before() {}\n");
+            let start = source.text.len();
+            source.push(&before.replace('~', self.gap));
+            let hash = start + source.text[start..].find('#').unwrap_or(0);
+            self.push_meta(&mut source);
+            source.push(&after.replace('~', self.gap));
+            let expected = match self.context {
+                DocContext::Attribute(_) => vec![hash],
+                DocContext::MacroArgument(_) => source.doc_names.clone(),
+            };
+            (source, expected)
+        }
+    }
+
+    fn doc_cases() -> Vec<DocCase> {
+        let mut cases = Vec::new();
+        for name in DOC_NAMES {
+            for value in STRING_VALUES {
+                for gap in GAPS {
+                    for cfg_attr_depth in 0..=2 {
+                        for both_spellings in [false, true] {
+                            for context in DOC_CONTEXTS {
+                                let attribute = matches!(context, DocContext::Attribute(_));
+                                if both_spellings && attribute && cfg_attr_depth == 0 {
+                                    continue;
+                                }
+                                cases.push(DocCase {
+                                    name,
+                                    value,
+                                    gap,
+                                    cfg_attr_depth,
+                                    both_spellings,
+                                    context,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        cases
+    }
+
+    #[test]
+    fn every_spelling_of_a_doc_attribute_is_found_where_it_starts() {
+        let cases = doc_cases();
+        assert!(
+            cases.len() > 1000,
+            "only {} cases were generated",
+            cases.len()
+        );
+        for case in cases {
+            let (source, expected_offsets) = case.source();
+            let expected: Vec<Comment> = expected_offsets
+                .into_iter()
+                .map(|offset| Comment {
+                    offset,
+                    line: source.line_of(offset),
+                    kind: CommentKind::DocAttribute,
+                })
+                .collect();
+            assert_eq!(
+                find_comments(&source.text),
+                expected,
+                "the doc attributes of {:?} were not found where they start",
+                source.text
+            );
+        }
+    }
+
+    #[test]
+    fn names_that_only_resemble_doc_are_not_doc_attributes_in_any_context() {
+        let names = ["docs", "r#docs", "undoc", "doc_", "Doc", "DOC", "r#Doc"];
+        let mut forms = Vec::new();
+        for gap in GAPS {
+            for value in STRING_VALUES {
+                for name in names {
+                    forms.push(format!("{name}{gap}={gap}{value}"));
+                }
+                for name in DOC_NAMES {
+                    forms.push(format!("#[{name}{gap}(hidden)]"));
+                    forms.push(format!("#[{name}({gap}alias{gap}={gap}{value})]"));
+                    forms.push(format!("#[cfg_attr(all(), {name}{gap}(alias = {value}))]"));
+                    forms.push(format!("#[serde(rename{gap}={gap}{value})]"));
+                    forms.push(format!("{name}{gap}=={gap}{value}"));
+                    forms.push(format!("{name}{gap}!={gap}{value}"));
+                    forms.push(format!("{name}{gap}:{gap}{value}"));
+                    forms.push(format!("{name}{gap}({value})"));
+                    forms.push(format!("x.{name}()"));
+                    forms.push(format!("let {name}{gap}={gap}1;"));
+                    forms.push(format!("{name}{gap}={gap}b{value}"));
+                    forms.push(format!("{name}{gap}={gap}c{value}"));
+                    forms.push(format!("{name}{gap}={gap}br\"x\""));
+                    forms.push(format!("{name}{gap}={gap}'x'"));
+                    forms.push(format!("{name}{gap}={gap}{{ {value} }}"));
+                    forms.push(format!("\"{name}{gap}={gap}\\\"x\\\"\""));
+                    forms.push(format!("r#\"{name}{gap}={gap}\"x\"\"#"));
+                }
+            }
+        }
+        for form in forms {
+            for context in [
+                format!("{form}\n"),
+                format!("m!({form});\n"),
+                format!("m![{form}];\n"),
+                format!("m! {{ {form} }}\n"),
+                format!("outer! {{ inner!({form}) }}\n"),
+            ] {
+                assert_no_comments(&context);
+            }
+        }
+    }
+
+    #[test]
+    fn doc_assignments_outside_attributes_and_macro_arguments_are_not_doc_attributes() {
+        for name in DOC_NAMES {
+            for gap in GAPS {
+                for value in STRING_VALUES {
+                    let assignment = format!("{name}{gap}={gap}{value}");
+                    assert_no_comments(&format!("fn f() {{ let {assignment}; }}"));
+                    assert_no_comments(&format!("fn f() {{ s.{assignment}; }}"));
+                    assert_no_comments(&format!(
+                        "macro_rules! m {{ () => {{ let {assignment}; }}; }}"
+                    ));
+                }
+            }
+        }
     }
 
     #[test]
