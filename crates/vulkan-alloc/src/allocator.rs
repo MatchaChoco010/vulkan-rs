@@ -24,7 +24,8 @@ pub struct AllocatorCreateDesc<'a> {
     /// The device to allocate from. The allocator keeps a clone of it.
     pub device: &'a Device,
     /// The memory properties of the physical device that [`AllocatorCreateDesc::device`]
-    /// was created from. Memory types are chosen from them.
+    /// was created from. Memory types are chosen from them. A `memory_type_count` above
+    /// [`vk::MAX_MEMORY_TYPES`] is treated as [`vk::MAX_MEMORY_TYPES`].
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     /// The `nonCoherentAtomSize` limit of the physical device.
     ///
@@ -90,12 +91,16 @@ impl Allocator {
     /// Creates an allocator. No memory is allocated until the first
     /// [`Allocator::allocate`], and no Vulkan call is made here.
     pub fn new(desc: AllocatorCreateDesc<'_>) -> Self {
-        let memory_types = (0..desc.memory_properties.memory_type_count)
+        let mut memory_properties = desc.memory_properties;
+        memory_properties.memory_type_count = memory_properties
+            .memory_type_count
+            .min(vk::MAX_MEMORY_TYPES as u32);
+        let memory_types = (0..memory_properties.memory_type_count)
             .map(MemoryTypeAllocator::new)
             .collect();
         Self {
             device: desc.device.clone(),
-            memory_properties: desc.memory_properties,
+            memory_properties,
             non_coherent_atom_size: desc.non_coherent_atom_size.max(1),
             block_size: desc.block_size.max(1),
             memory_types,
@@ -608,4 +613,73 @@ fn block_mut<'a>(
     allocation: &Allocation,
 ) -> Result<&'a mut MemoryBlock, AllocationError> {
     memory_type_mut(memory_types, allocation)?.block_mut(allocation)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::c_char;
+
+    use super::*;
+    use crate::allocation::AllocationScheme;
+    use crate::memory_type::MemoryLocation;
+
+    unsafe extern "system" fn no_commands(
+        _device: vk::Device,
+        _name: *const c_char,
+    ) -> vk::PFN_vkVoidFunction {
+        None
+    }
+
+    fn device_without_commands() -> Device {
+        let handle = vk::Device::null();
+        Device::from_raw(handle, unsafe {
+            vk::DeviceFn::load(Some(no_commands), handle)
+        })
+    }
+
+    #[test]
+    fn a_memory_type_count_of_any_size_gives_at_most_the_types_vulkan_can_report() {
+        let device = device_without_commands();
+        for count in [0, 1, 3, 31, 32, 33, 1000, 1 << 20, u32::MAX] {
+            let mut allocator = Allocator::new(AllocatorCreateDesc {
+                device: &device,
+                memory_properties: vk::PhysicalDeviceMemoryProperties {
+                    memory_type_count: count,
+                    ..Default::default()
+                },
+                non_coherent_atom_size: 1,
+                block_size: 4096,
+            });
+            let expected = count.min(vk::MAX_MEMORY_TYPES as u32);
+            assert_eq!(allocator.memory_types.len(), expected as usize, "{count}");
+            for index in [0, 1, 2, 30, 31, 32, 33, 1000, u32::MAX] {
+                assert_eq!(
+                    allocator.memory_type_flags(index).is_some(),
+                    index < expected,
+                    "type {index} of {count}"
+                );
+            }
+            let not_allowed = unsafe {
+                allocator.allocate(AllocationCreateDesc {
+                    name: None,
+                    requirements: vk::MemoryRequirements {
+                        size: 64,
+                        alignment: 1,
+                        memory_type_bits: 0,
+                    },
+                    location: MemoryLocation::GpuOnly,
+                    linear: true,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                    export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+                    allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                })
+            };
+            assert_eq!(
+                not_allowed,
+                Err(AllocationError::NoCompatibleMemoryType),
+                "{count}"
+            );
+            assert!(allocator.snapshot().memory_types.is_empty(), "{count}");
+        }
+    }
 }
