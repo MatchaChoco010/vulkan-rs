@@ -101,19 +101,20 @@
 //!
 //! The free ranges of a block are kept in lists by size class. A request first looks
 //! only at the first free range of each list, from the class of the requested size
-//! upward, which takes a number of steps that does not depend on how many free ranges
+//! upward, which takes at most one step for each size class, however many free ranges
 //! the block has. If none of these ranges can hold the allocation at its alignment, the
 //! request walks the rest of those lists. So, unlike plain TLSF, which can fail while a
-//! large enough free range exists, a request is placed in a block whenever one of the
-//! block's free ranges can hold it at its alignment.
+//! large enough free range exists, a request is placed in a block it may share whenever
+//! one of the block's free ranges can hold it at its alignment.
 //!
 //! The price is that a request for which no first range of a list will do, in
 //! particular one that does not fit in the block at all, can take time proportional to
-//! the number of free ranges of the block. [`Allocator::allocate`] tries the shared
-//! blocks that the allocation may share in turn before it allocates a new one, so such
-//! a request pays this for each of them. The padding left before an allocation to align
-//! it stays a free range however small it is, so many aligned allocations can add many
-//! free ranges.
+//! the number of free ranges of the block in the request's size class or a higher one.
+//! [`Allocator::allocate`] tries the blocks that the allocation may share in turn before
+//! it allocates a new one, so such a request pays this for each of them. The padding
+//! left before an allocation to align it stays a free range however small it is. Small
+//! ranges are in low size classes, so they add to this time only for requests whose
+//! size class is not above theirs.
 //!
 //! The allocator does not:
 //!
