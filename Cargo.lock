@@ -1370,6 +1370,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vulkan-example-common"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "vulkan",
+ "vulkan-alloc",
+]
+
+[[package]]
 name = "vulkan-headless-triangle"
 version = "0.0.0"
 dependencies = [
@@ -1377,6 +1386,7 @@ dependencies = [
  "bytemuck",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
