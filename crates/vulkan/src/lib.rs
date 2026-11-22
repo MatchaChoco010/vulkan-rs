@@ -110,9 +110,13 @@
 //! - `device.create_buffer(&info, None)`: references, slices and `Option<&T>` for the
 //!   parameters, `bool` for `VkBool32`, and the outputs returned. A command that returns
 //!   `VkResult` returns a [`vk::Result`]; commands with more than one success code return
-//!   the code, or a value that tells them apart, inside `Ok`. The `create_*_pipelines`
-//!   commands return `Err((pipelines, code))` for every code other than `SUCCESS`, with
-//!   the handles that the command wrote. Enumerations such as
+//!   the code, or a value that tells them apart, inside `Ok`, with one exception: commands
+//!   that create several objects at once and return them, such as
+//!   `create_graphics_pipelines` and `create_shaders_ext`, return
+//!   `Err((handles, code))` for every code other than `SUCCESS`, with the handles that the
+//!   command wrote. Commands that can be deferred, such as
+//!   `create_ray_tracing_pipelines_khr`, instead write their outputs into slices that the
+//!   caller passes and keeps, and return the code. Enumerations such as
 //!   `enumerate_physical_devices` return a `Vec`.
 //! - `device.create_buffer_raw(&info, ptr::null(), &mut buffer)`: the C signature, with raw
 //!   pointers and [`vk::VkResult`]. The leading `VkInstance` or `VkDevice` parameter is
