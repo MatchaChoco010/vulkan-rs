@@ -460,6 +460,10 @@ impl Allocator {
     /// live allocations or are mapped, and returns how many allocations were still
     /// live. The allocator is empty afterwards and can be used again.
     ///
+    /// The [`Allocation`] values that were live are not held by the allocator any more:
+    /// every function that takes one rejects them, also after new allocations were made
+    /// in memory with the same `VkDeviceMemory` handle, offset and size.
+    ///
     /// This is the shutdown path for an owner that cannot guarantee that everything was
     /// freed: stop using the resources first, then call this before dropping the
     /// allocator and destroying the device.
@@ -470,8 +474,6 @@ impl Allocator {
     /// - No command that accesses a resource bound to memory of this allocator may be
     ///   pending, and such resources must not be used afterwards.
     /// - No pointer obtained by mapping memory of this allocator may be used afterwards.
-    /// - [`Allocation`] values that were live must not be passed to the allocator again:
-    ///   new memory can reuse their handles, so they are not reliably rejected.
     pub unsafe fn free_all(&mut self) -> usize {
         let live = self.live_allocation_count();
         for memory_type in &mut self.memory_types {

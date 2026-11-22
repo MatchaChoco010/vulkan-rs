@@ -1,9 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::align::align_up;
 use crate::report::{MemoryRegionSnapshot, MemoryRegionState};
 
 const MIN_SPLIT_SIZE: u64 = 256;
+
+static NEXT_ALLOCATION_ID: AtomicU64 = AtomicU64::new(1);
+
+fn take_allocation_id(next: &AtomicU64) -> Option<u64> {
+    next.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .ok()
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) struct Suballocation {
@@ -31,7 +39,6 @@ pub(crate) struct TlsfSuballocator {
     blocks: BTreeMap<u64, Block>,
     free_bins: BTreeMap<u32, BTreeSet<u64>>,
     allocations: HashMap<u64, u64>,
-    next_id: u64,
 }
 
 impl TlsfSuballocator {
@@ -41,7 +48,6 @@ impl TlsfSuballocator {
             blocks: BTreeMap::new(),
             free_bins: BTreeMap::new(),
             allocations: HashMap::new(),
-            next_id: 1,
         };
         this.insert_free_block(0, size);
         this
@@ -52,13 +58,25 @@ impl TlsfSuballocator {
         requested_size: u64,
         alignment: u64,
     ) -> Option<Suballocation> {
-        if requested_size == 0 || requested_size > self.size || self.next_id == u64::MAX {
+        self.allocate_with_id_from(&NEXT_ALLOCATION_ID, requested_size, alignment)
+    }
+
+    fn allocate_with_id_from(
+        &mut self,
+        next_id: &AtomicU64,
+        requested_size: u64,
+        alignment: u64,
+    ) -> Option<Suballocation> {
+        if requested_size == 0 || requested_size > self.size {
             return None;
         }
         let alignment = alignment.max(1);
         let (block_offset, block, aligned_offset) =
             self.find_candidate_block(requested_size, alignment)?;
         let padding = aligned_offset.checked_sub(block_offset)?;
+        let used_end = aligned_offset.checked_add(requested_size)?;
+        let block_end = block_offset.checked_add(block.size)?;
+        let id = take_allocation_id(next_id)?;
 
         self.remove_free_block(block_offset);
         self.blocks.remove(&block_offset);
@@ -77,8 +95,6 @@ impl TlsfSuballocator {
             },
         );
 
-        let used_end = allocation_offset.checked_add(allocation_size)?;
-        let block_end = block_offset.checked_add(block.size)?;
         if block_end > used_end {
             let tail_size = block_end - used_end;
             if tail_size >= MIN_SPLIT_SIZE {
@@ -89,8 +105,6 @@ impl TlsfSuballocator {
             }
         }
 
-        let id = self.next_id;
-        self.next_id += 1;
         self.allocations.insert(id, allocation_offset);
         Some(Suballocation {
             id,
@@ -538,11 +552,31 @@ pub(crate) mod tests {
     #[test]
     fn rejects_allocation_id_overflow_without_mutating_state() {
         let mut allocator = TlsfSuballocator::new(1024);
-        allocator.next_id = u64::MAX;
-        assert!(allocator.allocate(128, 1).is_none());
+        let exhausted = AtomicU64::new(u64::MAX);
+        assert!(
+            allocator
+                .allocate_with_id_from(&exhausted, 128, 1)
+                .is_none()
+        );
+        assert_eq!(exhausted.load(Ordering::Relaxed), u64::MAX);
         assert_eq!(allocator.stats().free_bytes, 1024);
         assert_eq!(allocator.stats().allocation_count, 0);
         assert!(allocator.allocations.is_empty());
         check_invariants(&allocator);
+    }
+
+    #[test]
+    fn allocation_ids_are_never_repeated_across_suballocators() {
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..64 {
+            let mut allocator = TlsfSuballocator::new(1024);
+            for _ in 0..4 {
+                let allocation = allocator.allocate(256, 1).unwrap();
+                assert!(seen.insert(allocation.id));
+                allocator.free(allocation.id).unwrap();
+                let allocation = allocator.allocate(256, 1).unwrap();
+                assert!(seen.insert(allocation.id));
+            }
+        }
     }
 }

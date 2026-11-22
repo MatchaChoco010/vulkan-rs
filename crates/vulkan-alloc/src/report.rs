@@ -116,8 +116,8 @@ pub enum MemoryRegionState {
     Free,
     /// The region is one live allocation.
     Allocated {
-        /// An identifier of the allocation, unique among the allocations ever made in
-        /// this block.
+        /// An identifier of the allocation. No two allocations made in one process
+        /// have the same identifier, whichever allocator made them.
         allocation_id: u64,
         /// The number of mapping references the allocation holds: one for each live
         /// [`MappedAllocation`](crate::MappedAllocation) guard and each
