@@ -88,8 +88,7 @@ struct ImageAllocation {
 /// buffers in units of the buffer descriptor size, images in units of the image
 /// descriptor size.
 struct ResourceHeapLayout {
-    /// Slot 0 is the instance buffer, which the shader reads at index 0. Slot 1 is the
-    /// material buffer.
+    /// The material buffer.
     buffers: DescriptorSlots,
     textures: DescriptorSlots,
     materials_index: u32,
@@ -184,10 +183,8 @@ fn main() -> Result<()> {
             selection.queue_family,
             queue,
             "sphere instance data",
-            vk::BufferUsageFlags::VERTEX_BUFFER
-                | vk::BufferUsageFlags::STORAGE_BUFFER
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            storage_buffer_alignment,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            1,
             &instances,
         )?;
         let materials = material_data(&resource_layout);
@@ -238,7 +235,6 @@ fn main() -> Result<()> {
             &mut allocator,
             &resource_heap,
             &resource_layout,
-            &instance_buffer,
             &material_buffer,
             &textures,
         )?;
@@ -517,7 +513,6 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
             continue;
         }
 
-        let mut vulkan11_features = vk::PhysicalDeviceVulkan11Features::default();
         let mut vulkan12_features = vk::PhysicalDeviceVulkan12Features::default();
         let mut vulkan13_features = vk::PhysicalDeviceVulkan13Features::default();
         let mut untyped_pointer_features =
@@ -528,13 +523,11 @@ unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDev
                 .push_next(&mut descriptor_heap_features)
                 .push_next(&mut untyped_pointer_features)
                 .push_next(&mut vulkan13_features)
-                .push_next(&mut vulkan12_features)
-                .push_next(&mut vulkan11_features);
+                .push_next(&mut vulkan12_features);
             instance.get_physical_device_features2(physical_device, &mut features2);
         }
         if descriptor_heap_features.descriptor_heap == 0
             || untyped_pointer_features.shader_untyped_pointers == 0
-            || vulkan11_features.shader_draw_parameters == 0
             || vulkan12_features.buffer_device_address == 0
             || vulkan13_features.synchronization2 == 0
             || vulkan13_features.dynamic_rendering == 0
@@ -593,8 +586,6 @@ unsafe fn create_device_and_queue(
         vk::CStrPtr::new(vk::EXT_DESCRIPTOR_HEAP_NAME),
         vk::CStrPtr::new(vk::KHR_SHADER_UNTYPED_POINTERS_NAME),
     ];
-    let mut vulkan11_features =
-        vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
     let mut descriptor_heap_features =
         vk::PhysicalDeviceDescriptorHeapFeaturesEXT::default().descriptor_heap(true);
     let mut untyped_pointer_features =
@@ -610,8 +601,7 @@ unsafe fn create_device_and_queue(
         .push_next(&mut descriptor_heap_features)
         .push_next(&mut untyped_pointer_features)
         .push_next(&mut vulkan13_features)
-        .push_next(&mut vulkan12_features)
-        .push_next(&mut vulkan11_features);
+        .push_next(&mut vulkan12_features);
     let device = instance.create_device(physical_device, &create_info, None)?;
     let queue = device.get_device_queue(queue_family, 0);
     Ok((device, queue))
@@ -621,7 +611,7 @@ fn resource_heap_layout(
     props: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>,
 ) -> Result<ResourceHeapLayout> {
     let mut plan = ResourceHeapPlan::new(props);
-    let buffers = plan.buffers(2)?;
+    let buffers = plan.buffers(1)?;
     let textures = plan.images(TEXTURE_COUNT as u32)?;
     let heap = plan.finish()?;
     let index = |slots: &DescriptorSlots, slot| {
@@ -629,11 +619,8 @@ fn resource_heap_layout(
             .index(slot)
             .ok_or_else(|| anyhow!("the resource heap has no slot {slot}"))
     };
-    if index(&buffers, 0)? != 0 {
-        return Err(anyhow!("the shader expects the instance buffer at index 0"));
-    }
     Ok(ResourceHeapLayout {
-        materials_index: index(&buffers, 1)?,
+        materials_index: index(&buffers, 0)?,
         texture_indices: [index(&textures, 0)?, index(&textures, 1)?],
         buffers,
         textures,
@@ -1014,24 +1001,15 @@ unsafe fn write_resource_heap_descriptors(
     allocator: &mut Allocator,
     heap: &BufferAllocation,
     layout: &ResourceHeapLayout,
-    instances: &BufferAllocation,
     materials: &BufferAllocation,
     textures: &[ImageAllocation; TEXTURE_COUNT],
 ) -> Result<()> {
-    let instance_range = device_address_range(device, instances);
     let material_range = device_address_range(device, materials);
-    let range_descriptors = [
-        vk::ResourceDescriptorInfoEXT::default()
-            .ty(vk::DescriptorType::STORAGE_BUFFER)
-            .data(vk::ResourceDescriptorDataEXT::address_range(
-                &instance_range,
-            )),
-        vk::ResourceDescriptorInfoEXT::default()
-            .ty(vk::DescriptorType::STORAGE_BUFFER)
-            .data(vk::ResourceDescriptorDataEXT::address_range(
-                &material_range,
-            )),
-    ];
+    let range_descriptors = [vk::ResourceDescriptorInfoEXT::default()
+        .ty(vk::DescriptorType::STORAGE_BUFFER)
+        .data(vk::ResourceDescriptorDataEXT::address_range(
+            &material_range,
+        ))];
     let texture_view_infos = [
         vk::ImageViewCreateInfo::default()
             .image(textures[0].image)
@@ -1158,9 +1136,7 @@ unsafe fn barrier_descriptor_heaps(
     let resource_barrier = vk::BufferMemoryBarrier2::default()
         .src_stage_mask(vk::PipelineStageFlags2::HOST)
         .src_access_mask(vk::AccessFlags2::HOST_WRITE)
-        .dst_stage_mask(
-            vk::PipelineStageFlags2::VERTEX_SHADER | vk::PipelineStageFlags2::FRAGMENT_SHADER,
-        )
+        .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
         .dst_access_mask(vk::AccessFlags2::RESOURCE_HEAP_READ_EXT)
         .buffer(resource_heap.buffer)
         .offset(0)
