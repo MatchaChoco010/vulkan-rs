@@ -8,10 +8,14 @@
 pub mod commands;
 pub mod device;
 pub mod extensions;
+#[cfg(test)]
+mod fake;
 pub mod image;
 pub mod instance;
 pub mod memory;
 pub mod output;
+#[cfg(test)]
+mod ownership_tests;
 pub mod pipeline;
 pub mod shader;
 #[cfg(feature = "window")]
