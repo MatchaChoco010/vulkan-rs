@@ -65,7 +65,10 @@
 //!             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
 //!         {
 //!             let mut mapped = allocator.map(&allocation)?;
-//!             mapped.byte_range_mut(0, data.len()).copy_from_slice(data);
+//!             mapped
+//!                 .byte_range_mut(0, data.len())
+//!                 .ok_or("the allocation is smaller than the data")?
+//!                 .copy_from_slice(data);
 //!             if !coherent {
 //!                 mapped.flush()?;
 //!             }

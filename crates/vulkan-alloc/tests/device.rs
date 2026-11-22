@@ -172,11 +172,14 @@ fn mapped_allocations_hold_data_and_share_a_block() {
 
         {
             let mut mapped = allocator.map(&a).unwrap();
-            mapped.byte_range_mut(0, 4).copy_from_slice(&[1, 2, 3, 4]);
+            mapped
+                .byte_range_mut(0, 4)
+                .unwrap()
+                .copy_from_slice(&[1, 2, 3, 4]);
         }
         {
             let mapped = allocator.map(&a).unwrap();
-            assert_eq!(mapped.byte_range(0, 4), &[1, 2, 3, 4]);
+            assert_eq!(mapped.byte_range(0, 4), Some(&[1, 2, 3, 4][..]));
         }
 
         gpu.device.destroy_buffer(first, None);
@@ -372,9 +375,9 @@ fn free_all_releases_memory_that_still_has_live_allocations() {
             .unwrap();
         {
             let mapped = allocator.map(&allocation).unwrap();
-            assert!(mapped.try_byte_range(0, 4096).is_some());
-            assert!(mapped.try_byte_range(4096, usize::MAX).is_none());
-            assert!(mapped.try_byte_range(1 << 40, 1).is_none());
+            assert!(mapped.byte_range(0, 4096).is_some());
+            assert!(mapped.byte_range(4096, usize::MAX).is_none());
+            assert!(mapped.byte_range(1 << 40, 1).is_none());
         }
 
         gpu.device.destroy_buffer(buffer, None);
@@ -416,7 +419,7 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
         bytes[..4].copy_from_slice(&[9, 8, 7, 6]);
         {
             let mapped = allocator.map(&a).unwrap();
-            assert_eq!(mapped.byte_range(0, 4), &[9, 8, 7, 6]);
+            assert_eq!(mapped.byte_range(0, 4), Some(&[9, 8, 7, 6][..]));
         }
         assert_eq!(allocator.persistent_ptr(&a), Some(pointer));
 
