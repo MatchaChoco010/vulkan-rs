@@ -92,16 +92,12 @@ fn screaming_ident(name: &str) -> String {
 }
 
 fn split_vendor_tag<'a>(name: &'a str, vendor_tags: &'a [String]) -> (&'a str, Option<&'a str>) {
-    let mut best: Option<&str> = None;
-    for tag in vendor_tags {
-        if name.ends_with(tag.as_str())
-            && name.len() > tag.len()
-            && best.is_none_or(|b| tag.len() > b.len())
-        {
-            best = Some(tag.as_str());
-        }
-    }
-    match best {
+    let longest = vendor_tags
+        .iter()
+        .map(String::as_str)
+        .filter(|tag| name.ends_with(tag) && name.len() > tag.len())
+        .max_by_key(|tag| tag.len());
+    match longest {
         Some(tag) => (&name[..name.len() - tag.len()], Some(tag)),
         None => (name, None),
     }

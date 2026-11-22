@@ -342,9 +342,7 @@ impl Converter<'_> {
             let body = &after[close + 2..];
             if let Some(body) = body.strip_prefix('#') {
                 let first = body.chars().next().map_or(0, char::len_utf8);
-                if first > 0
-                    && let Some(end) = body[first..].find("##")
-                {
+                if let Some(end) = body[first..].find("##") {
                     let end = first + end;
                     return Ok((1 + close + 3 + end + 2, self.formatted(&body[..end])?));
                 }
@@ -454,7 +452,7 @@ fn closing_marker(body: &str, marker: &str, unconstrained: bool) -> Option<usize
         let after = body[end + marker.len()..].chars().next();
         let closes = before.is_some_and(|c| !c.is_whitespace())
             && (unconstrained || after.is_none_or(|c| !is_word(c)));
-        if closes && end > 0 {
+        if closes {
             return Some(end);
         }
         search_from = end + marker.len();
@@ -973,6 +971,17 @@ mod tests {
         assert_eq!(markdown("**a **b** c"), "**a \\*\\*b** c");
         assert_eq!(markdown("**a**b"), "**a**b");
         assert_eq!(markdown("* a* and ** a**"), "\\* a\\* and \\*\\* a\\*\\*");
+    }
+
+    #[test]
+    fn a_plus_in_code_is_refused_only_where_it_opens_a_passthrough() {
+        assert_eq!(
+            markdown("`a+b` and `i++` and `a + b` and `+ a`"),
+            "`a+b` and `i++` and `a + b` and `+ a`"
+        );
+        for text in ["`+x\ny+`", "`a +x\ny+`", "`++x++`", "`a +x+ b`"] {
+            assert_eq!(convert(text), Err(Unsupported::Passthrough), "{text:?}");
+        }
     }
 
     #[test]
