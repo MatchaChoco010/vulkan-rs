@@ -1,18 +1,19 @@
 use anyhow::{Result, bail};
-use vulkan::{Entry, Instance, vk};
+use vulkan::{Entry, vk};
 use vulkan_example_common::device::{Gpu, find_queue_family, pick_physical_device};
 use vulkan_example_common::instance::{create_instance, destroy_instance};
 
-/// A Vulkan 1.1 device with a graphics queue and `shaderDrawParameters`.
+/// A Vulkan 1.1 device with a graphics queue.
 pub unsafe fn create_gpu() -> Result<Gpu> {
     unsafe {
         let entry = Entry::load()?;
         // The shaders are SPIR-V 1.3, which needs Vulkan 1.1.
+        let api_version = vk::API_VERSION_1_1;
         let (instance, messenger) =
-            create_instance(&entry, c"headless-triangle", vk::API_VERSION_1_1, &[])?;
+            create_instance(&entry, c"headless-triangle", api_version, &[])?;
 
-        let selected = pick_physical_device(&instance, |physical_device, _| {
-            if !supports_shader_draw_parameters(&instance, physical_device) {
+        let selected = pick_physical_device(&instance, |physical_device, properties| {
+            if properties.api_version < api_version {
                 return Ok(None);
             }
             Ok(find_queue_family(
@@ -23,22 +24,14 @@ pub unsafe fn create_gpu() -> Result<Gpu> {
         })?;
         let Some((physical_device, queue_family)) = selected else {
             destroy_instance(instance, messenger);
-            bail!("no physical device supports graphics and shaderDrawParameters");
+            bail!("no Vulkan 1.1 physical device supports graphics");
         };
 
         let priorities = [1.0];
         let queues = [vk::DeviceQueueCreateInfo::default()
             .queue_family_index(queue_family)
             .queue_priorities(&priorities)];
-        let mut draw_parameters =
-            vk::PhysicalDeviceShaderDrawParametersFeatures::default().shader_draw_parameters(true);
-        let device = instance.create_device(
-            physical_device,
-            &vk::DeviceCreateInfo::default()
-                .queue_create_infos(&queues)
-                .push_next(&mut draw_parameters),
-            None,
-        )?;
+        let device = instance.create_device(physical_device, &device_create_info(&queues), None)?;
         Ok(Gpu::new(
             instance,
             messenger,
@@ -49,14 +42,45 @@ pub unsafe fn create_gpu() -> Result<Gpu> {
     }
 }
 
-unsafe fn supports_shader_draw_parameters(
-    instance: &Instance,
-    physical_device: vk::PhysicalDevice,
-) -> bool {
-    // `VkPhysicalDeviceVulkan11Features` holds the same bit but was only added in
-    // Vulkan 1.2, so with a 1.1 instance this struct is the one to use.
-    let mut draw_parameters = vk::PhysicalDeviceShaderDrawParametersFeatures::default();
-    let mut features = vk::PhysicalDeviceFeatures2::default().push_next(&mut draw_parameters);
-    unsafe { instance.get_physical_device_features2(physical_device, &mut features) };
-    draw_parameters.shader_draw_parameters == vk::TRUE
+/// The device has `queues` and no optional features: the shaders declare no SPIR-V
+/// capability other than `Shader`.
+fn device_create_info<'a>(queues: &'a [vk::DeviceQueueCreateInfo<'a>]) -> vk::DeviceCreateInfo<'a> {
+    vk::DeviceCreateInfo::default().queue_create_infos(queues)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::{FRAGMENT_SHADER, VERTEX_SHADER};
+    use std::collections::BTreeSet;
+    use vulkan_example_common::device::enables_draw_parameters;
+    use vulkan_example_common::shader::{
+        CAPABILITY_DRAW_PARAMETERS, CAPABILITY_SHADER, spirv_capabilities,
+    };
+
+    #[test]
+    fn the_device_allows_draw_parameters_exactly_when_a_shader_declares_it() {
+        let queues = [vk::DeviceQueueCreateInfo::default()];
+        let info = device_create_info(&queues);
+        let draw_parameters_enabled = unsafe { enables_draw_parameters(&info) };
+        let mut supported = BTreeSet::from([CAPABILITY_SHADER]);
+        if draw_parameters_enabled {
+            supported.insert(CAPABILITY_DRAW_PARAMETERS);
+        }
+
+        let mut declared = BTreeSet::new();
+        for (name, code) in [("vertex", VERTEX_SHADER), ("fragment", FRAGMENT_SHADER)] {
+            let capabilities = spirv_capabilities(code).unwrap();
+            assert!(
+                capabilities.is_subset(&supported),
+                "the {name} shader declares {capabilities:?}, the device supports {supported:?}"
+            );
+            declared.extend(capabilities);
+        }
+        assert_eq!(
+            draw_parameters_enabled,
+            declared.contains(&CAPABILITY_DRAW_PARAMETERS),
+            "the device allows DrawParameters exactly when a shader declares it"
+        );
+    }
 }

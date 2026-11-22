@@ -4,6 +4,10 @@ use vulkan::{Device, vk};
 use vulkan_example_common::pipeline::single_pipeline;
 use vulkan_example_common::shader::create_shader_module;
 
+/// The SPIR-V of the shaders, compiled from `shaders/triangle.slang`.
+pub const VERTEX_SHADER: &[u8] = include_bytes!("shaders/triangle.vert.spv");
+pub const FRAGMENT_SHADER: &[u8] = include_bytes!("shaders/triangle.frag.spv");
+
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Vertex {
@@ -69,8 +73,8 @@ pub unsafe fn create_pipeline(
     extent: vk::Extent2D,
 ) -> Result<vk::Pipeline> {
     unsafe {
-        let vertex = create_shader_module(device, include_bytes!("shaders/triangle.vert.spv"))?;
-        let fragment = create_shader_module(device, include_bytes!("shaders/triangle.frag.spv"))?;
+        let vertex = create_shader_module(device, VERTEX_SHADER)?;
+        let fragment = create_shader_module(device, FRAGMENT_SHADER)?;
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::VERTEX)
