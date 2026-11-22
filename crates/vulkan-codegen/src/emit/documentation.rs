@@ -12,6 +12,7 @@ fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
         kind: String::new(),
         desc: desc.to_string(),
         aliases: Vec::new(),
+        file: "chapters/queues.adoc".to_string(),
         items: items
             .iter()
             .map(|(name, text)| DocItem {
@@ -193,6 +194,7 @@ fn docs() -> Docs {
         ],
         tables: vec![
             DocTable {
+                file: "chapters/queues.adoc".to_string(),
                 page: Some("VkColor".to_string()),
                 text: [
                     ".Wavelengths",
@@ -206,6 +208,7 @@ fn docs() -> Docs {
                 .join("\n"),
             },
             DocTable {
+                file: "chapters/queues.adoc".to_string(),
                 page: None,
                 text: "[options=\"header\"]\n|====\n|Object type |Handle\n|ename:VK_OBJECT_TYPE_QUEUE |slink:VkQueue\n|===="
                     .to_string(),

@@ -17,7 +17,7 @@ use crate::docs::{Links, Table, read_table};
 use crate::naming::enum_variant_name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
-use vulkan_registry::{DocPage, Docs, Enum, Registry, Struct};
+use vulkan_registry::{DocPage, DocTable, Docs, Enum, Registry, Struct};
 
 const POINTER_TYPEDEFS: &[&str] = &["VkRemoteAddressNV"];
 
@@ -25,7 +25,7 @@ pub(crate) struct Model<'a> {
     pub(crate) ir: &'a Registry,
     pub(crate) docs: &'a Docs,
     pub(crate) pages: BTreeMap<&'a str, &'a DocPage>,
-    pub(crate) tables: Vec<(Option<&'a str>, Table)>,
+    pub(crate) tables: Vec<(&'a DocTable, Table)>,
     pub(crate) command_aliases: BTreeMap<&'a str, &'a str>,
     pub(crate) links: Links,
     structs: BTreeMap<&'a str, &'a Struct>,
@@ -81,7 +81,7 @@ impl<'a> Model<'a> {
             tables: docs
                 .tables
                 .iter()
-                .filter_map(|table| Some((table.page.as_deref(), read_table(&table.text)?)))
+                .filter_map(|table| Some((table, read_table(&table.text)?)))
                 .collect(),
             command_aliases: command_aliases.collect(),
             links: Links::default(),

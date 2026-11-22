@@ -10,6 +10,7 @@ pub(crate) use tables::{Table, read as read_table};
 use crate::model::{Cfg, Model, parse_version};
 use crate::naming::type_name;
 use asciidoc::{Converted, Converter, Link};
+use std::collections::BTreeSet;
 use tables::Cell;
 use vulkan_registry::DocPage;
 
@@ -146,22 +147,50 @@ impl<'a> Model<'a> {
         Some(blocks)
     }
 
+    fn values_of(&self, owner: &str) -> BTreeSet<&'a str> {
+        let enum_fields = self
+            .ir
+            .enums
+            .iter()
+            .filter(|e| e.name == owner)
+            .flat_map(|e| &e.fields);
+        let bitmask_fields = self
+            .ir
+            .bitmasks
+            .iter()
+            .filter(|b| b.name == owner)
+            .flat_map(|b| &b.fields);
+        enum_fields
+            .chain(bitmask_fields)
+            .flat_map(|field| std::iter::once(&field.name).chain(&field.aliases))
+            .map(String::as_str)
+            .collect()
+    }
+
     pub(crate) fn tabulated(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
-        let cell = format!("ename:{item}");
-        let rows_in = |page: Option<&str>| {
+        let page = self.page(owner)?;
+        let values = self.values_of(owner);
+        let about_the_type = |table: &Table| {
+            table.title.is_some()
+                && table
+                    .rows
+                    .iter()
+                    .all(|row| value_named(row).is_some_and(|value| values.contains(value)))
+        };
+        let rows_in = |outside: bool| {
             self.tables
                 .iter()
-                .filter(|(table_page, _)| *table_page == page)
+                .filter(|(source, table)| match &source.page {
+                    Some(table_page) => !outside && *table_page == page.name,
+                    None => outside && source.file == page.file && about_the_type(table),
+                })
                 .flat_map(|(_, table)| table.rows.iter().map(move |row| (table, row)))
-                .filter(|(_, row)| row.first().and_then(Cell::single_line) == Some(cell.as_str()))
+                .filter(|(_, row)| value_named(row) == Some(item))
                 .collect::<Vec<_>>()
         };
-        let mut rows = match self.page(owner) {
-            Some(page) => rows_in(Some(&page.name)),
-            None => Vec::new(),
-        };
+        let mut rows = rows_in(false);
         if rows.is_empty() {
-            rows = rows_in(None);
+            rows = rows_in(true);
         }
         let blocks = rows
             .into_iter()
@@ -181,7 +210,9 @@ impl<'a> Model<'a> {
             if lines.is_empty() {
                 continue;
             }
-            let label = self.try_markdown(from, item, label.single_line()?).ok()?;
+            let label = self
+                .try_markdown(from, item, without_emphasis(label.single_line()?))
+                .ok()?;
             if label.trim().is_empty() {
                 return None;
             }
@@ -249,6 +280,27 @@ impl<'a> Model<'a> {
     }
 }
 
+fn value_named(row: &[Cell]) -> Option<&str> {
+    row.first()
+        .and_then(Cell::single_line)
+        .and_then(|cell| cell.strip_prefix("ename:"))
+}
+
+fn without_emphasis(text: &str) -> &str {
+    let text = text.trim();
+    for marker in ["**", "__", "*", "_"] {
+        if let Some(inner) = text
+            .strip_prefix(marker)
+            .and_then(|text| text.strip_suffix(marker))
+            && !inner.trim().is_empty()
+            && !inner.contains(marker)
+        {
+            return inner.trim();
+        }
+    }
+    text
+}
+
 pub(crate) fn alias_doc(target: &str, alias_c_name: &str) -> Doc {
     Doc::new()
         .text(format!(
@@ -276,6 +328,7 @@ mod tests {
                     kind: "structs".to_string(),
                     desc: "Structure specifying a two-dimensional extent".to_string(),
                     aliases: vec!["VkExtent2DKHR".to_string()],
+                    file: "chapters/extents.adoc".to_string(),
                     items: vec![
                         DocItem {
                             name: "width".to_string(),
@@ -291,17 +344,19 @@ mod tests {
                     name: "VkShade".to_string(),
                     kind: "enums".to_string(),
                     desc: "Shades of a color".to_string(),
+                    file: "chapters/shades.adoc".to_string(),
                     ..Default::default()
                 },
             ],
             tables: vec![
-                DocTable {
-                    page: Some("VkShade".to_string()),
-                    text: [
+                table(
+                    Some("VkShade"),
+                    "chapters/shades.adoc",
+                    &[
                         ".Shades and Their Extents",
                         "[options=\"header\",cols=\"2,1,1\"]",
                         "|====",
-                        "|elink:VkShade |Extent [eq]#(w {times} h)# |Mixes",
+                        "|elink:VkShade |Extent [eq]#(w {times} h)# |*Mixes*",
                         "|ename:VK_SHADE_LIGHT |slink:VkExtent2D, not ename:VK_SHADE_LIGHT",
                         "|[eq]#a~0~# +",
                         "[eq]#b~0~#",
@@ -309,24 +364,88 @@ mod tests {
                         "|ename:VK_SHADE_PALE |none |",
                         "|ename:VK_SHADE_GREY |grey m|code",
                         "|====",
-                    ]
-                    .join("\n"),
-                },
-                DocTable {
-                    page: None,
-                    text: "[cols=\"1,1\",options=\"header\"]\n|===\n|Shade |Use\n|ename:VK_SHADE_PALE |never\n|ename:VK_SHADE_DEEP |always\n|==="
-                        .to_string(),
-                },
-                DocTable {
-                    page: None,
-                    text: "|===\n|ename:VK_SHADE_BARE |without a header\n|===".to_string(),
-                },
-                DocTable {
-                    page: Some("VkExtent2D".to_string()),
-                    text: "[options=\"header\"]\n|===\n|Shade |Use\n|ename:VK_SHADE_FOREIGN |elsewhere\n|==="
-                        .to_string(),
-                },
+                    ],
+                ),
+                table(
+                    None,
+                    "chapters/shades.adoc",
+                    &[
+                        ".Uses of Shades",
+                        "[cols=\"1,1\",options=\"header\"]",
+                        "|===",
+                        "|Shade |Use",
+                        "|ename:VK_SHADE_PALE |never",
+                        "|ename:VK_SHADE_DEEP |always",
+                        "|===",
+                    ],
+                ),
+                table(
+                    None,
+                    "chapters/shades.adoc",
+                    &[
+                        "[options=\"header\"]",
+                        "|===",
+                        "|Shade |Untitled",
+                        "|ename:VK_SHADE_UNTITLED |somewhere",
+                        "|===",
+                    ],
+                ),
+                table(
+                    None,
+                    "chapters/other.adoc",
+                    &[
+                        ".Shades Elsewhere",
+                        "[options=\"header\"]",
+                        "|===",
+                        "|Shade |Use",
+                        "|ename:VK_SHADE_ELSEWHERE |in another chapter",
+                        "|===",
+                    ],
+                ),
+                table(
+                    None,
+                    "chapters/shades.adoc",
+                    &[
+                        ".Shades and Colors",
+                        "[options=\"header\"]",
+                        "|===",
+                        "|Value |Vertex",
+                        "|ename:VK_SHADE_MIXED |i",
+                        "|ename:VK_COLOR_RED |i + 1",
+                        "|===",
+                    ],
+                ),
+                table(
+                    None,
+                    "chapters/shades.adoc",
+                    &[
+                        ".Bare Shades",
+                        "|===",
+                        "|ename:VK_SHADE_BARE |without a header",
+                        "|===",
+                    ],
+                ),
+                table(
+                    Some("VkExtent2D"),
+                    "chapters/shades.adoc",
+                    &[
+                        ".Foreign Shades",
+                        "[options=\"header\"]",
+                        "|===",
+                        "|Shade |Use",
+                        "|ename:VK_SHADE_FOREIGN |elsewhere",
+                        "|===",
+                    ],
+                ),
             ],
+        }
+    }
+
+    fn table(page: Option<&str>, file: &str, lines: &[&str]) -> DocTable {
+        DocTable {
+            file: file.to_string(),
+            page: page.map(str::to_string),
+            text: lines.join("\n"),
         }
     }
 
@@ -348,6 +467,31 @@ mod tests {
                 value: "0".to_string(),
                 ..Default::default()
             }],
+            ..Default::default()
+        });
+        ir.enums.push(Enum {
+            name: "VkShade".to_string(),
+            bit_width: 32,
+            fields: [
+                "VK_SHADE_LIGHT",
+                "VK_SHADE_DARK",
+                "VK_SHADE_PALE",
+                "VK_SHADE_GREY",
+                "VK_SHADE_DEEP",
+                "VK_SHADE_UNTITLED",
+                "VK_SHADE_ELSEWHERE",
+                "VK_SHADE_MIXED",
+                "VK_SHADE_BARE",
+                "VK_SHADE_FOREIGN",
+            ]
+            .iter()
+            .enumerate()
+            .map(|(value, name)| EnumField {
+                name: name.to_string(),
+                value: value.to_string(),
+                ..Default::default()
+            })
+            .collect(),
             ..Default::default()
         });
         ir
@@ -459,15 +603,44 @@ mod tests {
         assert_eq!(
             model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_DEEP"),
             Some(vec![
-                Block::Text("`VK_SHADE_DEEP` in a table of the specification:".to_string()),
+                Block::Text(
+                    "`VK_SHADE_DEEP` in the table “Uses of Shades” of the specification:"
+                        .to_string()
+                ),
                 Block::List(vec![(0, "Use: always".to_string())]),
             ])
         );
-        assert_eq!(
-            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_FOREIGN"),
-            None,
-            "a table on the page of another item does not describe the value"
-        );
+        for (value, decoy) in [
+            ("VK_SHADE_FOREIGN", "a table on the page of another item"),
+            ("VK_SHADE_UNTITLED", "an untitled table outside any page"),
+            (
+                "VK_SHADE_ELSEWHERE",
+                "a table in another file than the page of the type",
+            ),
+            (
+                "VK_SHADE_MIXED",
+                "a table whose rows are not all values of the type",
+            ),
+        ] {
+            assert_eq!(
+                model.tabulated(&Cfg::default(), "VkShade", value),
+                None,
+                "{decoy} does not describe the value"
+            );
+        }
+    }
+
+    #[test]
+    fn header_labels_lose_their_emphasis() {
+        for (label, plain) in [
+            ("*Command Data*", "Command Data"),
+            ("**Data**", "Data"),
+            ("_Data_", "Data"),
+            ("*a* and *b*", "*a* and *b*"),
+            ("Data", "Data"),
+        ] {
+            assert_eq!(without_emphasis(label), plain, "{label}");
+        }
     }
 
     #[test]

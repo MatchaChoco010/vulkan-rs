@@ -560,10 +560,10 @@ def spec_anchor_titles(sources: list[Path]) -> dict[str, str]:
     return titles
 
 
-def spec_tables(lines: list[str], page_blocks: list[tuple[int, int, str]]) -> list[dict]:
+def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, str]]) -> list[dict]:
     """The tables (`|===` blocks) that name an enumerant, as AsciiDoc text that starts
     with the attribute, anchor and title lines above the table, and the reference page
-    block that each one is in, if any."""
+    block that each one is in, if any, and the source file."""
     tables = []
     index = 0
     while index < len(lines):
@@ -579,7 +579,7 @@ def spec_tables(lines: list[str], page_blocks: list[tuple[int, int, str]]) -> li
             start -= 1
         if any("ename:" in line for line in lines[index + 1 : end]):
             page = next((name for first, last, name in page_blocks if first < index < last), None)
-            tables.append({"page": page, "text": "\n".join(lines[start : end + 1])})
+            tables.append({"file": file, "page": page, "text": "\n".join(lines[start : end + 1])})
         index = end + 1
     return tables
 
@@ -612,11 +612,12 @@ def build_docs(defined: set[str]):
                 "kind": attributes.get("type", ""),
                 "desc": attributes.get("desc", "").strip(),
                 "aliases": attributes.get("alias", "").split(),
+                "file": str(source.relative_to(DOCS)),
                 "items": spec_described_items(lines[index + 2 : end]),
             }
             page_blocks.append((index, end, name))
             index = end + 1
-        tables.extend(spec_tables(lines, page_blocks))
+        tables.extend(spec_tables(str(source.relative_to(DOCS)), lines, page_blocks))
     if not pages:
         raise RuntimeError("third_party/vulkan-docs has no reference page blocks")
     all_titles = spec_anchor_titles(sources)

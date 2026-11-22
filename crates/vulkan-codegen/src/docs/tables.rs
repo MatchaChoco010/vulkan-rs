@@ -45,6 +45,9 @@ fn column_count(cols: &str) -> Option<usize> {
     let mut count = 0;
     for column in cols.split([',', ';']) {
         let column = column.trim();
+        if column.chars().any(|c| c.is_ascii_alphabetic()) {
+            return None;
+        }
         count += match column.split_once('*') {
             Some((multiplier, _)) => multiplier.trim().parse::<usize>().ok()?,
             None if column.is_empty() => return None,
@@ -142,6 +145,11 @@ fn is_block_attribute(line: &str) -> bool {
     line.starts_with('[') && line.ends_with(']') && !line.starts_with("[[")
 }
 
+fn is_ordered_list_item(line: &str) -> bool {
+    let digits = line.chars().take_while(char::is_ascii_digit).count();
+    digits > 0 && line[digits..].starts_with('.')
+}
+
 fn asciidoc_lines(content: &str) -> Option<Vec<String>> {
     let lines = content.lines().map(str::trim).collect::<Vec<_>>();
     let mut out = Vec::new();
@@ -152,8 +160,7 @@ fn asciidoc_lines(content: &str) -> Option<Vec<String>> {
             let close = (index + 2..lines.len()).find(|close| lines[*close] == "++++")?;
             let body = lines[index + 2..close]
                 .iter()
-                .filter(|line| !line.is_empty())
-                .copied()
+                .flat_map(|line| line.split_whitespace())
                 .collect::<Vec<_>>()
                 .join(" ");
             out.push(format!("latexmath:[{body}]"));
@@ -164,7 +171,9 @@ fn asciidoc_lines(content: &str) -> Option<Vec<String>> {
             || ["----", "====", "....", "++++", "****", "--"].contains(&line)
             || line.starts_with(['*', '-', '.'])
             || line.starts_with("include::")
-            || line.starts_with("image::");
+            || line.starts_with("image::")
+            || line.starts_with('!')
+            || is_ordered_list_item(line);
         if starts_a_block {
             return None;
         }
@@ -254,6 +263,7 @@ pub(crate) fn read(text: &str) -> Option<Table> {
                     match option {
                         "header" => header_option = Some(true),
                         "noheader" => header_option = Some(false),
+                        "footer" => return None,
                         _ => {}
                     }
                 }
@@ -393,7 +403,7 @@ mod tests {
             "[latexmath]",
             "++++",
             "                  \\begin{aligned}",
-            "                    p_0(A_s,A_d) & = A_sA_d \\\\",
+            "                    p_0(A_s,A_d)    & = A_sA_d \\\\",
             "                  \\end{aligned}",
             "++++",
             "",
@@ -509,6 +519,13 @@ mod tests {
         assert_eq!(column_count("<35,<23"), Some(2));
         assert_eq!(column_count("3*,2"), Some(4));
         assert_eq!(column_count(""), None);
+        assert_eq!(
+            column_count("1,2a"),
+            None,
+            "a column style changes how its cells are read"
+        );
+        assert_eq!(column_count("3*a"), None);
+        assert_eq!(column_count("<1,^.^2l"), None);
     }
 
     #[test]
@@ -537,6 +554,52 @@ mod tests {
         assert_eq!(read(&text_before_the_first_cell.join("\n")), None);
         let unterminated = ["|====", "|ename:VK_A"];
         assert_eq!(read(&unterminated.join("\n")), None);
+    }
+
+    #[test]
+    fn tables_with_a_footer_or_styled_columns_are_refused() {
+        let footer = [
+            "[options=\"header,footer\"]",
+            "|====",
+            "|Mode |Result",
+            "|ename:VK_A |one",
+            "|ename:VK_B |total",
+            "|====",
+        ];
+        assert_eq!(read(&footer.join("\n")), None);
+        let styled = [
+            "[cols=\"1,1a\",options=\"header\"]",
+            "|====",
+            "|Mode |Result",
+            "|ename:VK_A |",
+            "[latexmath]",
+            "++++",
+            "x",
+            "++++",
+            "|====",
+        ];
+        assert_eq!(read(&styled.join("\n")), None);
+    }
+
+    #[test]
+    fn asciidoc_cells_with_ordered_lists_or_nested_tables_are_unsupported() {
+        let table = table(&[
+            "[cols=\"1,1\",options=\"header\"]",
+            "|====",
+            "|Mode |Result",
+            "|ename:VK_A a|",
+            "1. first",
+            "2. second",
+            "|ename:VK_B a|",
+            "!===",
+            "!x !y",
+            "!===",
+            "|ename:VK_C a|plain text",
+            "|====",
+        ]);
+        assert_eq!(table.rows[0][1], Cell::Unsupported);
+        assert_eq!(table.rows[1][1], Cell::Unsupported);
+        assert_eq!(table.rows[2][1], lines(&["plain text"]));
     }
 
     #[test]

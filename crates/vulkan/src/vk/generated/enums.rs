@@ -4131,7 +4131,7 @@ impl BlendOp {
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 2 C_sC_d            & C_d \leq 0.5 \\ 1-2 (1-C_s)(1-C_d)  & \text{otherwise} \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 2 C_sC_d & C_d \leq 0.5 \\ 1-2 (1-C_s)(1-C_d) & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_OVERLAY_EXT")]
     pub const OVERLAY_EXT: Self = Self(1000148014);
     /// `VK_BLEND_OP_DARKEN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
@@ -4152,28 +4152,28 @@ impl BlendOp {
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0                         & C_d \leq 0 \\ min(1,\frac{C_d}{1-C_s})  & C_d \gt 0 \text{ and } C_s \lt 1 \\ 1                         & C_d \gt 0 \text{ and } C_s \geq 1 \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0 & C_d \leq 0 \\ min(1,\frac{C_d}{1-C_s}) & C_d \gt 0 \text{ and } C_s \lt 1 \\ 1 & C_d \gt 0 \text{ and } C_s \geq 1 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_COLORDODGE_EXT")]
     pub const COLORDODGE_EXT: Self = Self(1000148017);
     /// `VK_BLEND_OP_COLORBURN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1                             & C_d \geq 1 \\ 1 - min(1,\frac{1-C_d}{C_s})  & C_d \lt 1 \text{ and } C_s \gt 0 \\ 0                             & C_d \lt 1 \text{ and } C_s \leq 0 \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1 & C_d \geq 1 \\ 1 - min(1,\frac{1-C_d}{C_s}) & C_d \lt 1 \text{ and } C_s \gt 0 \\ 0 & C_d \lt 1 \text{ and } C_s \leq 0 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_COLORBURN_EXT")]
     pub const COLORBURN_EXT: Self = Self(1000148018);
     /// `VK_BLEND_OP_HARDLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 2 C_sC_d            & C_s \leq 0.5 \\ 1-2 (1-C_s)(1-C_d)  & \text{otherwise} \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 2 C_sC_d & C_s \leq 0.5 \\ 1-2 (1-C_s)(1-C_d) & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HARDLIGHT_EXT")]
     pub const HARDLIGHT_EXT: Self = Self(1000148019);
     /// `VK_BLEND_OP_SOFTLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_d-(1-2 C_s)C_d(1-C_d)               & C_s \leq 0.5 \\ C_d+(2 C_s-1)C_d((16 C_d-12)C_d+3)    & C_s \gt 0.5 \text{ and } C_d \leq 0.25 \\ C_d+(2 C_s-1)(\sqrt{C_d}-C_d)         & C_s \gt 0.5 \text{ and } C_d \gt 0.25 \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_d-(1-2 C_s)C_d(1-C_d) & C_s \leq 0.5 \\ C_d+(2 C_s-1)C_d((16 C_d-12)C_d+3) & C_s \gt 0.5 \text{ and } C_d \leq 0.25 \\ C_d+(2 C_s-1)(\sqrt{C_d}-C_d) & C_s \gt 0.5 \text{ and } C_d \gt 0.25 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SOFTLIGHT_EXT")]
     pub const SOFTLIGHT_EXT: Self = Self(1000148020);
     /// `VK_BLEND_OP_DIFFERENCE_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
@@ -4208,42 +4208,42 @@ impl BlendOp {
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_s+C_d           & C_s+C_d \leq 1 \\ 1                 & \text{otherwise} \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_s+C_d & C_s+C_d \leq 1 \\ 1 & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_LINEARDODGE_EXT")]
     pub const LINEARDODGE_EXT: Self = Self(1000148025);
     /// `VK_BLEND_OP_LINEARBURN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_s+C_d-1         & C_s+C_d \gt 1 \\ 0                 & \text{otherwise} \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_s+C_d-1 & C_s+C_d \gt 1 \\ 0 & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_LINEARBURN_EXT")]
     pub const LINEARBURN_EXT: Self = Self(1000148026);
     /// `VK_BLEND_OP_VIVIDLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1-min(1,\frac{1-C_d}{2C_s})   & 0  \lt  C_s  \lt  0.5 \\ 0                             & C_s  \leq  0 \\ min(1,\frac{C_d}{2(1-C_s)})   & 0.5  \leq  C_s  \lt  1 \\ 1                             & C_s  \geq  1 \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1-min(1,\frac{1-C_d}{2C_s}) & 0 \lt C_s \lt 0.5 \\ 0 & C_s \leq 0 \\ min(1,\frac{C_d}{2(1-C_s)}) & 0.5 \leq C_s \lt 1 \\ 1 & C_s \geq 1 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_VIVIDLIGHT_EXT")]
     pub const VIVIDLIGHT_EXT: Self = Self(1000148027);
     /// `VK_BLEND_OP_LINEARLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1                         & 2C_s+C_d \gt 2 \\ 2C_s+C_d-1                & 1  \lt  2C_s+C_d  \leq  2 \\ 0                         & 2C_s+C_d \leq 1 \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1 & 2C_s+C_d \gt 2 \\ 2C_s+C_d-1 & 1 \lt 2C_s+C_d \leq 2 \\ 0 & 2C_s+C_d \leq 1 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_LINEARLIGHT_EXT")]
     pub const LINEARLIGHT_EXT: Self = Self(1000148028);
     /// `VK_BLEND_OP_PINLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0                         & 2C_s-1 \gt C_d \text{ and } C_s \lt 0.5 \\ 2C_s-1                    & 2C_s-1 \gt C_d \text{ and } C_s \geq 0.5 \\ 2C_s                      & 2C_s-1 \leq C_d \text{ and } C_s \lt 0.5C_d \\ C_d                       & 2C_s-1 \leq C_d \text{ and } C_s \geq 0.5C_d \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0 & 2C_s-1 \gt C_d \text{ and } C_s \lt 0.5 \\ 2C_s-1 & 2C_s-1 \gt C_d \text{ and } C_s \geq 0.5 \\ 2C_s & 2C_s-1 \leq C_d \text{ and } C_s \lt 0.5C_d \\ C_d & 2C_s-1 \leq C_d \text{ and } C_s \geq 0.5C_d \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_PINLIGHT_EXT")]
     pub const PINLIGHT_EXT: Self = Self(1000148029);
     /// `VK_BLEND_OP_HARDMIX_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
     /// specification:
     ///
     /// - Blend Coefficients:
-    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0             & C_s+C_d \lt 1 \\ 1             & \text{otherwise} \end{cases} \end{aligned}`
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0 & C_s+C_d \lt 1 \\ 1 & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HARDMIX_EXT")]
     pub const HARDMIX_EXT: Self = Self(1000148030);
     /// `VK_BLEND_OP_HSL_HUE_EXT` in the table “Hue-Saturation-Luminosity Advanced Blend Operations”
@@ -13670,51 +13670,49 @@ impl IndirectCommandsTokenTypeEXT {
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**: `u32[]` array of indices into the indirect execution set
+    /// - Command Data: `u32[]` array of indices into the indirect execution set
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT")]
     pub const EXECUTION_SET: Self = Self(0);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**: `u32[]` raw data
+    /// - Command Data: `u32[]` raw data
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT")]
     pub const PUSH_CONSTANT: Self = Self(1);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT` in the table “Supported Indirect
     /// Command Tokens” of the specification:
     ///
-    /// - **Command Data**: `u32` placeholder data (not accessed by shader)
+    /// - Command Data: `u32` placeholder data (not accessed by shader)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT")]
     pub const SEQUENCE_INDEX: Self = Self(2);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**:
-    ///   [`VkBindIndexBufferIndirectCommandEXT`](BindIndexBufferIndirectCommandEXT)
+    /// - Command Data: [`VkBindIndexBufferIndirectCommandEXT`](BindIndexBufferIndirectCommandEXT)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT")]
     pub const INDEX_BUFFER: Self = Self(3);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**:
-    ///   [`VkBindVertexBufferIndirectCommandEXT`](BindVertexBufferIndirectCommandEXT)
+    /// - Command Data: [`VkBindVertexBufferIndirectCommandEXT`](BindVertexBufferIndirectCommandEXT)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT")]
     pub const VERTEX_BUFFER: Self = Self(4);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**: [`VkDrawIndexedIndirectCommand`](DrawIndexedIndirectCommand)
+    /// - Command Data: [`VkDrawIndexedIndirectCommand`](DrawIndexedIndirectCommand)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT")]
     pub const DRAW_INDEXED: Self = Self(5);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT` in the table “Supported Indirect Command Tokens”
     /// of the specification:
     ///
-    /// - **Command Data**: [`VkDrawIndirectCommand`](DrawIndirectCommand)
+    /// - Command Data: [`VkDrawIndirectCommand`](DrawIndirectCommand)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT")]
     pub const DRAW: Self = Self(6);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT` in the table “Supported Indirect
     /// Command Tokens” of the specification:
     ///
-    /// - **Command Data**:
+    /// - Command Data:
     ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
     ///   VkDrawIndexedIndirectCommand
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT")]
@@ -13722,7 +13720,7 @@ impl IndirectCommandsTokenTypeEXT {
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**:
+    /// - Command Data:
     ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
     ///   VkDrawIndirectCommand
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT")]
@@ -13730,31 +13728,31 @@ impl IndirectCommandsTokenTypeEXT {
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**: [`VkDispatchIndirectCommand`](DispatchIndirectCommand)
+    /// - Command Data: [`VkDispatchIndirectCommand`](DispatchIndirectCommand)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT")]
     pub const DISPATCH: Self = Self(9);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**: `u8[]` raw data
+    /// - Command Data: `u8[]` raw data
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT")]
     pub const PUSH_DATA: Self = Self(1000135000);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_SEQUENCE_INDEX_EXT` in the table “Supported
     /// Indirect Command Tokens” of the specification:
     ///
-    /// - **Command Data**: `u32` placeholder data (not accessed by shader)
+    /// - Command Data: `u32` placeholder data (not accessed by shader)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_SEQUENCE_INDEX_EXT")]
     pub const PUSH_DATA_SEQUENCE_INDEX: Self = Self(1000135001);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT` in the table “Supported Indirect
     /// Command Tokens” of the specification:
     ///
-    /// - **Command Data**: [`VkDrawMeshTasksIndirectCommandNV`](DrawMeshTasksIndirectCommandNV)
+    /// - Command Data: [`VkDrawMeshTasksIndirectCommandNV`](DrawMeshTasksIndirectCommandNV)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT")]
     pub const DRAW_MESH_TASKS_NV: Self = Self(1000202002);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT` in the table “Supported
     /// Indirect Command Tokens” of the specification:
     ///
-    /// - **Command Data**:
+    /// - Command Data:
     ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
     ///   VkDrawMeshTasksIndirectCommandNV
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT")]
@@ -13762,13 +13760,13 @@ impl IndirectCommandsTokenTypeEXT {
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT` in the table “Supported Indirect
     /// Command Tokens” of the specification:
     ///
-    /// - **Command Data**: [`VkDrawMeshTasksIndirectCommandEXT`](DrawMeshTasksIndirectCommandEXT)
+    /// - Command Data: [`VkDrawMeshTasksIndirectCommandEXT`](DrawMeshTasksIndirectCommandEXT)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT")]
     pub const DRAW_MESH_TASKS: Self = Self(1000328000);
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT` in the table “Supported Indirect
     /// Command Tokens” of the specification:
     ///
-    /// - **Command Data**:
+    /// - Command Data:
     ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
     ///   VkDrawMeshTasksIndirectCommandEXT
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT")]
@@ -13776,7 +13774,7 @@ impl IndirectCommandsTokenTypeEXT {
     /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT` in the table “Supported Indirect Command
     /// Tokens” of the specification:
     ///
-    /// - **Command Data**: [`VkTraceRaysIndirectCommand2KHR`](TraceRaysIndirectCommand2KHR)
+    /// - Command Data: [`VkTraceRaysIndirectCommand2KHR`](TraceRaysIndirectCommand2KHR)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT")]
     pub const TRACE_RAYS2: Self = Self(1000386004);
     /// The values of this type that have a constant, each with the name of its constant,
