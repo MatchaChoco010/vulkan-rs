@@ -39,16 +39,21 @@ pub unsafe fn create_gpu(window: WaylandWindow) -> Result<(Gpu, vk::SurfaceKHR, 
         let surface_maintenance1 = instance_extensions
             .contains(&vk::KHR_GET_SURFACE_CAPABILITIES_2_NAME)
             && instance_extensions.contains(&vk::EXT_SURFACE_MAINTENANCE_1_NAME);
+        // Dynamic rendering is core in Vulkan 1.3; the device is used without
+        // VK_KHR_dynamic_rendering, so it has to be a 1.3 device too.
+        let api_version = vk::API_VERSION_1_3;
         let (instance, messenger) = create_instance(
             &entry,
             c"vulkan-wayland-dynamic-rendering",
-            vk::API_VERSION_1_3,
+            api_version,
             &instance_extensions,
         )?;
         let surface = create_wayland_surface(&instance, window)?;
 
-        let selected = pick_physical_device(&instance, |physical_device, _| {
-            if !supports_extensions(&instance, physical_device, &[vk::KHR_SWAPCHAIN_NAME])? {
+        let selected = pick_physical_device(&instance, |physical_device, properties| {
+            if properties.api_version < api_version
+                || !supports_extensions(&instance, physical_device, &[vk::KHR_SWAPCHAIN_NAME])?
+            {
                 return Ok(None);
             }
             let Some(queue_family) =
