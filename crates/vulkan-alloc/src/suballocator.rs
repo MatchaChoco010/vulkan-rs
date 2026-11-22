@@ -156,24 +156,26 @@ impl TlsfSuballocator {
         let found = self.regions[index as usize];
         let padding = offset - found.offset;
         let tail = found.size - padding - requested_size;
-        self.remove_free(index);
-        let allocated = if padding > 0 {
-            self.regions[index as usize].size = padding;
-            self.insert_free(index);
-            self.insert_region_after(index, offset, found.size - padding)
-        } else {
-            index
-        };
-        let size = if tail >= MIN_SPLIT_SIZE {
-            let rest = self.insert_region_after(allocated, offset + requested_size, tail);
-            self.insert_free(rest);
+        let split_tail = tail >= MIN_SPLIT_SIZE;
+        let size = if split_tail {
             requested_size
         } else {
             requested_size + tail
         };
-        let region = &mut self.regions[allocated as usize];
-        region.size = size;
-        region.state = RegionState::Allocated { id };
+        self.remove_free(index);
+        let allocated = if padding > 0 {
+            self.regions[index as usize].size = padding;
+            self.insert_free(index);
+            self.insert_region_after(index, offset, size)
+        } else {
+            self.regions[index as usize].size = size;
+            index
+        };
+        if split_tail {
+            let rest = self.insert_region_after(allocated, offset + size, tail);
+            self.insert_free(rest);
+        }
+        self.regions[allocated as usize].state = RegionState::Allocated { id };
         self.allocations.insert(id, allocated);
         self.allocated_bytes += size;
         Some(Suballocation { id, offset, size })
