@@ -95,15 +95,7 @@ pub struct Bitmask {
     pub aliases: Vec<String>,
     pub flags_name: String,
     pub bit_width: u32,
-    pub fields: Vec<FlagField>,
-    pub protect: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct FlagField {
-    pub name: String,
-    pub aliases: Vec<String>,
-    pub value: String,
+    pub fields: Vec<EnumField>,
     pub protect: Option<String>,
 }
 
@@ -127,7 +119,6 @@ pub struct FuncPointer {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct FuncPointerParam {
     pub name: String,
-    pub ty: String,
     pub full_ty: String,
 }
 
@@ -150,8 +141,6 @@ pub struct Field {
     pub name: String,
     pub ty: String,
     pub full_ty: String,
-    pub is_const: bool,
-    pub pointer: bool,
     pub optional: bool,
     pub optional_pointer: bool,
     pub len: Option<String>,

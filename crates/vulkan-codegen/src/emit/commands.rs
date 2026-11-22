@@ -877,15 +877,13 @@ mod tests {
     #[test]
     fn slices_replace_pointer_and_count_and_shared_counts_are_checked() {
         let mut ir = base();
-        let mut buffers = counted("pBuffers", "const VkBuffer*", "bindingCount");
-        buffers.optional_pointer = true;
         ir.commands.push(device(command(
             "vkCmdBindVertexBuffers2",
             vec![
                 field("commandBuffer", "VkCommandBuffer"),
                 field("firstBinding", "uint32_t"),
                 field("bindingCount", "uint32_t"),
-                buffers,
+                counted("pBuffers", "const VkBuffer*", "bindingCount"),
                 counted("pOffsets", "const VkDeviceSize*", "bindingCount"),
                 optional(counted("pSizes", "const VkDeviceSize*", "bindingCount")),
             ],
@@ -909,15 +907,13 @@ mod tests {
     #[test]
     fn enumerations_retry_on_incomplete() {
         let mut ir = base();
-        let mut count = field("pSwapchainImageCount", "uint32_t*");
-        count.optional_pointer = true;
         ir.commands.push(device(result_command(
             "vkGetSwapchainImagesKHR",
             &["VK_SUCCESS", "VK_INCOMPLETE"],
             vec![
                 field("device", "VkDevice"),
                 field("swapchain", "VkSwapchainKHR"),
-                count,
+                field("pSwapchainImageCount", "uint32_t*"),
                 optional(counted(
                     "pSwapchainImages",
                     "VkBuffer*",

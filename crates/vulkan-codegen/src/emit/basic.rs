@@ -4,7 +4,7 @@ use crate::naming::{
     const_name, enum_variant_name, extension_name_const, flag_bit_name, type_name,
 };
 use std::collections::BTreeMap;
-use vulkan_registry::{Bitmask, Enum};
+use vulkan_registry::{Bitmask, Enum, EnumField};
 
 pub fn emit_mod() -> String {
     let modules = [
@@ -193,74 +193,54 @@ pub struct Variant {
     pub alias: bool,
 }
 
-fn variants<'a>(
+fn variants(
     model: &Model<'_>,
     type_name: &str,
-    fields: impl Iterator<Item = (&'a str, &'a [String], &'a str, Option<&'a str>)>,
+    fields: &[EnumField],
     rename: impl Fn(&str) -> String,
 ) -> Vec<Variant> {
     let mut out: Vec<Variant> = Vec::new();
     let mut seen = BTreeMap::<String, String>::new();
-    let mut push = |c_name: &str, value: &str, protect: Option<&str>, alias: bool| {
+    let mut push = |c_name: &str, field: &EnumField, alias: bool| {
         let name = rename(c_name);
         match seen.get(&name) {
-            Some(existing) if existing == value => return,
+            Some(existing) if *existing == field.value => return,
             Some(existing) => panic!(
-                "{type_name}: `{c_name}` maps to `{name}` which already has value {existing}, not {value}"
+                "{type_name}: `{c_name}` maps to `{name}` which already has value {existing}, not {}",
+                field.value
             ),
             None => {}
         }
-        seen.insert(name.clone(), value.to_string());
+        seen.insert(name.clone(), field.value.clone());
         out.push(Variant {
-            cfg: model.cfg(protect),
+            cfg: model.cfg(field.protect.as_deref()),
             name,
-            value: value.to_string(),
+            value: field.value.clone(),
             c_name: c_name.to_string(),
             alias,
         });
     };
-    let fields = fields.collect::<Vec<_>>();
-    for (name, _, value, protect) in &fields {
-        push(name, value, *protect, false);
+    for field in fields {
+        push(&field.name, field, false);
     }
-    for (_, aliases, value, protect) in &fields {
-        for alias in *aliases {
-            push(alias, value, *protect, true);
+    for field in fields {
+        for alias in &field.aliases {
+            push(alias, field, true);
         }
     }
     out
 }
 
 pub fn enum_variants(model: &Model<'_>, e: &Enum) -> Vec<Variant> {
-    variants(
-        model,
-        &e.name,
-        e.fields.iter().map(|f| {
-            (
-                f.name.as_str(),
-                f.aliases.as_slice(),
-                f.value.as_str(),
-                f.protect.as_deref(),
-            )
-        }),
-        |c_name| enum_variant_name(&e.name, c_name, &model.ir.vendor_tags),
-    )
+    variants(model, &e.name, &e.fields, |c_name| {
+        enum_variant_name(&e.name, c_name, &model.ir.vendor_tags)
+    })
 }
 
 pub fn bitmask_variants(model: &Model<'_>, b: &Bitmask) -> Vec<Variant> {
-    variants(
-        model,
-        &b.name,
-        b.fields.iter().map(|f| {
-            (
-                f.name.as_str(),
-                f.aliases.as_slice(),
-                f.value.as_str(),
-                f.protect.as_deref(),
-            )
-        }),
-        |c_name| flag_bit_name(&b.name, c_name, &model.ir.vendor_tags),
-    )
+    variants(model, &b.name, &b.fields, |c_name| {
+        flag_bit_name(&b.name, c_name, &model.ir.vendor_tags)
+    })
 }
 
 fn emit_consts(out: &mut String, variants: &[Variant]) {
@@ -659,7 +639,7 @@ pub fn emit_extensions(model: &Model<'_>) -> String {
 mod tests {
     use super::*;
     use crate::test_support::registry;
-    use vulkan_registry::{EnumField, FlagField, Flags, Handle};
+    use vulkan_registry::{Flags, Handle};
 
     #[test]
     fn enum_aliases_become_constants_but_not_debug_names() {
@@ -719,12 +699,12 @@ mod tests {
             flags_name: "VkImageUsageFlags".to_string(),
             bit_width: 32,
             fields: vec![
-                FlagField {
+                EnumField {
                     name: "VK_IMAGE_USAGE_SAMPLED_BIT".to_string(),
                     value: "4".to_string(),
                     ..Default::default()
                 },
-                FlagField {
+                EnumField {
                     name: "VK_IMAGE_USAGE_ALL".to_string(),
                     value: "7".to_string(),
                     ..Default::default()

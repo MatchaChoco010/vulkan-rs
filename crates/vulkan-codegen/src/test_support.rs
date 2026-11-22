@@ -30,8 +30,6 @@ pub fn field(name: &str, full_ty: &str) -> Field {
         name: name.to_string(),
         ty,
         full_ty: full_ty.to_string(),
-        is_const: full_ty.contains("const"),
-        pointer: full_ty.contains('*'),
         ..Default::default()
     }
 }
