@@ -5,6 +5,37 @@ use vulkan::{Device, Instance, vk};
 use crate::extensions::has_extension;
 use crate::instance::{DebugMessenger, destroy_instance};
 
+/// Whether `info` enables `shaderDrawParameters`, which a shader with the SPIR-V
+/// capability `DrawParameters` needs, through
+/// `VkPhysicalDeviceShaderDrawParametersFeatures` or `VkPhysicalDeviceVulkan11Features`
+/// in its `pNext` chain.
+///
+/// # Safety
+///
+/// The `pNext` chain of `info` must be valid.
+pub unsafe fn enables_shader_draw_parameters(info: &vk::DeviceCreateInfo<'_>) -> bool {
+    let mut next = info.p_next.cast::<vk::BaseInStructure<'_>>();
+    // SAFETY: every structure in a valid chain starts with `sType` and `pNext`, and
+    // `sType` tells which structure it is.
+    while let Some(base) = unsafe { next.as_ref() } {
+        let enabled = match base.s_type {
+            vk::StructureType::PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES => unsafe {
+                (*next.cast::<vk::PhysicalDeviceShaderDrawParametersFeatures<'_>>())
+                    .shader_draw_parameters
+            },
+            vk::StructureType::PHYSICAL_DEVICE_VULKAN_1_1_FEATURES => unsafe {
+                (*next.cast::<vk::PhysicalDeviceVulkan11Features<'_>>()).shader_draw_parameters
+            },
+            _ => vk::FALSE,
+        };
+        if enabled != vk::FALSE {
+            return true;
+        }
+        next = base.p_next;
+    }
+    false
+}
+
 /// An instance and a device with the one queue that the example submits to.
 pub struct Gpu {
     pub instance: Instance,
@@ -98,4 +129,44 @@ pub unsafe fn find_queue_family(
         .iter()
         .position(|family| family.queue_flags.contains(flags))
         .map(|index| index as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn draw_parameters(enabled: bool) -> vk::PhysicalDeviceShaderDrawParametersFeatures<'static> {
+        vk::PhysicalDeviceShaderDrawParametersFeatures::default().shader_draw_parameters(enabled)
+    }
+
+    fn vulkan11(enabled: bool) -> vk::PhysicalDeviceVulkan11Features<'static> {
+        vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(enabled)
+    }
+
+    #[test]
+    fn finds_shader_draw_parameters_anywhere_in_the_chain() {
+        assert!(!unsafe { enables_shader_draw_parameters(&vk::DeviceCreateInfo::default()) });
+        for first in [false, true] {
+            for second in [false, true] {
+                for behind_other_features in [false, true] {
+                    let mut other = vk::PhysicalDeviceVulkan12Features::default();
+                    let mut first_features = draw_parameters(first);
+                    let mut second_features = vulkan11(second);
+                    let mut info = vk::DeviceCreateInfo::default();
+                    if behind_other_features {
+                        info = info.push_next(&mut other);
+                    }
+                    let info = info
+                        .push_next(&mut first_features)
+                        .push_next(&mut second_features);
+                    assert_eq!(
+                        unsafe { enables_shader_draw_parameters(&info) },
+                        first || second,
+                        "draw parameters features: {first}, Vulkan 1.1 features: {second}, \
+                         behind other features: {behind_other_features}"
+                    );
+                }
+            }
+        }
+    }
 }
