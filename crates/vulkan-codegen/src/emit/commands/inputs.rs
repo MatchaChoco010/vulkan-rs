@@ -67,10 +67,12 @@ impl Inputs {
             notes: Vec::new(),
             narrowed_counts: Vec::new(),
             locals: Vec::new(),
+            arrays_of_pointed_count: BTreeMap::new(),
         };
         let by_param = (0..params.len())
             .map(|index| (!outputs.contains(&index)).then(|| planner.input(index)))
             .collect::<Vec<_>>();
+        planner.note_pointed_counts();
         let mut names = by_param
             .iter()
             .zip(params)
@@ -164,6 +166,7 @@ struct Planner<'a> {
     notes: Vec<String>,
     narrowed_counts: Vec<String>,
     locals: Vec<(String, String)>,
+    arrays_of_pointed_count: BTreeMap<usize, Vec<usize>>,
 }
 
 impl Planner<'_> {
@@ -349,12 +352,22 @@ impl Planner<'_> {
         let Some(len) = p.len.as_deref() else {
             return;
         };
-        let Some(count) = self.params.iter().find(|q| {
+        let Some(count_index) = self.params.iter().position(|q| {
             let ty = CType::of(q);
             q.name == len && ty.pointers == [false] && !ty.is_array()
         }) else {
             return;
         };
+        let array_index = self
+            .params
+            .iter()
+            .position(|q| q.name == p.name)
+            .unwrap_or_else(|| panic!("{}: {} is not a parameter", self.c.name, p.name));
+        self.arrays_of_pointed_count
+            .entry(count_index)
+            .or_default()
+            .push(array_index);
+        let count = &self.params[count_index];
         let count_name = argument_name(count);
         let cast = match self.model.base_ty(&count.ty, "'_").as_str() {
             "usize" => "",
@@ -366,6 +379,38 @@ impl Planner<'_> {
             argument_name(p)
         );
         self.assert_slice_len(p, &format!("*{count_name}{cast}"), &message);
+    }
+
+    fn note_pointed_counts(&mut self) {
+        for (count, arrays) in &self.arrays_of_pointed_count {
+            let count = argument_name(&self.params[*count]);
+            let arrays = arrays
+                .iter()
+                .map(|array| &self.params[*array])
+                .collect::<Vec<_>>();
+            let names = join_and(
+                arrays
+                    .iter()
+                    .map(|array| format!("`{}`", argument_name(array)))
+                    .collect(),
+            );
+            let every_array_can_be_absent = arrays.iter().all(|array| array.optional);
+            let no_array_can_be_absent = arrays.iter().all(|array| !array.optional);
+            let contract = match (every_array_can_be_absent, arrays.len()) {
+                (true, 1) => format!(
+                    "if {names} is `None`, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements of {names} when the wrapper is called"
+                ),
+                (true, _) => "if all of them are `None`, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements of each of them that is not `None` when the wrapper is called".to_string(),
+                (false, 1) => format!(
+                    "it has to hold the number of elements of {names} when the wrapper is called"
+                ),
+                (false, _) if no_array_can_be_absent => "it has to hold the number of elements of each of them when the wrapper is called".to_string(),
+                (false, _) => "it has to hold the number of elements of each of them that is not `None` when the wrapper is called".to_string(),
+            };
+            self.notes.push(format!(
+                "`{count}` is the element count of {names}, which the command reads and writes: {contract}, which the wrapper checks, and the command overwrites it with the number of elements that it wrote."
+            ));
+        }
     }
 
     fn assert_struct_member_len(&mut self, p: &Field) {
