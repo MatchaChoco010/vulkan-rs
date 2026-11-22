@@ -11728,9 +11728,14 @@ impl crate::Instance {
     /// [`vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM`](https://docs.vulkan.org/refpages/latest/refpages/source/vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM.html)
     /// through
     /// [`Self::enumerate_physical_device_queue_family_performance_counters_by_region_arm_raw`],
-    /// which describes the parameters. Returns the result code of the command when it is not an
-    /// error, which the registry lists as [`VK_SUCCESS`](VkResult::SUCCESS) or
-    /// [`VK_INCOMPLETE`](VkResult::INCOMPLETE). The command is provided by
+    /// which describes the parameters. `counter_count` is the element count of `counters` and
+    /// `counter_descriptions`, which the command reads and writes: if all of them are `None`, the
+    /// command writes the number of elements that it can return to it; otherwise it has to hold the
+    /// number of elements of each of them that is not `None` when the wrapper is called, which the
+    /// wrapper checks, and the command overwrites it with the number of elements that it wrote.
+    /// Returns the result code of the command when it is not an error, which the registry lists as
+    /// [`VK_SUCCESS`](VkResult::SUCCESS) or [`VK_INCOMPLETE`](VkResult::INCOMPLETE). The command is
+    /// provided by
     /// [`VK_ARM_performance_counters_by_region`](ARM_PERFORMANCE_COUNTERS_BY_REGION_NAME).
     ///
     /// # Errors
@@ -11800,10 +11805,14 @@ impl crate::Instance {
     /// Calls the C command
     /// [`vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR.html)
     /// through [`Self::enumerate_physical_device_queue_family_performance_query_counters_khr_raw`],
-    /// which describes the parameters. Returns the result code of the command when it is not an
-    /// error, which the registry lists as [`VK_SUCCESS`](VkResult::SUCCESS) or
-    /// [`VK_INCOMPLETE`](VkResult::INCOMPLETE). The command is provided by
-    /// [`VK_KHR_performance_query`](KHR_PERFORMANCE_QUERY_NAME).
+    /// which describes the parameters. `counter_count` is the element count of `counters` and
+    /// `counter_descriptions`, which the command reads and writes: if all of them are `None`, the
+    /// command writes the number of elements that it can return to it; otherwise it has to hold the
+    /// number of elements of each of them that is not `None` when the wrapper is called, which the
+    /// wrapper checks, and the command overwrites it with the number of elements that it wrote.
+    /// Returns the result code of the command when it is not an error, which the registry lists as
+    /// [`VK_SUCCESS`](VkResult::SUCCESS) or [`VK_INCOMPLETE`](VkResult::INCOMPLETE). The command is
+    /// provided by [`VK_KHR_performance_query`](KHR_PERFORMANCE_QUERY_NAME).
     ///
     /// # Errors
     ///
@@ -61555,9 +61564,13 @@ impl crate::Device {
     ///
     /// Calls the C command
     /// [`vkGetDeviceFaultReportsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDeviceFaultReportsKHR.html)
-    /// through [`Self::get_device_fault_reports_khr_raw`], which describes the parameters. Returns
-    /// the result code of the command when it is not an error, which the registry lists as
-    /// [`VK_SUCCESS`](VkResult::SUCCESS), [`VK_INCOMPLETE`](VkResult::INCOMPLETE) or
+    /// through [`Self::get_device_fault_reports_khr_raw`], which describes the parameters.
+    /// `fault_counts` is the element count of `fault_info`, which the command reads and writes: if
+    /// `fault_info` is `None`, the command writes the number of elements that it can return to it;
+    /// otherwise it has to hold the number of elements of `fault_info` when the wrapper is called,
+    /// which the wrapper checks, and the command overwrites it with the number of elements that it
+    /// wrote. Returns the result code of the command when it is not an error, which the registry
+    /// lists as [`VK_SUCCESS`](VkResult::SUCCESS), [`VK_INCOMPLETE`](VkResult::INCOMPLETE) or
     /// [`VK_TIMEOUT`](VkResult::TIMEOUT). The command is provided by
     /// [`VK_KHR_device_fault`](KHR_DEVICE_FAULT_NAME).
     ///

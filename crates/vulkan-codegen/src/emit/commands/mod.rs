@@ -1408,6 +1408,134 @@ mod tests {
         );
     }
 
+    fn counted_through_a_pointer(arrays: &[(&str, bool)]) -> Registry {
+        let mut params = vec![
+            field("device", "VkDevice"),
+            field("pFaultCounts", "uint32_t*"),
+        ];
+        for (name, is_optional) in arrays {
+            let array = counted(name, "VkDeviceFaultInfoKHR*", "pFaultCounts");
+            params.push(if *is_optional { optional(array) } else { array });
+        }
+        let mut ir = only(result_command(
+            "vkGetFaultsNV",
+            &["VK_SUCCESS", "VK_INCOMPLETE", "VK_TIMEOUT"],
+            params,
+        ));
+        ir.structs.push(tagged(
+            "VkDeviceFaultInfoKHR",
+            "VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR",
+            vec![field("flags", "uint32_t")],
+        ));
+        ir
+    }
+
+    fn words(text: &str) -> String {
+        text.replace("///", "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn a_count_passed_through_a_pointer_is_described_as_read_and_written() {
+        for (arrays, note) in [
+            (
+                &[("pFaultInfo", true)][..],
+                "`fault_counts` is the element count of `fault_info`, which the command reads and writes: if `fault_info` is `None`, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements of `fault_info` when the wrapper is called, which the wrapper checks, and the command overwrites it with the number of elements that it wrote.",
+            ),
+            (
+                &[("pFaultInfo", true), ("pFaultNames", true)],
+                "`fault_counts` is the element count of `fault_info` and `fault_names`, which the command reads and writes: if all of them are `None`, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements of each of them that is not `None` when the wrapper is called, which the wrapper checks, and the command overwrites it with the number of elements that it wrote.",
+            ),
+            (
+                &[("pFaultInfo", false)],
+                "`fault_counts` is the element count of `fault_info`, which the command reads and writes: it has to hold the number of elements of `fault_info` when the wrapper is called, which the wrapper checks, and the command overwrites it with the number of elements that it wrote.",
+            ),
+            (
+                &[("pFaultInfo", false), ("pFaultNames", false)],
+                "`fault_counts` is the element count of `fault_info` and `fault_names`, which the command reads and writes: it has to hold the number of elements of each of them when the wrapper is called, which the wrapper checks, and the command overwrites it with the number of elements that it wrote.",
+            ),
+            (
+                &[("pFaultInfo", false), ("pFaultNames", true)],
+                "`fault_counts` is the element count of `fault_info` and `fault_names`, which the command reads and writes: it has to hold the number of elements of each of them that is not `None` when the wrapper is called, which the wrapper checks, and the command overwrites it with the number of elements that it wrote.",
+            ),
+        ] {
+            let ir = counted_through_a_pointer(arrays);
+            let model = Model::new(&ir);
+            let out = wrapper::wrapper(&model, &ir.commands[0], Dispatch::Device);
+            let documented = words(&out);
+            assert!(
+                documented.contains(&format!(
+                    "through [`Self::get_faults_nv_raw`], which describes the parameters. {note} Returns the result code of the command"
+                )),
+                "{arrays:?}: {documented}"
+            );
+            assert_eq!(
+                squash(&out).matches("`*fault_counts` elements").count(),
+                arrays.len(),
+                "{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_describe_every_count_that_they_read_through_a_pointer() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut found = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = wrapper::wrapper(&model, c, model.dispatch(c));
+            let code = squash(&out);
+            let documented = words(&out);
+            let mut arrays_of_count = BTreeMap::<&str, Vec<&str>>::new();
+            for (at, _) in code.match_indices("` must have `*") {
+                let array = code[..at].rsplit('`').next().expect("the array");
+                let count = code[at + "` must have `*".len()..]
+                    .split('`')
+                    .next()
+                    .expect("the count");
+                arrays_of_count.entry(count).or_default().push(array);
+            }
+            assert_eq!(
+                documented
+                    .matches(", which the command reads and writes: ")
+                    .count(),
+                arrays_of_count.len(),
+                "{}: {documented}",
+                c.name
+            );
+            for (count, arrays) in arrays_of_count {
+                let names = crate::docs::join_and(
+                    arrays.iter().map(|array| format!("`{array}`")).collect(),
+                );
+                assert!(
+                    documented.contains(&format!(
+                        "`{count}` is the element count of {names}, which the command reads and writes: "
+                    )),
+                    "{}: {documented}",
+                    c.name
+                );
+                assert!(
+                    code.contains(&format!("{count}: &mut ")),
+                    "{}: the command writes `{count}`: {code}",
+                    c.name
+                );
+                found.insert(c.name.as_str());
+            }
+        }
+        assert_eq!(
+            found,
+            BTreeSet::from([
+                "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM",
+                "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR",
+                "vkGetDeviceFaultReportsKHR",
+            ])
+        );
+    }
+
     #[test]
     fn the_enumerations_of_the_registry_loop_only_when_they_report_nothing_but_completeness() {
         let model = Model::with_docs(Registry::get(), Docs::get());
