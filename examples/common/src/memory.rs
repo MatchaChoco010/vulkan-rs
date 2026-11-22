@@ -153,6 +153,19 @@ pub unsafe fn upload_buffer(
     usage: vk::BufferUsageFlags,
     data: &[u8],
 ) -> Result<Buffer> {
+    unsafe { upload_aligned_buffer(gpu, allocator, name, usage, data, 1) }
+}
+
+/// Like [`upload_buffer`], for a buffer whose device address has to be a multiple of
+/// `alignment`.
+pub unsafe fn upload_aligned_buffer(
+    gpu: &Gpu,
+    allocator: &mut Allocator,
+    name: &str,
+    usage: vk::BufferUsageFlags,
+    data: &[u8],
+    alignment: u64,
+) -> Result<Buffer> {
     unsafe {
         let device = &gpu.device;
         let size = data.len() as u64;
@@ -165,13 +178,14 @@ pub unsafe fn upload_buffer(
             MemoryLocation::CpuToGpu,
         )?;
         write_buffer(allocator, &staging, data)?;
-        let buffer = create_buffer(
+        let buffer = create_aligned_buffer(
             device,
             allocator,
             name,
             size,
             usage | vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuOnly,
+            alignment,
         )?;
         submit_and_wait(gpu, |command_buffer| {
             device.cmd_copy_buffer(
