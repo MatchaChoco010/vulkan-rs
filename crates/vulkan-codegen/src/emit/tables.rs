@@ -36,15 +36,6 @@ pub fn emit_formats(model: &Model<'_>) -> String {
     w!(out, "impl Format {{");
     w!(
         out,
-        "    /// Texel layout of this format, from the registry."
-    );
-    w!(out, "    ///");
-    w!(
-        out,
-        "    /// `None` for `UNDEFINED` and for values that these bindings do not know."
-    );
-    w!(
-        out,
         "    pub const fn info(self) -> Option<&'static FormatInfo> {{"
     );
     w!(out, "        match self.0 {{");
@@ -61,7 +52,6 @@ pub fn emit_formats(model: &Model<'_>) -> String {
             }
             Some(other) => panic!("{}: unknown chroma subsampling {other}", f.name),
         };
-        w!(out, "            // {}", f.name);
         w!(out, "            {} => Some(&FormatInfo {{", value(&f.name));
         w!(out, "                class: \"{}\",", f.class);
         w!(out, "                block_size: {},", f.block_size);
@@ -155,10 +145,6 @@ pub fn emit_extension_table(model: &Model<'_>) -> String {
     extensions.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
 
     let mut out = String::new();
-    w!(
-        out,
-        "/// Every extension of the registry, sorted by name. See [`ExtensionInfo::get`]."
-    );
     w!(out, "pub const EXTENSIONS: &[ExtensionInfo] = &[");
     for ext in extensions {
         let level = match (ext.instance, ext.device) {
@@ -223,10 +209,6 @@ pub fn emit_command_table(model: &Model<'_>) -> String {
     commands.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
 
     let mut out = header(&[]);
-    w!(
-        out,
-        "/// One [`CommandInfo`] per command, named after the wrapper method."
-    );
     w!(out, "pub mod command {{");
     w!(out, "    use crate::vk::*;\n");
     for c in &commands {
@@ -248,7 +230,6 @@ pub fn emit_command_table(model: &Model<'_>) -> String {
             .map(|name| format!("c\"{name}\""))
             .collect::<Vec<_>>()
             .join(", ");
-        w!(out, "    /// `{}`", c.name);
         w!(
             out,
             "    pub const {}: CommandInfo = CommandInfo {{",
@@ -267,10 +248,6 @@ pub fn emit_command_table(model: &Model<'_>) -> String {
         w!(out, "    }};");
     }
     w!(out, "}}\n");
-    w!(
-        out,
-        "/// Every command of the registry, sorted by name. See [`CommandInfo::get`]."
-    );
     w!(out, "pub const COMMANDS: &[CommandInfo] = &[");
     for c in &commands {
         w!(
@@ -370,7 +347,7 @@ mod tests {
         let out = squash(&emit_formats(&Model::new(&formats())));
         assert!(out.contains("pub const fn info(self) -> Option<&'static FormatInfo> {"));
         assert!(out.contains(
-            "// VK_FORMAT_G8_B8R8_2PLANE_420_UNORM 1000156003 => Some(&FormatInfo { class: \"8-bit 2-plane 420\", block_size: 3, texels_per_block: 1, block_extent: [1, 1, 1], packed: None, chroma: Some(ChromaSubsampling::_420), compression: None,"
+            "1000156003 => Some(&FormatInfo { class: \"8-bit 2-plane 420\", block_size: 3, texels_per_block: 1, block_extent: [1, 1, 1], packed: None, chroma: Some(ChromaSubsampling::_420), compression: None,"
         ));
         assert!(out.contains(
             "FormatPlane { width_divisor: 2, height_divisor: 2, compatible: Format(16) },"

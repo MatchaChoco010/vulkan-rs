@@ -1,5 +1,5 @@
 use super::{header, w};
-use crate::model::{CType, Model, provided_by};
+use crate::model::{CType, Model};
 use crate::naming::{const_name, enum_variant_name, field_name, pointer_setter_name, type_name};
 use std::collections::{BTreeMap, BTreeSet};
 use vulkan_registry::{Field, Struct};
@@ -129,22 +129,6 @@ fn cfg_all(model: &Model<'_>, protects: &[Option<&str>]) -> String {
     }
 }
 
-fn doc(out: &mut String, s: &Struct) {
-    if s.video_std_header.is_some() {
-        w!(out, "/// `{}`", s.name);
-    } else {
-        w!(
-            out,
-            "/// [`{0}`](https://registry.khronos.org/vulkan/specs/latest/man/html/{0}.html)",
-            s.name
-        );
-    }
-    let provided = provided_by(&s.extensions, s.version.as_deref());
-    if !provided.is_empty() {
-        w!(out, "///\n/// {provided}");
-    }
-}
-
 fn emit_struct(out: &mut String, model: &Model<'_>, s: &Struct) {
     let cfg = model.cfg(s.protect.as_deref());
     let name = type_name(&s.name);
@@ -153,7 +137,6 @@ fn emit_struct(out: &mut String, model: &Model<'_>, s: &Struct) {
     let slots = slots(model, s);
 
     out.push_str(&cfg);
-    doc(out, s);
     let mut derives = vec!["Copy", "Clone"];
     if model.derives_partial_eq(&s.name) {
         derives.push("PartialEq");
@@ -173,16 +156,7 @@ fn emit_struct(out: &mut String, model: &Model<'_>, s: &Struct) {
                 field_name(&m.name),
                 model.member_ty(m, "'a")
             ),
-            Slot::Bits { storage, bits } => {
-                let names = bits
-                    .iter()
-                    .map(|b| format!("`{}:{}`", b.member.name, b.width))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                w!(
-                    out,
-                    "    /// C bit-fields {names}, first field in the low bits."
-                );
+            Slot::Bits { storage, .. } => {
                 w!(out, "    pub {storage}: u32,");
             }
         }
@@ -236,12 +210,6 @@ fn emit_struct(out: &mut String, model: &Model<'_>, s: &Struct) {
         } else {
             "self.p_next = push_chain(next, self.p_next.cast()) as _;"
         };
-        w!(out, "    /// Prepends `next` to the `pNext` chain.");
-        w!(out, "    ///");
-        w!(
-            out,
-            "    /// `next.p_next` is overwritten, so push extension structs one at a time."
-        );
         w!(
             out,
             "    pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {{"
@@ -271,7 +239,6 @@ fn emit_union(out: &mut String, model: &Model<'_>, s: &Struct) {
     let (generics, anon) = if lt { ("<'a>", "<'_>") } else { ("", "") };
 
     out.push_str(&cfg);
-    doc(out, s);
     w!(out, "#[repr(C)]");
     w!(out, "#[derive(Copy, Clone)]");
     w!(out, "pub union {name}{generics} {{");
@@ -298,14 +265,6 @@ fn emit_union(out: &mut String, model: &Model<'_>, s: &Struct) {
     }
     w!(out, "{cfg}impl Default for {name}{anon} {{");
     w!(out, "    fn default() -> Self {{");
-    w!(
-        out,
-        "        // SAFETY: every member is an integer, float, pointer, or an aggregate of"
-    );
-    w!(
-        out,
-        "        // those, for which all-zero bytes are a valid value."
-    );
     w!(out, "        unsafe {{ core::mem::zeroed() }}");
     w!(out, "    }}\n}}\n");
     w!(out, "{cfg}#[cfg(feature = \"debug\")]");
@@ -337,14 +296,12 @@ fn emit_union(out: &mut String, model: &Model<'_>, s: &Struct) {
             } else {
                 ("&'a mut", "core::ptr::from_mut(value)")
             };
-            w!(out, "    /// Creates the union with `{}` selected.", m.name);
             w!(
                 out,
                 "    pub fn {ctor}(value: {reference} {}) -> Self {{ Self {{ {field}: {convert} }} }}",
                 model.base_ty(&ty.base, "'a")
             );
         } else {
-            w!(out, "    /// Creates the union with `{}` selected.", m.name);
             w!(
                 out,
                 "    pub fn {ctor}(value: {}) -> Self {{ Self {{ {field}: value }} }}",
@@ -465,7 +422,6 @@ fn emit_setters(
             if ty.base == "char" {
                 let getter = format!("{plain}_as_c_str");
                 reserve(emitted, &s.name, &getter);
-                w!(out, "    /// Reads `{}` up to its first NUL.", m.name);
                 w!(
                     out,
                     "    pub fn {getter}(&self) -> core::result::Result<&CStr, core::ffi::FromBytesUntilNulError> {{ c_str_from_chars(&self.{field}) }}"
@@ -473,12 +429,6 @@ fn emit_setters(
             } else if let Some(count) = len_count(s, m) {
                 let getter = format!("{plain}_as_slice");
                 reserve(emitted, &s.name, &getter);
-                w!(
-                    out,
-                    "    /// The first `{}` elements of `{}`.",
-                    count.name,
-                    m.name
-                );
                 w!(
                     out,
                     "    pub fn {getter}(&self) -> &[{}] {{ let len = (self.{} as usize).min(self.{field}.len()); &self.{field}[..len] }}",
@@ -545,12 +495,6 @@ fn emit_setters(
             reserve(emitted, &s.name, &name);
             w!(
                 out,
-                "    /// Sets `{}` and `{}` from a slice.",
-                m.name,
-                count.name
-            );
-            w!(
-                out,
                 "    pub fn {name}(mut self, value: {reference} [{elem}]) -> Self {{ {}self.{} = value.len() as _; self.{field} = value.{as_ptr}(){cast}; self }}",
                 shared_check(count),
                 field_name(&count.name)
@@ -562,11 +506,6 @@ fn emit_setters(
                 s.name
             );
             reserve(emitted, &s.name, &name);
-            w!(
-                out,
-                "    /// Sets `{}` and `codeSize` (in bytes) from SPIR-V words.",
-                m.name
-            );
             w!(
                 out,
                 "    pub fn {name}(mut self, value: &'a [u32]) -> Self {{ self.code_size = core::mem::size_of_val(value); self.{field} = value.as_ptr(); self }}"
@@ -581,21 +520,11 @@ fn emit_setters(
             reserve(emitted, &s.name, &name);
             w!(
                 out,
-                "    /// Sets `{}`. Vulkan reads `{}` elements; no count member is updated.",
-                m.name,
-                m.len.as_deref().unwrap_or_default()
-            );
-            w!(
-                out,
                 "    pub fn {name}(mut self, value: {reference} [{}]) -> Self {{ self.{field} = value.{as_ptr}(); self }}",
                 model.base_ty(&ty.base, "'a")
             );
         } else if opaque {
             reserve(emitted, &s.name, &name);
-            w!(
-                out,
-                "    /// Stores a raw pointer. The borrow checker cannot track its lifetime."
-            );
             w!(
                 out,
                 "    pub fn {name}(mut self, value: {}) -> Self {{ self.{field} = value; self }}",
@@ -635,12 +564,6 @@ fn emit_setters(
         reserve(emitted, &s.name, &name);
         w!(
             out,
-            "    /// Sets `{}` and `{}` from a slice.",
-            m.name,
-            count.name
-        );
-        w!(
-            out,
             "    pub fn {name}(mut self, value: &'a [{elem}]) -> Self {{ {}self.{} = value.len() as _; self.{field} = value.as_ptr().cast(); self }}",
             shared_check(count),
             field_name(&count.name)
@@ -649,10 +572,6 @@ fn emit_setters(
     }
 
     reserve(emitted, &s.name, &field);
-    w!(
-        out,
-        "    /// Stores a raw pointer. The borrow checker cannot track its lifetime."
-    );
     w!(
         out,
         "    pub fn {field}(mut self, value: {}) -> Self {{ self.{field} = value; self }}",
@@ -695,19 +614,7 @@ fn emit_bit_accessors(
     };
     w!(
         out,
-        "    /// Sets the {}-bit field `{}`. Higher bits of `value` are dropped.",
-        bit.width,
-        m.name
-    );
-    w!(
-        out,
         "    pub fn {field}(mut self, value: {ty}) -> Self {{ self.{storage} = (self.{storage} & !({mask:#x}{shl})) | (({to_raw} & {mask:#x}){shl}); self }}"
-    );
-    w!(
-        out,
-        "    /// Reads the {}-bit field `{}`.",
-        bit.width,
-        m.name
     );
     w!(out, "    pub fn get_{plain}(&self) -> {ty} {{ {read} }}");
 }

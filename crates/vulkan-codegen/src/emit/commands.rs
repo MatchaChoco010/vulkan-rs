@@ -1,6 +1,6 @@
 use super::basic::arrow;
 use super::{header, w};
-use crate::model::{CType, Dispatch, Model, provided_by};
+use crate::model::{CType, Dispatch, Model};
 use crate::naming::{command_name, field_name, pointer_setter_name};
 use std::collections::BTreeMap;
 use vulkan_registry::{Command, Field};
@@ -8,7 +8,7 @@ use vulkan_registry::{Command, Field};
 const HAND_WRITTEN: &[&str] = &["vkCreateInstance", "vkCreateDevice"];
 
 pub fn emit_commands(model: &Model<'_>) -> String {
-    let mut out = header(&["too_many_arguments", "missing_safety_doc"]);
+    let mut out = header(&["too_many_arguments"]);
     out.push_str("use alloc::vec::Vec;\nuse core::ffi::{c_char, c_void, CStr};\n\n");
     for dispatch in Dispatch::ALL {
         emit_table(&mut out, model, dispatch);
@@ -40,20 +40,6 @@ fn commands<'a>(model: &'a Model<'_>, dispatch: Dispatch) -> impl Iterator<Item 
 
 fn emit_table(out: &mut String, model: &Model<'_>, dispatch: Dispatch) {
     let name = dispatch.table();
-    w!(
-        out,
-        "/// Function pointers loaded for {}.",
-        dispatch.wrapper()
-    );
-    w!(out, "///");
-    w!(
-        out,
-        "/// A pointer is `None` when the loader does not provide the command, which is the"
-    );
-    w!(
-        out,
-        "/// normal state for commands of extensions or versions that were not enabled."
-    );
     w!(out, "#[derive(Copy, Clone)]");
     w!(out, "pub struct {name} {{");
     for c in commands(model, dispatch) {
@@ -87,18 +73,6 @@ fn emit_table(out: &mut String, model: &Model<'_>, dispatch: Dispatch) {
         "get_instance_proc_addr"
     };
     w!(out, "impl {name} {{");
-    w!(out, "    /// Loads every command of this level.");
-    w!(out, "    ///");
-    w!(out, "    /// # Safety");
-    w!(out, "    ///");
-    w!(
-        out,
-        "    /// `{getter}` must be a valid Vulkan loader function and the handle, if any, must"
-    );
-    w!(
-        out,
-        "    /// be a live handle created through the same loader."
-    );
     w!(out, "    pub unsafe fn load({params}) -> Self {{");
     w!(
         out,
@@ -134,24 +108,11 @@ fn explicit_params(c: &Command, dispatch: Dispatch) -> (bool, &[Field]) {
     }
 }
 
-fn man_url(name: &str) -> String {
-    format!("https://registry.khronos.org/vulkan/specs/latest/man/html/{name}.html")
-}
-
 fn emit_raw(out: &mut String, model: &Model<'_>, c: &Command, dispatch: Dispatch) {
     let (passes_self, params) = explicit_params(c, dispatch);
     let name = command_name(&c.name);
     let plain = name.trim_start_matches("r#");
     out.push_str(&model.cfg(c.protect.as_deref()));
-    w!(out, "    /// Raw [`{}`]({}).", c.name, man_url(&c.name));
-    w!(out, "    ///");
-    w!(out, "    /// # Safety");
-    w!(out, "    ///");
-    w!(
-        out,
-        "    /// All valid usage rules of `{}` must be upheld. Panics if the command is not loaded.",
-        c.name
-    );
     let args = params
         .iter()
         .map(|p| format!(", {}: {}", field_name(&p.name), model.param_ty(p, "'_")))
@@ -528,22 +489,6 @@ fn plan_inputs(
     plans
 }
 
-fn doc(out: &mut String, c: &Command) {
-    w!(out, "    /// [`{}`]({})", c.name, man_url(&c.name));
-    let provided = provided_by(&c.extensions, c.version.as_deref());
-    if !provided.is_empty() {
-        w!(out, "    ///\n    /// {provided}");
-    }
-    w!(out, "    ///");
-    w!(out, "    /// # Safety");
-    w!(out, "    ///");
-    w!(
-        out,
-        "    /// All valid usage rules of `{}` must be upheld. Panics if the command is not loaded.",
-        c.name
-    );
-}
-
 fn signature(name: &str, plans: &[Option<Plan>], ret: &str) -> String {
     let mut out = format!("    pub unsafe fn {name}(&self");
     for plan in plans.iter().flatten() {
@@ -610,7 +555,6 @@ fn emit_wrapper(out: &mut String, model: &Model<'_>, c: &Command, dispatch: Disp
     let (_, params) = explicit_params(c, dispatch);
     let name = command_name(&c.name);
     out.push_str(&model.cfg(c.protect.as_deref()));
-    doc(out, c);
     if let Some(body) = special_wrapper(c) {
         out.push_str(&body);
         return;

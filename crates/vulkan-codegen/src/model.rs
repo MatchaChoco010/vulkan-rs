@@ -603,19 +603,6 @@ pub fn parse_version(name: &str) -> Option<(u32, u32)> {
     Some((major.parse().ok()?, minor.parse().ok()?))
 }
 
-pub fn provided_by(extensions: &[String], version: Option<&str>) -> String {
-    let mut parts = Vec::new();
-    if let Some(version) = version {
-        parts.push(format!("`{version}`"));
-    }
-    parts.extend(extensions.iter().map(|e| format!("`{e}`")));
-    if parts.is_empty() {
-        String::new()
-    } else {
-        format!("Provided by {}.", parts.join(", "))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
