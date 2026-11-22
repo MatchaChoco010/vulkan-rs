@@ -7290,23 +7290,33 @@ impl<'a> StdVideoH265HrdParameters<'a> {
         self
     }
     /// Sets [`p_sub_layer_hrd_parameters_nal`](Self::p_sub_layer_hrd_parameters_nal) to the start
-    /// of a slice. No member stores the length: the C API expects `*_max_sub_layers_minus1 + 1`
-    /// elements.
+    /// of a slice, or to a null pointer if the slice is empty. No member stores the length: the C
+    /// API expects `*_max_sub_layers_minus1 + 1` elements. The registry marks the member as
+    /// optional, and the specification describes what a null pointer means for it.
     pub fn sub_layer_hrd_parameters_nal(
         mut self,
         value: &'a [StdVideoH265SubLayerHrdParameters],
     ) -> Self {
-        self.p_sub_layer_hrd_parameters_nal = value.as_ptr();
+        self.p_sub_layer_hrd_parameters_nal = if value.is_empty() {
+            core::ptr::null()
+        } else {
+            value.as_ptr()
+        };
         self
     }
     /// Sets [`p_sub_layer_hrd_parameters_vcl`](Self::p_sub_layer_hrd_parameters_vcl) to the start
-    /// of a slice. No member stores the length: the C API expects `*_max_sub_layers_minus1 + 1`
-    /// elements.
+    /// of a slice, or to a null pointer if the slice is empty. No member stores the length: the C
+    /// API expects `*_max_sub_layers_minus1 + 1` elements. The registry marks the member as
+    /// optional, and the specification describes what a null pointer means for it.
     pub fn sub_layer_hrd_parameters_vcl(
         mut self,
         value: &'a [StdVideoH265SubLayerHrdParameters],
     ) -> Self {
-        self.p_sub_layer_hrd_parameters_vcl = value.as_ptr();
+        self.p_sub_layer_hrd_parameters_vcl = if value.is_empty() {
+            core::ptr::null()
+        } else {
+            value.as_ptr()
+        };
         self
     }
 }
@@ -13058,10 +13068,15 @@ impl Default for AccelerationStructureVersionInfoKHR<'_> {
 }
 
 impl<'a> AccelerationStructureVersionInfoKHR<'a> {
-    /// Sets [`p_version_data`](Self::p_version_data) to the start of a slice. No member stores the
-    /// length: the C API expects `2*VK_UUID_SIZE` elements.
+    /// Sets [`p_version_data`](Self::p_version_data) to the start of a slice, or to a null pointer
+    /// if the slice is empty. No member stores the length: the C API expects `2*VK_UUID_SIZE`
+    /// elements. The member is not optional: the C API needs the elements.
     pub fn version_data(mut self, value: &'a [u8]) -> Self {
-        self.p_version_data = value.as_ptr();
+        self.p_version_data = if value.is_empty() {
+            core::ptr::null()
+        } else {
+            value.as_ptr()
+        };
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -53553,10 +53568,15 @@ impl Default for MicromapVersionInfoEXT<'_> {
 }
 
 impl<'a> MicromapVersionInfoEXT<'a> {
-    /// Sets [`p_version_data`](Self::p_version_data) to the start of a slice. No member stores the
-    /// length: the C API expects `2*VK_UUID_SIZE` elements.
+    /// Sets [`p_version_data`](Self::p_version_data) to the start of a slice, or to a null pointer
+    /// if the slice is empty. No member stores the length: the C API expects `2*VK_UUID_SIZE`
+    /// elements. The member is not optional: the C API needs the elements.
     pub fn version_data(mut self, value: &'a [u8]) -> Self {
-        self.p_version_data = value.as_ptr();
+        self.p_version_data = if value.is_empty() {
+            core::ptr::null()
+        } else {
+            value.as_ptr()
+        };
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -100701,10 +100721,16 @@ impl<'a> PipelineMultisampleStateCreateInfo<'a> {
         self.min_sample_shading = value;
         self
     }
-    /// Sets [`p_sample_mask`](Self::p_sample_mask) to the start of a slice. No member stores the
-    /// length: the C API expects `(rasterizationSamples + 31) / 32` elements.
+    /// Sets [`p_sample_mask`](Self::p_sample_mask) to the start of a slice, or to a null pointer if
+    /// the slice is empty. No member stores the length: the C API expects
+    /// `(rasterizationSamples + 31) / 32` elements. The registry marks the member as optional, and
+    /// the specification describes what a null pointer means for it.
     pub fn sample_mask(mut self, value: &'a [SampleMask]) -> Self {
-        self.p_sample_mask = value.as_ptr();
+        self.p_sample_mask = if value.is_empty() {
+            core::ptr::null()
+        } else {
+            value.as_ptr()
+        };
         self
     }
     /// Sets [`alpha_to_coverage_enable`](Self::alpha_to_coverage_enable) to `VK_TRUE` or

@@ -55,6 +55,11 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     } else {
         note
     };
+    let note = if inputs.notes.is_empty() {
+        note
+    } else {
+        format!("{} {note}", inputs.notes.join(" "))
+    };
     let doc = doc(
         model,
         &cfg,

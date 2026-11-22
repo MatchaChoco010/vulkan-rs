@@ -53685,9 +53685,10 @@ impl crate::Device {
     ///
     /// Calls the C command
     /// [`vkCmdSetSampleMaskEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdSetSampleMaskEXT.html)
-    /// through [`Self::cmd_set_sample_mask_ext_raw`], which describes the parameters. The command
-    /// is provided by [`VK_EXT_extended_dynamic_state3`](EXT_EXTENDED_DYNAMIC_STATE_3_NAME) or
-    /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
+    /// through [`Self::cmd_set_sample_mask_ext_raw`], which describes the parameters. An empty
+    /// `sample_mask` is passed as a null pointer, because no parameter passes its length. The
+    /// command is provided by [`VK_EXT_extended_dynamic_state3`](EXT_EXTENDED_DYNAMIC_STATE_3_NAME)
+    /// or [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
     ///
     /// # Safety
     ///
@@ -53708,7 +53709,13 @@ impl crate::Device {
             self.cmd_set_sample_mask_ext_raw(
                 command_buffer,
                 samples,
-                sample_mask.map_or(core::ptr::null(), |x| x.as_ptr()),
+                sample_mask.map_or(core::ptr::null(), |x| {
+                    if x.is_empty() {
+                        core::ptr::null()
+                    } else {
+                        x.as_ptr()
+                    }
+                }),
             )
         }
     }

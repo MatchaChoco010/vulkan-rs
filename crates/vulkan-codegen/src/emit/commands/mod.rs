@@ -659,6 +659,63 @@ mod tests {
         assert!(out.contains("data_size_len, data.as_mut_ptr().cast(), stride"));
     }
 
+    #[test]
+    fn slices_without_a_length_parameter_are_passed_as_null_when_empty() {
+        let mut ir = base();
+        ir.commands.push(device(command(
+            "vkCmdSetSampleMaskEXT",
+            vec![
+                field("commandBuffer", "VkCommandBuffer"),
+                field("samples", "uint32_t"),
+                optional(counted(
+                    "pSampleMask",
+                    "const uint32_t*",
+                    "(samples + 31) / 32",
+                )),
+                counted("pVersionData", "const uint8_t*", "2*VK_UUID_SIZE"),
+                field("wordCount", "uint32_t"),
+                optional(counted("pWords", "const uint32_t*", "wordCount")),
+            ],
+        )));
+        assert_generated_alike_under_other_names(
+            &ir,
+            &Docs::default(),
+            "vkCmdSetSampleMaskEXT",
+            &["vkCmdSetMasksNV"],
+            "self.cmd_set_sample_mask_ext_raw(command_buffer, samples, sample_mask.map_or(core::ptr::null(), |x| if x.is_empty() { core::ptr::null() } else { x.as_ptr() }), if version_data.is_empty() { core::ptr::null() } else { version_data.as_ptr() }, word_count_len as u32, words.map_or(core::ptr::null(), |x| x.as_ptr()))",
+        );
+        let documented = emit(&Model::new(&ir))
+            .split_whitespace()
+            .filter(|word| *word != "///")
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            documented.contains("An empty `sample_mask` is passed as a null pointer, because no parameter passes its length. An empty `version_data` is passed as a null pointer, because no parameter passes its length."),
+            "{documented}"
+        );
+        assert!(!documented.contains("An empty `words`"), "{documented}");
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_pass_null_only_for_empty_slices_without_a_length() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut null_when_empty = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            if out.contains(".is_empty() {") {
+                null_when_empty.insert(c.name.as_str());
+            }
+        }
+        assert_eq!(
+            null_when_empty,
+            BTreeSet::from(["vkCmdSetSampleMaskEXT"]),
+            "crates/vulkan/tests/uncounted_slices.rs checks each of these wrappers"
+        );
+    }
+
     fn only(c: Command) -> Registry {
         let mut ir = base();
         ir.structs.push(tagged(

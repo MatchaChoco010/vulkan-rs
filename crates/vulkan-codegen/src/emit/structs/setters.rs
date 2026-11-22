@@ -1,7 +1,7 @@
 use super::{MethodNames, field_link};
 use crate::docs::Doc;
 use crate::emit::Borrow;
-use crate::model::{CType, Model, is_opaque};
+use crate::model::{CType, Model, is_opaque, null_ptr};
 use crate::naming::{field_name, pointer_setter_name};
 use std::collections::BTreeMap;
 use vulkan_registry::{Field, Struct};
@@ -255,15 +255,21 @@ fn pointer_setter(
             format!("self.{field} = value;"),
         )
     } else if let Some(len) = m.len.as_deref() {
+        let null = if m.optional {
+            "The registry marks the member as optional, and the specification describes what a null pointer means for it."
+        } else {
+            "The member is not optional: the C API needs the elements."
+        };
         (
-            sets(
-                m,
-                &format!(
-                    " to the start of a slice. No member stores the length: the C API expects `{len}` elements"
-                ),
-            ),
+            Doc::new().text(format!(
+                "Sets {} to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API expects `{len}` elements. {null}",
+                field_link(&m.name)
+            )),
             borrow.reference("'a", &format!("[{pointee}]")),
-            format!("self.{field} = value.{as_ptr}();"),
+            format!(
+                "self.{field} = if value.is_empty() {{ {} }} else {{ value.{as_ptr}() }};",
+                null_ptr(ty.outer_const())
+            ),
         )
     } else {
         (
@@ -338,4 +344,109 @@ pub(super) fn push_next(p_next: &Field) -> String {
             self
         }}\n"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::definition;
+    use super::*;
+    use crate::emit::{doc_of, squash};
+    use crate::test_support::{counted, field, optional, registry, structure};
+    use std::collections::BTreeSet;
+    use vulkan_registry::Registry;
+
+    #[test]
+    fn slices_without_a_count_member_set_null_when_empty_and_counted_slices_do_not() {
+        let mut ir = registry();
+        ir.structs.push(structure(
+            "VkMasksInfo",
+            vec![
+                field("samples", "uint32_t"),
+                optional(counted(
+                    "pSampleMask",
+                    "const uint32_t*",
+                    "(samples + 31) / 32",
+                )),
+                counted("pVersionData", "const uint8_t*", "2*VK_UUID_SIZE"),
+                field("wordCount", "uint32_t"),
+                optional(counted("pWords", "const uint32_t*", "wordCount")),
+            ],
+        ));
+        let model = Model::new(&ir);
+        let out = definition(&model, &ir.structs[0]);
+        let squashed = squash(&out);
+        for (setter, element, member) in [
+            ("sample_mask", "u32", "p_sample_mask"),
+            ("version_data", "u8", "p_version_data"),
+        ] {
+            assert!(
+                squashed.contains(&format!(
+                    "pub fn {setter}(mut self, value: &'a [{element}]) -> Self {{ self.{member} = if value.is_empty() {{ core::ptr::null() }} else {{ value.as_ptr() }}; self }}"
+                )),
+                "{setter}: {squashed}"
+            );
+        }
+        assert!(
+            squashed.contains(
+                "pub fn words(mut self, value: &'a [u32]) -> Self { self.word_count = value.len() as _; self.p_words = value.as_ptr(); self }"
+            ),
+            "{squashed}"
+        );
+        assert_eq!(
+            doc_of(&out, "pub fn sample_mask("),
+            [
+                "Sets [`p_sample_mask`](Self::p_sample_mask) to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API expects `(samples + 31) / 32` elements. The registry marks the member as optional, and the specification describes what a null pointer means for it."
+            ]
+        );
+        assert_eq!(
+            doc_of(&out, "pub fn version_data("),
+            [
+                "Sets [`p_version_data`](Self::p_version_data) to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API expects `2*VK_UUID_SIZE` elements. The member is not optional: the C API needs the elements."
+            ]
+        );
+    }
+
+    #[test]
+    fn the_slice_setters_of_the_registry_without_a_count_member_set_null_when_empty() {
+        let model = Model::new(Registry::get());
+        let mut uncounted = BTreeSet::new();
+        for s in &model.ir.structs {
+            let out = squash(&definition(&model, s));
+            for m in &s.members {
+                let ty = CType::of(m);
+                let is_uncounted_slice = ty.depth() == 1
+                    && !ty.is_array()
+                    && m.len.is_some()
+                    && count_member(s, m).is_none()
+                    && m.len.as_deref() != Some(SPIRV_WORD_COUNT)
+                    && !(m.null_terminated && ty.base == "char")
+                    && !is_opaque(&ty.base);
+                let field = field_name(&m.name);
+                let sets_null_when_empty =
+                    out.contains(&format!("self.{field} = if value.is_empty() {{"));
+                assert_eq!(
+                    sets_null_when_empty, is_uncounted_slice,
+                    "{}::{}: {out}",
+                    s.name, m.name
+                );
+                if is_uncounted_slice {
+                    uncounted.insert(format!("{}::{}", s.name, m.name));
+                }
+            }
+        }
+        assert_eq!(
+            uncounted,
+            [
+                "StdVideoH265HrdParameters::pSubLayerHrdParametersNal",
+                "StdVideoH265HrdParameters::pSubLayerHrdParametersVcl",
+                "VkAccelerationStructureVersionInfoKHR::pVersionData",
+                "VkMicromapVersionInfoEXT::pVersionData",
+                "VkPipelineMultisampleStateCreateInfo::pSampleMask",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<BTreeSet<_>>(),
+            "crates/vulkan/tests/uncounted_slices.rs checks each of these setters"
+        );
+    }
 }
