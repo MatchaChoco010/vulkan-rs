@@ -1592,6 +1592,76 @@ mod tests {
     }
 
     #[test]
+    fn the_owner_of_an_inner_length_is_a_required_array_that_shares_the_outer_count() {
+        type Change = fn(&mut Field);
+        let changes: [(&str, Change); 4] = [
+            ("is optional", |batches| batches.optional = true),
+            ("is counted by another parameter", |batches| {
+                batches.len = Some("otherCount".to_string());
+            }),
+            ("is not counted", |batches| batches.len = None),
+            ("is passed by value", |batches| {
+                batches.full_ty = "VkWidgetBatchNV".to_string();
+            }),
+        ];
+        for (what, change) in changes {
+            let (mut ir, docs) = widgets();
+            for c in &mut ir.commands {
+                for p in &mut c.params {
+                    if p.name == "pBatches" {
+                        change(p);
+                    }
+                }
+                c.params.insert(1, field("otherCount", "uint32_t"));
+            }
+            let message = crate::test_support::catch_quietly(|| generate_with_docs(&ir, &docs))
+                .expect_err(&format!(
+                    "an inner length is read from an array that {what}"
+                ));
+            assert!(
+                message.contains("the specification describes no inner length for ppParts"),
+                "an array that {what}: {message}"
+            );
+        }
+        let (mut ir, docs) = widgets();
+        for c in &mut ir.commands {
+            c.params.insert(1, field("otherCount", "uint32_t"));
+        }
+        assert!(
+            generate_with_docs(&ir, &docs).contains("parts: &[Option<&[WidgetPartNV]>]"),
+            "the unchanged array gives the inner length"
+        );
+    }
+
+    #[test]
+    fn an_array_that_the_wrapper_does_not_borrow_leaves_its_count_to_the_caller() {
+        let mut ir = base();
+        ir.commands.push(device(command(
+            "vkGetStatesNV",
+            vec![
+                field("device", "VkDevice"),
+                field("stateCount", "uint32_t"),
+                counted("pStates", "uint32_t*", "stateCount"),
+            ],
+        )));
+        ir.commands.push(device(command(
+            "vkGetBlocksNV",
+            vec![
+                field("device", "VkDevice"),
+                field("blockCount", "uint32_t"),
+                counted("ppBlocks", "void**", "blockCount"),
+            ],
+        )));
+        let out = generate(&ir);
+        for signature in [
+            "pub unsafe fn get_states_nv(&self, states: &mut [u32]) {",
+            "pub unsafe fn get_blocks_nv(&self, block_count: u32, blocks: *mut *mut c_void) {",
+        ] {
+            assert!(out.contains(signature), "no `{signature}` in {out}");
+        }
+    }
+
+    #[test]
     fn inner_lengths_are_counts_not_other_integers() {
         for ty in ["VkBool32", "VkDeviceSize", "VkDeviceAddress", "uint64_t"] {
             let (mut ir, docs) = widgets();
