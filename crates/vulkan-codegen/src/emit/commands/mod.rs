@@ -1121,6 +1121,77 @@ mod tests {
         );
     }
 
+    const ABSENT_INNER_SLICES: &str = "Each slice of slices is passed as an array of pointers to the inner slices, with a null pointer for `None`. `None` is valid only for an element for which the valid usage of the command asks for a null pointer or allows one, which the wrapper does not check.";
+
+    fn documented(out: &str) -> String {
+        out.replace("///", "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn a_wrapper_that_takes_slices_of_slices_says_when_an_inner_slice_may_be_absent() {
+        let (ir, docs) = widgets();
+        let model = Model::with_docs(&ir, &docs);
+        let assemble = wrapper::wrapper(&model, &ir.commands[0], Dispatch::Device);
+        assert!(
+            squash(&assemble).contains("parts: &[Option<&[WidgetPartNV]>]"),
+            "{assemble}"
+        );
+        assert_eq!(
+            documented(&assemble).matches(ABSENT_INNER_SLICES).count(),
+            1,
+            "{assemble}"
+        );
+        let join = wrapper::wrapper(&model, &ir.commands[1], Dispatch::Device);
+        assert!(
+            squash(&join).contains("parts: &[*const WidgetPartNV]"),
+            "{join}"
+        );
+        assert!(
+            !documented(&join).contains("slice of slices")
+                && !documented(&join).contains("`None` is valid"),
+            "a deferrable command takes the pointers as they are: {join}"
+        );
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_say_when_an_inner_slice_may_be_absent() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut found = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = wrapper::wrapper(&model, c, model.dispatch(c));
+            let takes_optional_inner_slices = squash(&out).contains(": &[Option<&[");
+            let documented = documented(&out);
+            assert_eq!(
+                documented.matches(ABSENT_INNER_SLICES).count(),
+                usize::from(takes_optional_inner_slices),
+                "{}: {documented}",
+                c.name
+            );
+            assert_eq!(
+                documented.contains("with a null pointer for `None`"),
+                takes_optional_inner_slices,
+                "{}: {documented}",
+                c.name
+            );
+            if takes_optional_inner_slices {
+                found.insert(c.name.as_str());
+            }
+        }
+        assert_eq!(
+            found,
+            BTreeSet::from([
+                "vkCmdBuildAccelerationStructuresIndirectKHR",
+                "vkCmdBuildAccelerationStructuresKHR",
+            ])
+        );
+    }
+
     #[test]
     #[should_panic(
         expected = "vkCmdAssembleWidgetsNV: the specification describes no inner length for ppParts"
