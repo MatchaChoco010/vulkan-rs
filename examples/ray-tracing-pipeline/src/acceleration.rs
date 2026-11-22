@@ -4,7 +4,7 @@ use vulkan_alloc::{Allocator, MemoryLocation};
 use vulkan_example_common::commands::submit_and_wait;
 use vulkan_example_common::device::Gpu;
 use vulkan_example_common::memory::{
-    Buffer, buffer_device_address, create_aligned_buffer, upload_buffer,
+    Buffer, buffer_device_address, create_aligned_buffer, upload_aligned_buffer,
 };
 
 use crate::geometry::{INDICES, Instance, VERTICES, Vertex};
@@ -67,8 +67,10 @@ pub unsafe fn build_scene(
 ) -> Result<Scene> {
     unsafe {
         let device = &gpu.device;
-        let vertex_buffer = upload_build_input(gpu, allocator, "triangle vertices", &VERTICES)?;
-        let index_buffer = upload_build_input(gpu, allocator, "triangle indices", &INDICES)?;
+        // The vertices and indices have to start at a multiple of the size of a
+        // component and of an index, the instances at a multiple of 16 bytes.
+        let vertex_buffer = upload_build_input(gpu, allocator, "triangle vertices", &VERTICES, 4)?;
+        let index_buffer = upload_build_input(gpu, allocator, "triangle indices", &INDICES, 4)?;
         let bottom_geometries = [triangle_geometry(device, &vertex_buffer, &index_buffer)];
         let bottom_build = build_info(
             vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
@@ -78,7 +80,7 @@ pub unsafe fn build_scene(
             create_acceleration_structure(device, allocator, "bottom level", &bottom_build)?;
 
         let instances = [Instance::new(bottom_level.device_address(device))];
-        let instance_buffer = upload_build_input(gpu, allocator, "instances", &instances)?;
+        let instance_buffer = upload_build_input(gpu, allocator, "instances", &instances, 16)?;
         let top_geometries = [instance_geometry(device, &instance_buffer)];
         let top_build = build_info(vk::AccelerationStructureTypeKHR::TOP_LEVEL, &top_geometries);
         let top_level = create_acceleration_structure(device, allocator, "top level", &top_build)?;
@@ -141,21 +143,24 @@ pub unsafe fn build_scene(
     }
 }
 
-/// A device-local buffer that a build reads through its device address.
+/// A device-local buffer that a build reads through its device address, which has to
+/// be a multiple of `alignment`.
 unsafe fn upload_build_input<T: bytemuck::Pod>(
     gpu: &Gpu,
     allocator: &mut Allocator,
     name: &str,
     values: &[T],
+    alignment: u64,
 ) -> Result<Buffer> {
     unsafe {
-        upload_buffer(
+        upload_aligned_buffer(
             gpu,
             allocator,
             name,
             vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             bytemuck::cast_slice(values),
+            alignment,
         )
     }
 }
