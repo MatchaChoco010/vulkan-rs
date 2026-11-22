@@ -401,6 +401,22 @@ impl MemoryBlock {
         device: &Device,
         allocation_id: u64,
     ) -> Result<(), AllocationError> {
+        if self.holds_only_its_persistent_mapping(allocation_id) {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        unsafe { self.release_mapping(device, allocation_id) }
+    }
+
+    fn holds_only_its_persistent_mapping(&self, allocation_id: u64) -> bool {
+        self.persistent.contains(&allocation_id)
+            && self.mapped_allocations.get(&allocation_id) == Some(&1)
+    }
+
+    unsafe fn release_mapping(
+        &mut self,
+        device: &Device,
+        allocation_id: u64,
+    ) -> Result<(), AllocationError> {
         self.unmark_mapped(allocation_id)?;
         if self.mapped_allocations.is_empty() {
             unsafe { device.unmap_memory(self.memory) };
@@ -415,7 +431,7 @@ impl MemoryBlock {
         allocation_id: u64,
     ) -> Result<(), AllocationError> {
         if self.persistent.remove(&allocation_id) {
-            unsafe { self.unmap(device, allocation_id) }?;
+            unsafe { self.release_mapping(device, allocation_id) }?;
         }
         if self.is_allocation_mapped(allocation_id) {
             return Err(AllocationError::InvalidAllocation);

@@ -2,7 +2,8 @@ use std::ffi::CStr;
 use std::os::fd::{FromRawFd, OwnedFd};
 use vulkan::{Device, Entry, Instance, vk};
 use vulkan_alloc::{
-    AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc, MemoryLocation,
+    AllocationCreateDesc, AllocationError, AllocationScheme, Allocator, AllocatorCreateDesc,
+    MemoryLocation,
 };
 
 struct Gpu {
@@ -426,6 +427,36 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
 
         gpu.device.destroy_buffer(second, None);
         allocator.free(b).unwrap();
+    }
+    assert!(allocator.is_empty());
+}
+
+#[test]
+fn unmapping_a_persistent_mapping_is_an_error() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut allocator = gpu.allocator();
+    unsafe {
+        let buffer = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
+        let allocation = allocator
+            .allocate(desc(
+                gpu.device.get_buffer_memory_requirements(buffer),
+                MemoryLocation::CpuToGpu,
+            ))
+            .unwrap();
+        let pointer = allocator.map_persistent(&allocation).unwrap();
+
+        assert_eq!(
+            allocator.unmap_memory(&allocation),
+            Err(AllocationError::InvalidAllocation)
+        );
+        assert_eq!(allocator.persistent_ptr(&allocation), Some(pointer));
+
+        allocator.map_memory(&allocation).unwrap();
+        allocator.unmap_memory(&allocation).unwrap();
+        assert_eq!(allocator.persistent_ptr(&allocation), Some(pointer));
+
+        gpu.device.destroy_buffer(buffer, None);
+        allocator.free(allocation).unwrap();
     }
     assert!(allocator.is_empty());
 }
