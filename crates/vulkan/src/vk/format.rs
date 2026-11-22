@@ -137,7 +137,8 @@ pub enum NumericFormat {
     Sfloat,
     /// Unsigned normalized with the sRGB transfer function on R, G and B.
     Srgb,
-    /// Signed fixed point with 5 fractional bits.
+    /// Signed fixed point with 5 fractional bits. A shader reads the stored signed
+    /// integer, which is 32 times the value.
     Sfixed5,
     /// Boolean.
     Bool,
@@ -147,9 +148,10 @@ pub enum NumericFormat {
 /// an image, or the component type of a color attachment output, has to have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShaderNumericType {
-    /// Floating point: normalized, scaled, floating point, sRGB and fixed point formats.
+    /// Floating point: normalized, scaled, floating point and sRGB formats.
     Float,
-    /// Signed integer.
+    /// Signed integer: signed integer formats, and the fixed point format
+    /// [`Sfixed5`](NumericFormat::Sfixed5), whose stored integer is 32 times the value.
     Sint,
     /// Unsigned integer.
     Uint,
@@ -166,9 +168,8 @@ impl NumericFormat {
             | NumericFormat::Sscaled
             | NumericFormat::Ufloat
             | NumericFormat::Sfloat
-            | NumericFormat::Srgb
-            | NumericFormat::Sfixed5 => Some(ShaderNumericType::Float),
-            NumericFormat::Sint => Some(ShaderNumericType::Sint),
+            | NumericFormat::Srgb => Some(ShaderNumericType::Float),
+            NumericFormat::Sint | NumericFormat::Sfixed5 => Some(ShaderNumericType::Sint),
             NumericFormat::Uint => Some(ShaderNumericType::Uint),
             NumericFormat::Bool => None,
         }
