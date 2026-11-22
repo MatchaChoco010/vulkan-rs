@@ -857,6 +857,7 @@ mod tests {
             kind: "protos".to_string(),
             desc: String::new(),
             aliases: Vec::new(),
+            file: String::new(),
             items,
         };
         let docs = Docs {
