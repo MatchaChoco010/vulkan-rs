@@ -921,4 +921,38 @@ mod tests {
         }
         assert!(found > 0, "the registry has arrays of arrays");
     }
+
+    #[test]
+    fn wrapper_shapes_do_not_name_commands() {
+        let directory = concat!(env!("CARGO_MANIFEST_DIR"), "/src/emit/commands");
+        let mut files = std::fs::read_dir(directory)
+            .expect("the sources of the command wrappers")
+            .map(|entry| entry.expect("a directory entry").path())
+            .collect::<Vec<_>>();
+        files.sort();
+        assert!(files.len() >= 5, "{files:?}");
+        for file in &files {
+            let source = std::fs::read_to_string(file).expect("a source file");
+            let file = file.display();
+            let code = source
+                .split("#[cfg(test)]")
+                .next()
+                .expect("source before the tests");
+            for pattern in [
+                "name.as_str()",
+                "name.starts_with(",
+                "name.ends_with(",
+                "name.contains(",
+            ] {
+                assert!(!code.contains(pattern), "{file} uses `{pattern}`");
+            }
+            let names_a_command = code.match_indices("\"vk").any(|(at, _)| {
+                code[at + 3..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_uppercase())
+            });
+            assert!(!names_a_command, "{file} names a command");
+        }
+    }
 }
