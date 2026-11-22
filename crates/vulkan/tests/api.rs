@@ -886,7 +886,7 @@ fn commands_know_their_result_codes() {
 
 #[test]
 fn wrappers_are_cheap_to_clone() {
-    assert!(std::mem::size_of::<vk::DeviceFn>() > 4096);
+    assert!(std::mem::size_of::<vk::DeviceFn>() > 512 * std::mem::size_of::<usize>());
     assert!(std::mem::size_of::<Device>() <= 4 * std::mem::size_of::<usize>());
     assert!(std::mem::size_of::<Instance>() <= 4 * std::mem::size_of::<usize>());
 }
