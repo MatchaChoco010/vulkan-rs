@@ -45,10 +45,35 @@ pub unsafe fn print_surface_support(
                     &surface_info,
                     &mut caps,
                 )?;
-                let written = compatibility.present_mode_count as usize;
-                println!("  {mode:?} can switch to {:?}", &compatible[..written]);
+                let count = compatibility.present_mode_count;
+                let written = filled(&compatible, count);
+                println!("  {mode:?} can switch to {written:?}");
             }
         }
         Ok(())
+    }
+}
+
+/// The part of `values` that a call reported as `count` filled in. A count larger than
+/// the array it was given, which the call must not report, gives all of it.
+fn filled<T>(values: &[T], count: u32) -> &[T] {
+    let count = usize::try_from(count).unwrap_or(usize::MAX);
+    &values[..count.min(values.len())]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_filled_part_is_a_prefix_for_any_count() {
+        for len in 0..5 {
+            let values = (0..len).collect::<Vec<u32>>();
+            for count in [0, 1, 2, 4, 5, 100, u32::MAX] {
+                let part = filled(&values, count);
+                assert_eq!(part.len(), (count as usize).min(len as usize));
+                assert!(values.starts_with(part));
+            }
+        }
     }
 }
