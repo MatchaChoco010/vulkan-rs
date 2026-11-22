@@ -7120,6 +7120,8 @@ impl crate::Instance {
     /// - `physicalDevice` is the physical device to query the display from.
     /// - `drmFd` is the DRM primary file descriptor.
     /// - `connectorId` is the identifier of the specified DRM connector.
+    /// - `display`, which the specification describes under the name `pDisplay`: `pDisplay` is a
+    ///   pointer to a [`VkDisplayKHR`](DisplayKHR) handle where the display is returned.
     ///
     /// # Safety
     ///
@@ -18277,6 +18279,9 @@ impl crate::Device {
     ///   the command.
     /// - `bindingCount` is the number of vertex input bindings whose state is updated by the
     ///   command.
+    /// - `pBindingInfos`, which the specification describes under the name `pInfos`: `pInfos` is a
+    ///   pointer to an array of [`VkBindVertexBuffer3InfoKHR`](BindVertexBuffer3InfoKHR) structures
+    ///   defining address ranges to bind as vertex buffers.
     ///
     /// # Safety
     ///
@@ -22836,6 +22841,9 @@ impl crate::Device {
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer into which the command is recorded.
+    /// - `firstCounterRange`, which the specification describes under the name
+    ///   `firstCounterBuffer`: `firstCounterBuffer` is the index of the first transform feedback
+    ///   buffer corresponding to `pCounterInfos`\[0\].
     /// - `counterRangeCount` is the size of the `pCounterInfos` array.
     /// - `pCounterInfos` is `NULL` or a pointer to an array of
     ///   [`VkBindTransformFeedbackBuffer2InfoEXT`](BindTransformFeedbackBuffer2InfoEXT) structures
@@ -36505,6 +36513,9 @@ impl crate::Device {
     /// - `timeout` is the timeout period in units of nanoseconds. `timeout` is adjusted to the
     ///   closest value allowed by the implementation-dependent timeout accuracy, which may be
     ///   substantially longer than one nanosecond, and may be longer than the requested period.
+    /// - `pFaultCounts`, which the specification describes under the name `pFaultCount`:
+    ///   `pFaultCount` is a pointer to an integer related to the number of fault reports available
+    ///   or queried, as described below.
     /// - `pFaultInfo` is `NULL` or a pointer to an array of
     ///   [`VkDeviceFaultInfoKHR`](DeviceFaultInfoKHR) structures in which fault information is
     ///   returned.
@@ -43268,6 +43279,10 @@ impl crate::Device {
     /// # Parameters
     ///
     /// - `swapchain` is the swapchain to capture timestamps on.
+    /// - `pLatencyMarkerInfo`, which the specification describes under the name
+    ///   `pSetLatencyMarkerInfo`: `pSetLatencyMarkerInfo` is a pointer to a
+    ///   [`VkSetLatencyMarkerInfoNV`](SetLatencyMarkerInfoNV) structure specifying the parameters
+    ///   of the marker to set.
     ///
     /// # Safety
     ///

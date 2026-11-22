@@ -104,6 +104,9 @@ fn bindings_root() -> String {
 
 pub fn generate(ir: &Registry, docs: &Docs) -> Vec<GeneratedFile> {
     let model = Model::with_docs(ir, docs);
+    if !docs.pages.is_empty() {
+        docs::assert_every_other_name_is_in_use(&model);
+    }
     let file = |directory: &str, name: &str, contents: String| GeneratedFile {
         path: format!("{directory}/{name}"),
         contents,
