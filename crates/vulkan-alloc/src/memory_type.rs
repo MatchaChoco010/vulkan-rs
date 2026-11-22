@@ -14,7 +14,8 @@ use vulkan::vk;
 ///   created with the `deviceCoherentMemory` feature.
 /// - types with `PROTECTED`, when the location names `PROTECTED`. Allocating from such a
 ///   type is valid only if the device was created with the `protectedMemory` feature,
-///   and only protected resources may be bound to it.
+///   and protected resources, and only those, may be bound to it. Require the flag for
+///   a protected resource, so that no other type can be chosen.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryLocation {
     /// Memory for resources only the device accesses: requires and prefers
