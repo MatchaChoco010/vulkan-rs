@@ -1,7 +1,8 @@
 //! A triangle on a Wayland surface, drawn with a render pass and a framebuffer for each
 //! swapchain image.
 //!
-//! The render pass clears the image and leaves it in `PRESENT_SRC_KHR`, so the frame
+//! The render pass clears the image, leaves it in `PRESENT_SRC_KHR`, and orders its
+//! layout transitions after the acquire with a dependency on the outside, so the frame
 //! needs no barrier of its own. The render pass, the framebuffers and the pipeline,
 //! whose viewport is fixed, depend on the swapchain and are recreated with it.
 //!
@@ -102,6 +103,8 @@ impl Renderer for App {
     unsafe fn draw(&mut self) -> Result<SwapchainStatus> {
         unsafe {
             let device = &self.gpu.device;
+            // Where the render pass's dependency on the outside starts, so that its
+            // layout transition comes after the acquire.
             self.frame.draw(
                 &self.gpu,
                 &self.swapchain,

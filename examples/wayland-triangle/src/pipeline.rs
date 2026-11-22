@@ -30,9 +30,20 @@ pub unsafe fn create_render_pass(device: &Device, format: vk::Format) -> Result<
     let subpasses = [vk::SubpassDescription::default()
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
         .color_attachments(&color_attachments)];
+    // The frame waits for the acquired image at COLOR_ATTACHMENT_OUTPUT. Without this
+    // dependency, the transition out of UNDEFINED would only wait for TOP_OF_PIPE and
+    // could write the image while the presentation engine still reads it.
+    let dependencies = [vk::SubpassDependency::default()
+        .src_subpass(vk::SUBPASS_EXTERNAL)
+        .dst_subpass(0)
+        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .src_access_mask(vk::AccessFlags::empty())
+        .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)];
     let info = vk::RenderPassCreateInfo::default()
         .attachments(&attachments)
-        .subpasses(&subpasses);
+        .subpasses(&subpasses)
+        .dependencies(&dependencies);
     Ok(unsafe { device.create_render_pass(&info, None) }?)
 }
 
