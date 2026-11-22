@@ -324,8 +324,9 @@ fn pointer_setter(
             format!("self.{field} = {}(value);", borrow.ptr_from_reference()),
         )
     };
+    let alignment = crate::model::aligned_input(s, m).map_or("", |input| input.requirement);
     Setter {
-        doc,
+        doc: doc.text_after_the_first_block(alignment),
         name: pointer_setter_method_name(m, names),
         generics,
         value_ty,

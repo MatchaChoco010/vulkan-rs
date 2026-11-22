@@ -17,6 +17,7 @@ fn main() {
     let ir = Registry::get();
     assert_manifest_declares_features(&root, ir);
 
+    vulkan_codegen::assert_aligned_memory_exists(ir);
     let files = generate(ir, Docs::get());
     remove_files_no_longer_generated(&root, &files);
     for GeneratedFile { path, contents } in &files {

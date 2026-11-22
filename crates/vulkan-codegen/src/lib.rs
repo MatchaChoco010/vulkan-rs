@@ -102,6 +102,10 @@ fn bindings_root() -> String {
         .collect()
 }
 
+pub fn assert_aligned_memory_exists(ir: &Registry) {
+    model::assert_listed_aligned_memory_exists(ir);
+}
+
 pub fn generate(ir: &Registry, docs: &Docs) -> Vec<GeneratedFile> {
     let model = Model::with_docs(ir, docs);
     if !docs.pages.is_empty() {
