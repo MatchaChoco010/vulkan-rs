@@ -5,6 +5,11 @@ use vulkan::vk;
 /// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
 /// every required flag. Among them it takes the lowest-indexed one with every preferred
 /// flag, or else the one with the most preferred flags.
+///
+/// Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` are considered only
+/// when the location names one of these two flags as required or preferred, which only
+/// [`MemoryLocation::Custom`] can do: allocating from such a type is valid only if the
+/// device was created with the `deviceCoherentMemory` feature.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryLocation {
     /// Memory for resources only the device accesses: requires and prefers
@@ -82,6 +87,9 @@ impl MemoryLocation {
     }
 }
 
+const NEEDS_DEVICE_COHERENT_MEMORY: u32 = vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD.as_raw()
+    | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD.as_raw();
+
 pub(crate) fn memory_type_flags(
     properties: &vk::PhysicalDeviceMemoryProperties,
     memory_type_index: u32,
@@ -110,6 +118,11 @@ pub(crate) fn find_memory_type_index(
         }
         let flags = properties.memory_types[index as usize].property_flags;
         if !flags.contains(required) {
+            continue;
+        }
+        if flags.as_raw() & NEEDS_DEVICE_COHERENT_MEMORY != 0
+            && (required.as_raw() | preferred.as_raw()) & NEEDS_DEVICE_COHERENT_MEMORY == 0
+        {
             continue;
         }
         let score = (flags.as_raw() & preferred.as_raw()).count_ones();
@@ -258,6 +271,91 @@ pub(crate) mod tests {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         );
         assert_eq!(index, None);
+    }
+
+    #[test]
+    fn device_coherent_memory_types_are_chosen_only_when_the_location_names_them() {
+        let amd = [
+            vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+            vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD
+                | vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+        ];
+        let plain = [
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ];
+        let mut kinds = plain.to_vec();
+        for flags in plain {
+            kinds.extend(amd.map(|amd| flags | amd));
+        }
+        let locations = [
+            MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu,
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::empty(),
+                vk::MemoryPropertyFlags::empty(),
+            ),
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::HOST_VISIBLE,
+                vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+            ),
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::HOST_VISIBLE
+                    | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD,
+                vk::MemoryPropertyFlags::empty(),
+            ),
+        ];
+        let is_amd =
+            |flags: vk::MemoryPropertyFlags| flags.as_raw() & NEEDS_DEVICE_COHERENT_MEMORY != 0;
+
+        let mut seed = 0x853c_49e6_748f_ea9b_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut skipped = 0;
+        let mut taken = 0;
+        for _ in 0..4000 {
+            let flags = (0..1 + next() % 8)
+                .map(|_| kinds[(next() % kinds.len() as u64) as usize])
+                .collect::<Vec<_>>();
+            let properties = memory_properties(&flags);
+            let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
+            for location in locations {
+                let (required, preferred) = (location.required_flags(), location.preferred_flags());
+                let named = is_amd(required) || is_amd(preferred);
+                let chosen =
+                    find_memory_type_index(&properties, memory_type_bits, required, preferred);
+
+                let without_unnamed = flags
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, flags)| named || !is_amd(**flags))
+                    .fold(0, |bits, (index, _)| bits | 1 << index);
+                let expected = find_memory_type_index(
+                    &properties,
+                    memory_type_bits & without_unnamed,
+                    required,
+                    preferred,
+                );
+                assert_eq!(chosen, expected, "types {flags:?}, {location:?}");
+                match chosen.map(|index| flags[index as usize]) {
+                    Some(flags) if is_amd(flags) => {
+                        assert!(named, "types {flags:?}, {location:?}");
+                        taken += 1;
+                    }
+                    _ => skipped += usize::from(memory_type_bits & !without_unnamed != 0),
+                }
+            }
+        }
+        assert!(skipped > 100 && taken > 100);
     }
 
     #[test]
