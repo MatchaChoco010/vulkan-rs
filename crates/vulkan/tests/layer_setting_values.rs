@@ -72,3 +72,48 @@ fn the_string_pointer_type_has_the_layout_of_a_c_string_pointer() {
     assert_eq!(pointers, [error.as_ptr(), warn.as_ptr()]);
     assert_eq!(pointers, [names[0].as_ptr(), names[1].as_ptr()]);
 }
+
+trait AmbiguousIfALayerSettingValue<Marker> {
+    fn is_not_a_layer_setting_value() {}
+}
+
+impl<T: ?Sized> AmbiguousIfALayerSettingValue<()> for T {}
+
+struct IsALayerSettingValue;
+
+impl<T: ?Sized + vk::LayerSettingValue> AmbiguousIfALayerSettingValue<IsALayerSettingValue> for T {}
+
+macro_rules! assert_not_layer_setting_values {
+    ($($ty:ty),+ $(,)?) => {
+        $(<$ty as AmbiguousIfALayerSettingValue<_>>::is_not_a_layer_setting_value();)+
+    };
+}
+
+#[test]
+fn bytes_and_fat_string_pointers_are_not_values_of_a_layer_setting() {
+    assert_not_layer_setting_values!(
+        u8,
+        i8,
+        u16,
+        i16,
+        bool,
+        usize,
+        isize,
+        [u8; 4],
+        &[u8],
+        &core::ffi::CStr,
+        &str,
+        *const c_void,
+        (),
+    );
+    fn is_a_layer_setting_value<T: vk::LayerSettingValue>() {}
+    is_a_layer_setting_value::<vk::Bool32>();
+    is_a_layer_setting_value::<u32>();
+    is_a_layer_setting_value::<i32>();
+    is_a_layer_setting_value::<i64>();
+    is_a_layer_setting_value::<u64>();
+    is_a_layer_setting_value::<f32>();
+    is_a_layer_setting_value::<f64>();
+    is_a_layer_setting_value::<vk::CStrPtr<'_>>();
+    is_a_layer_setting_value::<*const c_char>();
+}

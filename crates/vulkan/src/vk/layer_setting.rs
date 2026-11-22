@@ -25,40 +25,55 @@ mod sealed {
 /// The trait does not tie the type to the value of `type`: a setting has to be given the
 /// type that its `type` names.
 ///
-/// ```
-/// use vulkan::vk;
-///
-/// let enabled = [vk::TRUE];
-/// let levels = [vk::CStrPtr::new(c"error"), vk::CStrPtr::new(c"warn")];
-/// let settings = [
-///     vk::LayerSettingEXT::default()
-///         .setting_name(c"validate_sync")
-///         .ty(vk::LayerSettingTypeEXT::BOOL32)
-///         .values(&enabled),
-///     vk::LayerSettingEXT::default()
-///         .setting_name(c"report_flags")
-///         .ty(vk::LayerSettingTypeEXT::STRING)
-///         .values(&levels),
-/// ];
-/// assert_eq!(settings[0].value_count, 1);
-/// assert_eq!(settings[1].value_count, 2);
-/// ```
-///
-/// Bytes are not values of a setting, and neither are `&CStr`, which are not pointers of
-/// the C ABI:
+/// The bytes of a value are not values of a setting. A slice of bytes does not compile:
 ///
 /// ```compile_fail,E0277
 /// use vulkan::vk;
 ///
 /// let enabled = vk::TRUE.to_ne_bytes();
-/// let _ = vk::LayerSettingEXT::default().values(&enabled);
+/// let setting = vk::LayerSettingEXT::default()
+///     .setting_name(c"validate_sync")
+///     .ty(vk::LayerSettingTypeEXT::BOOL32)
+///     .values(&enabled);
 /// ```
+///
+/// Pass a slice of the values themselves, and `valueCount` is their number:
+///
+/// ```
+/// use vulkan::vk;
+///
+/// let enabled = [vk::TRUE];
+/// let setting = vk::LayerSettingEXT::default()
+///     .setting_name(c"validate_sync")
+///     .ty(vk::LayerSettingTypeEXT::BOOL32)
+///     .values(&enabled);
+/// assert_eq!(setting.value_count, 1);
+/// ```
+///
+/// A `&CStr` is a pointer and a length, not the pointer that C reads, so a slice of them
+/// does not compile either:
 ///
 /// ```compile_fail,E0277
 /// use vulkan::vk;
 ///
 /// let levels = [c"error", c"warn"];
-/// let _ = vk::LayerSettingEXT::default().values(&levels);
+/// let setting = vk::LayerSettingEXT::default()
+///     .setting_name(c"report_flags")
+///     .ty(vk::LayerSettingTypeEXT::STRING)
+///     .values(&levels);
+/// ```
+///
+/// Pass the strings as [`CStrPtr`]:
+///
+/// ```
+/// use vulkan::vk;
+///
+/// let levels = [vk::CStrPtr::new(c"error"), vk::CStrPtr::new(c"warn")];
+/// let setting = vk::LayerSettingEXT::default()
+///     .setting_name(c"report_flags")
+///     .ty(vk::LayerSettingTypeEXT::STRING)
+///     .values(&levels);
+/// assert_eq!(setting.value_count, 2);
 /// ```
 pub trait LayerSettingValue: sealed::Sealed {}
 
