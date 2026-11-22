@@ -221,14 +221,16 @@ impl Planner<'_> {
         w!(
             self.checks,
             "for (element, entry) in {owner}.iter().zip({name}.iter()) {{
-                assert_eq!(entry.len(), element.{member} as usize, \"{}: each `{name}` entry must have `{member}` elements\");
+                if let Some(entry) = entry {{
+                    assert_eq!(entry.len(), element.{member} as usize, \"{}: each `{name}` entry that is not `None` must have `{member}` elements\");
+                }}
             }}
-            let {name}_pointers = {name}.iter().map(|entry| entry.as_ptr()).collect::<Vec<_>>();",
+            let {name}_pointers = {name}.iter().map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr())).collect::<Vec<_>>();",
             self.c.name
         );
         Input::argument(
             &name,
-            format!("&[&[{element}]]"),
+            format!("&[Option<&[{element}]>]"),
             format!("{name}_pointers.as_ptr()"),
         )
     }
