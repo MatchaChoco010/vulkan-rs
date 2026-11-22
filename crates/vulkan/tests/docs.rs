@@ -790,6 +790,12 @@ fn section_items(doc: &str, title: &str) -> Vec<String> {
     items
 }
 
+#[derive(Clone, Copy)]
+struct Owner<'a> {
+    page: Option<&'a str>,
+    values: &'a BTreeSet<String>,
+}
+
 #[derive(Default)]
 struct Checker {
     failures: Vec<String>,
@@ -970,12 +976,15 @@ impl Checker {
         &mut self,
         spec: &Specification,
         generated: &Generated,
-        owner_page: Option<&str>,
-        values: &BTreeSet<String>,
+        owner: Owner<'_>,
         item: &str,
         doc: &str,
         aliases: &[String],
     ) {
+        let Owner {
+            page: owner_page,
+            values,
+        } = owner;
         let raw = doc;
         let doc = &flat(doc);
         let [c_name] = aliases else {
@@ -1010,7 +1019,7 @@ impl Checker {
         if rest.starts_with(" in the table “")
             || rest.starts_with(" in a table of the specification:")
         {
-            self.tabulated(spec, generated, owner_page, values, item, c_name, raw);
+            self.tabulated(spec, generated, owner, item, c_name, raw);
             return;
         }
         match owner_page {
@@ -1052,13 +1061,12 @@ impl Checker {
         &mut self,
         spec: &Specification,
         generated: &Generated,
-        owner_page: Option<&str>,
-        values: &BTreeSet<String>,
+        owner: Owner<'_>,
         item: &str,
         c_name: &str,
         doc: &str,
     ) {
-        let rows = spec.table_rows(owner_page, values, c_name);
+        let rows = spec.table_rows(owner.page, owner.values, c_name);
         let paragraphs = doc.trim().split("\n\n").collect::<Vec<_>>();
         if paragraphs.len() % 2 != 0 {
             self.fail(item, "has a table row without its cells");
@@ -1397,8 +1405,10 @@ fn check_item(
                         checker.value(
                             spec,
                             generated,
-                            value_pages.get(&owner).map(String::as_str),
-                            type_values.get(&owner).unwrap_or(&BTreeSet::new()),
+                            Owner {
+                                page: value_pages.get(&owner).map(String::as_str),
+                                values: type_values.get(&owner).unwrap_or(&BTreeSet::new()),
+                            },
                             &format!("{owner}::{name}"),
                             doc.trim(),
                             &aliases,
