@@ -98,6 +98,48 @@ impl<'s> CountedArrays<'s> {
             count.name
         )
     }
+
+    fn absent_when_empty(&self, m: &Field, ty: &CType, setter: Setter) -> Setter {
+        let Some(count) = count_member(self.s, m) else {
+            return setter;
+        };
+        let count_field = field_name(&count.name);
+        let sets_the_count = setter
+            .assignments
+            .contains(&format!("self.{count_field} = "));
+        if !m.optional || ty.depth() == 0 || ty.is_array() || !sets_the_count {
+            return setter;
+        }
+        let field = field_name(&m.name);
+        let others = self.arrays_of_count[count.name.as_str()]
+            .iter()
+            .filter(|other| other.name != m.name)
+            .collect::<Vec<_>>();
+        let no_other_is_set = others
+            .iter()
+            .map(|other| format!(" && self.{}.is_null()", field_name(&other.name)))
+            .collect::<String>();
+        let (compared, reset) = if others.is_empty() {
+            ("", "if the array was set before".to_string())
+        } else {
+            (
+                ", and it is not compared with the other arrays that share the count",
+                "if this array was set before and none of the others is set".to_string(),
+            )
+        };
+        let mut setter = setter;
+        setter.doc = std::mem::take(&mut setter.doc).text_after_the_first_block(format!(
+            "An empty slice stands for an array that is absent, which the registry allows for this member: it sets {} to a null pointer and leaves {} as it is{compared}. Only {reset}, it sets the count back to 0.",
+            field_link(&m.name),
+            field_link(&count.name)
+        ));
+        setter.assignments = format!(
+            "if value.is_empty() {{ if !self.{field}.is_null(){no_other_is_set} {{ self.{count_field} = 0; }} self.{field} = {}; }} else {{ {} }}",
+            null_ptr(ty.outer_const()),
+            setter.assignments
+        );
+        setter
+    }
 }
 
 fn count_member<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
@@ -166,7 +208,7 @@ pub(super) fn member_methods(
         _ => pointer_array_setter(model, s, m, &ty, counted, names)
             .unwrap_or_else(|| value_setter(model, m, names)),
     };
-    setter.render()
+    counted.absent_when_empty(m, &ty, setter).render()
 }
 
 fn value_setter(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Setter {
@@ -465,7 +507,7 @@ mod tests {
                 )),
                 counted("pVersionData", "const uint8_t*", "2*VK_UUID_SIZE"),
                 field("wordCount", "uint32_t"),
-                optional(counted("pWords", "const uint32_t*", "wordCount")),
+                counted("pWords", "const uint32_t*", "wordCount"),
             ],
         ));
         let model = Model::new(&ir);

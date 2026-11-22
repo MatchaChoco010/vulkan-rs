@@ -27,6 +27,15 @@ impl Doc {
         self
     }
 
+    pub(crate) fn text_after_the_first_block(mut self, text: impl Into<String>) -> Self {
+        let text = text.into();
+        if !text.trim().is_empty() {
+            let at = self.blocks.len().min(1);
+            self.blocks.insert(at, Block::Text(text));
+        }
+        self
+    }
+
     pub(crate) fn blocks(mut self, blocks: impl IntoIterator<Item = Block>) -> Self {
         self.blocks.extend(blocks);
         self
