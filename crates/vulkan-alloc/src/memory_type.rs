@@ -310,8 +310,34 @@ pub(crate) mod tests {
                 vk::MemoryPropertyFlags::empty(),
             ),
         ];
-        let is_amd =
-            |flags: vk::MemoryPropertyFlags| flags.as_raw() & NEEDS_DEVICE_COHERENT_MEMORY != 0;
+        let amd_flags = vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD.as_raw()
+            | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD.as_raw();
+        let is_amd = |flags: vk::MemoryPropertyFlags| flags.as_raw() & amd_flags != 0;
+        let documented_choice = |flags: &[vk::MemoryPropertyFlags],
+                                 memory_type_bits: u32,
+                                 location: MemoryLocation,
+                                 consider_unnamed_amd_types: bool| {
+            let (required, preferred) = (location.required_flags(), location.preferred_flags());
+            let named = is_amd(required) || is_amd(preferred);
+            let candidates = (0..flags.len())
+                .filter(|&index| memory_type_bits & (1 << index) != 0)
+                .filter(|&index| flags[index].contains(required))
+                .filter(|&index| consider_unnamed_amd_types || named || !is_amd(flags[index]))
+                .collect::<Vec<_>>();
+            let score = |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+            candidates
+                .iter()
+                .copied()
+                .find(|&index| flags[index].contains(preferred))
+                .or_else(|| {
+                    let best = candidates.iter().copied().map(score).max()?;
+                    candidates
+                        .iter()
+                        .copied()
+                        .find(|&index| score(index) == best)
+                })
+                .map(|index| index as u32)
+        };
 
         let mut seed = 0x853c_49e6_748f_ea9b_u64;
         let mut next = move || {
@@ -320,7 +346,7 @@ pub(crate) mod tests {
             seed ^= seed << 17;
             seed
         };
-        let mut skipped = 0;
+        let mut left_out = 0;
         let mut taken = 0;
         for _ in 0..4000 {
             let flags = (0..1 + next() % 8)
@@ -329,33 +355,26 @@ pub(crate) mod tests {
             let properties = memory_properties(&flags);
             let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
             for location in locations {
-                let (required, preferred) = (location.required_flags(), location.preferred_flags());
-                let named = is_amd(required) || is_amd(preferred);
-                let chosen =
-                    find_memory_type_index(&properties, memory_type_bits, required, preferred);
-
-                let without_unnamed = flags
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, flags)| named || !is_amd(**flags))
-                    .fold(0, |bits, (index, _)| bits | 1 << index);
-                let expected = find_memory_type_index(
+                let chosen = find_memory_type_index(
                     &properties,
-                    memory_type_bits & without_unnamed,
-                    required,
-                    preferred,
+                    memory_type_bits,
+                    location.required_flags(),
+                    location.preferred_flags(),
                 );
-                assert_eq!(chosen, expected, "types {flags:?}, {location:?}");
-                match chosen.map(|index| flags[index as usize]) {
-                    Some(flags) if is_amd(flags) => {
-                        assert!(named, "types {flags:?}, {location:?}");
-                        taken += 1;
-                    }
-                    _ => skipped += usize::from(memory_type_bits & !without_unnamed != 0),
+                assert_eq!(
+                    chosen,
+                    documented_choice(&flags, memory_type_bits, location, false),
+                    "types {flags:?}, allowed {memory_type_bits:#b}, {location:?}"
+                );
+                if chosen.is_some_and(|index| is_amd(flags[index as usize])) {
+                    taken += 1;
+                }
+                if chosen != documented_choice(&flags, memory_type_bits, location, true) {
+                    left_out += 1;
                 }
             }
         }
-        assert!(skipped > 100 && taken > 100);
+        assert!(left_out > 100 && taken > 100);
     }
 
     #[test]

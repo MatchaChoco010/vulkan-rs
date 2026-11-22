@@ -111,9 +111,10 @@ impl Allocator {
     /// `desc.requirements.memory_type_bits` that have every flag
     /// [`AllocationCreateDesc::location`] requires: the lowest-indexed one that also has
     /// every preferred flag, or else the one with the most preferred flags (the lowest
-    /// index on a tie). Memory types that need the `deviceCoherentMemory` feature are
-    /// left out unless the location names them (see
-    /// [`MemoryLocation`](crate::MemoryLocation)). Only the chosen memory type is tried.
+    /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
+    /// are left out unless the required or preferred flags of the location include one
+    /// of these two flags (see [`MemoryLocation`](crate::MemoryLocation)). Only the
+    /// chosen memory type is tried.
     ///
     /// The allocation is placed in an existing shared block of that type when one has
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
@@ -125,7 +126,7 @@ impl Allocator {
     /// # Errors
     ///
     /// - [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
-    ///   required flags.
+    ///   required flags, not counting the types that are left out as described above.
     /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0.
     /// - [`AllocationError::Vulkan`] if `vkAllocateMemory` fails, for example with
     ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
@@ -139,7 +140,9 @@ impl Allocator {
     ///   device.
     /// - The `vkAllocateMemory` call made from `desc` must be valid. In particular:
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
-    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); non-empty
+    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
+    ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
+    ///   `deviceCoherentMemory` feature; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
     ///   type; a block must not be larger than the memory heap of the chosen type; and
