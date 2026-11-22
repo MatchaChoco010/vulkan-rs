@@ -133,6 +133,14 @@ fn ir() -> Registry {
         promoted_to: Some("VK_VERSION_1_2".to_string()),
         ..Default::default()
     });
+    ir.extensions.push(Extension {
+        name: "VK_KHR_other".to_string(),
+        name_macro: "VK_KHR_OTHER_EXTENSION_NAME".to_string(),
+        spec_version_macro: "VK_KHR_OTHER_SPEC_VERSION".to_string(),
+        spec_version: 1,
+        device: true,
+        ..Default::default()
+    });
     ir.constants.push(Constant {
         name: "VK_MAX_QUEUES".to_string(),
         ty: "uint32_t".to_string(),
@@ -458,7 +466,8 @@ fn extension_names_state_level_requirements_and_promotion() {
             format!(
                 "The name of the device extension [`VK_KHR_queue`]({PAGES}/VK_KHR_queue.html), the C macro `VK_KHR_QUEUE_EXTENSION_NAME`."
             ),
-            "Requires Vulkan 1.1 or `VK_KHR_other`. Promoted to Vulkan 1.2.".to_string(),
+            "Requires Vulkan 1.1 or [`VK_KHR_other`](KHR_OTHER_NAME). Promoted to Vulkan 1.2."
+                .to_string(),
             alias("VK_KHR_queue"),
             alias("VK_KHR_QUEUE_EXTENSION_NAME"),
         ]
