@@ -38,7 +38,11 @@ pub(crate) struct BlockRequest {
 
 impl BlockRequest {
     pub(crate) fn needs_own_block(self) -> bool {
-        self.dedicated != DedicatedResource::None || !self.export_handle_types.is_empty()
+        self.dedicated != DedicatedResource::None
+            || !self.export_handle_types.is_empty()
+            || self
+                .memory_allocate_flags
+                .contains(vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT)
     }
 
     pub(crate) fn block_size(self, allocation_size: u64, shared_block_size: u64) -> u64 {

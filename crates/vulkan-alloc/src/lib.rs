@@ -90,8 +90,10 @@
 //! larger). Allocations that differ in [`AllocationCreateDesc::linear`] or
 //! [`AllocationCreateDesc::memory_allocate_flags`] never share a block. Dedicated
 //! allocations ([`AllocationScheme::DedicatedBuffer`], [`AllocationScheme::DedicatedImage`])
-//! and exportable allocations ([`AllocationCreateDesc::export_handle_types`]) get a
-//! `VkDeviceMemory` of their own. When the last allocation of a block is freed, the
+//! exportable allocations ([`AllocationCreateDesc::export_handle_types`]) and
+//! zero-initialized allocations ([`vulkan::vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]
+//! in [`AllocationCreateDesc::memory_allocate_flags`]) get a `VkDeviceMemory` of their
+//! own. When the last allocation of a block is freed, the
 //! block's `VkDeviceMemory` is freed at once.
 //!
 //! The allocator does not:

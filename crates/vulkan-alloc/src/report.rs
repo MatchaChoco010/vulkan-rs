@@ -77,8 +77,8 @@ pub struct MemoryBlockSnapshot {
     pub block_index: usize,
     /// The kind of resource the block holds.
     pub resource_class: AllocationResourceClass,
-    /// Whether the block is the `VkDeviceMemory` of a single dedicated or exportable
-    /// allocation.
+    /// Whether the block is the `VkDeviceMemory` of a single dedicated, exportable or
+    /// zero-initialized allocation.
     pub dedicated: bool,
     /// The `VkDeviceMemory` of the block.
     pub memory: vk::DeviceMemory,
