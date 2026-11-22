@@ -89,7 +89,11 @@ impl Instance {
     ///
     /// # Panics
     ///
-    /// Panics if the loader provided no `vkCreateDevice` or no `vkGetDeviceProcAddr`.
+    /// Panics before calling `vkCreateDevice` if the table of this instance has no
+    /// `vkGetDeviceProcAddr` or no `vkCreateDevice`, so a panic never leaves a device
+    /// behind. A Vulkan loader always provides both; a table passed to
+    /// [`Instance::from_raw`], or loaded with another `vkGetInstanceProcAddr`, may lack
+    /// them.
     ///
     /// # Safety
     ///
@@ -102,6 +106,10 @@ impl Instance {
         create_info: &vk::DeviceCreateInfo<'_>,
         allocator: Option<&vk::AllocationCallbacks<'_>>,
     ) -> vk::Result<Device> {
+        assert!(
+            self.fp.get_device_proc_addr.is_some(),
+            "vkGetDeviceProcAddr is not loaded"
+        );
         let mut handle = vk::Device::null();
         unsafe {
             self.create_device_raw(
