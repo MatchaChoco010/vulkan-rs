@@ -2,18 +2,56 @@ use vulkan::vk;
 
 use crate::allocation::AllocationResourceClass;
 
+/// The memory property flags an allocation's memory type must have and should have.
+///
+/// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
+/// every required flag. Among them it takes the lowest-indexed one with every preferred
+/// flag, or else the one with the most preferred flags.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryLocation {
+    /// Memory for resources only the device accesses: requires and prefers
+    /// `DEVICE_LOCAL`. The chosen type may also be host-visible, but nothing guarantees
+    /// that.
     GpuOnly,
+    /// Memory the host writes and the device reads, such as staging and uniform
+    /// buffers: requires `HOST_VISIBLE` and prefers `HOST_VISIBLE | HOST_COHERENT`.
     CpuToGpu,
+    /// Memory the device writes and the host reads back: requires `HOST_VISIBLE` and
+    /// prefers `HOST_VISIBLE | HOST_CACHED`. The chosen type need not be
+    /// `HOST_COHERENT`; check
+    /// [`Allocator::allocation_memory_flags`](crate::Allocator::allocation_memory_flags)
+    /// to know whether reads need an invalidate first.
     GpuToCpu,
+    /// Explicit flags.
     Custom {
+        /// Flags the memory type must have.
         required: vk::MemoryPropertyFlags,
+        /// Flags the memory type should have. Types are ranked by how many of these
+        /// flags they have; they do not have to include `required`.
         preferred: vk::MemoryPropertyFlags,
     },
 }
 
 impl MemoryLocation {
+    /// The same as [`MemoryLocation::Custom`] with these fields.
+    ///
+    /// ```
+    /// use vulkan::vk;
+    /// use vulkan_alloc::MemoryLocation;
+    ///
+    /// let location = MemoryLocation::custom(
+    ///     vk::MemoryPropertyFlags::HOST_VISIBLE,
+    ///     vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
+    /// );
+    /// assert_eq!(
+    ///     location,
+    ///     MemoryLocation::Custom {
+    ///         required: vk::MemoryPropertyFlags::HOST_VISIBLE,
+    ///         preferred: vk::MemoryPropertyFlags::HOST_VISIBLE
+    ///             | vk::MemoryPropertyFlags::HOST_CACHED,
+    ///     }
+    /// );
+    /// ```
     pub const fn custom(
         required: vk::MemoryPropertyFlags,
         preferred: vk::MemoryPropertyFlags,

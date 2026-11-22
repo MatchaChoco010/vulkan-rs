@@ -4,14 +4,51 @@ use vulkan::vk;
 
 use crate::memory_type::MemoryLocation;
 
+/// What [`Allocator::allocate`](crate::Allocator::allocate) is asked to allocate.
+///
+/// Every field is public and there is no constructor; struct update syntax
+/// (`..desc`) helps to vary one field of a common description.
 #[derive(Copy, Clone)]
 pub struct AllocationCreateDesc<'a> {
+    /// A name for diagnostics, reported by
+    /// [`Allocator::live_allocations`](crate::Allocator::live_allocations) and in the
+    /// error log of an allocator dropped with live allocations. The allocator stores a
+    /// copy, so the string only has to live for the call.
     pub name: Option<&'a str>,
+    /// The memory requirements of the resource, as returned by
+    /// `vkGetBufferMemoryRequirements` or `vkGetImageMemoryRequirements`.
+    ///
+    /// Only memory types whose bit is set in `memory_type_bits` are considered. A `size`
+    /// of 0 is rejected with
+    /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory).
+    ///
+    /// The allocation's offset is a multiple of `alignment`. A caller may raise
+    /// `alignment`, for example to align a device address, but must keep it a power of
+    /// two, as Vulkan reports it: the allocator combines it with other alignments (see
+    /// [`AllocatorCreateDesc::non_coherent_atom_size`](crate::AllocatorCreateDesc::non_coherent_atom_size))
+    /// by taking the largest.
     pub requirements: vk::MemoryRequirements,
+    /// The memory property flags the memory type must have and should have.
     pub location: MemoryLocation,
+    /// Whether the resource is linear: `true` for buffers and for images created with
+    /// [`vk::ImageTiling::LINEAR`], `false` for other images.
+    ///
+    /// Linear and non-linear allocations never share a block, which keeps them out of
+    /// each other's `bufferImageGranularity` pages.
     pub linear: bool,
+    /// Flags for `VkMemoryAllocateFlagsInfo`, chained to the `vkAllocateMemory` call
+    /// when not empty. A buffer created with
+    /// [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`] needs
+    /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here.
+    ///
+    /// Allocations with different flags never share a block.
     pub memory_allocate_flags: vk::MemoryAllocateFlags,
+    /// Handle types the memory can be exported as (`VkExportMemoryAllocateInfo`), such
+    /// as `DMA_BUF_EXT`. When not empty, the allocation gets a `VkDeviceMemory` of its
+    /// own of exactly `requirements.size` bytes, at offset 0, because an exported handle
+    /// refers to the whole memory object.
     pub export_handle_types: vk::ExternalMemoryHandleTypeFlags,
+    /// Whether the allocation is suballocated or gets dedicated memory.
     pub allocation_scheme: AllocationScheme,
 }
 
@@ -34,13 +71,30 @@ impl fmt::Debug for AllocationCreateDesc<'_> {
     }
 }
 
+/// Whether an allocation is cut out of a shared block or gets a `VkDeviceMemory` of its
+/// own.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AllocationScheme {
+    /// The allocation is placed in a block shared with other allocations, unless
+    /// [`AllocationCreateDesc::export_handle_types`] is not empty.
     GpuAllocatorManaged,
+    /// The allocation gets a `VkDeviceMemory` of its own of exactly
+    /// `requirements.size` bytes, at offset 0, allocated with a
+    /// `VkMemoryDedicatedAllocateInfo` that names this buffer. Use it when
+    /// `VkMemoryDedicatedRequirements` asks for a dedicated allocation, and bind only
+    /// this buffer to the allocation.
     DedicatedBuffer(vk::Buffer),
+    /// Like [`AllocationScheme::DedicatedBuffer`], for this image.
     DedicatedImage(vk::Image),
 }
 
+/// A range of device memory returned by
+/// [`Allocator::allocate`](crate::Allocator::allocate).
+///
+/// Bind a resource to [`Allocation::memory`] at [`Allocation::offset`]. An allocation
+/// is not [`Clone`]; pass it to [`Allocator::free`](crate::Allocator::free) once the
+/// device no longer uses it. It has no destructor, so dropping it without freeing it
+/// leaks its range (see the [crate documentation](crate#leaks)).
 #[derive(Debug, PartialEq, Eq)]
 pub struct Allocation {
     pub(crate) memory_type_index: u32,
@@ -53,27 +107,43 @@ pub struct Allocation {
 }
 
 impl Allocation {
+    /// The `VkDeviceMemory` that holds the range. Other allocations may share it unless
+    /// this one is dedicated or exportable.
     pub fn memory(&self) -> vk::DeviceMemory {
         self.memory
     }
 
+    /// The byte offset of the range in [`Allocation::memory`]. It is a multiple of the
+    /// alignment of the requirements the allocation was made with.
     pub fn offset(&self) -> u64 {
         self.offset
     }
 
+    /// The size of the range in bytes. It is at least the requested size and can be
+    /// larger, when a remainder too small to be used for anything else was added to the
+    /// range.
     pub fn size(&self) -> u64 {
         self.size
     }
 
+    /// The index of the memory type of [`Allocation::memory`] in
+    /// [`vk::PhysicalDeviceMemoryProperties::memory_types`].
     pub fn memory_type_index(&self) -> u32 {
         self.memory_type_index
     }
 }
 
+/// The kind of resource a block holds, as reported by
+/// [`MemoryBlockSnapshot::resource_class`](crate::MemoryBlockSnapshot::resource_class).
+/// Allocations of different classes never share a block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AllocationResourceClass {
+    /// Resources whose tiling is not known. [`Allocator::allocate`](crate::Allocator::allocate)
+    /// does not create blocks of this class.
     Unknown,
+    /// Allocations made with [`AllocationCreateDesc::linear`] set to `true`.
     Linear,
+    /// Allocations made with [`AllocationCreateDesc::linear`] set to `false`.
     Optimal,
 }
 

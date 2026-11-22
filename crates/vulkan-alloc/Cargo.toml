@@ -7,8 +7,10 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
-[lints]
-workspace = true
+[lints.clippy]
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+missing_safety_doc = "warn"
 
 [dependencies]
 log = "0.4"

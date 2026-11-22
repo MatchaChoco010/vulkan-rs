@@ -1,13 +1,97 @@
+//! Byte layout of `VK_EXT_descriptor_heap` heaps.
+//!
+//! A descriptor heap is a buffer. Where its descriptors sit, how far apart, and where the
+//! range reserved for the implementation goes follows from
+//! [`vk::PhysicalDeviceDescriptorHeapPropertiesEXT`]. This module computes that layout
+//! and nothing else: it holds no Vulkan objects, allocates no memory and keeps no record
+//! of which slots are in use.
+//!
+//! [`ResourceHeapPlan`] and [`SamplerHeapPlan`] place runs of descriptor slots
+//! ([`DescriptorSlots`]) one after another, in the order they are requested, then the
+//! reserved range, and produce a [`DescriptorHeapLayout`].
+//!
+//! ```
+//! use vulkan::vk;
+//! use vulkan_alloc::descriptor_heap::{HeapLayoutError, ResourceHeapPlan};
+//!
+//! # fn main() -> Result<(), HeapLayoutError> {
+//! let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+//!     .resource_heap_alignment(64)
+//!     .max_resource_heap_size(1 << 20)
+//!     .min_resource_heap_reserved_range(256)
+//!     .buffer_descriptor_size(16)
+//!     .buffer_descriptor_alignment(16)
+//!     .image_descriptor_size(32)
+//!     .image_descriptor_alignment(32);
+//!
+//! let mut plan = ResourceHeapPlan::new(&properties);
+//! let buffers = plan.buffers(2)?;
+//! let images = plan.images(16)?;
+//! let layout = plan.finish()?;
+//!
+//! let mut heap = vec![0u8; layout.size as usize];
+//! let destination = images.bytes(&mut heap, 3).expect("slot 3 is in the run");
+//! assert_eq!(destination.len(), 32);
+//!
+//! assert_eq!(buffers.index(1), Some(1));
+//! assert_eq!(images.index(3), Some(4));
+//! assert_eq!(images.offset(3), Some(4 * 32));
+//!
+//! let bind = layout.bind_info(0x1_0000)?;
+//! assert_eq!(bind.reserved_range_offset, layout.reserved_offset);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! In practice the heap is a buffer of [`DescriptorHeapLayout::size`] bytes created with
+//! `DESCRIPTOR_HEAP_EXT` usage and mapped, and the descriptors are written into the
+//! slices that [`DescriptorSlots::bytes`] or [`DescriptorSlots::slices`] return.
+//!
+//! # Indices
+//!
+//! A shader reaches a descriptor through an index, and the byte offset of the descriptor
+//! is `index * stride`. The first slot of a run is at `first_index * stride`, so
+//! [`DescriptorSlots::index`] is the number to hand to the shader.
+//!
+//! - [`ResourceHeapPlan::buffers`], [`ResourceHeapPlan::images`] and
+//!   [`SamplerHeapPlan::samplers`] make runs whose stride is the size of their
+//!   descriptor type, the indexing used by shaders that reach descriptors through
+//!   untyped pointers.
+//! - [`ResourceHeapPlan::uniform`] makes a run whose slots can each hold an image or a
+//!   buffer descriptor, for mappings such as [`vk::DescriptorSetAndBindingMappingEXT`]
+//!   where the application chooses the stride (`heapIndexStride`).
+
 use core::fmt;
 use core::ops::Range;
 use vulkan::vk;
 
+/// Why a heap cannot be laid out or bound as asked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeapLayoutError {
-    TooLarge { size: u64, max: u64 },
-    Misaligned { address: u64, alignment: u64 },
+    /// The heap would be larger than `maxResourceHeapSize` or `maxSamplerHeapSize`.
+    TooLarge {
+        /// The size the heap would have, in bytes.
+        size: u64,
+        /// The largest size the device allows, in bytes.
+        max: u64,
+    },
+    /// The address of the heap is not a multiple of [`DescriptorHeapLayout::alignment`].
+    Misaligned {
+        /// The address that was passed.
+        address: u64,
+        /// What the address must be a multiple of.
+        alignment: u64,
+    },
+    /// An index does not fit in `u32` or a byte offset or size does not fit in `u64`.
     Overflow,
-    UnalignedDescriptorSize { size: u64, alignment: u64 },
+    /// The size of a descriptor type is not a multiple of its alignment, so descriptors
+    /// indexed in units of their size cannot all be aligned.
+    UnalignedDescriptorSize {
+        /// The descriptor size, in bytes.
+        size: u64,
+        /// The descriptor alignment, in bytes.
+        alignment: u64,
+    },
 }
 
 impl fmt::Display for HeapLayoutError {
@@ -32,15 +116,40 @@ impl fmt::Display for HeapLayoutError {
 
 impl core::error::Error for HeapLayoutError {}
 
+/// A run of consecutive slots that hold one kind of descriptor.
+///
+/// ```
+/// use vulkan_alloc::descriptor_heap::DescriptorSlots;
+///
+/// let slots = DescriptorSlots {
+///     first_index: 2,
+///     count: 3,
+///     stride: 32,
+///     descriptor_size: 24,
+/// };
+/// assert_eq!(slots.index(0), Some(2));
+/// assert_eq!(slots.offset(1), Some(96));
+/// assert_eq!(slots.range(1), Some(96..120));
+/// assert_eq!(slots.index(3), None);
+/// assert_eq!(slots.end(), 160);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DescriptorSlots {
+    /// The index of the first slot, in units of `stride`.
     pub first_index: u32,
+    /// The number of slots.
     pub count: u32,
+    /// The distance in bytes from one slot to the next.
     pub stride: u64,
+    /// The number of bytes one descriptor occupies, which is what
+    /// `vkWriteResourceDescriptorsEXT` or `vkWriteSamplerDescriptorsEXT` writes. The
+    /// plans make it at most `stride`.
     pub descriptor_size: u64,
 }
 
 impl DescriptorSlots {
+    /// The index a shader uses for slot `slot` of this run, or `None` if `slot` is not
+    /// below `count` or the index does not fit in `u32`.
     pub const fn index(&self, slot: u32) -> Option<u32> {
         if slot < self.count {
             self.first_index.checked_add(slot)
@@ -49,6 +158,8 @@ impl DescriptorSlots {
         }
     }
 
+    /// The byte offset of slot `slot` from the start of the heap, or `None` if `slot` is
+    /// not in the run or the offset does not fit in `u64`.
     pub const fn offset(&self, slot: u32) -> Option<u64> {
         match self.index(slot) {
             Some(index) => (index as u64).checked_mul(self.stride),
@@ -56,16 +167,29 @@ impl DescriptorSlots {
         }
     }
 
+    /// The bytes of the heap that the descriptor of slot `slot` occupies:
+    /// `descriptor_size` bytes from [`DescriptorSlots::offset`]. `None` if `slot` is not
+    /// in the run or the range does not fit in `usize`.
     pub fn range(&self, slot: u32) -> Option<Range<usize>> {
         let start = usize::try_from(self.offset(slot)?).ok()?;
         let end = start.checked_add(usize::try_from(self.descriptor_size).ok()?)?;
         Some(start..end)
     }
 
+    /// The bytes of slot `slot` inside the mapped heap `heap`, as given by
+    /// [`DescriptorSlots::range`]. `None` if `slot` is not in the run or `heap` is too
+    /// short.
     pub fn bytes<'a>(&self, heap: &'a mut [u8], slot: u32) -> Option<&'a mut [u8]> {
         heap.get_mut(self.range(slot)?)
     }
 
+    /// The bytes of every slot of the run inside the mapped heap `heap`, in slot order,
+    /// each `descriptor_size` bytes long (at most `stride`).
+    ///
+    /// The slices do not overlap, so they can all be destinations of one
+    /// `vkWriteResourceDescriptorsEXT` or `vkWriteSamplerDescriptorsEXT` call that fills
+    /// the whole run. `None` if `heap` is too short, `stride` is 0, or an offset does not
+    /// fit in `usize`.
     pub fn slices<'a>(
         &self,
         heap: &'a mut [u8],
@@ -85,20 +209,40 @@ impl DescriptorSlots {
         )
     }
 
+    /// The byte offset just past the last slot, `(first_index + count) * stride`. It
+    /// saturates at `u64::MAX` instead of overflowing.
     pub const fn end(&self) -> u64 {
         (self.first_index as u64 + self.count as u64).saturating_mul(self.stride)
     }
 }
 
+/// Size, alignment and reserved range of a heap, made by [`ResourceHeapPlan::finish`] or
+/// [`SamplerHeapPlan::finish`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DescriptorHeapLayout {
+    /// The size in bytes of the buffer to create. It ends with the reserved range.
     pub size: u64,
+    /// What the device address of the heap must be a multiple of:
+    /// `resourceHeapAlignment` or `samplerHeapAlignment`, with 0 treated as 1.
+    /// [`DescriptorHeapLayout::bind_info`] checks the address.
     pub alignment: u64,
+    /// Where the range reserved for the implementation starts. Do not write descriptors
+    /// there.
     pub reserved_offset: u64,
+    /// The size of the reserved range: `minResourceHeapReservedRange` or
+    /// `minSamplerHeapReservedRange`.
     pub reserved_size: u64,
 }
 
 impl DescriptorHeapLayout {
+    /// The [`vk::BindHeapInfoEXT`] for a heap of this layout at device address
+    /// `address`, covering [`DescriptorHeapLayout::size`] bytes and naming the reserved
+    /// range.
+    ///
+    /// # Errors
+    ///
+    /// [`HeapLayoutError::Misaligned`] if `address` is not a multiple of
+    /// [`DescriptorHeapLayout::alignment`].
     pub fn bind_info(
         &self,
         address: vk::DeviceAddress,
@@ -196,6 +340,11 @@ fn lcm(a: u64, b: u64) -> u64 {
     a / gcd(a, b) * b
 }
 
+/// Plans the layout of a resource heap, which holds buffer and image descriptors.
+///
+/// Each run starts at the first multiple of its stride at or after the end of the
+/// previous run, so runs never overlap but gaps can appear between runs of different
+/// strides. A method that returns an error leaves the plan unchanged.
 #[derive(Debug, Clone)]
 pub struct ResourceHeapPlan {
     plan: Plan,
@@ -206,6 +355,9 @@ pub struct ResourceHeapPlan {
 }
 
 impl ResourceHeapPlan {
+    /// Starts an empty plan from the device's descriptor heap properties: the buffer
+    /// and image descriptor sizes and alignments, `resourceHeapAlignment`,
+    /// `maxResourceHeapSize` and `minResourceHeapReservedRange`.
     pub fn new(properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>) -> Self {
         Self {
             plan: Plan {
@@ -225,6 +377,15 @@ impl ResourceHeapPlan {
         }
     }
 
+    /// Adds a run of `count` buffer descriptors, indexed in units of
+    /// `bufferDescriptorSize`.
+    ///
+    /// # Errors
+    ///
+    /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `bufferDescriptorSize` is not a
+    ///   multiple of `bufferDescriptorAlignment`.
+    /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
+    ///   its end does not fit in `u64`.
     pub fn buffers(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
         self.plan.run(
             count,
@@ -234,6 +395,15 @@ impl ResourceHeapPlan {
         )
     }
 
+    /// Adds a run of `count` image descriptors, indexed in units of
+    /// `imageDescriptorSize`.
+    ///
+    /// # Errors
+    ///
+    /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `imageDescriptorSize` is not a
+    ///   multiple of `imageDescriptorAlignment`.
+    /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
+    ///   its end does not fit in `u64`.
     pub fn images(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
         self.plan.run(
             count,
@@ -243,6 +413,20 @@ impl ResourceHeapPlan {
         )
     }
 
+    /// Adds a run of `count` slots that can each hold an image descriptor or a buffer
+    /// descriptor.
+    ///
+    /// The stride is the larger of the two descriptor sizes, rounded up to a multiple of
+    /// both descriptor alignments; pass it as the index stride of the mapping. The
+    /// `descriptor_size` of the run is the larger size; a buffer descriptor written into
+    /// a slot uses a prefix of it.
+    ///
+    /// # Errors
+    ///
+    /// - [`HeapLayoutError::Overflow`] if the stride, an index of the run, or its end
+    ///   does not fit.
+    /// - [`HeapLayoutError::UnalignedDescriptorSize`] if both descriptor sizes are 0 and
+    ///   an alignment is larger than 1.
     pub fn uniform(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
         let alignment = lcm(self.buffer_alignment, self.image_alignment);
         let size = self.buffer_size.max(self.image_size);
@@ -252,11 +436,22 @@ impl ResourceHeapPlan {
         self.plan.run(count, stride, size, alignment)
     }
 
+    /// Places the reserved range after the last run, at a multiple of both descriptor
+    /// alignments, and returns the layout of the heap.
+    ///
+    /// # Errors
+    ///
+    /// - [`HeapLayoutError::TooLarge`] if the heap is larger than `maxResourceHeapSize`.
+    /// - [`HeapLayoutError::Overflow`] if its size does not fit in `u64`.
     pub fn finish(self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
         self.plan.finish()
     }
 }
 
+/// Plans the layout of a sampler heap.
+///
+/// Runs are placed one after another as in [`ResourceHeapPlan`]. A method that returns
+/// an error leaves the plan unchanged.
 #[derive(Debug, Clone)]
 pub struct SamplerHeapPlan {
     plan: Plan,
@@ -265,6 +460,9 @@ pub struct SamplerHeapPlan {
 }
 
 impl SamplerHeapPlan {
+    /// Starts an empty plan from the device's descriptor heap properties: the sampler
+    /// descriptor size and alignment, `samplerHeapAlignment`, `maxSamplerHeapSize` and
+    /// `minSamplerHeapReservedRange`.
     pub fn new(properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>) -> Self {
         Self {
             plan: Plan {
@@ -279,6 +477,15 @@ impl SamplerHeapPlan {
         }
     }
 
+    /// Adds a run of `count` sampler descriptors, indexed in units of
+    /// `samplerDescriptorSize`.
+    ///
+    /// # Errors
+    ///
+    /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `samplerDescriptorSize` is not
+    ///   a multiple of `samplerDescriptorAlignment`.
+    /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
+    ///   its end does not fit in `u64`.
     pub fn samplers(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
         self.plan.run(
             count,
@@ -288,6 +495,13 @@ impl SamplerHeapPlan {
         )
     }
 
+    /// Places the reserved range after the last run, at a multiple of
+    /// `samplerDescriptorAlignment`, and returns the layout of the heap.
+    ///
+    /// # Errors
+    ///
+    /// - [`HeapLayoutError::TooLarge`] if the heap is larger than `maxSamplerHeapSize`.
+    /// - [`HeapLayoutError::Overflow`] if its size does not fit in `u64`.
     pub fn finish(self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
         self.plan.finish()
     }
