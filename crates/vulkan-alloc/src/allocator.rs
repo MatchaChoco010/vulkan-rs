@@ -5,7 +5,7 @@ use vulkan::{Device, vk};
 
 use crate::allocation::{Allocation, AllocationCreateDesc, AllocationResourceClass};
 use crate::block::{BlockRequest, MemoryBlock, MemoryTypeAllocator};
-use crate::error::AllocationError;
+use crate::error::{AllocationError, FreeError};
 use crate::mapping::MappedAllocation;
 use crate::memory_type::{effective_alignment, find_memory_type_index, memory_type_flags};
 use crate::report::{
@@ -204,15 +204,15 @@ impl Allocator {
     ///
     /// # Errors
     ///
+    /// A [`FreeError`] whose [`FreeError::error`] is
     /// [`AllocationError::InvalidAllocation`] if the allocator does not hold the
     /// allocation, or if it still has a mapping made with [`Allocator::map_memory`]
-    /// that was not released with [`Allocator::unmap_memory`]. Nothing is freed or
-    /// unmapped when this error is returned. In the second case the allocation is
-    /// consumed but its range stays allocated and keeps every mapping it had, the
-    /// persistent one included, because neither this function nor
-    /// [`Allocator::unmap_memory`] can be called for it again: it is still reported by
-    /// [`Allocator::live_allocations`] and is only released by [`Allocator::free_all`].
-    /// Call [`Allocator::unmap_memory`] before freeing.
+    /// that was not released with [`Allocator::unmap_memory`].
+    ///
+    /// Nothing is freed or unmapped when an error is returned, and
+    /// [`FreeError::allocation`] hands the allocation back: release its
+    /// [`Allocator::map_memory`] references with [`Allocator::unmap_memory`] and free it
+    /// again, or pass it to the allocator that made it.
     ///
     /// # Safety
     ///
@@ -221,10 +221,13 @@ impl Allocator {
     ///   accesses a resource bound to the allocation may be pending, because the range
     ///   can be handed out again and its `VkDeviceMemory` can be freed.
     /// - Resources bound to the allocation, and pointers obtained by mapping it, must
-    ///   not be used afterwards.
-    pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), AllocationError> {
-        let memory_type = memory_type_mut(&mut self.memory_types, &allocation)?;
-        unsafe { memory_type.free(&self.device, &allocation) }
+    ///   not be used after it was freed.
+    pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), FreeError> {
+        let freed = match memory_type_mut(&mut self.memory_types, &allocation) {
+            Ok(memory_type) => unsafe { memory_type.free(&self.device, &allocation) },
+            Err(error) => Err(error),
+        };
+        freed.map_err(|error| FreeError { allocation, error })
     }
 
     /// Maps the allocation and returns a pointer to its first byte. The allocation has
@@ -297,7 +300,7 @@ impl Allocator {
     /// allocation has [`Allocation::size`] bytes.
     ///
     /// The pointer borrows nothing, so it can be stored next to the resource it belongs
-    /// to. It stays valid until the allocation is passed to [`Allocator::free`], which
+    /// to. It stays valid until [`Allocator::free`] frees the allocation, which
     /// releases the mapping, or until [`Allocator::free_all`]. Calling this again for
     /// the same allocation returns the same pointer without taking another reference.
     /// [`Allocator::unmap_memory`] does not release this mapping.
