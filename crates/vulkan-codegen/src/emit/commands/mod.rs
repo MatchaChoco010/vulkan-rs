@@ -11,8 +11,6 @@ use crate::naming::{command_name, field_name, pointer_setter_name};
 use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
 
-const HAND_WRITTEN_WRAPPERS: &[&str] = &["vkCreateInstance", "vkCreateDevice"];
-
 pub(crate) fn emit(model: &Model<'_>) -> String {
     let mut out = header(&["too_many_arguments"]);
     out.push_str("use alloc::vec::Vec;\nuse core::ffi::{c_char, c_void, CStr};\n\n");
@@ -24,7 +22,7 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
             .map(|c| raw_command(model, c, dispatch))
             .collect::<String>();
         let wrappers = commands(model, dispatch)
-            .filter(|c| !HAND_WRITTEN_WRAPPERS.contains(&c.name.as_str()))
+            .filter(|c| !creates_a_dispatching_handle(c))
             .map(|c| wrapper::wrapper(model, c, dispatch))
             .collect::<String>();
         w!(
@@ -192,6 +190,15 @@ fn inner_len(
     } else {
         None
     }
+}
+
+fn creates_a_dispatching_handle(c: &Command) -> bool {
+    c.params.last().is_some_and(|p| {
+        CType::of(p).pointers == [false]
+            && Dispatch::ALL
+                .iter()
+                .any(|dispatch| dispatch.self_handle() == Some(p.ty.as_str()))
+    })
 }
 
 #[cfg(test)]
@@ -745,6 +752,36 @@ mod tests {
         assert!(generate(&without_the_code).contains(
             "pub unsafe fn create_compute_pipelines(&self, sources: &[Buffer]) -> crate::vk::Result<Vec<Pipeline>> {"
         ));
+    }
+
+    #[test]
+    fn commands_that_create_a_dispatching_handle_are_left_to_the_hand_written_api() {
+        for (real, created) in [
+            ("vkCreateInstance", "VkInstance"),
+            ("vkCreateDevice", "VkDevice"),
+        ] {
+            let mut ir = base();
+            let mut c = result_command(
+                real,
+                &["VK_SUCCESS"],
+                vec![
+                    field("physicalDevice", "VkPhysicalDevice"),
+                    field("pCreated", &format!("{created}*")),
+                ],
+            );
+            c.instance = true;
+            ir.commands.push(c);
+            let wrapper = format!("pub unsafe fn {}(&self", command_name(real));
+            let out = generate(&ir);
+            assert!(!out.contains(&wrapper), "{real} has a generated wrapper");
+            assert_generated_alike_under_other_names(
+                &ir,
+                &Docs::default(),
+                real,
+                &["vkOpenSessionNV", "vkCreateInstance", "vkCreateDevice"],
+                &format!("pub unsafe fn {}_raw(&self", command_name(real)),
+            );
+        }
     }
 
     fn widgets() -> (Registry, Docs) {

@@ -27,7 +27,7 @@ impl Dispatch {
         format!("crate::{}", self.level())
     }
 
-    fn self_handle(self) -> Option<&'static str> {
+    pub(crate) fn self_handle(self) -> Option<&'static str> {
         match self {
             Dispatch::Entry => None,
             Dispatch::Instance => Some("VkInstance"),
