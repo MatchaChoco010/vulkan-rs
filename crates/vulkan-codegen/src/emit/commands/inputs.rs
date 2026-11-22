@@ -41,6 +41,7 @@ pub(super) struct Inputs {
     pub(super) notes: Vec<String>,
     pub(super) narrowed_counts: Vec<String>,
     pub(super) has_slices_of_slices: bool,
+    type_parameters: Vec<String>,
 }
 
 impl Inputs {
@@ -68,6 +69,7 @@ impl Inputs {
             narrowed_counts: Vec::new(),
             locals: Vec::new(),
             arrays_of_pointed_count: BTreeMap::new(),
+            type_parameters: Vec::new(),
         };
         let by_param = (0..params.len())
             .map(|index| (!outputs.contains(&index)).then(|| planner.input(index)))
@@ -98,6 +100,15 @@ impl Inputs {
             narrowed_counts: planner.narrowed_counts,
             has_slices_of_slices: !planner.inner_lens.is_empty()
                 && !planner.caller_owns_every_pointer,
+            type_parameters: planner.type_parameters,
+        }
+    }
+
+    pub(super) fn generics(&self) -> String {
+        if self.type_parameters.is_empty() {
+            String::new()
+        } else {
+            format!("<{}>", self.type_parameters.join(", "))
         }
     }
 
@@ -167,6 +178,7 @@ struct Planner<'a> {
     narrowed_counts: Vec<String>,
     locals: Vec<(String, String)>,
     arrays_of_pointed_count: BTreeMap<usize, Vec<usize>>,
+    type_parameters: Vec<String>,
 }
 
 impl Planner<'_> {
@@ -174,6 +186,15 @@ impl Planner<'_> {
         let p = &self.params[index];
         let ty = CType::of(p);
         let name = argument_name(p);
+        assert!(
+            !is_base_structure(self.model, &ty.base)
+                || (ty.depth() == 1 && !ty.is_array() && p.len.is_none()),
+            "{}: {} is a `{}`, and the wrappers take a `{}` only through a pointer to one structure",
+            self.c.name,
+            p.name,
+            p.full_ty,
+            ty.base
+        );
         if let Some(slices) = self.slices_of_count.get(&index).cloned() {
             return self.slice_len(p, &slices);
         }
@@ -337,7 +358,30 @@ impl Planner<'_> {
         if opaque {
             return Input::passed_through(&name, self.model.param_ty(p, "'_"));
         }
+        if is_base_structure(self.model, &ty.base) {
+            return self.tagged_structure(p, ty);
+        }
         reference(self.model, p, ty)
+    }
+
+    fn tagged_structure(&mut self, p: &Field, ty: &CType) -> Input {
+        assert!(
+            self.type_parameters.is_empty(),
+            "{}: {} is a second parameter that points to a `{}`, and the wrappers have one type parameter for such a structure",
+            self.c.name,
+            p.name,
+            ty.base
+        );
+        self.type_parameters
+            .push(format!("{TAGGED_STRUCTURE}: TaggedStructure"));
+        let cfg = self.model.cfg(self.c.protect.as_deref());
+        self.notes.push(format!(
+            "`{}` is passed as a pointer to a {}, which stands for any structure that begins with `sType` and `pNext`: the command takes it as the structure that its `sType` names, so `{TAGGED_STRUCTURE}` has to be a structure that the specification allows for `{}`.",
+            argument_name(p),
+            self.model.link(&cfg, &ty.base),
+            p.name
+        ));
+        reference_to(p, ty, TAGGED_STRUCTURE, ".cast()")
     }
 
     fn names_its_length(&self, p: &Field) -> bool {
@@ -462,17 +506,36 @@ fn slice(model: &Model<'_>, p: &Field, ty: &CType, null_if_empty: bool) -> Input
     }
 }
 
+const TAGGED_STRUCTURE: &str = "T";
+
+fn is_base_structure(model: &Model<'_>, base: &str) -> bool {
+    matches!(
+        model.canonical(base),
+        "VkBaseInStructure" | "VkBaseOutStructure"
+    )
+}
+
 fn reference(model: &Model<'_>, p: &Field, ty: &CType) -> Input {
+    reference_to(p, ty, &model.base_ty(&ty.base, "'_"), "")
+}
+
+fn reference_to(p: &Field, ty: &CType, referent: &str, cast: &str) -> Input {
     let name = argument_name(p);
     let borrow = Borrow::of_pointer(ty.outer_const());
-    let reference_ty = borrow.reference("", &model.base_ty(&ty.base, "'_"));
+    let reference_ty = borrow.reference("", referent);
     let null = null_ptr(ty.outer_const());
     let (pass, rebinds_mutably) = match (borrow, p.optional) {
-        (Borrow::Shared, false) => (format!("core::ptr::from_ref({name})"), false),
-        (Borrow::Exclusive, false) => (format!("core::ptr::from_mut(&mut *{name})"), false),
-        (Borrow::Shared, true) => (format!("{name}.map_or({null}, core::ptr::from_ref)"), false),
+        (Borrow::Shared, false) => (format!("core::ptr::from_ref({name}){cast}"), false),
+        (Borrow::Exclusive, false) => (format!("core::ptr::from_mut(&mut *{name}){cast}"), false),
+        (Borrow::Shared, true) if cast.is_empty() => {
+            (format!("{name}.map_or({null}, core::ptr::from_ref)"), false)
+        }
+        (Borrow::Shared, true) => (
+            format!("{name}.map_or({null}, |x| core::ptr::from_ref(x){cast})"),
+            false,
+        ),
         (Borrow::Exclusive, true) => (
-            format!("{name}.as_mut().map_or({null}, |x| core::ptr::from_mut(&mut **x))"),
+            format!("{name}.as_mut().map_or({null}, |x| core::ptr::from_mut(&mut **x){cast})"),
             true,
         ),
     };
@@ -486,5 +549,240 @@ fn reference(model: &Model<'_>, p: &Field, ty: &CType) -> Input {
         ty,
         pass,
         rebinds_mutably,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{creates_a_dispatching_handle, wrapper};
+    use super::*;
+    use crate::emit::{doc_of, squash};
+    use crate::model::Dispatch;
+    use crate::test_support::{catch_quietly, counted, field, optional, registry, result_command};
+    use std::collections::BTreeSet;
+    use vulkan_registry::{Docs, EnumField, Handle, Registry, Struct};
+
+    fn base_structures() -> Registry {
+        let mut ir = registry();
+        let results = ir.enums.iter_mut().find(|e| e.name == "VkResult").unwrap();
+        results.fields.push(EnumField {
+            name: "VK_SUCCESS".to_string(),
+            value: "0".to_string(),
+            ..Default::default()
+        });
+        ir.handles.push(Handle {
+            name: "VkDevice".to_string(),
+            object_type: "VK_OBJECT_TYPE_DEVICE".to_string(),
+            dispatchable: true,
+            ..Default::default()
+        });
+        ir.structs.push(Struct {
+            name: "VkBaseOutStructure".to_string(),
+            members: vec![
+                field("sType", "VkStructureType"),
+                field("pNext", "struct VkBaseOutStructure*"),
+            ],
+            ..Default::default()
+        });
+        ir.structs.push(Struct {
+            name: "VkBaseInStructure".to_string(),
+            members: vec![
+                field("sType", "VkStructureType"),
+                field("pNext", "const struct VkBaseInStructure*"),
+            ],
+            ..Default::default()
+        });
+        ir
+    }
+
+    fn wrapper_of(ir: &Registry, params: Vec<Field>) -> String {
+        let mut ir = ir.clone();
+        let mut c = result_command("vkGetWidgetPropertiesNV", &["VK_SUCCESS"], params);
+        c.device = true;
+        ir.commands.push(c);
+        let model = Model::new(&ir);
+        wrapper::wrapper(&model, &ir.commands[0], Dispatch::Device)
+    }
+
+    #[test]
+    fn a_pointer_to_a_base_structure_takes_any_tagged_structure() {
+        let ir = base_structures();
+        let out = wrapper_of(
+            &ir,
+            vec![
+                field("device", "VkDevice"),
+                field("index", "uint32_t"),
+                field("pProperties", "VkBaseOutStructure*"),
+            ],
+        );
+        assert!(
+            squash(&out).contains(
+                "pub unsafe fn get_widget_properties_nv<T: TaggedStructure>(&self, index: u32, properties: &mut T) -> crate::vk::Result<()> { unsafe { self.get_widget_properties_nv_raw(index, core::ptr::from_mut(&mut *properties).cast()).into_result() } }"
+            ),
+            "{out}"
+        );
+        let doc = doc_of(&out, "pub unsafe fn get_widget_properties_nv").join(" ");
+        assert!(
+            doc.contains(
+                "`properties` is passed as a pointer to a [`VkBaseOutStructure`](BaseOutStructure), which stands for any structure that begins with `sType` and `pNext`: the command takes it as the structure that its `sType` names, so `T` has to be a structure that the specification allows for `pProperties`."
+            ),
+            "{doc}"
+        );
+    }
+
+    #[test]
+    fn every_way_of_passing_a_base_structure_casts_the_pointer_to_the_tagged_structure() {
+        let ir = base_structures();
+        for (param, argument, pass) in [
+            (
+                field("pInfo", "const VkBaseInStructure*"),
+                "info: &T",
+                "core::ptr::from_ref(info).cast()",
+            ),
+            (
+                optional(field("pInfo", "const VkBaseInStructure*")),
+                "info: Option<&T>",
+                "info.map_or(core::ptr::null(), |x| core::ptr::from_ref(x).cast())",
+            ),
+            (
+                optional(field("pInfo", "VkBaseOutStructure*")),
+                "mut info: Option<&mut T>",
+                "info.as_mut().map_or(core::ptr::null_mut(), |x| core::ptr::from_mut(&mut **x).cast())",
+            ),
+        ] {
+            let out = squash(&wrapper_of(
+                &ir,
+                vec![
+                    field("device", "VkDevice"),
+                    param,
+                    field("flags", "uint32_t"),
+                ],
+            ));
+            assert!(
+                out.contains(&format!(
+                    "pub unsafe fn get_widget_properties_nv<T: TaggedStructure>(&self, {argument}, flags: u32) -> crate::vk::Result<()> {{ unsafe {{ self.get_widget_properties_nv_raw({pass}, flags).into_result() }} }}"
+                )),
+                "{argument}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_structures_are_taken_by_their_own_type() {
+        let mut ir = base_structures();
+        ir.structs.push(crate::test_support::tagged(
+            "VkWidgetPropertiesNV",
+            "VK_STRUCTURE_TYPE_WIDGET_PROPERTIES_NV",
+            vec![],
+        ));
+        let out = squash(&wrapper_of(
+            &ir,
+            vec![
+                field("device", "VkDevice"),
+                field("pProperties", "VkWidgetPropertiesNV*"),
+            ],
+        ));
+        assert!(
+            out.contains(
+                "pub unsafe fn get_widget_properties_nv(&self, properties: &mut WidgetPropertiesNV<'_>) -> crate::vk::Result<()> { unsafe { self.get_widget_properties_nv_raw(core::ptr::from_mut(&mut *properties)).into_result() } }"
+            ),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn base_structures_that_are_not_one_pointed_to_structure_stop_the_generator() {
+        let ir = base_structures();
+        for (params, message) in [
+            (
+                vec![
+                    field("device", "VkDevice"),
+                    field("pFirst", "const VkBaseInStructure*"),
+                    field("pSecond", "VkBaseOutStructure*"),
+                    field("flags", "uint32_t"),
+                ],
+                "vkGetWidgetPropertiesNV: pSecond is a second parameter that points to a `VkBaseOutStructure`, and the wrappers have one type parameter for such a structure",
+            ),
+            (
+                vec![
+                    field("device", "VkDevice"),
+                    field("infoCount", "uint32_t"),
+                    counted("pInfos", "const VkBaseInStructure*", "infoCount"),
+                ],
+                "vkGetWidgetPropertiesNV: pInfos is a `const VkBaseInStructure*`, and the wrappers take a `VkBaseInStructure` only through a pointer to one structure",
+            ),
+            (
+                vec![
+                    field("device", "VkDevice"),
+                    field("ppInfo", "const VkBaseInStructure* const*"),
+                    field("flags", "uint32_t"),
+                ],
+                "vkGetWidgetPropertiesNV: ppInfo is a `const VkBaseInStructure* const*`, and the wrappers take a `VkBaseInStructure` only through a pointer to one structure",
+            ),
+        ] {
+            assert_eq!(
+                catch_quietly(|| wrapper_of(&ir, params)).expect_err("the generator stops"),
+                message
+            );
+        }
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_take_no_base_structure_by_its_own_type() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut generic = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            let signature = out
+                .split_once(" { unsafe {")
+                .map_or(out.as_str(), |(signature, _)| signature);
+            for base in ["BaseInStructure", "BaseOutStructure"] {
+                assert!(
+                    !signature.contains(base),
+                    "{}: the wrapper takes or returns a `{base}`, which has room for `sType` and `pNext` only: {signature}",
+                    c.name
+                );
+            }
+            let params = model.dispatch(c).explicit_params(c);
+            let base_structures = params
+                .iter()
+                .filter(|p| is_base_structure(&model, &p.ty))
+                .collect::<Vec<_>>();
+            let type_parameter = signature.contains("<T: TaggedStructure>(&self");
+            assert_eq!(
+                type_parameter,
+                !base_structures.is_empty(),
+                "{}: {signature}",
+                c.name
+            );
+            for p in base_structures {
+                let name = argument_name(p);
+                let mutability = if CType::of(p).outer_const() {
+                    ""
+                } else {
+                    "mut "
+                };
+                assert!(
+                    signature.contains(&format!(", {name}: &{mutability}T")),
+                    "{}: `{name}` is not a reference to the type parameter: {signature}",
+                    c.name
+                );
+                generic.insert(format!("{}::{}", c.name, p.name));
+            }
+        }
+        assert_eq!(
+            generic,
+            [
+                "vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM::pProperties",
+                "vkGetPipelinePropertiesEXT::pPipelineProperties",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<BTreeSet<_>>(),
+            "crates/vulkan/tests/base_structure_parameters.rs calls each of these wrappers"
+        );
     }
 }
