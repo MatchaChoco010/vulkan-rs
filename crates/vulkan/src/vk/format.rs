@@ -39,15 +39,18 @@ pub struct FormatInfo {
     /// The extent of a texel block in texels: `[1, 1, 1]` unless the format is
     /// block-compressed or has a 4:2:2 single-plane layout.
     pub block_extent: [u32; 3],
-    /// For a `_PACKnn` format, the width in bits of the word the components are packed in.
+    /// For a packed format, the width in bits of its words: the `nn` of a `_PACKnn` format,
+    /// whose components are packed in one word, and of a `_mPACKnn` format such as
+    /// `R10X6G10X6_UNORM_2PACK16`, whose `m` components are each packed in a word of their own.
     pub packed: Option<u32>,
     /// The chroma subsampling of a Y'CbCr format.
     pub chroma: Option<ChromaSubsampling>,
     /// The compression scheme of a block-compressed format: `"BC"`, `"ETC2"`, `"EAC"`,
     /// `"ASTC LDR"`, `"ASTC HDR"` or `"PVRTC"`.
     pub compression: Option<&'static str>,
-    /// The components in the order the registry lists them, which for packed formats is
-    /// from the most significant bits down.
+    /// The components in the order the registry lists them, which for a `_PACKnn` format is
+    /// from the most significant bits of its word down, and for a `_mPACKnn` format the
+    /// order of the words.
     pub components: &'static [FormatComponent],
     /// The memory planes of a multi-planar format. Empty for single-plane formats.
     pub planes: &'static [FormatPlane],
@@ -58,7 +61,25 @@ pub struct FormatInfo {
 pub struct FormatComponent {
     /// Which component this is.
     pub name: ComponentName,
-    /// The width in bits. `None` in a block-compressed format.
+    /// The width in bits, if the registry gives it as a number: for every component of a
+    /// format that is not block-compressed, and for the components of the EAC formats, such
+    /// as the 11-bit `R` of `EAC_R11_UNORM_BLOCK`. `None` for the other block-compressed
+    /// formats, for which the registry gives no width.
+    ///
+    /// So `bits` does not tell whether a format is block-compressed; use
+    /// [`FormatInfo::is_compressed`] for that.
+    ///
+    /// ```
+    /// use vulkan::vk;
+    ///
+    /// let eac = vk::Format::EAC_R11_UNORM_BLOCK.info().unwrap();
+    /// assert!(eac.is_compressed());
+    /// assert_eq!(eac.components[0].bits, Some(11));
+    ///
+    /// let bc1 = vk::Format::BC1_RGB_UNORM_BLOCK.info().unwrap();
+    /// assert!(bc1.is_compressed());
+    /// assert_eq!(bc1.components[0].bits, None);
+    /// ```
     pub bits: Option<u32>,
     /// How the bits are interpreted.
     pub numeric_format: NumericFormat,
@@ -222,8 +243,11 @@ impl FormatInfo {
             .any(|c| c.numeric_format == NumericFormat::Srgb)
     }
 
-    /// The numeric format of the components, if they all share one. Color formats do;
-    /// combined depth/stencil formats such as `D24_UNORM_S8_UINT` do not and give `None`.
+    /// The numeric format of the components, if they all share one. Color formats do,
+    /// except the sRGB formats whose alpha the registry lists as
+    /// [`Unorm`](NumericFormat::Unorm), such as `R8G8B8A8_SRGB`; they give `None`, as do
+    /// combined depth/stencil formats such as `D24_UNORM_S8_UINT`. Use
+    /// [`FormatInfo::is_srgb`] to find the sRGB formats.
     pub fn numeric_format(&self) -> Option<NumericFormat> {
         let first = self.components.first()?.numeric_format;
         self.components

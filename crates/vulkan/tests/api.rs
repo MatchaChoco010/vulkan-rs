@@ -577,6 +577,153 @@ fn format_component_bits_fit_in_the_block() {
 }
 
 #[test]
+fn component_bits_are_known_except_in_block_compressed_formats_other_than_eac() {
+    let mut compressed_with_bits = Vec::new();
+    for &(format, name) in vk::Format::variants() {
+        let Some(info) = format.info() else { continue };
+        for component in info.components {
+            if !info.is_compressed() {
+                assert!(
+                    component.bits.is_some(),
+                    "{name}: every component of a format that is not block-compressed has a width"
+                );
+            } else if let Some(bits) = component.bits {
+                compressed_with_bits.push((name, component.name, bits));
+            }
+        }
+        assert_eq!(
+            info.components.iter().any(|c| c.bits.is_some()),
+            !info.is_compressed() || info.compression == Some("EAC"),
+            "{name}: of the block-compressed formats, only EAC gives the width of its components"
+        );
+    }
+    use vk::ComponentName::{G, R};
+    assert_eq!(
+        compressed_with_bits,
+        [
+            ("EAC_R11_UNORM_BLOCK", R, 11),
+            ("EAC_R11_SNORM_BLOCK", R, 11),
+            ("EAC_R11G11_UNORM_BLOCK", R, 11),
+            ("EAC_R11G11_UNORM_BLOCK", G, 11),
+            ("EAC_R11G11_SNORM_BLOCK", R, 11),
+            ("EAC_R11G11_SNORM_BLOCK", G, 11),
+        ]
+    );
+}
+
+#[test]
+fn color_formats_share_a_numeric_format_unless_their_srgb_alpha_is_unorm() {
+    use vk::{ComponentName, NumericFormat};
+    let mut checked = 0;
+    let mut srgb_alpha = Vec::new();
+    for &(format, name) in vk::Format::variants() {
+        let Some(info) = format.info() else { continue };
+        if info.aspects() != vk::ImageAspectFlags::COLOR {
+            continue;
+        }
+        checked += 1;
+        let unorm_alpha = info.is_srgb()
+            && info
+                .components
+                .iter()
+                .any(|c| c.name == ComponentName::A && c.numeric_format == NumericFormat::Unorm);
+        assert_eq!(
+            info.numeric_format().is_none(),
+            unorm_alpha,
+            "{name}: {:?}",
+            info.components
+        );
+        if info.is_srgb() && info.has_alpha() && !unorm_alpha {
+            srgb_alpha.push(name);
+        }
+    }
+    assert!(checked > 200);
+    assert!(
+        srgb_alpha
+            .iter()
+            .all(|name| name.starts_with("ASTC_") && name.ends_with("_SRGB_BLOCK_EXT")),
+        "only the 3D ASTC formats list an sRGB alpha: {srgb_alpha:?}"
+    );
+    let srgb = vk::Format::R8G8B8A8_SRGB.info().unwrap();
+    assert_eq!(srgb.numeric_format(), None);
+    assert_eq!(
+        srgb.components[3].numeric_format,
+        vk::NumericFormat::Unorm,
+        "the alpha of an sRGB format is linear"
+    );
+}
+
+#[test]
+fn packed_formats_give_the_width_of_their_words() {
+    for &(format, name) in vk::Format::variants() {
+        let Some(info) = format.info() else { continue };
+        let word = name.split('_').find_map(|part| {
+            let (count, bits) = part.split_once("PACK")?;
+            let count = if count.is_empty() {
+                1
+            } else {
+                count.parse::<u32>().ok()?
+            };
+            Some((count, bits.parse::<u32>().ok()?))
+        });
+        assert_eq!(
+            info.packed,
+            word.map(|(_, bits)| bits),
+            "{name}: the width of the words is the number after PACK"
+        );
+        let Some((count, bits)) = word else { continue };
+        assert_eq!(
+            info.block_size * 8,
+            count * bits,
+            "{name}: a texel block is the words that the name counts"
+        );
+        if count > 1 {
+            assert_eq!(
+                info.components.len(),
+                usize::try_from(count).unwrap(),
+                "{name}: each component is packed in a word of its own"
+            );
+        }
+        let named = named_components(name);
+        assert_eq!(
+            info.components
+                .iter()
+                .map(|c| (format!("{:?}", c.name), c.bits))
+                .collect::<Vec<_>>(),
+            named,
+            "{name}: the components are listed in the order of the name, from the most significant bits of a word down or word by word"
+        );
+    }
+}
+
+fn named_components(name: &str) -> Vec<(String, Option<u32>)> {
+    let mut components = Vec::new();
+    for part in name.split('_') {
+        let mut tokens = Vec::new();
+        let mut rest = part;
+        while let Some(letter) = rest.chars().next().filter(char::is_ascii_uppercase) {
+            let digits = rest[1..]
+                .find(|c: char| !c.is_ascii_digit())
+                .map_or(rest.len(), |end| end + 1);
+            let Ok(bits) = rest[1..digits].parse::<u32>() else {
+                break;
+            };
+            tokens.push((letter, bits));
+            rest = &rest[digits..];
+        }
+        if rest.is_empty() && !tokens.is_empty() {
+            components.extend(
+                tokens
+                    .into_iter()
+                    .filter(|(letter, _)| !matches!(letter, 'X' | 'E'))
+                    .map(|(letter, bits)| (letter.to_string(), Some(bits))),
+            );
+        }
+    }
+    components
+}
+
+#[test]
 fn extensions_know_their_dependencies() {
     use std::ffi::CStr;
     use vk::{Dependency, ExtensionInfo, ExtensionLevel};
