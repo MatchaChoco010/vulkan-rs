@@ -1,9 +1,10 @@
+#![cfg(target_pointer_width = "64")]
+
 mod fake_device;
 
 use fake_device::{FakeDevice, HOST_COHERENT, NON_COHERENT_ATOM_SIZE, desc};
 use vulkan_alloc::{Allocator, AllocatorCreateDesc};
 
-#[cfg(target_pointer_width = "64")]
 #[test]
 fn pointers_are_the_block_address_plus_the_offset_for_any_offset() {
     for first_size in [
