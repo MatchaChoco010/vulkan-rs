@@ -44,6 +44,16 @@ pub struct Comment {
     pub kind: CommentKind,
 }
 
+const KEYWORDS: &[&str] = &[
+    "Self", "abstract", "as", "async", "await", "become", "box", "break", "const", "continue",
+    "crate", "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if",
+    "impl", "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub",
+    "ref", "return", "self", "static", "struct", "super", "trait", "true", "try", "type", "typeof",
+    "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+];
+
+const BINDING_OR_FIELD_PREFIXES: &[&str] = &["let", "mut", "ref", "."];
+
 struct CodeToken<'a> {
     kind: TokenKind,
     text: &'a str,
@@ -62,6 +72,14 @@ impl CodeToken<'_> {
 
     fn is_identifier(&self) -> bool {
         matches!(self.kind, TokenKind::Ident | TokenKind::RawIdent)
+    }
+
+    fn can_name_a_macro(&self) -> bool {
+        match self.kind {
+            TokenKind::Ident => !KEYWORDS.contains(&self.text),
+            TokenKind::RawIdent => true,
+            _ => false,
+        }
     }
 
     fn is_string(&self) -> bool {
@@ -138,10 +156,14 @@ fn doc_attributes(code: &[CodeToken<'_>]) -> Vec<Comment> {
     }
     let in_macro_arguments = macro_arguments(code);
     for (index, name) in code.iter().enumerate() {
-        let assigns_a_string = name.is_named("doc")
+        let binds_a_variable_or_field = index
+            .checked_sub(1)
+            .is_some_and(|before| BINDING_OR_FIELD_PREFIXES.contains(&code[before].text));
+        let assigns_documentation = name.is_named("doc")
+            && !binds_a_variable_or_field
             && code.get(index + 1).is_some_and(|equals| equals.text == "=")
-            && code.get(index + 2).is_some_and(CodeToken::is_string);
-        if assigns_a_string
+            && starts_documentation(code, index + 2);
+        if assigns_documentation
             && in_macro_arguments[index]
             && !found_attributes
                 .iter()
@@ -157,16 +179,52 @@ fn doc_attributes(code: &[CodeToken<'_>]) -> Vec<Comment> {
     found
 }
 
+fn starts_documentation(code: &[CodeToken<'_>], start: usize) -> bool {
+    let Some(first) = code.get(start) else {
+        return false;
+    };
+    if first.is_string() {
+        return true;
+    }
+    if first.text == "$" {
+        return code.get(start + 1).is_some_and(CodeToken::is_identifier);
+    }
+    let mut index = start;
+    if is_path_separator(code, index) {
+        index += 2;
+    }
+    loop {
+        if !code.get(index).is_some_and(CodeToken::is_identifier) {
+            return false;
+        }
+        index += 1;
+        if !is_path_separator(code, index) {
+            break;
+        }
+        index += 2;
+    }
+    opens_macro_arguments(code, index)
+}
+
+fn is_path_separator(code: &[CodeToken<'_>], index: usize) -> bool {
+    code.get(index).is_some_and(|first| first.text == ":")
+        && code.get(index + 1).is_some_and(|second| second.text == ":")
+}
+
+fn opens_macro_arguments(code: &[CodeToken<'_>], bang_index: usize) -> bool {
+    code.get(bang_index).is_some_and(|bang| bang.text == "!")
+        && code
+            .get(bang_index + 1)
+            .is_some_and(|open| matches!(open.text, "(" | "[" | "{"))
+}
+
 fn macro_arguments(code: &[CodeToken<'_>]) -> Vec<bool> {
     let mut inside = vec![false; code.len()];
-    for (bang_index, bang) in code.iter().enumerate() {
-        let invokes_a_macro = bang.text == "!"
+    for bang_index in 0..code.len() {
+        let invokes_a_macro = opens_macro_arguments(code, bang_index)
             && bang_index
                 .checked_sub(1)
-                .is_some_and(|name_index| code[name_index].is_identifier())
-            && code
-                .get(bang_index + 1)
-                .is_some_and(|open| matches!(open.text, "(" | "[" | "{"));
+                .is_some_and(|name_index| code[name_index].can_name_a_macro());
         if !invokes_a_macro {
             continue;
         }
@@ -413,7 +471,28 @@ mod tests {
         "\"first\nsecond\"",
         "\"escaped \\\" doc = \\\"x\\\"\"",
     ];
+    const MACRO_VALUES: [&str; 5] = [
+        "$t",
+        "$crate_text",
+        "concat!(\"x\")",
+        "include_str!(\"x.md\")",
+        "::core::concat![\"x\"]",
+    ];
     const GAPS: [&str; 4] = ["", " ", "\n", " \n\t "];
+    const VALUES_THAT_ARE_NOT_DOCUMENTATION: [&str; 9] = [
+        "doc.render()",
+        "value",
+        "a::b",
+        "f(x)",
+        "1",
+        "$",
+        "x!",
+        "a::b!",
+        "S { doc: \"x\" }",
+    ];
+    const KEYWORDS_BEFORE_EXPRESSIONS: [&str; 9] = [
+        "if", "while", "return", "match", "in", "else", "break", "yield", "move",
+    ];
 
     #[derive(Clone, Copy, Debug)]
     enum DocContext {
@@ -505,7 +584,7 @@ mod tests {
     fn doc_cases() -> Vec<DocCase> {
         let mut cases = Vec::new();
         for name in DOC_NAMES {
-            for value in STRING_VALUES {
+            for value in STRING_VALUES.into_iter().chain(MACRO_VALUES) {
                 for gap in GAPS {
                     for cfg_attr_depth in 0..=2 {
                         for both_spellings in [false, true] {
@@ -585,6 +664,21 @@ mod tests {
                     forms.push(format!("{name}{gap}={gap}{{ {value} }}"));
                     forms.push(format!("\"{name}{gap}={gap}\\\"x\\\"\""));
                     forms.push(format!("r#\"{name}{gap}={gap}\"x\"\"#"));
+                    forms.push(format!("let {name}{gap}={gap}{value};"));
+                    forms.push(format!("let mut {name}{gap}={gap}{value};"));
+                    forms.push(format!("let ref {name}{gap}={gap}{value};"));
+                    forms.push(format!("s.{name}{gap}={gap}{value};"));
+                    forms.push(format!("self{gap}.{gap}{name}{gap}={gap}{value};"));
+                }
+            }
+            for name in DOC_NAMES {
+                for value in VALUES_THAT_ARE_NOT_DOCUMENTATION {
+                    forms.push(format!("{name}{gap}={gap}{value}"));
+                }
+                for value in MACRO_VALUES {
+                    forms.push(format!("let {name}{gap}={gap}{value};"));
+                    forms.push(format!("let mut {name}{gap}={gap}{value};"));
+                    forms.push(format!("x.{name}{gap}={gap}{value};"));
                 }
             }
         }
@@ -595,6 +689,7 @@ mod tests {
                 format!("m![{form}];\n"),
                 format!("m! {{ {form} }}\n"),
                 format!("outer! {{ inner!({form}) }}\n"),
+                format!("proptest! {{ #[test] fn t(x in 0..1u32) {{ {form} }} }}\n"),
             ] {
                 assert_no_comments(&context);
             }
@@ -612,8 +707,30 @@ mod tests {
                     assert_no_comments(&format!(
                         "macro_rules! m {{ () => {{ let {assignment}; }}; }}"
                     ));
+                    for keyword in KEYWORDS_BEFORE_EXPRESSIONS {
+                        assert_no_comments(&format!(
+                            "fn f() {{ {keyword}{gap}!{gap}({gap}{assignment}{gap}) }}"
+                        ));
+                    }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn a_raw_keyword_names_a_macro() {
+        for keyword in KEYWORDS_BEFORE_EXPRESSIONS {
+            let source = format!("fn f() {{ r#{keyword}!(doc = \"x\") }}");
+            let offset = source.find("doc").unwrap();
+            assert_eq!(
+                find_comments(&source),
+                [Comment {
+                    offset,
+                    line: 1,
+                    kind: CommentKind::DocAttribute,
+                }],
+                "{source}"
+            );
         }
     }
 
