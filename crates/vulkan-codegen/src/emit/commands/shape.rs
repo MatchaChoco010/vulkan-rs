@@ -39,6 +39,9 @@ impl Shape {
         }
         if ty.depth() == 1 {
             if is_enumeration(params, last) {
+                if !reports_only_completeness(model, c) {
+                    return Shape::PassThrough;
+                }
                 return Shape::Enumerates {
                     count: out - 1,
                     data: out,
@@ -72,7 +75,13 @@ impl Shape {
     }
 }
 
-fn is_enumeration(params: &[Field], data: &Field) -> bool {
+fn reports_only_completeness(model: &Model<'_>, c: &Command) -> bool {
+    c.success_codes
+        .iter()
+        .all(|code| matches!(model.result_code(code), "VK_SUCCESS" | "VK_INCOMPLETE"))
+}
+
+pub(super) fn is_enumeration(params: &[Field], data: &Field) -> bool {
     let [.., count, _data] = params else {
         return false;
     };

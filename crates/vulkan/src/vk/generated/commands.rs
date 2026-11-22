@@ -11751,7 +11751,9 @@ impl crate::Instance {
     ///
     /// Panics if `vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM` is not
     /// loaded: the loader returned no pointer for it, for example because the version or the
-    /// extension that provides it is not enabled.
+    /// extension that provides it is not enabled. Also panics if the slices do not have the lengths
+    /// that the command needs: slices that it counts with one parameter have to be equally long,
+    /// and a slice whose length it reads from another argument has to have that length.
     #[doc(alias = "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM")]
     pub unsafe fn enumerate_physical_device_queue_family_performance_counters_by_region_arm(
         &self,
@@ -11762,6 +11764,20 @@ impl crate::Instance {
         mut counter_descriptions: Option<&mut [PerformanceCounterDescriptionARM<'_>]>,
     ) -> crate::vk::Result<VkResult> {
         unsafe {
+            if let Some(x) = counters.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM: `counters` must have `*counter_count` elements"
+                );
+            }
+            if let Some(x) = counter_descriptions.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM: `counter_descriptions` must have `*counter_count` elements"
+                );
+            }
             let result = self
                 .enumerate_physical_device_queue_family_performance_counters_by_region_arm_raw(
                     physical_device,
@@ -11807,7 +11823,9 @@ impl crate::Instance {
     ///
     /// Panics if `vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR` is not loaded:
     /// the loader returned no pointer for it, for example because the version or the extension that
-    /// provides it is not enabled.
+    /// provides it is not enabled. Also panics if the slices do not have the lengths that the
+    /// command needs: slices that it counts with one parameter have to be equally long, and a slice
+    /// whose length it reads from another argument has to have that length.
     #[doc(alias = "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR")]
     pub unsafe fn enumerate_physical_device_queue_family_performance_query_counters_khr(
         &self,
@@ -11818,6 +11836,20 @@ impl crate::Instance {
         mut counter_descriptions: Option<&mut [PerformanceCounterDescriptionKHR<'_>]>,
     ) -> crate::vk::Result<VkResult> {
         unsafe {
+            if let Some(x) = counters.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR: `counters` must have `*counter_count` elements"
+                );
+            }
+            if let Some(x) = counter_descriptions.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR: `counter_descriptions` must have `*counter_count` elements"
+                );
+            }
             let result = self
                 .enumerate_physical_device_queue_family_performance_query_counters_khr_raw(
                     physical_device,
@@ -46934,8 +46966,9 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdBuildAccelerationStructuresIndirectKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBuildAccelerationStructuresIndirectKHR.html)
     /// through [`Self::cmd_build_acceleration_structures_indirect_khr_raw`], which describes the
-    /// parameters. Each slice of slices is passed as an array of pointers to the inner slices. The
-    /// command is provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    /// parameters. Each slice of slices is passed as an array of pointers to the inner slices, with
+    /// a null pointer for `None`. The command is provided by
+    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
     /// # Safety
     ///
@@ -46955,7 +46988,7 @@ impl crate::Device {
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
         indirect_device_addresses: &[DeviceAddress],
         indirect_strides: &[u32],
-        max_primitive_counts: &[&[u32]],
+        max_primitive_counts: &[Option<&[u32]>],
     ) {
         unsafe {
             let info_count_len: usize = infos.len();
@@ -46975,15 +47008,17 @@ impl crate::Device {
                 "vkCmdBuildAccelerationStructuresIndirectKHR: `max_primitive_counts` must have the same length as the other arrays sharing `infoCount`"
             );
             for (element, entry) in infos.iter().zip(max_primitive_counts.iter()) {
-                assert_eq!(
-                    entry.len(),
-                    element.geometry_count as usize,
-                    "vkCmdBuildAccelerationStructuresIndirectKHR: each `max_primitive_counts` entry must have `geometry_count` elements"
-                );
+                if let Some(entry) = entry {
+                    assert_eq!(
+                        entry.len(),
+                        element.geometry_count as usize,
+                        "vkCmdBuildAccelerationStructuresIndirectKHR: each `max_primitive_counts` entry that is not `None` must have `geometry_count` elements"
+                    );
+                }
             }
             let max_primitive_counts_pointers = max_primitive_counts
                 .iter()
-                .map(|entry| entry.as_ptr())
+                .map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr()))
                 .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_indirect_khr_raw(
                 command_buffer,
@@ -47000,8 +47035,9 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdBuildAccelerationStructuresKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBuildAccelerationStructuresKHR.html)
     /// through [`Self::cmd_build_acceleration_structures_khr_raw`], which describes the parameters.
-    /// Each slice of slices is passed as an array of pointers to the inner slices. The command is
-    /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    /// Each slice of slices is passed as an array of pointers to the inner slices, with a null
+    /// pointer for `None`. The command is provided by
+    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
     /// # Safety
     ///
@@ -47019,7 +47055,7 @@ impl crate::Device {
         &self,
         command_buffer: CommandBuffer,
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
-        build_range_infos: &[&[AccelerationStructureBuildRangeInfoKHR]],
+        build_range_infos: &[Option<&[AccelerationStructureBuildRangeInfoKHR]>],
     ) {
         unsafe {
             let info_count_len: usize = infos.len();
@@ -47029,15 +47065,17 @@ impl crate::Device {
                 "vkCmdBuildAccelerationStructuresKHR: `build_range_infos` must have the same length as the other arrays sharing `infoCount`"
             );
             for (element, entry) in infos.iter().zip(build_range_infos.iter()) {
-                assert_eq!(
-                    entry.len(),
-                    element.geometry_count as usize,
-                    "vkCmdBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
-                );
+                if let Some(entry) = entry {
+                    assert_eq!(
+                        entry.len(),
+                        element.geometry_count as usize,
+                        "vkCmdBuildAccelerationStructuresKHR: each `build_range_infos` entry that is not `None` must have `geometry_count` elements"
+                    );
+                }
             }
             let build_range_infos_pointers = build_range_infos
                 .iter()
-                .map(|entry| entry.as_ptr())
+                .map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr()))
                 .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_khr_raw(
                 command_buffer,
@@ -55822,12 +55860,16 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_SHADER_NV`](VkResult::ERROR_INVALID_SHADER_NV),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -56080,11 +56122,15 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -56375,11 +56421,15 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -56588,12 +56638,16 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_SHADER_NV`](VkResult::ERROR_INVALID_SHADER_NV),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -57242,12 +57296,16 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_SHADER_NV`](VkResult::ERROR_INVALID_SHADER_NV),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -57655,17 +57713,22 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCreateShadersEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateShadersEXT.html)
     /// through [`Self::create_shaders_ext_raw`], which describes the parameters. Returns the
-    /// elements that the command writes to `pShaders`. The command is provided by
+    /// elements that the command writes to `pShaders`. Any result other than `VK_SUCCESS` is
+    /// returned as the error, together with the same elements. The command is provided by
     /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command, together with the elements, if it is not
+    /// `VK_SUCCESS`: another success code, which the registry lists as
+    /// [`VK_INCOMPATIBLE_SHADER_BINARY_EXT`](VkResult::INCOMPATIBLE_SHADER_BINARY_EXT), or an error
+    /// code, which the registry lists as
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INITIALIZATION_FAILED`](VkResult::ERROR_INITIALIZATION_FAILED),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
+    /// command could not create are null handles; the others are valid and have to be destroyed.
     ///
     /// # Safety
     ///
@@ -57680,18 +57743,21 @@ impl crate::Device {
         &self,
         create_infos: &[ShaderCreateInfoEXT<'_>],
         allocator: Option<&AllocationCallbacks<'_>>,
-    ) -> crate::vk::Result<Vec<ShaderEXT>> {
+    ) -> core::result::Result<Vec<ShaderEXT>, (Vec<ShaderEXT>, VkResult)> {
         unsafe {
             let create_info_count_len: usize = create_infos.len();
             let mut values: Vec<ShaderEXT> = alloc::vec![Default::default(); create_info_count_len];
-            self.create_shaders_ext_raw(
+            let result = self.create_shaders_ext_raw(
                 create_info_count_len as u32,
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
-            )
-            .into_result()?;
-            Ok(values)
+            );
+            if result == VkResult::SUCCESS {
+                Ok(values)
+            } else {
+                Err((values, result))
+            }
         }
     }
     /// Create multiple swapchains that share presentable images.
@@ -61059,10 +61125,11 @@ impl crate::Device {
     ///
     /// Calls the C command
     /// [`vkGetDeviceFaultReportsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDeviceFaultReportsKHR.html)
-    /// through [`Self::get_device_fault_reports_khr_raw`], which describes the parameters. Asks the
-    /// command for the number of elements and then for the elements, again for as long as it
-    /// reports `VK_INCOMPLETE`, and returns what it writes to `pFaultInfo`. The command is provided
-    /// by [`VK_KHR_device_fault`](KHR_DEVICE_FAULT_NAME).
+    /// through [`Self::get_device_fault_reports_khr_raw`], which describes the parameters. Returns
+    /// the result code of the command when it is not an error, which the registry lists as
+    /// [`VK_SUCCESS`](VkResult::SUCCESS), [`VK_INCOMPLETE`](VkResult::INCOMPLETE) or
+    /// [`VK_TIMEOUT`](VkResult::TIMEOUT). The command is provided by
+    /// [`VK_KHR_device_fault`](KHR_DEVICE_FAULT_NAME).
     ///
     /// # Errors
     ///
@@ -61078,28 +61145,34 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkGetDeviceFaultReportsKHR` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if the slices do not have the lengths that the command needs: slices that it counts
+    /// with one parameter have to be equally long, and a slice whose length it reads from another
+    /// argument has to have that length.
     #[doc(alias = "vkGetDeviceFaultReportsKHR")]
     pub unsafe fn get_device_fault_reports_khr(
         &self,
         timeout: u64,
-    ) -> crate::vk::Result<Vec<DeviceFaultInfoKHR<'static>>> {
+        fault_counts: &mut u32,
+        mut fault_info: Option<&mut [DeviceFaultInfoKHR<'_>]>,
+    ) -> crate::vk::Result<VkResult> {
         unsafe {
-            loop {
-                let mut count: u32 = 0;
-                self.get_device_fault_reports_khr_raw(timeout, &mut count, core::ptr::null_mut())
-                    .into_result()?;
-                let mut values: Vec<DeviceFaultInfoKHR<'static>> =
-                    alloc::vec![Default::default(); count as usize];
-                let result =
-                    self.get_device_fault_reports_khr_raw(timeout, &mut count, values.as_mut_ptr());
-                if result == VkResult::INCOMPLETE {
-                    continue;
-                }
-                result.into_result()?;
-                values.truncate(count as usize);
-                return Ok(values);
+            if let Some(x) = fault_info.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *fault_counts as usize,
+                    "vkGetDeviceFaultReportsKHR: `fault_info` must have `*fault_counts` elements"
+                );
             }
+            let result = self.get_device_fault_reports_khr_raw(
+                timeout,
+                core::ptr::from_mut(&mut *fault_counts),
+                fault_info
+                    .as_mut()
+                    .map_or(core::ptr::null_mut(), |x| x.as_mut_ptr()),
+            );
+            result.into_result()?;
+            Ok(result)
         }
     }
     /// Query supported peer memory features of a device.

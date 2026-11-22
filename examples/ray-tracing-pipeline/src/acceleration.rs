@@ -194,7 +194,9 @@ unsafe fn build(
     info: vk::AccelerationStructureBuildGeometryInfoKHR<'_>,
 ) {
     let ranges = [vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(1)];
-    unsafe { device.cmd_build_acceleration_structures_khr(command_buffer, &[info], &[&ranges]) };
+    unsafe {
+        device.cmd_build_acceleration_structures_khr(command_buffer, &[info], &[Some(&ranges)])
+    };
 }
 
 /// What a build of a level from `geometries` needs to know before the acceleration

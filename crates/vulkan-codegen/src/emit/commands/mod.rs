@@ -746,6 +746,8 @@ mod tests {
         for code in [
             "VK_PIPELINE_COMPILE_REQUIRED",
             "VK_PIPELINE_COMPILE_REQUIRED_EXT",
+            "VK_INCOMPATIBLE_SHADER_BINARY_EXT",
+            "VK_TIMEOUT",
         ] {
             let create = only(result_command(
                 "vkCreateGraphicsPipelines",
@@ -772,7 +774,7 @@ mod tests {
         }
         let other_handles = only(result_command(
             "vkCompileProgramsNV",
-            &["VK_SUCCESS", "VK_PIPELINE_COMPILE_REQUIRED"],
+            &["VK_SUCCESS", "VK_INCOMPATIBLE_SHADER_BINARY_EXT"],
             vec![
                 field("device", "VkDevice"),
                 field("programCount", "uint32_t"),
@@ -783,6 +785,16 @@ mod tests {
         assert!(generate(&other_handles).contains(
             "pub unsafe fn compile_programs_nv(&self, sources: &[Buffer]) -> core::result::Result<Vec<Fence>, (Vec<Fence>, VkResult)> {"
         ));
+        let documented = emit(&Model::new(&other_handles))
+            .split_whitespace()
+            .filter(|word| *word != "///")
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            documented.contains("if it is not `VK_SUCCESS`: another success code, which the registry lists as `VK_INCOMPATIBLE_SHADER_BINARY_EXT`, or an error code."),
+            "{documented}"
+        );
+        assert!(!documented.contains("if it is an error"), "{documented}");
         let without_the_code = only(result_command(
             "vkCreateComputePipelines",
             &["VK_SUCCESS"],
@@ -898,16 +910,16 @@ mod tests {
         let (ir, docs) = widgets();
         let out = generate_with_docs(&ir, &docs);
         assert!(out.contains(
-            "pub unsafe fn cmd_assemble_widgets_nv(&self, command_buffer: CommandBuffer, batches: &[WidgetBatchNV], first_indices: &[u32], parts: &[&[WidgetPartNV]], limits: &[&[u32]]) {"
+            "pub unsafe fn cmd_assemble_widgets_nv(&self, command_buffer: CommandBuffer, batches: &[WidgetBatchNV], first_indices: &[u32], parts: &[Option<&[WidgetPartNV]>], limits: &[Option<&[u32]>]) {"
         ));
         assert!(out.contains("let batch_count_len: usize = batches.len();"));
         assert!(out.contains("assert_eq!(parts.len(), batch_count_len,"));
         assert!(out.contains("assert_eq!(limits.len(), batch_count_len,"));
         assert!(out.contains(
-            "for (element, entry) in batches.iter().zip(parts.iter()) { assert_eq!(entry.len(), element.part_count as usize, \"vkCmdAssembleWidgetsNV: each `parts` entry must have `part_count` elements\"); }"
+            "for (element, entry) in batches.iter().zip(parts.iter()) { if let Some(entry) = entry { assert_eq!(entry.len(), element.part_count as usize, \"vkCmdAssembleWidgetsNV: each `parts` entry that is not `None` must have `part_count` elements\"); } }"
         ));
         assert!(out.contains(
-            "let parts_pointers = parts.iter().map(|entry| entry.as_ptr()).collect::<Vec<_>>();"
+            "let parts_pointers = parts.iter().map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr())).collect::<Vec<_>>();"
         ));
         assert!(out.contains(
             "self.cmd_assemble_widgets_nv_raw(command_buffer, batch_count_len as u32, batches.as_ptr(), first_indices.as_ptr(), parts_pointers.as_ptr(), limits_pointers.as_ptr())"
@@ -920,7 +932,7 @@ mod tests {
                 "vkCmdBuildAccelerationStructuresKHR",
                 "vkCmdBuildAccelerationStructuresIndirectKHR",
             ],
-            "parts: &[&[WidgetPartNV]]",
+            "parts: &[Option<&[WidgetPartNV]>]",
         );
     }
 
@@ -960,7 +972,7 @@ mod tests {
                 }
             }
         }
-        assert!(generate_with_docs(&ir, &docs).contains("parts: &[&[WidgetPartNV]]"));
+        assert!(generate_with_docs(&ir, &docs).contains("parts: &[Option<&[WidgetPartNV]>]"));
     }
 
     #[test]
@@ -997,7 +1009,7 @@ mod tests {
             ),
             ("may not write the value", "-> crate::vk::Result<Option<("),
             ("keeps partial output", "-> core::result::Result<Vec<"),
-            ("takes slices of slices", ": &[&["),
+            ("takes slices of slices", ": &[Option<&["),
         ];
         let mut found = BTreeMap::<&'static str, BTreeSet<String>>::new();
         for c in &model.ir.commands {
@@ -1042,6 +1054,7 @@ mod tests {
                     "vkCreateExecutionGraphPipelinesAMDX",
                     "vkCreateGraphicsPipelines",
                     "vkCreateRayTracingPipelinesNV",
+                    "vkCreateShadersEXT",
                 ]),
             ),
             (
@@ -1158,6 +1171,96 @@ mod tests {
             name: c_name.to_string(),
             ..Default::default()
         })
+    }
+
+    fn fault_reports(codes: &[&str]) -> Registry {
+        let mut ir = only(result_command(
+            "vkGetDeviceFaultReportsKHR",
+            codes,
+            vec![
+                field("device", "VkDevice"),
+                field("timeout", "uint64_t"),
+                field("pFaultCounts", "uint32_t*"),
+                optional(counted(
+                    "pFaultInfo",
+                    "VkDeviceFaultInfoKHR*",
+                    "pFaultCounts",
+                )),
+            ],
+        ));
+        ir.structs.push(tagged(
+            "VkDeviceFaultInfoKHR",
+            "VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR",
+            vec![field("flags", "uint32_t")],
+        ));
+        ir
+    }
+
+    #[test]
+    fn enumerations_with_other_success_codes_leave_the_array_to_the_caller() {
+        for codes in [
+            &["VK_SUCCESS", "VK_INCOMPLETE", "VK_TIMEOUT"][..],
+            &["VK_SUCCESS", "VK_TIMEOUT"],
+            &["VK_SUCCESS", "VK_INCOMPLETE", "VK_NOT_READY"],
+        ] {
+            assert_generated_alike_under_other_names(
+                &fault_reports(codes),
+                &Docs::default(),
+                "vkGetDeviceFaultReportsKHR",
+                &["vkWaitForEventsNV"],
+                "pub unsafe fn get_device_fault_reports_khr(&self, timeout: u64, fault_counts: &mut u32, mut fault_info: Option<&mut [DeviceFaultInfoKHR<'_>]>) -> crate::vk::Result<VkResult> {",
+            );
+            assert!(!generate(&fault_reports(codes)).contains("loop {"));
+            assert!(generate(&fault_reports(codes)).contains(
+                "if let Some(x) = fault_info.as_ref() { assert_eq!(x.len(), *fault_counts as usize, \"vkGetDeviceFaultReportsKHR: `fault_info` must have `*fault_counts` elements\"); }"
+            ));
+        }
+        assert!(
+            generate(&fault_reports(&["VK_SUCCESS", "VK_INCOMPLETE"])).contains(
+                "pub unsafe fn get_device_fault_reports_khr(&self, timeout: u64) -> crate::vk::Result<Vec<DeviceFaultInfoKHR<'static>>> { unsafe { loop {"
+            ),
+            "an enumeration that only reports completeness keeps the loop"
+        );
+    }
+
+    #[test]
+    fn the_enumerations_of_the_registry_loop_only_when_they_report_nothing_but_completeness() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut left_to_the_caller = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            let params = model.dispatch(c).explicit_params(c);
+            let enumerates = params
+                .last()
+                .is_some_and(|last| shape::is_enumeration(params, last));
+            if !enumerates {
+                continue;
+            }
+            let codes = c
+                .success_codes
+                .iter()
+                .map(|code| model.result_code(code))
+                .collect::<BTreeSet<_>>();
+            if codes
+                .iter()
+                .all(|code| ["VK_SUCCESS", "VK_INCOMPLETE"].contains(code))
+            {
+                continue;
+            }
+            assert!(
+                !out.contains("loop {") && !out.contains("-> crate::vk::Result<Vec<"),
+                "{} enumerates although it reports {codes:?}",
+                c.name
+            );
+            left_to_the_caller.insert(c.name.as_str());
+        }
+        assert_eq!(
+            left_to_the_caller,
+            BTreeSet::from(["vkGetDeviceFaultReportsKHR"])
+        );
     }
 
     #[test]
