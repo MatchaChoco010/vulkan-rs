@@ -1,54 +1,85 @@
-use super::basic::{bitmask_variants, enum_variants};
 use super::structs::{Slot, slots};
+use super::variants::{Variant, bitmask_variants, enum_variants};
 use super::w;
-use crate::model::Model;
+use crate::model::{BETA_PROTECT, Cfg, Model};
 use crate::naming::{const_name, field_name, type_name};
+use vulkan_registry::Struct;
 
-const BETA: &str = "VK_ENABLE_BETA_EXTENSIONS";
+fn is_declared_for_the_c_program(protect: Option<&str>) -> bool {
+    matches!(protect, None | Some(BETA_PROTECT))
+}
 
-fn gate(model: &Model<'_>, protect: Option<&str>) -> Option<String> {
-    match protect {
-        None => Some(String::new()),
-        Some(BETA) => Some(model.cfg(Some(BETA))),
-        Some(_) => None,
+fn checked_structs<'a>(model: &'a Model<'_>) -> impl Iterator<Item = &'a Struct> {
+    model
+        .ir
+        .structs
+        .iter()
+        .filter(|s| is_declared_for_the_c_program(s.protect.as_deref()))
+}
+
+struct CheckedValue<'a> {
+    c_name: &'a str,
+    cfg: Cfg,
+    rust_exprs: Vec<String>,
+}
+
+fn checked_values<'a>(model: &Model<'a>) -> Vec<CheckedValue<'a>> {
+    let mut values = Vec::new();
+    for c in model.ir.constants.iter().filter(|c| c.ty != "float") {
+        values.push(CheckedValue {
+            c_name: &c.name,
+            cfg: Cfg::default(),
+            rust_exprs: vec![format!("vk::{}", const_name(&c.name))],
+        });
     }
-}
-
-fn gate_cfg(model: &Model<'_>, cfg: &str) -> bool {
-    cfg.is_empty() || cfg == model.cfg(Some(BETA))
-}
-
-pub fn emit_layout_table(model: &Model<'_>) -> String {
-    let mut out =
-        String::from("use core::mem::{align_of, offset_of, size_of};\nuse vulkan::vk;\n\n");
-    out.push_str(
-        "pub struct StructLayout {\n    pub name: &'static str,\n    pub size: usize,\n    pub align: usize,\n    pub offsets: &'static [(&'static str, usize)],\n}\n\n",
-    );
-    out.push_str(
-        "pub struct BitLayout {\n    pub name: &'static str,\n    pub offset: usize,\n    pub width: usize,\n}\n\n",
-    );
-
-    let mut bit_rows = String::new();
-    w!(out, "pub const STRUCTS: &[StructLayout] = &[");
-    for s in &model.ir.structs {
-        let Some(cfg) = gate(model, s.protect.as_deref()) else {
-            continue;
+    let mut push_variants =
+        |protect: Option<&str>, variants: Vec<Variant<'a>>, rust_types: &[&str]| {
+            if !is_declared_for_the_c_program(protect) {
+                return;
+            }
+            for v in variants {
+                if !is_declared_for_the_c_program(v.protect) {
+                    continue;
+                }
+                values.push(CheckedValue {
+                    c_name: v.c_name,
+                    cfg: model.cfg(protect).or_else(|| v.cfg.clone()),
+                    rust_exprs: rust_types
+                        .iter()
+                        .map(|ty| format!("vk::{}::{}.0", type_name(ty), v.name))
+                        .collect(),
+                });
+            }
         };
+    for e in &model.ir.enums {
+        push_variants(e.protect.as_deref(), enum_variants(model, e), &[&e.name]);
+    }
+    for b in &model.ir.bitmasks {
+        push_variants(
+            b.protect.as_deref(),
+            bitmask_variants(model, b),
+            &[&b.name, &b.flags_name],
+        );
+    }
+    values
+}
+
+pub(crate) fn emit_table(model: &Model<'_>) -> String {
+    let mut struct_rows = String::new();
+    let mut bit_field_rows = String::new();
+    for s in checked_structs(model) {
+        let cfg = model.cfg(s.protect.as_deref());
         let rust = if model.has_lifetime(&s.name) {
             format!("vk::{}<'static>", type_name(&s.name))
         } else {
             format!("vk::{}", type_name(&s.name))
         };
-        w!(out, "    {cfg}StructLayout {{");
-        w!(out, "        name: \"{}\",", s.name);
-        w!(out, "        size: size_of::<{rust}>(),");
-        w!(out, "        align: align_of::<{rust}>(),");
-        w!(out, "        offsets: &[");
+        let mut offsets = String::new();
         for slot in slots(model, s) {
             match slot {
                 Slot::Plain(m) => w!(
-                    out,
-                    "            (\"{}\", offset_of!({rust}, {})),",
+                    offsets,
+                    "(\"{}\", offset_of!({rust}, {})),",
                     m.name,
                     field_name(&m.name)
                 ),
@@ -59,8 +90,8 @@ pub fn emit_layout_table(model: &Model<'_>) -> String {
                             shift => format!(" + {shift}"),
                         };
                         w!(
-                            bit_rows,
-                            "    {cfg}BitLayout {{ name: \"{}.{}\", offset: offset_of!({rust}, {storage}) * 8{shift}, width: {} }},",
+                            bit_field_rows,
+                            "{cfg}BitLayout {{ name: \"{}.{}\", offset: offset_of!({rust}, {storage}) * 8{shift}, width: {} }},",
                             s.name,
                             bit.member.name,
                             bit.width
@@ -69,120 +100,104 @@ pub fn emit_layout_table(model: &Model<'_>) -> String {
                 }
             }
         }
-        w!(out, "        ],");
-        w!(out, "    }},");
-    }
-    w!(out, "];\n");
-    w!(out, "pub const BIT_FIELDS: &[BitLayout] = &[");
-    out.push_str(&bit_rows);
-    w!(out, "];\n");
-
-    w!(out, "pub const VALUES: &[(&str, i64)] = &[");
-    for c in &model.ir.constants {
-        if c.ty == "float" {
-            continue;
-        }
         w!(
-            out,
-            "    (\"{}\", vk::{} as i64),",
-            c.name,
-            const_name(&c.name)
+            struct_rows,
+            "{cfg}StructLayout {{
+                name: \"{name}\",
+                size: size_of::<{rust}>(),
+                align: align_of::<{rust}>(),
+                offsets: &[
+                    {offsets}],
+            }},",
+            name = s.name
         );
     }
-    for e in &model.ir.enums {
-        let Some(cfg) = gate(model, e.protect.as_deref()) else {
-            continue;
-        };
-        for v in enum_variants(model, e) {
-            if gate_cfg(model, &v.cfg) {
-                let cfg = if cfg.is_empty() {
-                    v.cfg.clone()
-                } else {
-                    cfg.clone()
-                };
-                w!(
-                    out,
-                    "    {cfg}(\"{}\", vk::{}::{}.0 as i64),",
-                    v.c_name,
-                    type_name(&e.name),
-                    v.name
-                );
-            }
+    let mut value_rows = String::new();
+    for value in checked_values(model) {
+        for rust_expr in &value.rust_exprs {
+            w!(
+                value_rows,
+                "{}(\"{}\", {rust_expr} as i64),",
+                value.cfg,
+                value.c_name
+            );
         }
     }
-    for b in &model.ir.bitmasks {
-        let Some(cfg) = gate(model, b.protect.as_deref()) else {
-            continue;
-        };
-        for v in bitmask_variants(model, b) {
-            if gate_cfg(model, &v.cfg) {
-                let cfg = if cfg.is_empty() {
-                    v.cfg.clone()
-                } else {
-                    cfg.clone()
-                };
-                for ty in [&b.name, &b.flags_name] {
-                    w!(
-                        out,
-                        "    {cfg}(\"{}\", vk::{}::{}.0 as i64),",
-                        v.c_name,
-                        type_name(ty),
-                        v.name
-                    );
-                }
-            }
-        }
-    }
-    w!(out, "];");
-    out
+    format!(
+        "use core::mem::{{align_of, offset_of, size_of}};
+use vulkan::vk;
+
+pub struct StructLayout {{
+    pub name: &'static str,
+    pub size: usize,
+    pub align: usize,
+    pub offsets: &'static [(&'static str, usize)],
+}}
+
+pub struct BitLayout {{
+    pub name: &'static str,
+    pub offset: usize,
+    pub width: usize,
+}}
+
+pub const STRUCTS: &[StructLayout] = &[
+    {struct_rows}];
+
+pub const BIT_FIELDS: &[BitLayout] = &[
+    {bit_field_rows}];
+
+pub const VALUES: &[(&str, i64)] = &[
+    {value_rows}];
+"
+    )
 }
 
-pub fn emit_layout_c(model: &Model<'_>) -> String {
+const C_PROGRAM_START: &str = r#"
+// Prints the position of the bits that are set in `p`, which holds a zeroed struct
+// with a single bit-field set to all ones.
+static void bits(const char* name, const void* p, size_t size) {
+    const unsigned char* bytes = (const unsigned char*)p;
+    long first = -1;
+    long count = 0;
+    for (size_t i = 0; i < size * 8; i++) {
+        if (bytes[i / 8] & (1u << (i % 8))) {
+            if (first < 0) first = (long)i;
+            count++;
+        }
+    }
+    printf("B %s %ld %ld\n", name, first, count);
+}
+
+int main(void) {
+"#;
+
+pub(crate) fn emit_c_program(model: &Model<'_>) -> String {
     let mut out = String::from("// @generated by vulkan-codegen. Do not edit.\n\n");
     out.push_str("#include <stddef.h>\n#include <stdio.h>\n#include <string.h>\n\n");
-    w!(out, "#define {BETA} 1");
+    w!(out, "#define {BETA_PROTECT} 1");
     out.push_str("#include <vulkan/vulkan.h>\n");
     for header in &model.ir.video_headers {
         w!(out, "#include <{}>", header.header_file);
     }
-    out.push_str(
-        "\n// Prints the position of the bits that are set in `p`, which holds a zeroed struct\n\
-         // with a single bit-field set to all ones.\n\
-         static void bits(const char* name, const void* p, size_t size) {\n\
-         \x20   const unsigned char* bytes = (const unsigned char*)p;\n\
-         \x20   long first = -1;\n\
-         \x20   long count = 0;\n\
-         \x20   for (size_t i = 0; i < size * 8; i++) {\n\
-         \x20       if (bytes[i / 8] & (1u << (i % 8))) {\n\
-         \x20           if (first < 0) first = (long)i;\n\
-         \x20           count++;\n\
-         \x20       }\n\
-         \x20   }\n\
-         \x20   printf(\"B %s %ld %ld\\n\", name, first, count);\n\
-         }\n\n\
-         int main(void) {\n",
-    );
-    for s in &model.ir.structs {
-        if gate(model, s.protect.as_deref()).is_none() {
-            continue;
-        }
+    out.push_str(C_PROGRAM_START);
+    for s in checked_structs(model) {
         let name = &s.name;
+        let slots = slots(model, s);
         w!(
             out,
             "    printf(\"S {name} %zu %zu\", sizeof({name}), _Alignof({name}));"
         );
-        for slot in slots(model, s) {
-            match slot {
-                Slot::Plain(m) => w!(
+        for slot in &slots {
+            if let Slot::Plain(m) = slot {
+                w!(
                     out,
                     "    printf(\" {0}=%zu\", offsetof({name}, {0}));",
                     m.name
-                ),
-                Slot::Bits { .. } => {}
+                );
             }
         }
         w!(out, "    printf(\"\\n\");");
-        for slot in slots(model, s) {
+        for slot in &slots {
             if let Slot::Bits { bits, .. } = slot {
                 for bit in bits {
                     w!(
@@ -194,36 +209,12 @@ pub fn emit_layout_c(model: &Model<'_>) -> String {
             }
         }
     }
-    let mut value = |name: &str| {
+    for value in checked_values(model) {
         w!(
             out,
-            "    printf(\"V {name} %lld\\n\", (long long)({name}));"
+            "    printf(\"V {0} %lld\\n\", (long long)({0}));",
+            value.c_name
         );
-    };
-    for c in &model.ir.constants {
-        if c.ty != "float" {
-            value(&c.name);
-        }
-    }
-    for e in &model.ir.enums {
-        if gate(model, e.protect.as_deref()).is_none() {
-            continue;
-        }
-        for v in enum_variants(model, e) {
-            if gate_cfg(model, &v.cfg) {
-                value(&v.c_name);
-            }
-        }
-    }
-    for b in &model.ir.bitmasks {
-        if gate(model, b.protect.as_deref()).is_none() {
-            continue;
-        }
-        for v in bitmask_variants(model, b) {
-            if gate_cfg(model, &v.cfg) {
-                value(&v.c_name);
-            }
-        }
     }
     out.push_str("    return 0;\n}\n");
     out

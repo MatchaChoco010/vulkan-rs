@@ -1,19 +1,19 @@
-pub fn type_name(name: &str) -> String {
+pub(crate) fn type_name(name: &str) -> String {
     if name == "VkResult" {
         return name.to_string();
     }
     name.strip_prefix("Vk").unwrap_or(name).to_string()
 }
 
-pub fn command_name(name: &str) -> String {
+pub(crate) fn command_name(name: &str) -> String {
     field_name(name.strip_prefix("vk").unwrap_or(name))
 }
 
-pub fn field_name(name: &str) -> String {
+pub(crate) fn field_name(name: &str) -> String {
     raw_ident(&to_snake(name))
 }
 
-pub fn const_name(name: &str) -> String {
+pub(crate) fn const_name(name: &str) -> String {
     raw_ident(
         &name
             .strip_prefix("VK_")
@@ -22,11 +22,11 @@ pub fn const_name(name: &str) -> String {
     )
 }
 
-pub fn extension_name_const(name_macro: &str) -> String {
+pub(crate) fn extension_name_const(name_macro: &str) -> String {
     const_name(name_macro).replace("_EXTENSION_NAME", "_NAME")
 }
 
-pub fn pointer_setter_name(name: &str) -> String {
+pub(crate) fn pointer_setter_name(name: &str) -> String {
     let bytes = name.as_bytes();
     if name.starts_with("pp") && bytes.len() > 2 && bytes[2].is_ascii_uppercase() {
         return field_name(&name[2..]);
@@ -37,7 +37,7 @@ pub fn pointer_setter_name(name: &str) -> String {
     field_name(name)
 }
 
-pub fn split_vendor_tag<'a>(
+pub(crate) fn split_vendor_tag<'a>(
     name: &'a str,
     vendor_tags: &'a [String],
 ) -> (&'a str, Option<&'a str>) {
@@ -56,7 +56,7 @@ pub fn split_vendor_tag<'a>(
     }
 }
 
-pub fn enum_variant_name(enum_name: &str, value: &str, vendor_tags: &[String]) -> String {
+pub(crate) fn enum_variant_name(enum_name: &str, value: &str, vendor_tags: &[String]) -> String {
     let rust_type = type_name(enum_name);
     let (base, tag) = split_vendor_tag(&rust_type, vendor_tags);
     let prefix = format!("{}_", to_screaming(base));
@@ -66,7 +66,7 @@ pub fn enum_variant_name(enum_name: &str, value: &str, vendor_tags: &[String]) -
     raw_ident(name)
 }
 
-pub fn flag_bit_name(bitmask_name: &str, value: &str, vendor_tags: &[String]) -> String {
+pub(crate) fn flag_bit_name(bitmask_name: &str, value: &str, vendor_tags: &[String]) -> String {
     let rust_type = type_name(bitmask_name);
     let (base, tag) = split_vendor_tag(&rust_type, vendor_tags);
     let screaming = to_screaming(base);
@@ -98,7 +98,7 @@ fn strip_tag_suffix<'a>(name: &'a str, tag: Option<&str>) -> &'a str {
     }
 }
 
-pub fn raw_ident(name: &str) -> String {
+pub(crate) fn raw_ident(name: &str) -> String {
     if name.as_bytes().first().is_some_and(|b| b.is_ascii_digit()) {
         return format!("_{name}");
     }
@@ -114,7 +114,7 @@ pub fn raw_ident(name: &str) -> String {
     }
 }
 
-pub fn to_snake(name: &str) -> String {
+pub(crate) fn to_snake(name: &str) -> String {
     let mut out = String::new();
     let chars = name.chars().collect::<Vec<_>>();
     for (i, ch) in chars.iter().copied().enumerate() {
@@ -136,7 +136,7 @@ pub fn to_snake(name: &str) -> String {
     out
 }
 
-pub fn to_screaming(name: &str) -> String {
+pub(crate) fn to_screaming(name: &str) -> String {
     to_snake(name).to_ascii_uppercase()
 }
 

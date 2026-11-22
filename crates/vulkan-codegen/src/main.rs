@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use vulkan_codegen::{GENERATED_SRC, GENERATED_TESTS, generate, required_features};
+use vulkan_codegen::{GENERATED_SRC, GENERATED_TESTS, GeneratedFile, generate, required_features};
 use vulkan_registry::Registry;
 
 fn main() {
@@ -15,26 +15,13 @@ fn main() {
     };
 
     let ir = Registry::get();
-    check_features(&root, ir);
+    assert_manifest_declares_features(&root, ir);
 
     let files = generate(ir);
-    let expected = files
-        .iter()
-        .map(|(path, _)| root.join(path))
-        .collect::<BTreeSet<_>>();
-    for dir in [GENERATED_SRC, GENERATED_TESTS] {
-        let dir = root.join(dir);
-        fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create {}: {e}", dir.display()));
-        for entry in fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
-            let path = entry.expect("directory entry").path();
-            if path.is_file() && !expected.contains(&path) {
-                fs::remove_file(&path).unwrap_or_else(|e| panic!("remove {}: {e}", path.display()));
-            }
-        }
-    }
-    for (path, body) in &files {
+    remove_files_no_longer_generated(&root, &files);
+    for GeneratedFile { path, contents } in &files {
         let path = root.join(path);
-        fs::write(&path, body).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        fs::write(&path, contents).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
     }
     eprintln!(
         "generated {} files from {} ({})",
@@ -44,7 +31,26 @@ fn main() {
     );
 }
 
-fn check_features(root: &Path, ir: &Registry) {
+fn remove_files_no_longer_generated(root: &Path, files: &[GeneratedFile]) {
+    let generated = files
+        .iter()
+        .map(|file| root.join(&file.path))
+        .collect::<BTreeSet<_>>();
+    for dir in [GENERATED_SRC, GENERATED_TESTS] {
+        let dir = root.join(dir);
+        fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create {}: {e}", dir.display()));
+        for entry in fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+            let path = entry
+                .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
+                .path();
+            if path.is_file() && !generated.contains(&path) {
+                fs::remove_file(&path).unwrap_or_else(|e| panic!("remove {}: {e}", path.display()));
+            }
+        }
+    }
+}
+
+fn assert_manifest_declares_features(root: &Path, ir: &Registry) {
     let manifest_path = root.join("crates/vulkan/Cargo.toml");
     let manifest = fs::read_to_string(&manifest_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", manifest_path.display()));
