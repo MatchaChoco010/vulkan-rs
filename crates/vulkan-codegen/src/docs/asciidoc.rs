@@ -14,6 +14,9 @@ pub(crate) enum Link {
 pub(crate) enum Unsupported {
     Attribute(String),
     Macro(String),
+    UnknownMacro(String),
+    EscapedSpan,
+    Passthrough,
     Unterminated(&'static str),
 }
 
@@ -168,6 +171,10 @@ impl Converter<'_> {
     }
 
     fn formatted(&self, text: &str) -> Converted {
+        self.formatted_with(text, true)
+    }
+
+    fn formatted_with(&self, text: &str, replacements: bool) -> Converted {
         let mut out = String::with_capacity(text.len() + text.len() / 4);
         let mut index = 0;
         let mut previous = None::<char>;
@@ -180,7 +187,7 @@ impl Converter<'_> {
                 index += consumed;
                 continue;
             }
-            let (consumed, markdown) = self.markup(rest, previous)?;
+            let (consumed, markdown) = self.markup(rest, previous, replacements)?;
             out.push_str(&markdown);
             previous = rest[..consumed].chars().next_back();
             index += consumed;
@@ -258,6 +265,12 @@ impl Converter<'_> {
         {
             return Err(Unsupported::Macro(name.to_string()));
         }
+        let target_len = argument
+            .find(|c: char| c.is_whitespace() || c == '[' || c == ']')
+            .unwrap_or(argument.len());
+        if argument[target_len..].starts_with('[') {
+            return Err(Unsupported::UnknownMacro(name.to_string()));
+        }
         Ok(None)
     }
 
@@ -289,7 +302,12 @@ impl Converter<'_> {
         Ok((consumed, format!("[{}]({address})", self.formatted(label)?)))
     }
 
-    fn markup(&self, rest: &str, previous: Option<char>) -> Result<(usize, String), Unsupported> {
+    fn markup(
+        &self,
+        rest: &str,
+        previous: Option<char>,
+        replacements: bool,
+    ) -> Result<(usize, String), Unsupported> {
         let c = rest
             .chars()
             .next()
@@ -317,14 +335,36 @@ impl Converter<'_> {
             return Ok((close + 2, String::new()));
         }
         if c == '['
-            && let Some(close) = after.find("]#")
-            && after[..close]
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
-            && let Some(end) = after[close + 2..].find('#')
+            && let Some(close) = role_len(after)
         {
-            let inner = &after[close + 2..close + 2 + end];
-            return Ok((1 + close + 2 + end + 1, self.formatted(inner)?));
+            let body = &after[close + 2..];
+            if let Some(body) = body.strip_prefix('#') {
+                let first = body.chars().next().map_or(0, char::len_utf8);
+                if first > 0
+                    && let Some(end) = body[first..].find("##")
+                {
+                    let end = first + end;
+                    return Ok((1 + close + 3 + end + 2, self.formatted(&body[..end])?));
+                }
+            } else if let Some(end) = body.find('#') {
+                return Ok((1 + close + 2 + end + 1, self.formatted(&body[..end])?));
+            }
+        }
+        if c == '\\'
+            && (after.starts_with('#') || after.starts_with('[') && role_len(&after[1..]).is_some())
+        {
+            return Err(Unsupported::EscapedSpan);
+        }
+        if c == '\\' && after.starts_with("--") {
+            return Ok((3, "--".to_string()));
+        }
+        if replacements && rest.starts_with("--") {
+            let next = rest[2..].chars().next();
+            let bounds = |c: Option<char>| c.is_none_or(|c| c == ' ' || c == '\n');
+            let between_words = previous.is_some_and(is_word) && next.is_some_and(is_word);
+            if between_words || (bounds(previous) && bounds(next)) {
+                return Ok((2, "—".to_string()));
+            }
         }
         for (quote, open, close) in [("\"`", '“', '”'), ("'`", '‘', '’')] {
             let closing = quote.chars().rev().collect::<String>();
@@ -340,12 +380,18 @@ impl Converter<'_> {
                 return Ok((1, "\\`".to_string()));
             };
             let inner = &after[..end];
-            let converted = self.formatted(inner)?;
-            let markdown = if converted == escape(inner) || inner.contains('\\') {
-                code_span(inner)
-            } else {
-                converted
-            };
+            if let Some(literal) = passthrough(inner).filter(|len| *len == inner.len()) {
+                return Ok((end + 2, code_span(&inner[1..literal - 1])));
+            }
+            if contains_passthrough(inner) {
+                return Err(Unsupported::Passthrough);
+            }
+            let markdown =
+                if self.formatted_with(inner, false)? == escape(inner) || inner.contains('\\') {
+                    code_span(inner)
+                } else {
+                    self.formatted(inner)?
+                };
             return Ok((end + 2, markdown));
         }
         if matches!(c, '*' | '_') {
@@ -386,6 +432,14 @@ impl Converter<'_> {
         if c == '+' && previous == Some(' ') && after.starts_with('\n') {
             return Ok((1, String::new()));
         }
+        if c == '+' && previous.is_none_or(|p| !is_word(p)) {
+            if let Some(len) = passthrough(rest) {
+                return Ok((len, escape(&rest[1..len - 1])));
+            }
+            if opens_a_passthrough(rest) {
+                return Err(Unsupported::Passthrough);
+            }
+        }
         Ok((c.len_utf8(), escape(&rest[..c.len_utf8()])))
     }
 }
@@ -406,6 +460,48 @@ fn closing_marker(body: &str, marker: &str, unconstrained: bool) -> Option<usize
     None
 }
 
+fn passthrough(text: &str) -> Option<usize> {
+    let body = text.strip_prefix('+')?;
+    let end = body.find(['+', '\n'])?;
+    let content = &body[..end];
+    let closes = body[end..].starts_with('+')
+        && !content.is_empty()
+        && !content.starts_with(char::is_whitespace)
+        && !content.ends_with(char::is_whitespace)
+        && body[end + 1..].chars().next().is_none_or(|c| !is_word(c));
+    closes.then_some(end + 2)
+}
+
+fn opens_a_passthrough(text: &str) -> bool {
+    let Some(body) = text.strip_prefix('+') else {
+        return false;
+    };
+    if body.is_empty() || body.starts_with(char::is_whitespace) {
+        return false;
+    }
+    body.starts_with('+')
+        || body.match_indices('+').any(|(at, _)| {
+            !body[..at].ends_with(char::is_whitespace)
+                && body[at + 1..].chars().next().is_none_or(|c| !is_word(c))
+        })
+}
+
+fn contains_passthrough(text: &str) -> bool {
+    text.char_indices().any(|(at, c)| {
+        c == '+'
+            && text[..at].chars().next_back().is_none_or(|p| !is_word(p))
+            && (passthrough(&text[at..]).is_some() || opens_a_passthrough(&text[at..]))
+    })
+}
+
+fn role_len(text: &str) -> Option<usize> {
+    let close = text.find("]#")?;
+    text[..close]
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .then_some(close)
+}
+
 fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
@@ -420,6 +516,7 @@ fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn convert(text: &str) -> Converted {
         let attributes = BTreeMap::from([
@@ -579,6 +676,221 @@ mod tests {
             "see [the registry](https://www.khronos.org/registry) or [this](https://a.b/c)."
         );
         assert_eq!(markdown("at https://a.b/c."), "at <https://a.b/c>.");
+    }
+
+    #[test]
+    fn unconstrained_role_spans_keep_only_their_text_anywhere_in_a_word() {
+        assert_eq!(markdown("a zero, [eq]##Nan##s and"), "a zero, Nans and");
+        assert_eq!(markdown("[eq]##x##y at the start"), "xy at the start");
+        assert_eq!(markdown("at the end [eq]##x##"), "at the end x");
+        assert_eq!(markdown("in[eq]##side##words"), "insidewords");
+        assert_eq!(markdown("[eq]##pname:a {times} *b*##s"), "`a` × **b**s");
+        assert_eq!(markdown("[eq]##a [eq]#b# c##"), "a b c");
+        assert_eq!(markdown("[eq]#x# and [eq]##y##"), "x and y");
+        assert_eq!(markdown("[eq]####x## y"), "##x y");
+        assert_eq!(markdown("[eq]##a##b##"), "ab##");
+    }
+
+    #[test]
+    fn unclosed_role_spans_stay_text() {
+        assert_eq!(markdown("[eq]##x"), "\\[eq\\]##x");
+        assert_eq!(markdown("[eq]####"), "\\[eq\\]####");
+    }
+
+    #[test]
+    fn escaped_marks_and_role_spans_are_refused() {
+        for text in ["a \\#b# c", "a \\##b## c", "\\[eq]#x#", "\\[eq]##x##s"] {
+            assert_eq!(convert(text), Err(Unsupported::EscapedSpan), "{text}");
+        }
+        assert_eq!(markdown("a \\b and \\[x\\]"), "a \\\\b and \\\\\\[x\\\\\\]");
+    }
+
+    #[test]
+    fn every_inline_macro_that_the_specification_defines_is_known() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../third_party/vulkan-docs/config/spec-macros/extension.rb");
+        let Ok(source) = std::fs::read_to_string(&path) else {
+            assert!(
+                std::env::var_os("VULKAN_RS_REQUIRE_DOCS_TEST").is_none(),
+                "the macro test is required but third_party/vulkan-docs is not checked out"
+            );
+            eprintln!("skipping the macro test: third_party/vulkan-docs is not checked out");
+            return;
+        };
+        let defined = source
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("named :"))
+            .map(str::trim)
+            .collect::<Vec<_>>();
+        assert!(
+            defined.len() >= 30,
+            "only {} inline macros were found in {}",
+            defined.len(),
+            path.display()
+        );
+        let known = NORMATIVE_WORDS
+            .iter()
+            .chain(CODE_MACROS)
+            .chain(STRONG_MACROS)
+            .chain(LINK_MACROS.iter().map(|(name, _)| name))
+            .copied()
+            .collect::<Vec<_>>();
+        for name in defined {
+            assert!(
+                known.contains(&name),
+                "the specification defines the inline macro `{name}:`, which the converter does not know"
+            );
+        }
+    }
+
+    #[test]
+    fn passthroughs_keep_their_text_as_it_is() {
+        assert_eq!(markdown("a +x -- y+ b"), "a x -- y b");
+        assert_eq!(markdown("a +x ## y+ b"), "a x ## y b");
+        assert_eq!(markdown("a +*not bold*+ b"), "a \\*not bold\\* b");
+        assert_eq!(
+            markdown("code `+a -- b+` and `+x##y+`"),
+            "code `a -- b` and `x##y`"
+        );
+        assert_eq!(markdown("1+2+3 and a + b + c"), "1+2+3 and a + b + c");
+        assert_eq!(markdown("C++ and i++ and a + b"), "C++ and i++ and a + b");
+    }
+
+    #[test]
+    fn passthroughs_that_the_converter_does_not_read_are_refused() {
+        for text in [
+            "a ++x++ b",
+            "a +++x+++ b",
+            "a +x\ny+ b",
+            "a +x+y+ b",
+            "a +x +y+ b",
+            "code `+a+ and b`",
+            "code `a +b+`",
+        ] {
+            assert_eq!(convert(text), Err(Unsupported::Passthrough), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn unconstrained_role_spans_may_start_and_continue_with_any_character() {
+        assert_eq!(markdown("[eq]##¬##s"), "¬s");
+        assert_eq!(markdown("[eq]##{times}##s"), "×s");
+        assert_eq!(markdown("[eq]##a¬b##c"), "a¬bc");
+        assert_eq!(markdown("[eq]##Δ##t and [eq]##全角##"), "Δt and 全角");
+        assert_eq!(markdown("[eq]##¬x## and [eq]#¬y#"), "¬x and ¬y");
+    }
+
+    fn non_ascii_markup() -> impl Strategy<Value = (String, Vec<String>)> {
+        let text = proptest::sample::select(vec!["¬", "×", "Δ", "—", "全角", "¬x", "x¬", "aΔb"]);
+        let markup = proptest::sample::select(vec![
+            "{}",
+            "*{}*",
+            "**{}**",
+            "_{}_",
+            "`{}`",
+            "[eq]#{}#",
+            "[eq]##{}##",
+            "[eq]##{}##s",
+            "+{}+",
+            "`+{}+`",
+            "x^{}^",
+            "H~{}~",
+            "https://a.b/c[{}]",
+            "<<a,{}>>",
+            "pname:a{}",
+            "\"`{}`\"",
+        ]);
+        proptest::collection::vec((markup, text), 1..6).prop_map(|pieces| {
+            let words = pieces
+                .iter()
+                .map(|(markup, text)| markup.replace("{}", text))
+                .collect::<Vec<_>>();
+            let texts = pieces.iter().map(|(_, text)| text.to_string()).collect();
+            (words.join(" "), texts)
+        })
+    }
+
+    proptest! {
+        #![proptest_config(crate::test_support::proptest_config(1024))]
+
+        #[test]
+        fn markup_around_non_ascii_text_keeps_the_text(
+            (source, texts) in non_ascii_markup()
+        ) {
+            let converted = crate::test_support::catch_quietly(|| convert(&source));
+            let converted = converted.unwrap_or_else(|panic| panic!("`{source}` panics: {panic}"));
+            let markdown = converted
+                .unwrap_or_else(|unsupported| panic!("`{source}` is refused: {unsupported:?}"));
+            let alphabet = |text: &str| {
+                text.chars().filter(|c| "¬×Δ—全角".contains(*c)).collect::<String>()
+            };
+            prop_assert_eq!(
+                alphabet(&markdown),
+                texts.iter().map(|text| alphabet(text)).collect::<String>(),
+                "`{}` became `{}`", source, markdown
+            );
+            prop_assert!(
+                !markdown.contains("eq") && !markdown.contains("##"),
+                "`{}` keeps a role span: `{}`", source, markdown
+            );
+        }
+    }
+
+    #[test]
+    fn double_hyphens_and_hashes_in_urls_stay_as_they_are() {
+        assert_eq!(
+            markdown("see https://a.b/c--d#e[the -- page] or https://a.b/x--y##z."),
+            "see [the — page](https://a.b/c--d#e) or <https://a.b/x--y##z>."
+        );
+    }
+
+    #[test]
+    fn double_hyphens_become_em_dashes_between_words_and_spaces() {
+        assert_eq!(markdown("a -- b"), "a — b");
+        assert_eq!(
+            markdown("the parameters --\nno substitution"),
+            "the parameters —\nno substitution"
+        );
+        assert_eq!(markdown("-- at the start"), "— at the start");
+        assert_eq!(markdown("at the end --"), "at the end —");
+        assert_eq!(markdown("word--word"), "word—word");
+        assert_eq!(markdown("a --b, a-- b and ---"), "a --b, a-- b and ---");
+        assert_eq!(markdown("an escaped \\-- dash"), "an escaped -- dash");
+    }
+
+    #[test]
+    fn double_hyphens_in_code_stay_as_they_are() {
+        assert_eq!(
+            markdown("run `a -- b` and `x--y`"),
+            "run `a -- b` and `x--y`"
+        );
+        assert_eq!(markdown("pname:x -- y"), "`x` — y");
+        assert_eq!(
+            markdown("latexmath:[a -- b] and `pname:x -- y`"),
+            "`a -- b` and `x` — y"
+        );
+    }
+
+    #[test]
+    fn unknown_macros_with_brackets_are_refused() {
+        for (text, name) in [
+            ("press kbd:[Ctrl]", "kbd"),
+            ("menu:File[Save] now", "menu"),
+            ("btn:[OK]", "btn"),
+            ("mailto:a@b.c[mail]", "mailto"),
+            ("indexterm:[x]", "indexterm"),
+        ] {
+            assert_eq!(
+                convert(text),
+                Err(Unsupported::UnknownMacro(name.to_string())),
+                "{text}"
+            );
+        }
+        assert_eq!(
+            markdown("pname:pData[i] and note: [x]"),
+            "`pData`\\[i\\] and note: \\[x\\]"
+        );
+        assert_eq!(markdown("a:b [c]"), "a:b \\[c\\]");
     }
 
     #[test]
