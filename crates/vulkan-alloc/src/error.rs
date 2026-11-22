@@ -2,6 +2,8 @@ use std::fmt;
 
 use vulkan::vk;
 
+use crate::allocation::Allocation;
+
 /// Why an [`Allocator`](crate::Allocator) operation failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationError {
@@ -41,5 +43,58 @@ impl std::error::Error for AllocationError {}
 impl From<vk::VkResult> for AllocationError {
     fn from(value: vk::VkResult) -> Self {
         Self::Vulkan(value)
+    }
+}
+
+/// The error of [`Allocator::free`](crate::Allocator::free): the reason, and the
+/// allocation that was not freed.
+///
+/// The allocator did not change, so [`FreeError::allocation`] is as usable as it was
+/// before the call. Remove the cause and pass it to
+/// [`Allocator::free`](crate::Allocator::free) again:
+///
+/// ```no_run
+/// use vulkan_alloc::{Allocation, Allocator, FreeError};
+///
+/// unsafe fn unmap_and_free(
+///     allocator: &mut Allocator,
+///     allocation: Allocation,
+/// ) -> Result<(), FreeError> {
+///     unsafe {
+///         match allocator.free(allocation) {
+///             Ok(()) => Ok(()),
+///             Err(FreeError { allocation, .. }) => {
+///                 while allocator.unmap_memory(&allocation).is_ok() {}
+///                 allocator.free(allocation)
+///             }
+///         }
+///     }
+/// }
+/// ```
+///
+/// It converts into [`AllocationError`] with `?`, which drops the allocation.
+#[derive(Debug, PartialEq, Eq)]
+pub struct FreeError {
+    /// The allocation that was passed to [`Allocator::free`](crate::Allocator::free).
+    pub allocation: Allocation,
+    /// Why it was not freed.
+    pub error: AllocationError,
+}
+
+impl fmt::Display for FreeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "allocation was not freed: {}", self.error)
+    }
+}
+
+impl std::error::Error for FreeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
+
+impl From<FreeError> for AllocationError {
+    fn from(value: FreeError) -> Self {
+        value.error
     }
 }

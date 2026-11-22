@@ -181,7 +181,7 @@ mod suballocator;
 
 pub use allocation::{Allocation, AllocationCreateDesc, AllocationResourceClass, AllocationScheme};
 pub use allocator::{Allocator, AllocatorCreateDesc};
-pub use error::AllocationError;
+pub use error::{AllocationError, FreeError};
 pub use mapping::MappedAllocation;
 pub use memory_type::MemoryLocation;
 pub use report::{
