@@ -5347,19 +5347,19 @@ impl CompareOp {
     /// `VK_COMPARE_OP_NEVER` specifies that the comparison always evaluates false.
     #[doc(alias = "VK_COMPARE_OP_NEVER")]
     pub const NEVER: Self = Self(0);
-    /// `VK_COMPARE_OP_LESS` specifies that the comparison evaluates
+    /// `VK_COMPARE_OP_LESS` specifies that the comparison evaluates _reference_ \< _test_.
     #[doc(alias = "VK_COMPARE_OP_LESS")]
     pub const LESS: Self = Self(1);
-    /// `VK_COMPARE_OP_EQUAL` specifies that the comparison evaluates
+    /// `VK_COMPARE_OP_EQUAL` specifies that the comparison evaluates _reference_ = _test_.
     #[doc(alias = "VK_COMPARE_OP_EQUAL")]
     pub const EQUAL: Self = Self(2);
     /// `VK_COMPARE_OP_LESS_OR_EQUAL` specifies that the comparison evaluates _reference_ ≤ _test_.
     #[doc(alias = "VK_COMPARE_OP_LESS_OR_EQUAL")]
     pub const LESS_OR_EQUAL: Self = Self(3);
-    /// `VK_COMPARE_OP_GREATER` specifies that the comparison evaluates
+    /// `VK_COMPARE_OP_GREATER` specifies that the comparison evaluates _reference_ \> _test_.
     #[doc(alias = "VK_COMPARE_OP_GREATER")]
     pub const GREATER: Self = Self(4);
-    /// `VK_COMPARE_OP_NOT_EQUAL` specifies that the comparison evaluates
+    /// `VK_COMPARE_OP_NOT_EQUAL` specifies that the comparison evaluates _reference_ ≠ _test_.
     #[doc(alias = "VK_COMPARE_OP_NOT_EQUAL")]
     pub const NOT_EQUAL: Self = Self(5);
     /// `VK_COMPARE_OP_GREATER_OR_EQUAL` specifies that the comparison evaluates _reference_ ≥
@@ -5906,7 +5906,8 @@ impl CopyAccelerationStructureModeKHR {
     /// structure must have been created with the same parameters as `src` with the exception of
     /// `size`, which must at least as large as the queried
     /// [`VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR`](QueryType::ACCELERATION_STRUCTURE_SIZE_KHR)
-    /// size
+    /// size . If `src` contains references to other acceleration structures, `dst` will reference
+    /// the same acceleration structures.
     #[doc(alias = "VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR")]
     pub const CLONE: Self = Self(0);
     /// `VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR` creates a more compact version of an
@@ -7197,11 +7198,12 @@ impl DepthBiasRepresentationEXT {
         self.0
     }
     /// `VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT` specifies that the depth
-    /// bias representation is a factor of the format's
+    /// bias representation is a factor of the format's r as described in Depth Bias Computation.
     #[doc(alias = "VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT")]
     pub const LEAST_REPRESENTABLE_VALUE_FORMAT: Self = Self(0);
     /// `VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT` specifies that the
-    /// depth bias representation is a factor of a constant
+    /// depth bias representation is a factor of a constant r defined by the bit-size or mantissa of
+    /// the format as described in Depth Bias Computation.
     #[doc(alias = "VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT")]
     pub const LEAST_REPRESENTABLE_VALUE_FORCE_UNORM: Self = Self(1);
     /// `VK_DEPTH_BIAS_REPRESENTATION_FLOAT_EXT` specifies that the depth bias representation is a
@@ -7263,6 +7265,8 @@ impl DepthClampModeEXT {
     }
     /// `VK_DEPTH_CLAMP_MODE_VIEWPORT_RANGE_EXT` specifies that the depth clamp range follows the
     /// viewport depth range. The depth clamp range of each viewport will implicitly be set to
+    /// z<sub>min</sub> = min(n,f) and z<sub>max</sub> = max(n,f), where n and f are the `minDepth`
+    /// and `maxDepth` depth range values of the viewport.
     #[doc(alias = "VK_DEPTH_CLAMP_MODE_VIEWPORT_RANGE_EXT")]
     pub const VIEWPORT_RANGE: Self = Self(0);
     /// `VK_DEPTH_CLAMP_MODE_USER_DEFINED_RANGE_EXT` specifies that a single user-defined depth
@@ -11141,7 +11145,7 @@ impl Format {
     /// with linear encoding. The components are signed two's-complement integers where the most
     /// significant bit specifies the sign bit, the next 10 bits specify the integer value, and the
     /// last 5 bits represent the fractional value. The signed 16-bit values can be converted to
-    /// floats in the range
+    /// floats in the range \[-1024,1023.96875\] by dividing the value by 32 (2<sup>5</sup>).
     #[doc(alias = "VK_FORMAT_R16G16_SFIXED5_NV")]
     pub const R16G16_SFIXED5_NV: Self = Self(1000464000);
     /// `VK_FORMAT_A1B5G5R5_UNORM_PACK16` specifies a four-component, 16-bit packed unsigned
@@ -17000,6 +17004,12 @@ impl PolygonMode {
     /// boundary edge of the bounding box. In such a case, if two rectangles lie on either side of a
     /// common edge (with identical endpoints) on which a sample position lies, then exactly one of
     /// the triangles must produce a fragment that covers that sample during rasterization.
+    ///
+    /// Polygons rendered in `VK_POLYGON_MODE_FILL_RECTANGLE_NV` mode may be clipped by the frustum
+    /// or by user clip planes. If clipping is applied, the triangle is culled rather than clipped.
+    ///
+    /// Area calculation and facingness are determined for `VK_POLYGON_MODE_FILL_RECTANGLE_NV` mode
+    /// using the triangle's vertices.
     #[doc(alias = "VK_POLYGON_MODE_FILL_RECTANGLE_NV")]
     pub const FILL_RECTANGLE_NV: Self = Self(1000153000);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -17864,7 +17874,8 @@ impl RayTracingLssIndexingModeNV {
     pub const LIST: Self = Self(0);
     /// `VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV` specifies a successive implicit indexing
     /// format, in which each LSS primitive is defined by two successive positions and radii, (k, k +
-    /// 1), where
+    /// 1), where k is a single index provided in the index buffer. In this indexing scheme, there
+    /// is a 1:1 mapping between the index buffer and primitive index within the geometry.
     #[doc(alias = "VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV")]
     pub const SUCCESSIVE: Self = Self(1);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -18266,6 +18277,14 @@ impl VkResult {
     pub const PIPELINE_COMPILE_REQUIRED: Self = Self(1000297000);
     /// `VK_INCOMPATIBLE_SHADER_BINARY_EXT` The provided binary shader code is not compatible with
     /// this device.
+    ///
+    /// > **Note**
+    /// >
+    /// > In the initial version of the [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME) extension,
+    /// > this return code was named
+    /// > [`VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT`](VkResult::ERROR_INCOMPATIBLE_SHADER_BINARY_EXT)
+    /// > and improperly described as an error code. The name has been changed, but the old name is
+    /// > retained as an alias for compatibility with old code.
     #[doc(alias = "VK_INCOMPATIBLE_SHADER_BINARY_EXT")]
     pub const INCOMPATIBLE_SHADER_BINARY_EXT: Self = Self(1000482000);
     /// `VK_PIPELINE_BINARY_MISSING_KHR` The application attempted to create a pipeline binary by

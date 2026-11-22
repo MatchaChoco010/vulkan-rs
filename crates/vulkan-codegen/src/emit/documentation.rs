@@ -270,6 +270,85 @@ fn structures_carry_their_summary_origin_and_the_described_members() {
     );
 }
 
+fn with_item(mut docs: Docs, page: &str, item: &str, lines: &[&str]) -> Docs {
+    let described = docs
+        .pages
+        .iter_mut()
+        .find(|described| described.name == page)
+        .and_then(|page| {
+            page.items
+                .iter_mut()
+                .find(|described| described.name == item)
+        })
+        .unwrap_or_else(|| panic!("no item {item} on the page {page}"));
+    described.text = lines.join("\n");
+    docs
+}
+
+#[test]
+fn members_and_parameters_carry_everything_that_the_specification_attaches_to_their_item() {
+    let ir = ir();
+    let docs = with_item(
+        docs(),
+        "VkQueueInfo",
+        "queueCount",
+        &[
+            "pname:queueCount is the number of queues, in the range",
+            "[eq]#[1,dlink:VK_MAX_QUEUES]#",
+            ".",
+            "+",
+            "The queues are:",
+            "+",
+            "** created first",
+            "** destroyed last",
+            "+",
+            "[NOTE]",
+            "====",
+            "Queues are cheap.",
+            "====",
+        ],
+    );
+    let docs = with_item(
+        docs,
+        "vkGetQueue",
+        "queueIndex",
+        &[
+            "pname:queueIndex is the index of the queue.",
+            "+",
+            "It is less than the number of queues.",
+        ],
+    );
+    let model = Model::with_docs(&ir, &docs);
+    assert_eq!(
+        doc_of(&structs::emit(&model), "pub queue_count:"),
+        [
+            "`queueCount` is the number of queues, in the range \\[1,[`VK_MAX_QUEUES`](MAX_QUEUES)\\] .",
+            "The queues are:",
+            "- created first - destroyed last",
+            "> **Note** > > Queues are cheap.",
+        ]
+    );
+    let commands = commands::emit(&model);
+    let parameters = commands
+        .lines()
+        .map(str::trim)
+        .skip_while(|line| *line != "/// # Parameters")
+        .skip(1)
+        .take_while(|line| *line != "/// # Safety")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        parameters,
+        [
+            "///",
+            "/// - `queueIndex` is the index of the queue.",
+            "///",
+            "///   It is less than the number of queues.",
+            "/// - `pQueue` is a pointer to a [`VkQueue`](Queue) object.",
+            "///",
+        ]
+    );
+}
+
 #[test]
 fn setters_name_the_members_they_set() {
     let (ir, docs) = (ir(), docs());

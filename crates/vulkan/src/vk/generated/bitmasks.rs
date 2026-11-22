@@ -537,7 +537,8 @@ impl AccessFlagBits2 {
     /// pipeline stage.
     #[doc(alias = "VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT")]
     pub const INPUT_ATTACHMENT_READ: Self = Self(16);
-    /// `VK_ACCESS_2_SHADER_READ_BIT` is equivalent to the logical OR of:
+    /// `VK_ACCESS_2_SHADER_READ_BIT`, a value of
+    /// [`VkAccessFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccessFlagBits2.html).
     #[doc(alias = "VK_ACCESS_2_SHADER_READ_BIT")]
     pub const SHADER_READ: Self = Self(32);
     /// `VK_ACCESS_2_SHADER_WRITE_BIT` is equivalent to
@@ -2471,7 +2472,9 @@ impl BuildAccelerationStructureFlagBitsKHR {
     /// in
     /// [`VkAccelerationStructureBuildGeometryInfoKHR`](AccelerationStructureBuildGeometryInfoKHR)
     /// or an `update` of [`VK_TRUE`](TRUE) in
-    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv)
+    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv) .
+    /// For sphere and LSS primitives, only positions and radii may be updated, the provided index
+    /// buffers and flags must remain unchanged from the initial build.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR")]
     pub const ALLOW_UPDATE: Self = Self(1);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR` specifies that the specified
@@ -8720,6 +8723,15 @@ impl FormatFeatureFlagBits {
     /// [`VK_FILTER_LINEAR`](Filter::LINEAR). This bit must only be exposed for formats that also
     /// support the [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE) or
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC).
+    ///
+    /// If the format being queried is a depth/stencil format, this bit only specifies that the
+    /// depth aspect (not the stencil aspect) of an image of this format supports linear filtering,
+    /// and that linear filtering of the depth aspect is supported whether depth compare is enabled
+    /// in the sampler or not. Where depth comparison is supported it may be linear filtered whether
+    /// this bit is present or not, but where this bit is not present the filtered value may be
+    /// computed in an implementation-dependent manner which differs from the normal rules of linear
+    /// filtering. The resulting value must be in the range \[0,1\] and should be proportional to,
+    /// or a weighted average of, the number of comparison passes or failures.
     #[doc(alias = "VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT")]
     pub const SAMPLED_IMAGE_FILTER_LINEAR: Self = Self(4096);
     /// `VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_EXT` specifies that `VkImage` can be used
@@ -8832,6 +8844,14 @@ impl FormatFeatureFlagBits {
     /// `VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR` specifies that an image view with this format
     /// can be used as an output reconstructed picture or an input reference picture in video encode
     /// operations.
+    ///
+    /// > **Note**
+    /// >
+    /// > Specific video profiles may have additional restrictions on the format and other image
+    /// > creation parameters corresponding to image views used by video coding operations that can
+    /// > be enumerated using the
+    /// > [`vkGetPhysicalDeviceVideoFormatPropertiesKHR`](crate::Instance::get_physical_device_video_format_properties_khr)
+    /// > command.
     #[doc(alias = "VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR")]
     pub const VIDEO_ENCODE_DPB_KHR: Self = Self(268435456);
     /// `VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR` specifies that the format
@@ -9130,6 +9150,14 @@ impl FormatFeatureFlagBits2 {
     /// be exposed for formats that also support the
     /// [`VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT`](FormatFeatureFlagBits2::SAMPLED_IMAGE) or
     /// [`VK_FORMAT_FEATURE_2_BLIT_SRC_BIT`](FormatFeatureFlagBits2::BLIT_SRC).
+    ///
+    /// If the format being queried is a depth/stencil format, this bit only specifies that the
+    /// depth aspect (not the stencil aspect) of an image of this format supports linear filtering.
+    /// Where depth comparison is supported it may be linear filtered whether this bit is present or
+    /// not, but where this bit is not present the filtered value may be computed in an
+    /// implementation-dependent manner which differs from the normal rules of linear filtering. The
+    /// resulting value must be in the range \[0,1\] and should be proportional to, or a weighted
+    /// average of, the number of comparison passes or failures.
     #[doc(alias = "VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT")]
     pub const SAMPLED_IMAGE_FILTER_LINEAR: Self = Self(4096);
     /// `VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_CUBIC_BIT` specifies that `VkImage` can be used
@@ -9335,6 +9363,13 @@ impl FormatFeatureFlagBits2 {
     pub const VIDEO_ENCODE_QUANTIZATION_DELTA_MAP_KHR: Self = Self(562949953421312);
     /// `VK_FORMAT_FEATURE_2_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR` specifies that an image view with
     /// this format can be used as an emphasis map in video encode operations.
+    ///
+    /// > **Note**
+    /// >
+    /// > Video encode quantization maps have additional restrictions specific to the video profile
+    /// > they are used with that can be enumerated using the
+    /// > [`vkGetPhysicalDeviceVideoFormatPropertiesKHR`](crate::Instance::get_physical_device_video_format_properties_khr)
+    /// > command.
     #[doc(alias = "VK_FORMAT_FEATURE_2_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR")]
     pub const VIDEO_ENCODE_EMPHASIS_MAP_KHR: Self = Self(1125899906842624);
     /// `VK_FORMAT_FEATURE_2_ACCELERATION_STRUCTURE_RADIUS_BUFFER_BIT_NV` specifies that the format
@@ -9368,6 +9403,14 @@ impl FormatFeatureFlagBits2 {
     /// [`VK_QUEUE_TRANSFER_BIT`](QueueFlagBits::TRANSFER) but does not support
     /// [`VK_QUEUE_GRAPHICS_BIT`](QueueFlagBits::GRAPHICS) or
     /// [`VK_QUEUE_COMPUTE_BIT`](QueueFlagBits::COMPUTE).
+    ///
+    /// > **Note**
+    /// >
+    /// > Specific video profiles may have additional restrictions on the format and other image
+    /// > creation parameters corresponding to image views used by video coding operations that can
+    /// > be enumerated using the
+    /// > [`vkGetPhysicalDeviceVideoFormatPropertiesKHR`](crate::Instance::get_physical_device_video_format_properties_khr)
+    /// > command.
     #[doc(alias = "VK_FORMAT_FEATURE_2_STENCIL_COPY_ON_TRANSFER_QUEUE_BIT_KHR")]
     pub const STENCIL_COPY_ON_TRANSFER_QUEUE_KHR: Self = Self(36028797018963968);
     /// `VK_FORMAT_FEATURE_2_DATA_GRAPH_OPTICAL_FLOW_IMAGE_BIT_ARM` specifies that an image view
@@ -11470,6 +11513,31 @@ impl ImageCreateFlagBits {
     /// video coding operations without having to specify at image creation time the set of video
     /// profiles the image will be used with, except for images used only as DPB pictures, as long
     /// as the image is otherwise compatible with the video profile in question.
+    ///
+    /// > **Note**
+    /// >
+    /// > This enables exchanging video picture data without additional copies or conversions when
+    /// > used as:
+    /// >
+    /// > - Decode output pictures, regardless of the video profile used to produce them.
+    /// > - Encode input pictures, regardless of the video profile used to consume them.
+    /// >
+    /// > This includes images created with both
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DST_KHR) and
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DPB_KHR),
+    /// > which is necessary to use the same video picture as the reconstructed picture and decode
+    /// > output picture in a video decode operation on implementations supporting
+    /// > [`VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR`](VideoDecodeCapabilityFlagBitsKHR::DPB_AND_OUTPUT_COINCIDE).
+    /// >
+    /// > However, images with only DPB usage remain tied to the video profiles the image was
+    /// > created with, as the data layout of such DPB-only images may be implementation- and
+    /// > codec-dependent.
+    /// >
+    /// > If an application would like to share or reuse the device memory backing such images (e.g.
+    /// > for the purposes of temporal aliasing), then it should create separate image objects for
+    /// > each video profile and bind them to the same underlying device memory range, similar to
+    /// > how memory resources can be shared across separate video sessions or any other
+    /// > memory-backed resource.
     #[doc(alias = "VK_IMAGE_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR")]
     pub const VIDEO_PROFILE_INDEPENDENT_KHR: Self = Self(1048576);
     /// `VK_IMAGE_CREATE_ALIAS_SINGLE_LAYER_DESCRIPTOR_BIT_KHR` specifies that a single layer image
@@ -11778,6 +11846,31 @@ impl ImageCreateFlagBits2KHR {
     /// in video coding operations without having to specify at image creation time the set of video
     /// profiles the image will be used with, except for images used only as DPB pictures, as long
     /// as the image is otherwise compatible with the video profile in question.
+    ///
+    /// > **Note**
+    /// >
+    /// > This enables exchanging video picture data without additional copies or conversions when
+    /// > used as:
+    /// >
+    /// > - Decode output pictures, regardless of the video profile used to produce them.
+    /// > - Encode input pictures, regardless of the video profile used to consume them.
+    /// >
+    /// > This includes images created with both
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DST_KHR) and
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DPB_KHR),
+    /// > which is necessary to use the same video picture as the reconstructed picture and decode
+    /// > output picture in a video decode operation on implementations supporting
+    /// > [`VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR`](VideoDecodeCapabilityFlagBitsKHR::DPB_AND_OUTPUT_COINCIDE).
+    /// >
+    /// > However, images with only DPB usage remain tied to the video profiles the image was
+    /// > created with, as the data layout of such DPB-only images may be implementation- and
+    /// > codec-dependent.
+    /// >
+    /// > If an application would like to share or reuse the device memory backing such images (e.g.
+    /// > for the purposes of temporal aliasing), then it should create separate image objects for
+    /// > each video profile and bind them to the same underlying device memory range, similar to
+    /// > how memory resources can be shared across separate video sessions or any other
+    /// > memory-backed resource.
     #[doc(alias = "VK_IMAGE_CREATE_2_VIDEO_PROFILE_INDEPENDENT_BIT_KHR")]
     pub const VIDEO_PROFILE_INDEPENDENT: Self = Self(1048576);
     /// `VK_IMAGE_CREATE_2_ALIAS_SINGLE_LAYER_DESCRIPTOR_BIT_KHR`, a value of
@@ -16224,11 +16317,40 @@ impl PipelineCreationFeedbackFlagBits {
     /// `VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT` specifies that a readily
     /// usable pipeline or pipeline stage was found in the `pipelineCache` specified by the
     /// application in the pipeline creation command.
+    ///
+    /// An implementation should set the
+    /// `VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT` bit if it was able to
+    /// avoid the large majority of pipeline or pipeline stage creation work by using the
+    /// `pipelineCache` parameter of
+    /// [`vkCreateGraphicsPipelines`](crate::Device::create_graphics_pipelines),
+    /// [`vkCreateRayTracingPipelinesKHR`](crate::Device::create_ray_tracing_pipelines_khr),
+    /// [`vkCreateRayTracingPipelinesNV`](crate::Device::create_ray_tracing_pipelines_nv),
+    /// [`vkCreateDataGraphPipelinesARM`](crate::Device::create_data_graph_pipelines_arm), or
+    /// [`vkCreateComputePipelines`](crate::Device::create_compute_pipelines). When an
+    /// implementation sets this bit for the entire pipeline, it may leave it unset for any stage.
+    ///
+    /// > **Note**
+    /// >
+    /// > Implementations are encouraged to provide a meaningful signal to applications using this
+    /// > bit. The intention is to communicate to the application that the pipeline or pipeline
+    /// > stage was created “as fast as it gets” using the pipeline cache provided by the
+    /// > application. If an implementation uses an internal cache, it is discouraged from setting
+    /// > this bit as the feedback would be unactionable.
     #[doc(alias = "VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT")]
     pub const APPLICATION_PIPELINE_CACHE_HIT: Self = Self(2);
     /// `VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT` specifies that the base
     /// pipeline specified by the `basePipelineHandle` or `basePipelineIndex` member of the
     /// `Vk*PipelineCreateInfo` structure was used to accelerate the creation of the pipeline.
+    ///
+    /// An implementation should set the
+    /// `VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT` bit if it was able to avoid a
+    /// significant amount of work by using the base pipeline.
+    ///
+    /// > **Note**
+    /// >
+    /// > While “significant amount of work” is subjective, implementations are encouraged to
+    /// > provide a meaningful signal to applications using this bit. For example, a 1% reduction in
+    /// > duration may not warrant setting this bit, while a 50% reduction would.
     #[doc(alias = "VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT")]
     pub const BASE_PIPELINE_ACCELERATION: Self = Self(4);
     /// `VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT_EXT` is an alias of
@@ -17067,7 +17189,8 @@ impl PipelineStageFlagBits2 {
     /// [`vkCmdPreprocessGeneratedCommandsEXT`](crate::Device::cmd_preprocess_generated_commands_ext).
     #[doc(alias = "VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT")]
     pub const DRAW_INDIRECT: Self = Self(2);
-    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT` is equivalent to the logical OR of:
+    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT")]
     pub const VERTEX_INPUT: Self = Self(4);
     /// `VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT` specifies the vertex shader stage.
@@ -17109,7 +17232,8 @@ impl PipelineStageFlagBits2 {
     /// `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT` specifies the compute shader stage.
     #[doc(alias = "VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT")]
     pub const COMPUTE_SHADER: Self = Self(2048);
-    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT` is equivalent to specifying all of:
+    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT")]
     pub const ALL_TRANSFER: Self = Self(4096);
     /// `VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT` is equivalent to
@@ -17124,8 +17248,8 @@ impl PipelineStageFlagBits2 {
     /// command buffer.
     #[doc(alias = "VK_PIPELINE_STAGE_2_HOST_BIT")]
     pub const HOST: Self = Self(16384);
-    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT` specifies the execution of all graphics pipeline
-    /// stages, and is equivalent to the logical OR of:
+    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT")]
     pub const ALL_GRAPHICS: Self = Self(32768);
     /// `VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT` specifies all operations performed by all commands
@@ -17217,8 +17341,8 @@ impl PipelineStageFlagBits2 {
     /// vertex buffers are consumed.
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT")]
     pub const VERTEX_ATTRIBUTE_INPUT: Self = Self(137438953472);
-    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT` is equivalent to specifying all
-    /// supported pre-rasterization shader stages:
+    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT")]
     pub const PRE_RASTERIZATION_SHADERS: Self = Self(274877906944);
     /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI` specifies the subpass shading shader stage.
@@ -23116,6 +23240,16 @@ impl VideoDecodeCapabilityFlagBitsKHR {
     /// `VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR` specifies support for using
     /// distinct video picture resources as the reconstructed picture and decode output picture in a
     /// video decode operation.
+    ///
+    /// > **Note**
+    /// >
+    /// > Some video profiles allow using distinct video picture resources as the reconstructed
+    /// > picture and decode output picture in specific video decode operations even when the video
+    /// > decode profile does not support
+    /// > `VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR`. Even if the implementation
+    /// > only reports coincide, the decode output picture for film grain enabled frames must be a
+    /// > different video picture resource from the reconstructed picture because film grain is
+    /// > applied outside of the coding loop.
     #[doc(alias = "VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR")]
     pub const DPB_AND_OUTPUT_DISTINCT: Self = Self(2);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -23993,6 +24127,22 @@ impl VideoEncodeCapabilityFlagBitsKHR {
     /// bitstream data produced by a video encode operation by reporting the
     /// [`VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR`](QueryResultStatusKHR::INSUFFICIENT_BITSTREAM_BUFFER_RANGE)
     /// query result status code.
+    ///
+    /// > **Note**
+    /// >
+    /// > Some implementations may not be able to reliably detect insufficient bitstream buffer
+    /// > range conditions in all situations. Such implementations will not report support for the
+    /// > `VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR` encode
+    /// > capability flag for the video profile, but may still report the
+    /// > [`VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR`](QueryResultStatusKHR::INSUFFICIENT_BITSTREAM_BUFFER_RANGE)
+    /// > query result status code in certain cases. Applications should always check for the
+    /// > specific query result status code
+    /// > [`VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR`](QueryResultStatusKHR::INSUFFICIENT_BITSTREAM_BUFFER_RANGE)
+    /// > even when this encode capability flag is not supported by the implementation for the video
+    /// > profile in question. However, applications must not assume that a different negative query
+    /// > result status code indicating an unsuccessful completion of a video encode operation is
+    /// > not the result of an insufficient bitstream buffer condition unless this encode capability
+    /// > flag is supported.
     #[doc(
         alias = "VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR"
     )]
@@ -24567,6 +24717,14 @@ impl VideoEncodeH264CapabilityFlagBitsKHR {
     /// wraparound during the calculation of the QP values of subsequently encoded macroblocks, as
     /// defined in equation 7-37 of the ITU-T H.264 Specification. If not supported, equation 7-37
     /// of the ITU-T H.264 Specification is effectively reduced to the following:
+    ///
+    /// QP<sub>Y</sub> = QP<sub>Y,PREV</sub> + `mb_qp_delta`
+    ///
+    /// > **Note**
+    /// >
+    /// > The effect of this is that the maximum QP difference across subsequent macroblocks is
+    /// > limited to the \[-(26 + QpBdOffset<sub>Y</sub> / 2), 25 + QpBdOffset<sub>Y</sub> / 2\]
+    /// > range.
     #[doc(alias = "VK_VIDEO_ENCODE_H264_CAPABILITY_MB_QP_DIFF_WRAPAROUND_BIT_KHR")]
     pub const MB_QP_DIFF_WRAPAROUND: Self = Self(512);
     /// `VK_VIDEO_ENCODE_H264_CAPABILITY_B_PICTURE_INTRA_REFRESH_BIT_KHR` specifies support for
@@ -25136,6 +25294,14 @@ impl VideoEncodeH265CapabilityFlagBitsKHR {
     /// wraparound during the calculation of the QP values of subsequently encoded coding units, as
     /// defined in section 7.4.9.14 of the ITU-T H.265 Specification. If not supported, equation
     /// 8-283 of the ITU-T H.265 Specification is effectively reduced to the following:
+    ///
+    /// Qp<sub>Y</sub> = qP<sub>Y_PRED</sub> + `CuQpDeltaVal`
+    ///
+    /// > **Note**
+    /// >
+    /// > The effect of this is that the maximum QP difference across subsequent coding units is
+    /// > limited to the \[-(26 + QpBdOffset<sub>Y</sub> / 2), 25 + QpBdOffset<sub>Y</sub> / 2\]
+    /// > range.
     #[doc(alias = "VK_VIDEO_ENCODE_H265_CAPABILITY_CU_QP_DIFF_WRAPAROUND_BIT_KHR")]
     pub const CU_QP_DIFF_WRAPAROUND: Self = Self(1024);
     /// `VK_VIDEO_ENCODE_H265_CAPABILITY_B_PICTURE_INTRA_REFRESH_BIT_KHR` specifies support for
@@ -26555,10 +26721,30 @@ impl VideoEncodeRgbRangeCompressionFlagBitsVALVE {
     }
     /// `VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_FULL_RANGE_BIT_VALVE` specifies the following
     /// transformations are applied:
+    ///
+    /// `\begin{aligned} Y' &= C'_{rgba}[G] \\ C_B &= C'_{rgba}[B] - {{2^{(n-1)}}\over{(2^n) - 1}} \\ C_R &= C'_{rgba}[R] - {{2^{(n-1)}}\over{(2^n) - 1}} \end{aligned}`
+    ///
+    /// > **Note**
+    /// >
+    /// > These formulae correspond to the “full range” encoding in the “Quantization schemes”
+    /// > chapter of the Khronos Data Format Specification.
+    /// >
+    /// > Should any future amendments be made to the ITU specifications from which these equations
+    /// > are derived, the formulae used by Vulkan may also be updated to maintain parity.
     #[doc(alias = "VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_FULL_RANGE_BIT_VALVE")]
     pub const FULL_RANGE: Self = Self(1);
     /// `VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_NARROW_RANGE_BIT_VALVE` specifies the following
     /// transformations are applied:
+    ///
+    /// `\begin{aligned} Y' &= {{C'_{rgba}[G] \times (2^n-1) - 16\times 2^{n-8}}\over{219\times 2^{n-8}}} \\ C_B &= {{C'_{rgba}[B] \times \left(2^n-1\right) - 128\times 2^{n-8}}\over{224\times 2^{n-8}}} \\ C_R &= {{C'_{rgba}[R] \times \left(2^n-1\right) - 128\times 2^{n-8}}\over{224\times 2^{n-8}}} \end{aligned}`
+    ///
+    /// > **Note**
+    /// >
+    /// > These formulae correspond to the “narrow range” encoding in the “Quantization schemes”
+    /// > chapter of the Khronos Data Format Specification.
+    /// >
+    /// > Unlike sampler Y′C<sub>B</sub>C<sub>R</sub> range expansion, no precision guarantees are
+    /// > made for video encode R′G′B′ range compression.
     #[doc(alias = "VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_NARROW_RANGE_BIT_VALVE")]
     pub const NARROW_RANGE: Self = Self(2);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -26806,6 +26992,14 @@ impl VideoSessionCreateFlagBitsKHR {
     /// implementation is allowed to override video session parameters and other codec-specific
     /// encoding parameters to optimize video encode operations based on the use case information
     /// specified in the video profile and the used video encode quality level.
+    ///
+    /// > **Note**
+    /// >
+    /// > Not specifying `VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR` does
+    /// > not guarantee that the implementation will not do any codec-specific parameter overrides,
+    /// > as certain overrides are necessary for the correct operation of the video encoder
+    /// > implementation due to limitations to the available encoding tools on that implementation.
+    /// > This flag, however, enables the implementation to apply further optimizing overrides.
     #[doc(alias = "VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR")]
     pub const ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS: Self = Self(2);
     /// `VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR` specifies that queries within video coding
@@ -27906,7 +28100,8 @@ impl AccessFlags2 {
     /// pipeline stage.
     #[doc(alias = "VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT")]
     pub const INPUT_ATTACHMENT_READ: Self = Self(16);
-    /// `VK_ACCESS_2_SHADER_READ_BIT` is equivalent to the logical OR of:
+    /// `VK_ACCESS_2_SHADER_READ_BIT`, a value of
+    /// [`VkAccessFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccessFlagBits2.html).
     #[doc(alias = "VK_ACCESS_2_SHADER_READ_BIT")]
     pub const SHADER_READ: Self = Self(32);
     /// `VK_ACCESS_2_SHADER_WRITE_BIT` is equivalent to
@@ -30453,7 +30648,9 @@ impl BuildAccelerationStructureFlagsKHR {
     /// in
     /// [`VkAccelerationStructureBuildGeometryInfoKHR`](AccelerationStructureBuildGeometryInfoKHR)
     /// or an `update` of [`VK_TRUE`](TRUE) in
-    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv)
+    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv) .
+    /// For sphere and LSS primitives, only positions and radii may be updated, the provided index
+    /// buffers and flags must remain unchanged from the initial build.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR")]
     pub const ALLOW_UPDATE: Self = Self(1);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR` specifies that the specified
@@ -39833,6 +40030,15 @@ impl FormatFeatureFlags {
     /// [`VK_FILTER_LINEAR`](Filter::LINEAR). This bit must only be exposed for formats that also
     /// support the [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE) or
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC).
+    ///
+    /// If the format being queried is a depth/stencil format, this bit only specifies that the
+    /// depth aspect (not the stencil aspect) of an image of this format supports linear filtering,
+    /// and that linear filtering of the depth aspect is supported whether depth compare is enabled
+    /// in the sampler or not. Where depth comparison is supported it may be linear filtered whether
+    /// this bit is present or not, but where this bit is not present the filtered value may be
+    /// computed in an implementation-dependent manner which differs from the normal rules of linear
+    /// filtering. The resulting value must be in the range \[0,1\] and should be proportional to,
+    /// or a weighted average of, the number of comparison passes or failures.
     #[doc(alias = "VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT")]
     pub const SAMPLED_IMAGE_FILTER_LINEAR: Self = Self(4096);
     /// `VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_EXT` specifies that `VkImage` can be used
@@ -39945,6 +40151,14 @@ impl FormatFeatureFlags {
     /// `VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR` specifies that an image view with this format
     /// can be used as an output reconstructed picture or an input reference picture in video encode
     /// operations.
+    ///
+    /// > **Note**
+    /// >
+    /// > Specific video profiles may have additional restrictions on the format and other image
+    /// > creation parameters corresponding to image views used by video coding operations that can
+    /// > be enumerated using the
+    /// > [`vkGetPhysicalDeviceVideoFormatPropertiesKHR`](crate::Instance::get_physical_device_video_format_properties_khr)
+    /// > command.
     #[doc(alias = "VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR")]
     pub const VIDEO_ENCODE_DPB_KHR: Self = Self(268435456);
     /// `VK_FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR` specifies that the format
@@ -40280,6 +40494,14 @@ impl FormatFeatureFlags2 {
     /// be exposed for formats that also support the
     /// [`VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT`](FormatFeatureFlagBits2::SAMPLED_IMAGE) or
     /// [`VK_FORMAT_FEATURE_2_BLIT_SRC_BIT`](FormatFeatureFlagBits2::BLIT_SRC).
+    ///
+    /// If the format being queried is a depth/stencil format, this bit only specifies that the
+    /// depth aspect (not the stencil aspect) of an image of this format supports linear filtering.
+    /// Where depth comparison is supported it may be linear filtered whether this bit is present or
+    /// not, but where this bit is not present the filtered value may be computed in an
+    /// implementation-dependent manner which differs from the normal rules of linear filtering. The
+    /// resulting value must be in the range \[0,1\] and should be proportional to, or a weighted
+    /// average of, the number of comparison passes or failures.
     #[doc(alias = "VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT")]
     pub const SAMPLED_IMAGE_FILTER_LINEAR: Self = Self(4096);
     /// `VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_CUBIC_BIT` specifies that `VkImage` can be used
@@ -40485,6 +40707,13 @@ impl FormatFeatureFlags2 {
     pub const VIDEO_ENCODE_QUANTIZATION_DELTA_MAP_KHR: Self = Self(562949953421312);
     /// `VK_FORMAT_FEATURE_2_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR` specifies that an image view with
     /// this format can be used as an emphasis map in video encode operations.
+    ///
+    /// > **Note**
+    /// >
+    /// > Video encode quantization maps have additional restrictions specific to the video profile
+    /// > they are used with that can be enumerated using the
+    /// > [`vkGetPhysicalDeviceVideoFormatPropertiesKHR`](crate::Instance::get_physical_device_video_format_properties_khr)
+    /// > command.
     #[doc(alias = "VK_FORMAT_FEATURE_2_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR")]
     pub const VIDEO_ENCODE_EMPHASIS_MAP_KHR: Self = Self(1125899906842624);
     /// `VK_FORMAT_FEATURE_2_ACCELERATION_STRUCTURE_RADIUS_BUFFER_BIT_NV` specifies that the format
@@ -40518,6 +40747,14 @@ impl FormatFeatureFlags2 {
     /// [`VK_QUEUE_TRANSFER_BIT`](QueueFlagBits::TRANSFER) but does not support
     /// [`VK_QUEUE_GRAPHICS_BIT`](QueueFlagBits::GRAPHICS) or
     /// [`VK_QUEUE_COMPUTE_BIT`](QueueFlagBits::COMPUTE).
+    ///
+    /// > **Note**
+    /// >
+    /// > Specific video profiles may have additional restrictions on the format and other image
+    /// > creation parameters corresponding to image views used by video coding operations that can
+    /// > be enumerated using the
+    /// > [`vkGetPhysicalDeviceVideoFormatPropertiesKHR`](crate::Instance::get_physical_device_video_format_properties_khr)
+    /// > command.
     #[doc(alias = "VK_FORMAT_FEATURE_2_STENCIL_COPY_ON_TRANSFER_QUEUE_BIT_KHR")]
     pub const STENCIL_COPY_ON_TRANSFER_QUEUE_KHR: Self = Self(36028797018963968);
     /// `VK_FORMAT_FEATURE_2_DATA_GRAPH_OPTICAL_FLOW_IMAGE_BIT_ARM` specifies that an image view
@@ -43514,6 +43751,31 @@ impl ImageCreateFlags {
     /// video coding operations without having to specify at image creation time the set of video
     /// profiles the image will be used with, except for images used only as DPB pictures, as long
     /// as the image is otherwise compatible with the video profile in question.
+    ///
+    /// > **Note**
+    /// >
+    /// > This enables exchanging video picture data without additional copies or conversions when
+    /// > used as:
+    /// >
+    /// > - Decode output pictures, regardless of the video profile used to produce them.
+    /// > - Encode input pictures, regardless of the video profile used to consume them.
+    /// >
+    /// > This includes images created with both
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DST_KHR) and
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DPB_KHR),
+    /// > which is necessary to use the same video picture as the reconstructed picture and decode
+    /// > output picture in a video decode operation on implementations supporting
+    /// > [`VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR`](VideoDecodeCapabilityFlagBitsKHR::DPB_AND_OUTPUT_COINCIDE).
+    /// >
+    /// > However, images with only DPB usage remain tied to the video profiles the image was
+    /// > created with, as the data layout of such DPB-only images may be implementation- and
+    /// > codec-dependent.
+    /// >
+    /// > If an application would like to share or reuse the device memory backing such images (e.g.
+    /// > for the purposes of temporal aliasing), then it should create separate image objects for
+    /// > each video profile and bind them to the same underlying device memory range, similar to
+    /// > how memory resources can be shared across separate video sessions or any other
+    /// > memory-backed resource.
     #[doc(alias = "VK_IMAGE_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR")]
     pub const VIDEO_PROFILE_INDEPENDENT_KHR: Self = Self(1048576);
     /// `VK_IMAGE_CREATE_ALIAS_SINGLE_LAYER_DESCRIPTOR_BIT_KHR` specifies that a single layer image
@@ -43859,6 +44121,31 @@ impl ImageCreateFlags2KHR {
     /// in video coding operations without having to specify at image creation time the set of video
     /// profiles the image will be used with, except for images used only as DPB pictures, as long
     /// as the image is otherwise compatible with the video profile in question.
+    ///
+    /// > **Note**
+    /// >
+    /// > This enables exchanging video picture data without additional copies or conversions when
+    /// > used as:
+    /// >
+    /// > - Decode output pictures, regardless of the video profile used to produce them.
+    /// > - Encode input pictures, regardless of the video profile used to consume them.
+    /// >
+    /// > This includes images created with both
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DST_KHR) and
+    /// > [`VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR`](ImageUsageFlagBits::VIDEO_DECODE_DPB_KHR),
+    /// > which is necessary to use the same video picture as the reconstructed picture and decode
+    /// > output picture in a video decode operation on implementations supporting
+    /// > [`VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR`](VideoDecodeCapabilityFlagBitsKHR::DPB_AND_OUTPUT_COINCIDE).
+    /// >
+    /// > However, images with only DPB usage remain tied to the video profiles the image was
+    /// > created with, as the data layout of such DPB-only images may be implementation- and
+    /// > codec-dependent.
+    /// >
+    /// > If an application would like to share or reuse the device memory backing such images (e.g.
+    /// > for the purposes of temporal aliasing), then it should create separate image objects for
+    /// > each video profile and bind them to the same underlying device memory range, similar to
+    /// > how memory resources can be shared across separate video sessions or any other
+    /// > memory-backed resource.
     #[doc(alias = "VK_IMAGE_CREATE_2_VIDEO_PROFILE_INDEPENDENT_BIT_KHR")]
     pub const VIDEO_PROFILE_INDEPENDENT: Self = Self(1048576);
     /// `VK_IMAGE_CREATE_2_ALIAS_SINGLE_LAYER_DESCRIPTOR_BIT_KHR`, a value of
@@ -50598,11 +50885,40 @@ impl PipelineCreationFeedbackFlags {
     /// `VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT` specifies that a readily
     /// usable pipeline or pipeline stage was found in the `pipelineCache` specified by the
     /// application in the pipeline creation command.
+    ///
+    /// An implementation should set the
+    /// `VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT` bit if it was able to
+    /// avoid the large majority of pipeline or pipeline stage creation work by using the
+    /// `pipelineCache` parameter of
+    /// [`vkCreateGraphicsPipelines`](crate::Device::create_graphics_pipelines),
+    /// [`vkCreateRayTracingPipelinesKHR`](crate::Device::create_ray_tracing_pipelines_khr),
+    /// [`vkCreateRayTracingPipelinesNV`](crate::Device::create_ray_tracing_pipelines_nv),
+    /// [`vkCreateDataGraphPipelinesARM`](crate::Device::create_data_graph_pipelines_arm), or
+    /// [`vkCreateComputePipelines`](crate::Device::create_compute_pipelines). When an
+    /// implementation sets this bit for the entire pipeline, it may leave it unset for any stage.
+    ///
+    /// > **Note**
+    /// >
+    /// > Implementations are encouraged to provide a meaningful signal to applications using this
+    /// > bit. The intention is to communicate to the application that the pipeline or pipeline
+    /// > stage was created “as fast as it gets” using the pipeline cache provided by the
+    /// > application. If an implementation uses an internal cache, it is discouraged from setting
+    /// > this bit as the feedback would be unactionable.
     #[doc(alias = "VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT")]
     pub const APPLICATION_PIPELINE_CACHE_HIT: Self = Self(2);
     /// `VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT` specifies that the base
     /// pipeline specified by the `basePipelineHandle` or `basePipelineIndex` member of the
     /// `Vk*PipelineCreateInfo` structure was used to accelerate the creation of the pipeline.
+    ///
+    /// An implementation should set the
+    /// `VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT` bit if it was able to avoid a
+    /// significant amount of work by using the base pipeline.
+    ///
+    /// > **Note**
+    /// >
+    /// > While “significant amount of work” is subjective, implementations are encouraged to
+    /// > provide a meaningful signal to applications using this bit. For example, a 1% reduction in
+    /// > duration may not warrant setting this bit, while a 50% reduction would.
     #[doc(alias = "VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT")]
     pub const BASE_PIPELINE_ACCELERATION: Self = Self(4);
     /// `VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT_EXT` is an alias of
@@ -52688,7 +53004,8 @@ impl PipelineStageFlags2 {
     /// [`vkCmdPreprocessGeneratedCommandsEXT`](crate::Device::cmd_preprocess_generated_commands_ext).
     #[doc(alias = "VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT")]
     pub const DRAW_INDIRECT: Self = Self(2);
-    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT` is equivalent to the logical OR of:
+    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT")]
     pub const VERTEX_INPUT: Self = Self(4);
     /// `VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT` specifies the vertex shader stage.
@@ -52730,7 +53047,8 @@ impl PipelineStageFlags2 {
     /// `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT` specifies the compute shader stage.
     #[doc(alias = "VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT")]
     pub const COMPUTE_SHADER: Self = Self(2048);
-    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT` is equivalent to specifying all of:
+    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT")]
     pub const ALL_TRANSFER: Self = Self(4096);
     /// `VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT` is equivalent to
@@ -52745,8 +53063,8 @@ impl PipelineStageFlags2 {
     /// command buffer.
     #[doc(alias = "VK_PIPELINE_STAGE_2_HOST_BIT")]
     pub const HOST: Self = Self(16384);
-    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT` specifies the execution of all graphics pipeline
-    /// stages, and is equivalent to the logical OR of:
+    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT")]
     pub const ALL_GRAPHICS: Self = Self(32768);
     /// `VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT` specifies all operations performed by all commands
@@ -52838,8 +53156,8 @@ impl PipelineStageFlags2 {
     /// vertex buffers are consumed.
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT")]
     pub const VERTEX_ATTRIBUTE_INPUT: Self = Self(137438953472);
-    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT` is equivalent to specifying all
-    /// supported pre-rasterization shader stages:
+    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT`, a value of
+    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
     #[doc(alias = "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT")]
     pub const PRE_RASTERIZATION_SHADERS: Self = Self(274877906944);
     /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI` specifies the subpass shading shader stage.
@@ -62268,6 +62586,16 @@ impl VideoDecodeCapabilityFlagsKHR {
     /// `VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR` specifies support for using
     /// distinct video picture resources as the reconstructed picture and decode output picture in a
     /// video decode operation.
+    ///
+    /// > **Note**
+    /// >
+    /// > Some video profiles allow using distinct video picture resources as the reconstructed
+    /// > picture and decode output picture in specific video decode operations even when the video
+    /// > decode profile does not support
+    /// > `VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR`. Even if the implementation
+    /// > only reports coincide, the decode output picture for film grain enabled frames must be a
+    /// > different video picture resource from the reconstructed picture because film grain is
+    /// > applied outside of the coding loop.
     #[doc(alias = "VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR")]
     pub const DPB_AND_OUTPUT_DISTINCT: Self = Self(2);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -63517,6 +63845,22 @@ impl VideoEncodeCapabilityFlagsKHR {
     /// bitstream data produced by a video encode operation by reporting the
     /// [`VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR`](QueryResultStatusKHR::INSUFFICIENT_BITSTREAM_BUFFER_RANGE)
     /// query result status code.
+    ///
+    /// > **Note**
+    /// >
+    /// > Some implementations may not be able to reliably detect insufficient bitstream buffer
+    /// > range conditions in all situations. Such implementations will not report support for the
+    /// > `VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR` encode
+    /// > capability flag for the video profile, but may still report the
+    /// > [`VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR`](QueryResultStatusKHR::INSUFFICIENT_BITSTREAM_BUFFER_RANGE)
+    /// > query result status code in certain cases. Applications should always check for the
+    /// > specific query result status code
+    /// > [`VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR`](QueryResultStatusKHR::INSUFFICIENT_BITSTREAM_BUFFER_RANGE)
+    /// > even when this encode capability flag is not supported by the implementation for the video
+    /// > profile in question. However, applications must not assume that a different negative query
+    /// > result status code indicating an unsuccessful completion of a video encode operation is
+    /// > not the result of an insufficient bitstream buffer condition unless this encode capability
+    /// > flag is supported.
     #[doc(
         alias = "VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR"
     )]
@@ -64242,6 +64586,14 @@ impl VideoEncodeH264CapabilityFlagsKHR {
     /// wraparound during the calculation of the QP values of subsequently encoded macroblocks, as
     /// defined in equation 7-37 of the ITU-T H.264 Specification. If not supported, equation 7-37
     /// of the ITU-T H.264 Specification is effectively reduced to the following:
+    ///
+    /// QP<sub>Y</sub> = QP<sub>Y,PREV</sub> + `mb_qp_delta`
+    ///
+    /// > **Note**
+    /// >
+    /// > The effect of this is that the maximum QP difference across subsequent macroblocks is
+    /// > limited to the \[-(26 + QpBdOffset<sub>Y</sub> / 2), 25 + QpBdOffset<sub>Y</sub> / 2\]
+    /// > range.
     #[doc(alias = "VK_VIDEO_ENCODE_H264_CAPABILITY_MB_QP_DIFF_WRAPAROUND_BIT_KHR")]
     pub const MB_QP_DIFF_WRAPAROUND: Self = Self(512);
     /// `VK_VIDEO_ENCODE_H264_CAPABILITY_B_PICTURE_INTRA_REFRESH_BIT_KHR` specifies support for
@@ -64914,6 +65266,14 @@ impl VideoEncodeH265CapabilityFlagsKHR {
     /// wraparound during the calculation of the QP values of subsequently encoded coding units, as
     /// defined in section 7.4.9.14 of the ITU-T H.265 Specification. If not supported, equation
     /// 8-283 of the ITU-T H.265 Specification is effectively reduced to the following:
+    ///
+    /// Qp<sub>Y</sub> = qP<sub>Y_PRED</sub> + `CuQpDeltaVal`
+    ///
+    /// > **Note**
+    /// >
+    /// > The effect of this is that the maximum QP difference across subsequent coding units is
+    /// > limited to the \[-(26 + QpBdOffset<sub>Y</sub> / 2), 25 + QpBdOffset<sub>Y</sub> / 2\]
+    /// > range.
     #[doc(alias = "VK_VIDEO_ENCODE_H265_CAPABILITY_CU_QP_DIFF_WRAPAROUND_BIT_KHR")]
     pub const CU_QP_DIFF_WRAPAROUND: Self = Self(1024);
     /// `VK_VIDEO_ENCODE_H265_CAPABILITY_B_PICTURE_INTRA_REFRESH_BIT_KHR` specifies support for
@@ -66764,10 +67124,30 @@ impl VideoEncodeRgbRangeCompressionFlagsVALVE {
     }
     /// `VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_FULL_RANGE_BIT_VALVE` specifies the following
     /// transformations are applied:
+    ///
+    /// `\begin{aligned} Y' &= C'_{rgba}[G] \\ C_B &= C'_{rgba}[B] - {{2^{(n-1)}}\over{(2^n) - 1}} \\ C_R &= C'_{rgba}[R] - {{2^{(n-1)}}\over{(2^n) - 1}} \end{aligned}`
+    ///
+    /// > **Note**
+    /// >
+    /// > These formulae correspond to the “full range” encoding in the “Quantization schemes”
+    /// > chapter of the Khronos Data Format Specification.
+    /// >
+    /// > Should any future amendments be made to the ITU specifications from which these equations
+    /// > are derived, the formulae used by Vulkan may also be updated to maintain parity.
     #[doc(alias = "VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_FULL_RANGE_BIT_VALVE")]
     pub const FULL_RANGE: Self = Self(1);
     /// `VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_NARROW_RANGE_BIT_VALVE` specifies the following
     /// transformations are applied:
+    ///
+    /// `\begin{aligned} Y' &= {{C'_{rgba}[G] \times (2^n-1) - 16\times 2^{n-8}}\over{219\times 2^{n-8}}} \\ C_B &= {{C'_{rgba}[B] \times \left(2^n-1\right) - 128\times 2^{n-8}}\over{224\times 2^{n-8}}} \\ C_R &= {{C'_{rgba}[R] \times \left(2^n-1\right) - 128\times 2^{n-8}}\over{224\times 2^{n-8}}} \end{aligned}`
+    ///
+    /// > **Note**
+    /// >
+    /// > These formulae correspond to the “narrow range” encoding in the “Quantization schemes”
+    /// > chapter of the Khronos Data Format Specification.
+    /// >
+    /// > Unlike sampler Y′C<sub>B</sub>C<sub>R</sub> range expansion, no precision guarantees are
+    /// > made for video encode R′G′B′ range compression.
     #[doc(alias = "VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_NARROW_RANGE_BIT_VALVE")]
     pub const NARROW_RANGE: Self = Self(2);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -67212,6 +67592,14 @@ impl VideoSessionCreateFlagsKHR {
     /// implementation is allowed to override video session parameters and other codec-specific
     /// encoding parameters to optimize video encode operations based on the use case information
     /// specified in the video profile and the used video encode quality level.
+    ///
+    /// > **Note**
+    /// >
+    /// > Not specifying `VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR` does
+    /// > not guarantee that the implementation will not do any codec-specific parameter overrides,
+    /// > as certain overrides are necessary for the correct operation of the video encoder
+    /// > implementation due to limitations to the available encoding tools on that implementation.
+    /// > This flag, however, enables the implementation to apply further optimizing overrides.
     #[doc(alias = "VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR")]
     pub const ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS: Self = Self(2);
     /// `VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR` specifies that queries within video coding

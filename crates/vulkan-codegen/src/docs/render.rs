@@ -4,7 +4,20 @@ const WIDTH: usize = 92;
 pub(crate) enum Block {
     Text(String),
     Heading(&'static str),
-    List(Vec<(usize, String)>),
+    List(Vec<Vec<Block>>),
+    Quote(Vec<Block>),
+    Code { language: String, text: String },
+}
+
+impl Block {
+    pub(crate) fn list(items: impl IntoIterator<Item = String>) -> Self {
+        Block::List(
+            items
+                .into_iter()
+                .map(|item| vec![Block::Text(item)])
+                .collect(),
+        )
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -63,30 +76,7 @@ impl Doc {
     pub(crate) fn render(&self) -> String {
         assert!(!self.blocks.is_empty(), "an item without documentation");
         let mut out = String::new();
-        for (index, block) in self.blocks.iter().enumerate() {
-            if index > 0 {
-                out.push_str("///\n");
-            }
-            match block {
-                Block::Text(text) => push_wrapped(&mut out, "", "", text),
-                Block::Heading(title) => {
-                    out.push_str("/// # ");
-                    out.push_str(title);
-                    out.push('\n');
-                }
-                Block::List(items) => {
-                    for (level, item) in items {
-                        let indent = "  ".repeat(*level);
-                        push_wrapped(
-                            &mut out,
-                            &format!("{indent}- "),
-                            &format!("{indent}  "),
-                            item,
-                        );
-                    }
-                }
-            }
-        }
+        push_blocks(&mut out, "", "", false, &self.blocks);
         let aliases = self
             .aliases
             .iter()
@@ -95,6 +85,67 @@ impl Doc {
             out.push_str(&format!("#[doc(alias = \"{alias}\")]\n"));
         }
         out
+    }
+}
+
+fn push_line(out: &mut String, prefix: &str, line: &str) {
+    out.push_str("///");
+    let line = format!("{prefix}{line}");
+    let line = line.trim_end();
+    if !line.is_empty() {
+        out.push(' ');
+        out.push_str(line);
+    }
+    out.push('\n');
+}
+
+fn push_blocks(
+    out: &mut String,
+    first_prefix: &str,
+    next_prefix: &str,
+    in_a_list_item: bool,
+    blocks: &[Block],
+) {
+    for (index, block) in blocks.iter().enumerate() {
+        let prefix = if index == 0 {
+            first_prefix
+        } else {
+            next_prefix
+        };
+        let follows_its_item_closely = in_a_list_item && matches!(block, Block::List(_));
+        if index > 0 && !follows_its_item_closely {
+            push_line(out, next_prefix, "");
+        }
+        match block {
+            Block::Text(text) => push_wrapped(out, prefix, next_prefix, text),
+            Block::Heading(title) => push_line(out, prefix, &format!("# {title}")),
+            Block::List(items) => {
+                for (number, item) in items.iter().enumerate() {
+                    let prefix = if number == 0 { prefix } else { next_prefix };
+                    push_blocks(
+                        out,
+                        &format!("{prefix}- "),
+                        &format!("{next_prefix}  "),
+                        true,
+                        item,
+                    );
+                }
+            }
+            Block::Quote(quoted) => push_blocks(
+                out,
+                &format!("{prefix}> "),
+                &format!("{next_prefix}> "),
+                false,
+                quoted,
+            ),
+            Block::Code { language, text } => {
+                push_line(out, prefix, &format!("```{language}"));
+                for line in text.lines() {
+                    push_line(out, next_prefix, line);
+                }
+                push_line(out, next_prefix, "```");
+            }
+        }
     }
 }
 
@@ -185,10 +236,7 @@ mod tests {
             .section("Safety", "Read the manual.")
             .blocks([
                 Block::Heading("Parameters"),
-                Block::List(vec![
-                    (0, "`a` is one.".to_string()),
-                    (0, "`b` is two.".to_string()),
-                ]),
+                Block::list(["`a` is one.".to_string(), "`b` is two.".to_string()]),
             ])
             .alias("VkThing");
         assert_eq!(
@@ -272,10 +320,10 @@ mod tests {
     fn list_items_wrap_with_a_hanging_indent() {
         let word = "abcdefghi";
         let rendered = Doc::new()
-            .blocks([Block::List(vec![
-                (0, [word; 10].join(" ")),
-                (1, "nested".to_string()),
-            ])])
+            .blocks([Block::List(vec![vec![
+                Block::Text([word; 10].join(" ")),
+                Block::list(["nested".to_string()]),
+            ]])])
             .render();
         assert_eq!(
             rendered,
@@ -283,6 +331,101 @@ mod tests {
                 "/// - {}\n///   {word}\n///   - nested\n",
                 [word; 9].join(" ")
             )
+        );
+    }
+
+    fn text(text: &str) -> Block {
+        Block::Text(text.to_string())
+    }
+
+    #[test]
+    fn the_blocks_of_a_list_item_stay_inside_the_item() {
+        let rendered = Doc::new()
+            .blocks([
+                text("Lead:"),
+                Block::List(vec![
+                    vec![
+                        text("first"),
+                        Block::List(vec![
+                            vec![text("nested one")],
+                            vec![text("nested two"), text("attached to nested two")],
+                            vec![text("nested three")],
+                        ]),
+                        text("attached to first"),
+                    ],
+                    vec![text("second")],
+                ]),
+                text("After the list."),
+            ])
+            .render();
+        assert_eq!(
+            rendered,
+            [
+                "/// Lead:",
+                "///",
+                "/// - first",
+                "///   - nested one",
+                "///   - nested two",
+                "///",
+                "///     attached to nested two",
+                "///   - nested three",
+                "///",
+                "///   attached to first",
+                "/// - second",
+                "///",
+                "/// After the list.",
+                "",
+            ]
+            .join("\n")
+        );
+    }
+
+    #[test]
+    fn quotes_and_code_keep_their_marks_on_every_line_at_any_depth() {
+        let word = "abcdefghi";
+        let code = Block::Code {
+            language: "c++".to_string(),
+            text: "int a;\n\n    int b;".to_string(),
+        };
+        let rendered = Doc::new()
+            .blocks([
+                Block::Quote(vec![text("**Note**"), text(&[word; 10].join(" "))]),
+                code.clone(),
+                Block::List(vec![vec![
+                    text("item"),
+                    Block::Quote(vec![text("**Note**"), Block::list(["quoted".to_string()])]),
+                    code,
+                ]]),
+            ])
+            .render();
+        assert_eq!(
+            rendered,
+            [
+                "/// > **Note**",
+                "/// >",
+                &format!("/// > {}", [word; 9].join(" ")),
+                &format!("/// > {word}"),
+                "///",
+                "/// ```c++",
+                "/// int a;",
+                "///",
+                "///     int b;",
+                "/// ```",
+                "///",
+                "/// - item",
+                "///",
+                "///   > **Note**",
+                "///   >",
+                "///   > - quoted",
+                "///",
+                "///   ```c++",
+                "///   int a;",
+                "///",
+                "///       int b;",
+                "///   ```",
+                "",
+            ]
+            .join("\n")
         );
     }
 

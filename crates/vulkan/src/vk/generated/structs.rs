@@ -12180,7 +12180,18 @@ pub struct AccelerationStructureInstanceKHR {
     /// The storage unit of the C bit-fields `instanceShaderBindingTableRecordOffset` and `flags`.
     /// The methods named after the bit-fields read and write them.
     pub bitfield1: u32,
-    /// `accelerationStructureReference` is either
+    /// `accelerationStructureReference` is either :
+    ///
+    /// - a device address containing the value obtained from
+    ///   [`vkGetAccelerationStructureDeviceAddressKHR`](crate::Device::get_acceleration_structure_device_address_khr)
+    ///   or
+    ///   [`vkGetAccelerationStructureHandleNV`](crate::Device::get_acceleration_structure_handle_nv)
+    ///   for a bottom level acceleration structure (used by device operations which reference
+    ///   acceleration structures) or,
+    /// - a device address containing a bottom level cluster acceleration structure built using
+    ///   [`vkCmdBuildClusterAccelerationStructureIndirectNV`](crate::Device::cmd_build_cluster_acceleration_structure_indirect_nv)
+    /// - a [`VkAccelerationStructureKHR`](AccelerationStructureKHR) object (used by host operations
+    ///   which reference acceleration structures).
     pub acceleration_structure_reference: u64,
 }
 
@@ -21415,6 +21426,11 @@ pub struct CommandBufferInheritanceInfo<'a> {
     /// `framebuffer` can refer to the [`VkFramebuffer`](Framebuffer) object that the
     /// `VkCommandBuffer` will be rendering to if it is executed within a render pass instance. It
     /// can be `VK_NULL_HANDLE` if the framebuffer is not known.
+    ///
+    /// > **Note**
+    /// >
+    /// > Specifying the exact framebuffer that the secondary command buffer will be executed with
+    /// > may result in better performance at command buffer execution time.
     pub framebuffer: Framebuffer,
     /// `occlusionQueryEnable` specifies whether the command buffer can be executed while an
     /// occlusion query is active in the primary command buffer. If this is [`VK_TRUE`](TRUE), then
@@ -26766,13 +26782,16 @@ pub struct DataGraphPipelineOpticalFlowCreateInfoARM<'a> {
     /// [`VkDataGraphOpticalFlowGridSizeFlagsARM`](DataGraphOpticalFlowGridSizeFlagsARM) specifying
     /// the grid size of the output flow and cost maps to be bound to this optical flow pipeline.
     /// The size of the output flow and cost maps is a function of the input image dimensions and
-    /// `outputGridSize` and is calculated as follows:
+    /// `outputGridSize` and is calculated as follows: OutputWidth = ⌈ `width` / OutputGridWidth ⌉
+    /// OutputHeight = ⌈ `height` / OutputGridHeight ⌉ where OutputGridWidth and OutputGridHeight
+    /// are determined by `outputGridSize`.
     pub output_grid_size: DataGraphOpticalFlowGridSizeFlagsARM,
     /// `hintGridSize` is one exactly bit of
     /// [`VkDataGraphOpticalFlowGridSizeFlagsARM`](DataGraphOpticalFlowGridSizeFlagsARM) specifying
     /// the grid size of the hint flow vector map to be bound to this optical flow pipeline. The
     /// size of the hint maps is a function of the input image dimensions and `hintGridSize` and is
-    /// calculated as follows:
+    /// calculated as follows: HintWidth = ⌈ `width` / HintGridWidth ⌉ HintHeight = ⌈ `height` /
+    /// HintGridHeight ⌉ where HintGridWidth and HintGridHeight are determined by `hintGridSize`.
     pub hint_grid_size: DataGraphOpticalFlowGridSizeFlagsARM,
     /// `performanceLevel` is the
     /// [`VkDataGraphOpticalFlowPerformanceLevelARM`](DataGraphOpticalFlowPerformanceLevelARM) used
@@ -29702,6 +29721,14 @@ pub struct DescriptorBufferInfo {
     pub offset: DeviceSize,
     /// `range` is the size in bytes that is used for this descriptor update, or
     /// [`VK_WHOLE_SIZE`](WHOLE_SIZE) to use the range from `offset` to the end of the buffer.
+    ///
+    /// > **Note**
+    /// >
+    /// > When setting `range` to [`VK_WHOLE_SIZE`](WHOLE_SIZE), the effective range must not be
+    /// > larger than the maximum range for the descriptor type (`maxUniformBufferRange` or
+    /// > `maxStorageBufferRange`). This means that [`VK_WHOLE_SIZE`](WHOLE_SIZE) is not typically
+    /// > useful in the common case where uniform buffer descriptors are suballocated from a buffer
+    /// > that is much larger than `maxUniformBufferRange`.
     pub range: DeviceSize,
 }
 
@@ -31305,6 +31332,12 @@ pub struct DescriptorSetLayoutBinding<'a> {
     /// [`VK_SHADER_STAGE_ALL`](ShaderStageFlagBits::ALL) is a shorthand specifying that all defined
     /// shader stages, including any additional stages defined by extensions, can access the
     /// resource.
+    ///
+    /// If a shader stage is not included in `stageFlags`, then a resource must not be accessed from
+    /// that stage via this binding within any pipeline using the set layout. Other than input
+    /// attachments which are limited to the fragment shader, there are no limitations on what
+    /// combinations of stages can use a descriptor binding, and in particular a binding can be used
+    /// by both graphics stages and the compute stage.
     pub stage_flags: ShaderStageFlags,
     /// `pImmutableSamplers` affects initialization of samplers. If `descriptorType` specifies a
     /// [`VK_DESCRIPTOR_TYPE_SAMPLER`](DescriptorType::SAMPLER) or
@@ -32033,6 +32066,16 @@ pub struct DescriptorUpdateTemplateEntry {
     /// `stride` is the stride in bytes between two consecutive array elements of the descriptor
     /// update information in the raw data structure. The actual pointer ptr for each array element
     /// j of update entry i is computed using the following formula:
+    ///
+    /// ```c++
+    /// const char *ptr = (const char *)pData + pDescriptorUpdateEntries[i].offset + j * pDescriptorUpdateEntries[i].stride
+    /// ```
+    ///
+    /// The stride is useful in case the bindings are stored in structs along with other data. If
+    /// `descriptorType` is
+    /// [`VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK`](DescriptorType::INLINE_UNIFORM_BLOCK) then the
+    /// value of `stride` is ignored and the stride is assumed to be `1`, i.e. the descriptor update
+    /// information for them is always specified as a contiguous range.
     pub stride: usize,
 }
 
@@ -46050,6 +46093,22 @@ pub struct ImageFormatProperties {
     pub max_extent: Extent3D,
     /// `maxMipLevels` is the maximum number of mipmap levels. `maxMipLevels` must be equal to the
     /// number of levels in the complete mipmap chain based on the `maxExtent.width`,
+    /// `maxExtent.height`, and `maxExtent.depth`, except when one of the following conditions is
+    /// true, in which case it may instead be `1`:
+    ///
+    /// - `vkGetPhysicalDeviceImageFormatProperties`::`tiling` was
+    ///   [`VK_IMAGE_TILING_LINEAR`](ImageTiling::LINEAR)
+    /// - [`VkPhysicalDeviceImageFormatInfo2`](PhysicalDeviceImageFormatInfo2)::`tiling` was
+    ///   [`VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT`](ImageTiling::DRM_FORMAT_MODIFIER_EXT)
+    /// - the [`VkPhysicalDeviceImageFormatInfo2`](PhysicalDeviceImageFormatInfo2)::`pNext` chain
+    ///   included a
+    ///   [`VkPhysicalDeviceExternalImageFormatInfo`](PhysicalDeviceExternalImageFormatInfo)
+    ///   structure with a handle type included in the `handleTypes` member for which mipmap image
+    ///   support is not required
+    /// - image `format` is one of the formats that require a sampler Y′C<sub>B</sub>C<sub>R</sub>
+    ///   conversion
+    /// - `flags` contains
+    ///   [`VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT`](ImageCreateFlagBits::SUBSAMPLED_EXT)
     pub max_mip_levels: u32,
     /// `maxArrayLayers` is the maximum number of array layers. `maxArrayLayers` must be no less
     /// than [`VkPhysicalDeviceLimits`](PhysicalDeviceLimits)::`maxImageArrayLayers`, except when
@@ -69038,6 +69097,23 @@ pub struct PhysicalDeviceFeatures {
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC) and
     /// [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE_FILTER_LINEAR)
     /// features must be supported in `optimalTilingFeatures` for the following formats:
+    ///
+    /// - [`VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK`](Format::ETC2_R8G8B8_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK`](Format::ETC2_R8G8B8_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK`](Format::ETC2_R8G8B8A1_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK`](Format::ETC2_R8G8B8A1_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK`](Format::ETC2_R8G8B8A8_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK`](Format::ETC2_R8G8B8A8_SRGB_BLOCK)
+    /// - [`VK_FORMAT_EAC_R11_UNORM_BLOCK`](Format::EAC_R11_UNORM_BLOCK)
+    /// - [`VK_FORMAT_EAC_R11_SNORM_BLOCK`](Format::EAC_R11_SNORM_BLOCK)
+    /// - [`VK_FORMAT_EAC_R11G11_UNORM_BLOCK`](Format::EAC_R11G11_UNORM_BLOCK)
+    /// - [`VK_FORMAT_EAC_R11G11_SNORM_BLOCK`](Format::EAC_R11G11_SNORM_BLOCK)
+    ///
+    ///   To query for additional properties, or if the feature is not enabled,
+    ///   [`vkGetPhysicalDeviceFormatProperties`](crate::Instance::get_physical_device_format_properties)
+    ///   and
+    ///   [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    ///   can be used to check for supported properties of individual formats as normal.
     pub texture_compression_etc2: Bool32,
     /// `textureCompressionASTC_LDR` specifies whether all of the ASTC LDR compressed texture
     /// formats are supported. If this feature is enabled, then the
@@ -69045,6 +69121,41 @@ pub struct PhysicalDeviceFeatures {
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC) and
     /// [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE_FILTER_LINEAR)
     /// features must be supported in `optimalTilingFeatures` for the following formats:
+    ///
+    /// - [`VK_FORMAT_ASTC_4x4_UNORM_BLOCK`](Format::ASTC_4x4_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_4x4_SRGB_BLOCK`](Format::ASTC_4x4_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x4_UNORM_BLOCK`](Format::ASTC_5x4_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x4_SRGB_BLOCK`](Format::ASTC_5x4_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x5_UNORM_BLOCK`](Format::ASTC_5x5_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x5_SRGB_BLOCK`](Format::ASTC_5x5_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x5_UNORM_BLOCK`](Format::ASTC_6x5_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x5_SRGB_BLOCK`](Format::ASTC_6x5_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x6_UNORM_BLOCK`](Format::ASTC_6x6_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x6_SRGB_BLOCK`](Format::ASTC_6x6_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x5_UNORM_BLOCK`](Format::ASTC_8x5_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x5_SRGB_BLOCK`](Format::ASTC_8x5_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x6_UNORM_BLOCK`](Format::ASTC_8x6_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x6_SRGB_BLOCK`](Format::ASTC_8x6_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x8_UNORM_BLOCK`](Format::ASTC_8x8_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x8_SRGB_BLOCK`](Format::ASTC_8x8_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x5_UNORM_BLOCK`](Format::ASTC_10x5_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x5_SRGB_BLOCK`](Format::ASTC_10x5_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x6_UNORM_BLOCK`](Format::ASTC_10x6_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x6_SRGB_BLOCK`](Format::ASTC_10x6_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x8_UNORM_BLOCK`](Format::ASTC_10x8_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x8_SRGB_BLOCK`](Format::ASTC_10x8_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x10_UNORM_BLOCK`](Format::ASTC_10x10_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x10_SRGB_BLOCK`](Format::ASTC_10x10_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x10_UNORM_BLOCK`](Format::ASTC_12x10_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x10_SRGB_BLOCK`](Format::ASTC_12x10_SRGB_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x12_UNORM_BLOCK`](Format::ASTC_12x12_UNORM_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x12_SRGB_BLOCK`](Format::ASTC_12x12_SRGB_BLOCK)
+    ///
+    ///   To query for additional properties, or if the feature is not enabled,
+    ///   [`vkGetPhysicalDeviceFormatProperties`](crate::Instance::get_physical_device_format_properties)
+    ///   and
+    ///   [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    ///   can be used to check for supported properties of individual formats as normal.
     pub texture_compression_astc_ldr: Bool32,
     /// `textureCompressionBC` specifies whether all of the BC compressed texture formats are
     /// supported. If this feature is enabled, then the
@@ -69052,6 +69163,29 @@ pub struct PhysicalDeviceFeatures {
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC) and
     /// [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE_FILTER_LINEAR)
     /// features must be supported in `optimalTilingFeatures` for the following formats:
+    ///
+    /// - [`VK_FORMAT_BC1_RGB_UNORM_BLOCK`](Format::BC1_RGB_UNORM_BLOCK)
+    /// - [`VK_FORMAT_BC1_RGB_SRGB_BLOCK`](Format::BC1_RGB_SRGB_BLOCK)
+    /// - [`VK_FORMAT_BC1_RGBA_UNORM_BLOCK`](Format::BC1_RGBA_UNORM_BLOCK)
+    /// - [`VK_FORMAT_BC1_RGBA_SRGB_BLOCK`](Format::BC1_RGBA_SRGB_BLOCK)
+    /// - [`VK_FORMAT_BC2_UNORM_BLOCK`](Format::BC2_UNORM_BLOCK)
+    /// - [`VK_FORMAT_BC2_SRGB_BLOCK`](Format::BC2_SRGB_BLOCK)
+    /// - [`VK_FORMAT_BC3_UNORM_BLOCK`](Format::BC3_UNORM_BLOCK)
+    /// - [`VK_FORMAT_BC3_SRGB_BLOCK`](Format::BC3_SRGB_BLOCK)
+    /// - [`VK_FORMAT_BC4_UNORM_BLOCK`](Format::BC4_UNORM_BLOCK)
+    /// - [`VK_FORMAT_BC4_SNORM_BLOCK`](Format::BC4_SNORM_BLOCK)
+    /// - [`VK_FORMAT_BC5_UNORM_BLOCK`](Format::BC5_UNORM_BLOCK)
+    /// - [`VK_FORMAT_BC5_SNORM_BLOCK`](Format::BC5_SNORM_BLOCK)
+    /// - [`VK_FORMAT_BC6H_UFLOAT_BLOCK`](Format::BC6H_UFLOAT_BLOCK)
+    /// - [`VK_FORMAT_BC6H_SFLOAT_BLOCK`](Format::BC6H_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_BC7_UNORM_BLOCK`](Format::BC7_UNORM_BLOCK)
+    /// - [`VK_FORMAT_BC7_SRGB_BLOCK`](Format::BC7_SRGB_BLOCK)
+    ///
+    ///   To query for additional properties, or if the feature is not enabled,
+    ///   [`vkGetPhysicalDeviceFormatProperties`](crate::Instance::get_physical_device_format_properties)
+    ///   and
+    ///   [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    ///   can be used to check for supported properties of individual formats as normal.
     pub texture_compression_bc: Bool32,
     /// `occlusionQueryPrecise` specifies whether occlusion queries returning actual sample counts
     /// are supported. Occlusion queries are created in a `VkQueryPool` by specifying the
@@ -69106,6 +69240,48 @@ pub struct PhysicalDeviceFeatures {
     /// formats” below are supported; if this feature is supported, then the
     /// [`VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT`](FormatFeatureFlagBits::STORAGE_IMAGE) must be
     /// supported in `optimalTilingFeatures` for the following formats:
+    ///
+    /// - [`VK_FORMAT_R16G16_SFLOAT`](Format::R16G16_SFLOAT)
+    /// - [`VK_FORMAT_B10G11R11_UFLOAT_PACK32`](Format::B10G11R11_UFLOAT_PACK32)
+    /// - [`VK_FORMAT_R16_SFLOAT`](Format::R16_SFLOAT)
+    /// - [`VK_FORMAT_R16G16B16A16_UNORM`](Format::R16G16B16A16_UNORM)
+    /// - [`VK_FORMAT_A2B10G10R10_UNORM_PACK32`](Format::A2B10G10R10_UNORM_PACK32)
+    /// - [`VK_FORMAT_R16G16_UNORM`](Format::R16G16_UNORM)
+    /// - [`VK_FORMAT_R8G8_UNORM`](Format::R8G8_UNORM)
+    /// - [`VK_FORMAT_R16_UNORM`](Format::R16_UNORM)
+    /// - [`VK_FORMAT_R8_UNORM`](Format::R8_UNORM)
+    /// - [`VK_FORMAT_R16G16B16A16_SNORM`](Format::R16G16B16A16_SNORM)
+    /// - [`VK_FORMAT_R16G16_SNORM`](Format::R16G16_SNORM)
+    /// - [`VK_FORMAT_R8G8_SNORM`](Format::R8G8_SNORM)
+    /// - [`VK_FORMAT_R16_SNORM`](Format::R16_SNORM)
+    /// - [`VK_FORMAT_R8_SNORM`](Format::R8_SNORM)
+    /// - [`VK_FORMAT_R16G16_SINT`](Format::R16G16_SINT)
+    /// - [`VK_FORMAT_R8G8_SINT`](Format::R8G8_SINT)
+    /// - [`VK_FORMAT_R16_SINT`](Format::R16_SINT)
+    /// - [`VK_FORMAT_R8_SINT`](Format::R8_SINT)
+    /// - [`VK_FORMAT_A2B10G10R10_UINT_PACK32`](Format::A2B10G10R10_UINT_PACK32)
+    /// - [`VK_FORMAT_R16G16_UINT`](Format::R16G16_UINT)
+    /// - [`VK_FORMAT_R8G8_UINT`](Format::R8G8_UINT)
+    /// - [`VK_FORMAT_R16_UINT`](Format::R16_UINT)
+    /// - [`VK_FORMAT_R8_UINT`](Format::R8_UINT)
+    ///
+    ///   > **Note**
+    ///   >
+    ///   > `shaderStorageImageExtendedFormats` feature only adds a guarantee of format support,
+    ///   > which is specified for the whole physical device. Therefore enabling or disabling the
+    ///   > feature via [`vkCreateDevice`](crate::Instance::create_device) has no practical effect.
+    ///   >
+    ///   > To query for additional properties, or if the feature is not supported,
+    ///   > [`vkGetPhysicalDeviceFormatProperties`](crate::Instance::get_physical_device_format_properties)
+    ///   > and
+    ///   > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    ///   > can be used to check for supported properties of individual formats, as usual rules
+    ///   > allow.
+    ///   >
+    ///   > [`VK_FORMAT_R32G32_UINT`](Format::R32G32_UINT),
+    ///   > [`VK_FORMAT_R32G32_SINT`](Format::R32G32_SINT), and
+    ///   > [`VK_FORMAT_R32G32_SFLOAT`](Format::R32G32_SFLOAT) from `StorageImageExtendedFormats`
+    ///   > SPIR-V capability, are already covered by core Vulkan mandatory format support.
     pub shader_storage_image_extended_formats: Bool32,
     /// `shaderStorageImageMultisample` specifies whether multisampled storage images are supported.
     /// If this feature is not enabled, images that are created with the
@@ -71197,6 +71373,11 @@ pub struct PhysicalDeviceFragmentShadingRatePropertiesKHR<'a> {
     /// the width and height of the portion of the framebuffer corresponding to each texel in a
     /// fragment shading rate attachment. `maxFragmentShadingRateAttachmentTexelSizeAspectRatio`
     /// must be a power-of-two value, and must be less than or equal to
+    /// max(`maxFragmentShadingRateAttachmentTexelSize.width` /
+    /// `minFragmentShadingRateAttachmentTexelSize.height`,
+    /// `maxFragmentShadingRateAttachmentTexelSize.height` /
+    /// `minFragmentShadingRateAttachmentTexelSize.width`). It must be 0 if the
+    /// `attachmentFragmentShadingRate` feature is not supported.
     pub max_fragment_shading_rate_attachment_texel_size_aspect_ratio: u32,
     /// `primitiveFragmentShadingRateWithMultipleViewports` specifies whether the primitive fragment
     /// shading rate can be used when multiple viewports are used. If this value is
@@ -71265,18 +71446,19 @@ pub struct PhysicalDeviceFragmentShadingRatePropertiesKHR<'a> {
     /// rasterization is supported for multi-pixel fragments. It must be [`VK_FALSE`](FALSE) if
     /// [`VK_EXT_conservative_rasterization`](EXT_CONSERVATIVE_RASTERIZATION_NAME) is not supported.
     /// If this value is [`VK_FALSE`](FALSE), using conservative rasterization will clamp the
-    /// fragment shading rate to
+    /// fragment shading rate to (1,1).
     pub fragment_shading_rate_with_conservative_rasterization: Bool32,
     /// `fragmentShadingRateWithFragmentShaderInterlock` specifies whether fragment shader interlock
     /// is supported for multi-pixel fragments. It must be [`VK_FALSE`](FALSE) if
     /// [`VK_EXT_fragment_shader_interlock`](EXT_FRAGMENT_SHADER_INTERLOCK_NAME) is not supported.
     /// If this value is [`VK_FALSE`](FALSE), using fragment shader interlock will clamp the
-    /// fragment shading rate to
+    /// fragment shading rate to (1,1).
     pub fragment_shading_rate_with_fragment_shader_interlock: Bool32,
     /// `fragmentShadingRateWithCustomSampleLocations` specifies whether custom sample locations are
     /// supported for multi-pixel fragments. It must be [`VK_FALSE`](FALSE) if
     /// [`VK_EXT_sample_locations`](EXT_SAMPLE_LOCATIONS_NAME) is not supported. If this value is
     /// [`VK_FALSE`](FALSE), using custom sample locations will clamp the fragment shading rate to
+    /// (1,1).
     pub fragment_shading_rate_with_custom_sample_locations: Bool32,
     /// `fragmentShadingRateStrictMultiplyCombiner` specifies whether
     /// [`VK_FRAGMENT_SHADING_RATE_COMBINER_OP_MUL_KHR`](FragmentShadingRateCombinerOpKHR::MUL)
@@ -75052,6 +75234,19 @@ pub struct PhysicalDeviceLimits {
     /// bit set count against this limit. A descriptor is accessible to a pipeline shader stage when
     /// the `stageFlags` member of the `VkDescriptorSetLayoutBinding` structure has the bit for that
     /// shader stage set. These are only supported for the fragment stage. See Input Attachment.
+    ///
+    /// > **Note**
+    /// >
+    /// > `maxPerStageDescriptorInputAttachments` was originally only intended to limit the number
+    /// > of attachments per stage, not the number of available input indices across all shaders in
+    /// > a render pass. The input indices were allowed to be semi arbitrary for render pass
+    /// > objects, or fully arbitrary for dynamic rendering, however some implementations have fixed
+    /// > limits for them. Applications already exist that exceed this limit, and they will continue
+    /// > to work where they already did, but will fail to render on some platforms. For forward
+    /// > looking applications, this can be worked around by either making careful use of index
+    /// > remapping with [`VkRenderingInputAttachmentIndexInfo`](RenderingInputAttachmentIndexInfo)
+    /// > for dynamic rendering, or splitting a subpass with too many input attachments into
+    /// > multiple subpasses.
     pub max_per_stage_descriptor_input_attachments: u32,
     /// `maxPerStageResources` is the maximum number of resources that can be accessible to a single
     /// shader stage in a pipeline layout. Descriptors with a type of
@@ -75245,14 +75440,17 @@ pub struct PhysicalDeviceLimits {
     /// shader modules, must be less than or equal to the corresponding limit.
     pub max_compute_work_group_size: [u32; 3],
     /// `subPixelPrecisionBits` is the number of bits of subpixel precision in framebuffer
-    /// coordinates
+    /// coordinates x<sub>f</sub> and y<sub>f</sub>. See Rasterization.
     pub sub_pixel_precision_bits: u32,
     /// `subTexelPrecisionBits` is the number of bits of precision in the division along an axis of
     /// an image used for minification and magnification filters.
+    /// 2<sup>`subTexelPrecisionBits`</sup> is the actual number of divisions along each axis of the
+    /// image represented. Sub-texel values calculated during image sampling will snap to these
+    /// locations when generating the filtered results.
     pub sub_texel_precision_bits: u32,
     /// `mipmapPrecisionBits` is the number of bits of division that the LOD calculation for mipmap
     /// fetching get snapped to when determining the contribution from each mip level to the mip
-    /// filtered results.
+    /// filtered results. 2<sup>`mipmapPrecisionBits`</sup> is the actual number of divisions.
     pub mipmap_precision_bits: u32,
     /// `maxDrawIndexedIndexValue` is the maximum index value that can be used for indexed draw
     /// calls when using 32-bit indices. This excludes the primitive restart index value of
@@ -75265,6 +75463,7 @@ pub struct PhysicalDeviceLimits {
     /// member of the [`VkSamplerCreateInfo`](SamplerCreateInfo) structure and the `Bias` operand of
     /// image sampling operations in shader modules (or 0 if no `Bias` operand is provided to an
     /// image sampling operation) are clamped to the range
+    /// \[-`maxSamplerLodBias`,+`maxSamplerLodBias`\]. See \[samplers-mipLodBias\].
     pub max_sampler_lod_bias: f32,
     /// `maxSamplerAnisotropy` is the maximum degree of sampler anisotropy. The maximum degree of
     /// anisotropic filtering used for an image sampling operation is the minimum of the
@@ -75280,7 +75479,19 @@ pub struct PhysicalDeviceLimits {
     /// equal to the largest image which can be created and used as a framebuffer attachment. See
     /// Controlling the Viewport.
     pub max_viewport_dimensions: [u32; 2],
-    /// `viewportBoundsRange`\[2\] is the
+    /// `viewportBoundsRange`\[2\] is the \[minimum, maximum\] range that the corners of a viewport
+    /// must be contained in. This range must be at least \[-2 × `size`, 2 × `size` - 1\], where
+    /// `size` = max(`maxViewportDimensions`\[0\], `maxViewportDimensions`\[1\]). See Controlling
+    /// the Viewport.
+    ///
+    /// > **Note**
+    /// >
+    /// > The wide range of values required for `viewportBoundsRange` allows the viewport to be
+    /// > arbitrarily shifted relative to the output render target while still partially
+    /// > overlapping. However, the minimum range required to achieve this would actually be
+    /// > \[-`size` + 1, 2 × `size` - 1\]. As these limits in implementations are typically simple
+    /// > power-of-two values, the specification reflects this convention, rounding the lower bound
+    /// > accordingly.
     pub viewport_bounds_range: [f32; 2],
     /// `viewportSubPixelBits` is the number of bits of subpixel precision for viewport bounds. The
     /// subpixel precision that floating-point viewport bounds are interpreted at is given by this
@@ -75442,9 +75653,14 @@ pub struct PhysicalDeviceLimits {
     /// least 2, and levels must be spread evenly over the range, with at least one level at 1.0,
     /// and another at 0.0. See Queue Priority.
     pub discrete_queue_priorities: u32,
-    /// `pointSizeRange`\[2\] is the range
+    /// `pointSizeRange`\[2\] is the range \[`minimum`,`maximum`\] of supported sizes for points.
+    /// Values written to variables decorated with the `PointSize` built-in decoration are clamped
+    /// to this range.
     pub point_size_range: [f32; 2],
-    /// `lineWidthRange`\[2\] is the range
+    /// `lineWidthRange`\[2\] is the range \[`minimum`,`maximum`\] of supported widths for lines.
+    /// Values specified by the `lineWidth` member of the
+    /// [`VkPipelineRasterizationStateCreateInfo`](PipelineRasterizationStateCreateInfo) or the
+    /// `lineWidth` parameter to `vkCmdSetLineWidth` are clamped to this range.
     pub line_width_range: [f32; 2],
     /// `pointSizeGranularity` is the granularity of supported point sizes. Not all point sizes in
     /// the range defined by `pointSizeRange` are supported. This limit specifies the granularity
@@ -77763,7 +77979,7 @@ pub struct PhysicalDeviceMaintenance9PropertiesKHR<'a> {
     /// [`VkVertexInputAttributeDescription2EXT`](VertexInputAttributeDescription2EXT)::`location`
     /// set by the most recent call to
     /// [`vkCmdSetVertexInputEXT`](crate::Device::cmd_set_vertex_input_ext) when the state is
-    /// dynamic
+    /// dynamic .
     pub default_vertex_attribute_value: DefaultVertexAttributeValueKHR,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -92437,7 +92653,7 @@ pub struct PhysicalDeviceTensorPropertiesARM<'a> {
     /// `maxTensorElements` is the maximum number of data elements in a created tensor as specified
     /// in the [`VkTensorDescriptionARM`](TensorDescriptionARM) of
     /// [`VkTensorCreateInfoARM`](TensorCreateInfoARM). The number of data elements in a tensor is
-    /// computed as the product of
+    /// computed as the product of `pDimensions`\[i\] for all 0 ≤ i ≤ dimensionCount-1.
     pub max_tensor_elements: u64,
     /// `maxPerDimensionTensorElements` is the maximum number of data elements alongside any
     /// dimension of a tensor.
@@ -92800,6 +93016,37 @@ pub struct PhysicalDeviceTextureCompressionASTC3DFeaturesEXT<'a> {
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC) and
     /// [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE_FILTER_LINEAR)
     /// features must be supported in `optimalTilingFeatures` for the following formats:
+    ///
+    /// - [`VK_FORMAT_ASTC_3x3x3_UNORM_BLOCK_EXT`](Format::ASTC_3x3x3_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_3x3x3_SRGB_BLOCK_EXT`](Format::ASTC_3x3x3_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_3x3x3_SFLOAT_BLOCK_EXT`](Format::ASTC_3x3x3_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x3x3_UNORM_BLOCK_EXT`](Format::ASTC_4x3x3_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x3x3_SRGB_BLOCK_EXT`](Format::ASTC_4x3x3_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x3x3_SFLOAT_BLOCK_EXT`](Format::ASTC_4x3x3_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x4x3_UNORM_BLOCK_EXT`](Format::ASTC_4x4x3_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x4x3_SRGB_BLOCK_EXT`](Format::ASTC_4x4x3_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x4x3_SFLOAT_BLOCK_EXT`](Format::ASTC_4x4x3_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x4x4_UNORM_BLOCK_EXT`](Format::ASTC_4x4x4_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x4x4_SRGB_BLOCK_EXT`](Format::ASTC_4x4x4_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_4x4x4_SFLOAT_BLOCK_EXT`](Format::ASTC_4x4x4_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x4x4_UNORM_BLOCK_EXT`](Format::ASTC_5x4x4_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x4x4_SRGB_BLOCK_EXT`](Format::ASTC_5x4x4_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x4x4_SFLOAT_BLOCK_EXT`](Format::ASTC_5x4x4_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x5x4_UNORM_BLOCK_EXT`](Format::ASTC_5x5x4_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x5x4_SRGB_BLOCK_EXT`](Format::ASTC_5x5x4_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x5x4_SFLOAT_BLOCK_EXT`](Format::ASTC_5x5x4_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x5x5_UNORM_BLOCK_EXT`](Format::ASTC_5x5x5_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x5x5_SRGB_BLOCK_EXT`](Format::ASTC_5x5x5_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_5x5x5_SFLOAT_BLOCK_EXT`](Format::ASTC_5x5x5_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x5x5_UNORM_BLOCK_EXT`](Format::ASTC_6x5x5_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x5x5_SRGB_BLOCK_EXT`](Format::ASTC_6x5x5_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x5x5_SFLOAT_BLOCK_EXT`](Format::ASTC_6x5x5_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x6x5_UNORM_BLOCK_EXT`](Format::ASTC_6x6x5_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x6x5_SRGB_BLOCK_EXT`](Format::ASTC_6x6x5_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x6x5_SFLOAT_BLOCK_EXT`](Format::ASTC_6x6x5_SFLOAT_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x6x6_UNORM_BLOCK_EXT`](Format::ASTC_6x6x6_UNORM_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x6x6_SRGB_BLOCK_EXT`](Format::ASTC_6x6x6_SRGB_BLOCK_EXT)
+    /// - [`VK_FORMAT_ASTC_6x6x6_SFLOAT_BLOCK_EXT`](Format::ASTC_6x6x6_SFLOAT_BLOCK_EXT)
     pub texture_compression_astc_3_d: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -92868,6 +93115,27 @@ pub struct PhysicalDeviceTextureCompressionASTCHDRFeatures<'a> {
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC) and
     /// [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE_FILTER_LINEAR)
     /// features must be supported in `optimalTilingFeatures` for the following formats:
+    ///
+    /// - [`VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK`](Format::ASTC_4x4_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK`](Format::ASTC_5x4_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK`](Format::ASTC_5x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK`](Format::ASTC_6x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK`](Format::ASTC_6x6_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK`](Format::ASTC_8x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK`](Format::ASTC_8x6_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK`](Format::ASTC_8x8_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK`](Format::ASTC_10x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK`](Format::ASTC_10x6_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK`](Format::ASTC_10x8_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK`](Format::ASTC_10x10_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK`](Format::ASTC_12x10_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK`](Format::ASTC_12x12_SFLOAT_BLOCK)
+    ///
+    ///   To query for additional properties, or if the feature is not enabled,
+    ///   [`vkGetPhysicalDeviceFormatProperties`](crate::Instance::get_physical_device_format_properties)
+    ///   and
+    ///   [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    ///   can be used to check for supported properties of individual formats as normal.
     pub texture_compression_astc_hdr: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -94719,6 +94987,12 @@ pub struct PhysicalDeviceVideoEncodeFeedback2FeaturesKHR<'a> {
     /// - [`VK_VIDEO_ENCODE_FEEDBACK_INTER_PIXELS_BIT_KHR`](VideoEncodeFeedbackFlagBitsKHR::INTER_PIXELS).
     /// - [`VK_VIDEO_ENCODE_FEEDBACK_SKIPPED_PIXELS_BIT_KHR`](VideoEncodeFeedbackFlagBitsKHR::SKIPPED_PIXELS).
     /// - [`VK_VIDEO_ENCODE_FEEDBACK_PICTURE_PARTITION_COUNT_BIT_KHR`](VideoEncodeFeedbackFlagBitsKHR::PICTURE_PARTITION_COUNT).
+    ///
+    ///   > **Note**
+    ///   >
+    ///   > Support for `videoEncodeFeedback2` does not indicate that all video encode profiles
+    ///   > support per picture partition feedback and the new video encode feedback flags. Support
+    ///   > for individual video encode profiles is subject to video-profile-specific capabilities.
     pub video_encode_feedback2: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -94782,6 +95056,12 @@ pub struct PhysicalDeviceVideoEncodeIntraRefreshFeaturesKHR<'a> {
     pub p_next: *mut c_void,
     /// `videoEncodeIntraRefresh` specifies that the implementation supports video encode intra
     /// refresh.
+    ///
+    /// > **Note**
+    /// >
+    /// > Support for `videoEncodeIntraRefresh` does not indicate that all video encode profiles
+    /// > support intra refresh. Support for intra refresh for any specific video encode profile is
+    /// > subject to video-profile-specific capabilities.
     pub video_encode_intra_refresh: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -94913,6 +95193,12 @@ pub struct PhysicalDeviceVideoEncodeQuantizationMapFeaturesKHR<'a> {
     pub p_next: *mut c_void,
     /// `videoEncodeQuantizationMap` indicates that the implementation supports video encode
     /// quantization maps.
+    ///
+    /// > **Note**
+    /// >
+    /// > Support for `videoEncodeQuantizationMap` does not indicate that all video encode profiles
+    /// > support quantization maps. Support for quantization maps for any specific video encode
+    /// > profile is subject to video-profile-specific capabilities.
     pub video_encode_quantization_map: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -97113,6 +97399,27 @@ pub struct PhysicalDeviceVulkan13Features<'a> {
     /// [`VK_FORMAT_FEATURE_BLIT_SRC_BIT`](FormatFeatureFlagBits::BLIT_SRC) and
     /// [`VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT`](FormatFeatureFlagBits::SAMPLED_IMAGE_FILTER_LINEAR)
     /// features must be supported in `optimalTilingFeatures` for the following formats:
+    ///
+    /// - [`VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK`](Format::ASTC_4x4_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK`](Format::ASTC_5x4_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK`](Format::ASTC_5x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK`](Format::ASTC_6x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK`](Format::ASTC_6x6_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK`](Format::ASTC_8x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK`](Format::ASTC_8x6_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK`](Format::ASTC_8x8_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK`](Format::ASTC_10x5_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK`](Format::ASTC_10x6_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK`](Format::ASTC_10x8_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK`](Format::ASTC_10x10_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK`](Format::ASTC_12x10_SFLOAT_BLOCK)
+    /// - [`VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK`](Format::ASTC_12x12_SFLOAT_BLOCK)
+    ///
+    ///   To query for additional properties, or if the feature is not enabled,
+    ///   [`vkGetPhysicalDeviceFormatProperties`](crate::Instance::get_physical_device_format_properties)
+    ///   and
+    ///   [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    ///   can be used to check for supported properties of individual formats as normal.
     pub texture_compression_astc_hdr: Bool32,
     /// `shaderZeroInitializeWorkgroupMemory` specifies whether the implementation supports
     /// initializing a variable in Workgroup storage class.
@@ -102118,6 +102425,11 @@ pub struct PipelineLayoutCreateInfo<'a> {
     /// structures defining a set of push constant ranges for use in a single pipeline layout. In
     /// addition to descriptor set layouts, a pipeline layout also describes how many push constants
     /// can be accessed by each stage of the pipeline.
+    ///
+    /// > **Note**
+    /// >
+    /// > Push constants represent a high speed path to modify constant data in pipelines that is
+    /// > expected to outperform memory-backed resource updates.
     pub p_push_constant_ranges: *const PushConstantRange,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -104256,7 +104568,7 @@ pub struct PipelineViewportDepthClipControlCreateInfoEXT<'a> {
     pub s_type: StructureType,
     /// `pNext` is `NULL` or a pointer to a structure extending this structure.
     pub p_next: *const c_void,
-    /// `negativeOneToOne` sets the z<sub>m</sub> in the _view volume_ to
+    /// `negativeOneToOne` sets the z<sub>m</sub> in the _view volume_ to -w<sub>c</sub>
     pub negative_one_to_one: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -112323,6 +112635,18 @@ pub struct SamplerCreateInfo<'a> {
     /// [`VK_TRUE`](TRUE), the range of the image coordinates used to lookup the texel is in the
     /// range of zero to the image size in each dimension. When `unnormalizedCoordinates` is
     /// [`VK_FALSE`](FALSE), the range of image coordinates is zero to one.
+    ///
+    /// When `unnormalizedCoordinates` is [`VK_TRUE`](TRUE), images the sampler is used with in the
+    /// shader have the following requirements:
+    ///
+    /// - The `viewType` must be either [`VK_IMAGE_VIEW_TYPE_1D`](ImageViewType::_1D) or
+    ///   [`VK_IMAGE_VIEW_TYPE_2D`](ImageViewType::_2D).
+    /// - The image view must have a single layer and a single mip level.
+    ///
+    ///   When `unnormalizedCoordinates` is [`VK_TRUE`](TRUE), image built-in functions in the
+    ///   shader that use the sampler have the following requirements:
+    /// - The functions must not use projection.
+    /// - The functions must not use offsets.
     pub unnormalized_coordinates: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -115477,7 +115801,8 @@ pub struct SparseImageMemoryBind {
     /// `extent` is the size in texels of the region within the image subresource to bind. The
     /// extent must be a multiple of the sparse image block dimensions, except when binding sparse
     /// image blocks along the edge of an image subresource it can instead be such that any
-    /// coordinate of
+    /// coordinate of `offset` + `extent` equals the corresponding dimensions of the image
+    /// subresource.
     pub extent: Extent3D,
     /// `memory` is the [`VkDeviceMemory`](DeviceMemory) object that the sparse image blocks of the
     /// image are bound to. If `memory` is `VK_NULL_HANDLE`, the sparse image blocks are unbound.
@@ -118980,7 +119305,10 @@ pub struct SurfacePresentScalingCapabilitiesKHR<'a> {
     pub supported_present_gravity_y: PresentGravityFlagsKHR,
     /// `minScaledImageExtent` contains the smallest valid swapchain extent for the surface on the
     /// specified device when one of the scaling methods specified in `supportedPresentScaling` is
-    /// used, or the special value
+    /// used, or the special value (0xFFFFFFFF, 0xFFFFFFFF) indicating that the surface size will be
+    /// determined by the extent of a swapchain targeting the surface. The `width` and `height` of
+    /// the extent will each be smaller than or equal to the corresponding `width` and `height` of
+    /// [`VkSurfaceCapabilitiesKHR`](SurfaceCapabilitiesKHR)::`minImageExtent`.
     pub min_scaled_image_extent: Extent2D,
     /// `maxScaledImageExtent` contains the largest valid swapchain extent for the surface on the
     /// specified device when one of the scaling methods specified in `supportedPresentScaling` is
@@ -119293,6 +119621,14 @@ pub struct SwapchainCreateInfoKHR<'a> {
     /// `imageExtent` is the size (in pixels) of the swapchain image(s). The behavior is
     /// platform-dependent if the image extent does not match the surface's `currentExtent` as
     /// returned by `vkGetPhysicalDeviceSurfaceCapabilitiesKHR`.
+    ///
+    /// > **Note**
+    /// >
+    /// > On some platforms, it is normal that `maxImageExtent` may become `(0, 0)`, for example
+    /// > when the window is minimized. In such a case, it is not possible to create a swapchain due
+    /// > to the Valid Usage requirements , unless scaling is selected through
+    /// > [`VkSwapchainPresentScalingCreateInfoKHR`](SwapchainPresentScalingCreateInfoKHR), if
+    /// > supported .
     pub image_extent: Extent2D,
     /// `imageArrayLayers` is the number of views in a multiview/stereo surface. For
     /// non-stereoscopic-3D applications, this value is 1.
@@ -119335,6 +119671,13 @@ pub struct SwapchainCreateInfoKHR<'a> {
     ///   more efficient presentation methods to be used on some platforms.
     /// - If `clipped` is [`VK_FALSE`](FALSE), presentable images associated with the swapchain will
     ///   own all of the pixels they contain.
+    ///
+    ///   > **Note**
+    ///   >
+    ///   > Applications should set this value to [`VK_TRUE`](TRUE) if they do not expect to read
+    ///   > back the content of presentable images before presenting them or after reacquiring them,
+    ///   > and if their fragment shaders do not have any side effects that require them to run for
+    ///   > all pixels in the presentable image.
     pub clipped: Bool32,
     /// `oldSwapchain` is `VK_NULL_HANDLE`, or the existing non-retired swapchain currently
     /// associated with `surface`. Providing a valid `oldSwapchain` may aid in the resource reuse,
@@ -127031,12 +127374,27 @@ pub struct VideoEncodeH264CapabilitiesKHR<'a> {
     pub max_slice_count: u32,
     /// `maxPPictureL0ReferenceCount` indicates the maximum number of reference pictures the
     /// implementation supports in the reference list L0 for P pictures.
+    ///
+    /// > **Note**
+    /// >
+    /// > As implementations may override the reference lists, `maxPPictureL0ReferenceCount` does
+    /// > not limit the number of elements that the application can specify in the L0 reference list
+    /// > for P pictures. However, if `maxPPictureL0ReferenceCount` is zero, then the use of P
+    /// > pictures is not allowed.
     pub max_p_picture_l0_reference_count: u32,
     /// `maxBPictureL0ReferenceCount` indicates the maximum number of reference pictures the
     /// implementation supports in the reference list L0 for B pictures.
     pub max_b_picture_l0_reference_count: u32,
     /// `maxL1ReferenceCount` indicates the maximum number of reference pictures the implementation
     /// supports in the reference list L1 if encoding of B pictures is supported.
+    ///
+    /// > **Note**
+    /// >
+    /// > As implementations may override the reference lists, `maxBPictureL0ReferenceCount` and
+    /// > `maxL1ReferenceCount` does not limit the number of elements that the application can
+    /// > specify in the L0 and L1 reference lists for B pictures. However, if
+    /// > `maxBPictureL0ReferenceCount` and `maxL1ReferenceCount` are both zero, then the use of B
+    /// > pictures is not allowed.
     pub max_l1_reference_count: u32,
     /// `maxTemporalLayerCount` indicates the maximum number of H.264 temporal layers supported by
     /// the implementation.
@@ -128565,12 +128923,30 @@ pub struct VideoEncodeH265CapabilitiesKHR<'a> {
     pub transform_block_sizes: VideoEncodeH265TransformBlockSizeFlagsKHR,
     /// `maxPPictureL0ReferenceCount` indicates the maximum number of reference pictures the
     /// implementation supports in the reference list L0 for P pictures.
+    ///
+    /// > **Note**
+    /// >
+    /// > As implementations may override the reference lists, `maxPPictureL0ReferenceCount` does
+    /// > not limit the number of elements that the application can specify in the L0 reference list
+    /// > for P pictures. However, if `maxPPictureL0ReferenceCount` is zero, then the use of P
+    /// > pictures is not allowed. In case of H.265 encoding, pictures can be encoded using only
+    /// > forward prediction even if P pictures are not supported, as the ITU-T H.265 Specification
+    /// > supports _generalized P & B frames_ (also known as low delay B frames) whereas B frames
+    /// > can refer to past frames through both the L0 and L1 reference lists.
     pub max_p_picture_l0_reference_count: u32,
     /// `maxBPictureL0ReferenceCount` indicates the maximum number of reference pictures the
     /// implementation supports in the reference list L0 for B pictures.
     pub max_b_picture_l0_reference_count: u32,
     /// `maxL1ReferenceCount` indicates the maximum number of reference pictures the implementation
     /// supports in the reference list L1 if encoding of B pictures is supported.
+    ///
+    /// > **Note**
+    /// >
+    /// > As implementations may override the reference lists, `maxBPictureL0ReferenceCount` and
+    /// > `maxL1ReferenceCount` does not limit the number of elements that the application can
+    /// > specify in the L0 and L1 reference lists for B pictures. However, if
+    /// > `maxBPictureL0ReferenceCount` and `maxL1ReferenceCount` are both zero, then the use of B
+    /// > pictures is not allowed.
     pub max_l1_reference_count: u32,
     /// `maxSubLayerCount` indicates the maximum number of H.265 sub-layers supported by the
     /// implementation.
@@ -130321,9 +130697,21 @@ pub struct VideoEncodeIntraRefreshCapabilitiesKHR<'a> {
     /// independent of the used intra refresh mode. Otherwise, pictures cannot be encoded with
     /// multiple picture partitions with any intra refresh mode other than
     /// [`VK_VIDEO_ENCODE_INTRA_REFRESH_MODE_PER_PICTURE_PARTITION_BIT_KHR`](VideoEncodeIntraRefreshModeFlagBitsKHR::PER_PICTURE_PARTITION).
+    ///
+    /// > **Note**
+    /// >
+    /// > This capability is only indicative for AV1 encode profiles and does not impose any
+    /// > restrictions on the application as implementations may change the application requested
+    /// > picture partitioning according to implementation-specific restrictions.
     pub partition_independent_intra_refresh_regions: Bool32,
     /// `nonRectangularIntraRefreshRegions` specifies whether the implementation supports
     /// non-rectangular intra refresh regions.
+    ///
+    /// > **Note**
+    /// >
+    /// > If this capability is not supported, then using per picture partition intra refresh may
+    /// > impose additional restrictions on the number of picture partitions a picture can be
+    /// > encoded with.
     pub non_rectangular_intra_refresh_regions: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -131569,6 +131957,17 @@ pub struct VideoFormatAV1QuantizationMapPropertiesKHR<'a> {
     /// [`VkVideoEncodeAV1SuperblockSizeFlagBitsKHR`](VideoEncodeAV1SuperblockSizeFlagBitsKHR)
     /// indicating the AV1 superblock sizes that quantization maps using this video format are
     /// compatible with.
+    ///
+    /// > **Note**
+    /// >
+    /// > The value of `compatibleSuperblockSizes` does not limit the use of the specific
+    /// > quantization map format, but does limit the implementation in being able to encode
+    /// > pictures with superblock sizes not included in `compatibleSuperblockSizes` but otherwise
+    /// > supported by the used video profile, as indicated by
+    /// > [`VkVideoEncodeAV1CapabilitiesKHR`](VideoEncodeAV1CapabilitiesKHR)::`superblockSizes`. In
+    /// > particular, using smaller quantization map texel sizes may prevent implementations from
+    /// > encoding with larger superblock sizes which may have a negative impact on the efficiency
+    /// > of the encoder.
     pub compatible_superblock_sizes: VideoEncodeAV1SuperblockSizeFlagsKHR,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -131635,6 +132034,17 @@ pub struct VideoFormatH265QuantizationMapPropertiesKHR<'a> {
     /// `compatibleCtbSizes` is a bitmask of
     /// [`VkVideoEncodeH265CtbSizeFlagBitsKHR`](VideoEncodeH265CtbSizeFlagBitsKHR) indicating the
     /// CTB sizes that quantization maps using this video format are compatible with.
+    ///
+    /// > **Note**
+    /// >
+    /// > The value of `compatibleCtbSizes` does not limit the use of the specific quantization map
+    /// > format, but does limit the implementation in being able to encode pictures with CTB sizes
+    /// > not included in `compatibleCtbSizes` but otherwise supported by the used video profile, as
+    /// > indicated by
+    /// > [`VkVideoEncodeH265CapabilitiesKHR`](VideoEncodeH265CapabilitiesKHR)::`ctbSizes`. In
+    /// > particular, using smaller quantization map texel sizes may prevent implementations from
+    /// > encoding with larger CTB sizes which may have a negative impact on the efficiency of the
+    /// > encoder.
     pub compatible_ctb_sizes: VideoEncodeH265CtbSizeFlagsKHR,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -131870,6 +132280,13 @@ pub struct VideoInlineQueryInfoKHR<'a> {
     /// operations will be contained by subsequent query indices.
     pub first_query: u32,
     /// `queryCount` is the number of queries to execute.
+    ///
+    /// > **Note**
+    /// >
+    /// > In practice, if `queryPool` is not `VK_NULL_HANDLE`, then `queryCount` will always have to
+    /// > match the number of video coding operations issued by the video coding command this
+    /// > structure is specified to, meaning that using inline queries in a video coding command
+    /// > will always execute a query for each issued video coding operation.
     pub query_count: u32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,

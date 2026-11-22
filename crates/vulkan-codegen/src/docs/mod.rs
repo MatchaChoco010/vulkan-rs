@@ -1,4 +1,5 @@
 pub(crate) mod asciidoc;
+mod items;
 mod links;
 mod other_names;
 mod render;
@@ -11,7 +12,8 @@ pub(crate) use tables::{Table, read as read_table};
 
 use crate::model::{Cfg, Model, parse_version};
 use crate::naming::type_name;
-use asciidoc::{Converted, Converter, Link, Unsupported};
+use asciidoc::{Converted, Converter, Link, Unsupported, code_span};
+use items::Part;
 use std::collections::BTreeSet;
 use tables::Cell;
 use vulkan_registry::{DocPage, DocTable};
@@ -49,12 +51,6 @@ pub(crate) fn join_and(mut items: Vec<String>) -> String {
             format!("{} and {last}", items.join(", "))
         }
     }
-}
-
-fn nested_item(line: &str) -> Option<(usize, &str)> {
-    let stars = line.chars().take_while(|c| *c == '*').count();
-    let rest = &line[stars..];
-    (stars >= 2 && rest.starts_with(' ')).then(|| (stars - 2, rest.trim_start()))
 }
 
 impl<'a> Model<'a> {
@@ -147,35 +143,56 @@ impl<'a> Model<'a> {
         let page = self.page(owner)?;
         let described = other_names::described(page, item)?;
         let text = &described.item.text;
-        let mut lead = String::new();
-        let mut nested = Vec::<(usize, String)>::new();
-        for line in text.lines() {
-            if let Some((level, rest)) = nested_item(line) {
-                nested.push((level, rest.to_string()));
-            } else if let Some((_, last)) = nested.last_mut() {
-                last.push('\n');
-                last.push_str(line);
-            } else {
-                lead.push_str(line);
-                lead.push('\n');
-            }
-        }
-        let lead = self.markdown(from, &page.name, item, &lead);
-        let lead = match described.under_the_name {
-            Some(other) => format!(
-                "`{item}`, which the specification describes under the name `{other}`: {lead}"
+        let parts = match items::read(text) {
+            Ok(parts) => parts,
+            Err(Unsupported::Include) => return None,
+            Err(unsupported) => panic!(
+                "the description of {item} on the page {} cannot be read ({unsupported:?}): {text}",
+                page.name
             ),
-            None => lead,
         };
-        let mut blocks = vec![Block::Text(lead)];
-        if !nested.is_empty() {
-            let items = nested
-                .into_iter()
-                .map(|(level, text)| (level, self.markdown(from, &page.name, item, &text)))
-                .collect();
-            blocks.push(Block::List(items));
+        let mut blocks = self.blocks(from, &page.name, item, parts);
+        if let (Some(other), Some(Block::Text(lead))) =
+            (described.under_the_name, blocks.first_mut())
+        {
+            *lead = format!(
+                "`{item}`, which the specification describes under the name `{other}`: {lead}"
+            );
         }
         Some(blocks)
+    }
+
+    fn blocks(&self, from: &Cfg, page: &str, own: &str, parts: Vec<Part>) -> Vec<Block> {
+        let mut blocks = Vec::new();
+        for part in parts {
+            blocks.push(match part {
+                Part::Paragraph(text) => Block::Text(self.markdown(from, page, own, &text)),
+                Part::List(items) => Block::List(
+                    items
+                        .into_iter()
+                        .map(|item| self.blocks(from, page, own, item))
+                        .collect(),
+                ),
+                Part::Admonition {
+                    label,
+                    title,
+                    parts,
+                } => {
+                    let caption = match title {
+                        Some(title) => {
+                            format!("**{label}: {}**", self.markdown(from, page, own, &title))
+                        }
+                        None => format!("**{label}**"),
+                    };
+                    let mut quoted = vec![Block::Text(caption)];
+                    quoted.extend(self.blocks(from, page, own, parts));
+                    Block::Quote(quoted)
+                }
+                Part::Math(formula) => Block::Text(code_span(&formula)),
+                Part::Listing { language, text } => Block::Code { language, text },
+            });
+        }
+        blocks
     }
 
     fn values_of(&self, owner: &str) -> BTreeSet<&'a str> {
@@ -258,10 +275,9 @@ impl<'a> Model<'a> {
                 .map(|line| self.cell_markdown(from, source, item, line))
                 .collect::<Option<Vec<_>>>()?;
             if lines.len() == 1 {
-                items.push((0, format!("{label}: {}", lines.remove(0))));
+                items.push(vec![Block::Text(format!("{label}: {}", lines.remove(0)))]);
             } else {
-                items.push((0, format!("{label}:")));
-                items.extend(lines.into_iter().map(|line| (1, line)));
+                items.push(vec![Block::Text(format!("{label}:")), Block::list(lines)]);
             }
         }
         if items.is_empty() {
@@ -572,12 +588,12 @@ mod tests {
             model.described(&Cfg::default(), "VkExtent2D", "width"),
             Some(vec![
                 Block::Text(
-                    "`width` is the width of the extent, see\n[`VkExtent2D`](Extent2D) and [`VkColor`](Color):\n"
+                    "`width` is the width of the extent, see\n[`VkExtent2D`](Extent2D) and [`VkColor`](Color):"
                         .to_string()
                 ),
-                Block::List(vec![
-                    (0, "[`VK_COLOR_RED`](Color::RED) for red\nand more".to_string()),
-                    (0, "something else".to_string()),
+                Block::list([
+                    "[`VK_COLOR_RED`](Color::RED) for red\nand more".to_string(),
+                    "something else".to_string(),
                 ]),
             ])
         );
@@ -585,6 +601,94 @@ mod tests {
             model.described(&Cfg::default(), "VkExtent2D", "depth"),
             None
         );
+    }
+
+    fn with_the_width_described_as(lines: &[&str]) -> Docs {
+        let mut docs = docs();
+        docs.pages[0].items[0].text = lines.join("\n");
+        docs
+    }
+
+    #[test]
+    fn everything_that_belongs_to_a_described_item_is_kept() {
+        let ir = ir();
+        let docs = with_the_width_described_as(&[
+            "pname:width is clamped to the range",
+            "[eq]#[0,{times}]#.",
+            "+",
+            "It has requirements:",
+            "+",
+            "** The first, for slink:VkExtent2D.",
+            "+",
+            "[NOTE]",
+            ".Why",
+            "====",
+            "Because pname:width is *wide*.",
+            "====",
+            "",
+            "+",
+            "[latexmath]",
+            "++++",
+            "w \\geq 0",
+            "++++",
+            "+",
+            "[source,c++]",
+            "----",
+            "width = 0;",
+            "----",
+        ]);
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            Some(vec![
+                text("`width` is clamped to the range\n\\[0,×\\]."),
+                text("It has requirements:"),
+                Block::List(vec![vec![
+                    text("The first, for [`VkExtent2D`](Extent2D)."),
+                    Block::Quote(vec![
+                        text("**Note: Why**"),
+                        text("Because `width` is **wide**."),
+                    ]),
+                ]]),
+                text("`w \\geq 0`"),
+                Block::Code {
+                    language: "c++".to_string(),
+                    text: "width = 0;".to_string(),
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn an_item_that_goes_on_in_a_file_outside_the_sources_is_not_described() {
+        let ir = ir();
+        let docs = with_the_width_described_as(&[
+            "pname:width is equivalent to the logical OR of:",
+            "include::{generated}/sync/flagDefinitions/width.adoc[]",
+        ]);
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            None
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "the description of width on the page VkExtent2D cannot be read (Block(\"a `|===` block with the attributes []\")): pname:width is in the table."
+    )]
+    fn a_block_that_the_generator_does_not_read_aborts_generation() {
+        let ir = ir();
+        let docs = with_the_width_described_as(&[
+            "pname:width is in the table.",
+            "+",
+            "|===",
+            "| a | b",
+            "|===",
+        ]);
+        let model = Model::with_docs(&ir, &docs);
+        model.described(&Cfg::default(), "VkExtent2D", "width");
     }
 
     #[test]
@@ -654,13 +758,13 @@ mod tests {
                         .to_string()
                 ),
                 Block::List(vec![
-                    (
-                        0,
+                    vec![Block::Text(
                         "Extent (w × h): [`VkExtent2D`](Extent2D), not `VK_SHADE_LIGHT`".to_string()
-                    ),
-                    (0, "Mixes:".to_string()),
-                    (1, "a<sub>0</sub>".to_string()),
-                    (1, "b<sub>0</sub>".to_string()),
+                    )],
+                    vec![
+                        Block::Text("Mixes:".to_string()),
+                        Block::list(["a<sub>0</sub>".to_string(), "b<sub>0</sub>".to_string()]),
+                    ],
                 ]),
             ])
         );
@@ -671,7 +775,7 @@ mod tests {
                     "`VK_SHADE_PALE` in the table “Shades and Their Extents” of the specification:"
                         .to_string()
                 ),
-                Block::List(vec![(0, "Extent (w × h): none".to_string())]),
+                Block::list(["Extent (w × h): none".to_string()]),
             ]),
             "a table on the page of the type is preferred and an empty cell is left out"
         );
@@ -688,7 +792,7 @@ mod tests {
                     "`VK_SHADE_DEEP` in the table “Uses of Shades” of the specification:"
                         .to_string()
                 ),
-                Block::List(vec![(0, "Use: always".to_string())]),
+                Block::list(["Use: always".to_string()]),
             ])
         );
         for (value, decoy) in [

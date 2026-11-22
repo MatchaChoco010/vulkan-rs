@@ -386,9 +386,19 @@ SPEC_BLOCK_TITLE = re.compile(r"^\.([^\s.].*?)\s*$")
 SPEC_IMAGE_TITLE = re.compile(r"^image::.*\btitle=\"([^\"]+)\"")
 SPEC_BARE_REFERENCE = re.compile(r"<<([\w.-]+)>>")
 SPEC_PASSTHROUGH = re.compile(r"^pass:\w*\[(.*)\]$")
-SPEC_BLOCK_DELIMITERS = ("--", "====", "****", "----", "....", "|===", "|====", "++++")
 SPEC_TABLE_DELIMITER = re.compile(r"^\|={3,}\s*$")
 SPEC_BLOCK_HEADER = re.compile(r"^(?:\[.*\]|\.[^\s.].*)\s*$")
+# The three below are the rules of Asciidoctor, which reads them at the left margin only.
+SPEC_LIST_CONTINUATION = "+"
+SPEC_BLOCK_ATTRIBUTES = re.compile(r"^\[(?:|[\w.#%{,\"'].*)\]$")
+SPEC_BLOCK_DELIMITER = re.compile(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|/{4,}|[|,:!]={3,}|`{3,})$")
+# Generated files and shared valid usage that follow a list item without an empty line
+# between them hold blocks of their own, not more text of the item.
+SPEC_INCLUDES_AFTER_AN_ITEM = (
+    "include::{generated}/validity/",
+    "include::{generated}/api/",
+    "include::{chapters}/commonvalidity/",
+)
 
 
 def defined_spec_attributes(vk) -> set[str]:
@@ -481,37 +491,118 @@ def spec_lines(
         yield SPEC_ATTRIBUTE_REFERENCE.sub(replace, line)
 
 
-def spec_described_items(body: list[str]) -> list[dict[str, str]]:
-    """The first-level list items of a reference page block that start with `pname:x` or
-    `ename:x`, in the order of the block. Nested items stay part of their parent's text."""
-    items: list[tuple[str, list[str]]] = []
-    current: list[str] | None = None
-    for line in body:
-        stripped = line.strip()
-        if stripped.startswith("//"):
-            continue
-        item = SPEC_LIST_ITEM.match(line)
-        if item and len(item.group(1)) == 1:
-            current = [item.group(2)]
-            items.append(("", current))
-            continue
-        if current is None:
-            continue
-        ends_the_item = (
-            not stripped
-            or stripped == "+"
-            or stripped in SPEC_BLOCK_DELIMITERS
-            or stripped.startswith(("include::", "image::", ":"))
-            or (stripped.startswith("[") and not stripped.startswith("[["))
-            or (stripped.startswith(".") and not stripped.startswith(".."))
-        )
-        if ends_the_item:
-            current = None
-        else:
-            current.append(stripped)
+def spec_is_comment(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("//") and not stripped.startswith("////")
 
+
+def spec_is_first_level_item(line: str) -> bool:
+    item = SPEC_LIST_ITEM.match(line)
+    return bool(item) and len(item.group(1)) == 1 and not spec_is_comment(line)
+
+
+def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | None]:
+    """The first-level list item that starts at `body[start]`, to the line where Asciidoctor
+    ends it: its lines, the index of the line after it, and what in it could be read in
+    two ways, if anything.
+
+    The text of an item goes on over the following lines, whatever they start with, to the
+    next first-level item, to an empty line or to the delimiter of a block. Past an empty
+    line the item goes on only with a nested item or with a list continuation (an
+    indented paragraph would go on as well, as a literal block: that is reported). A list
+    continuation (a line that is just `+`) attaches the next block to the item: a
+    paragraph, a nested list, or a delimited block with the attribute and title lines
+    above it.
+
+    The lines come back without their indentation, except inside a delimited block, and
+    except for a line of the text that would read as a continuation, as attributes or as a
+    delimiter without it: Asciidoctor reads those only at the left margin."""
+    lines = [SPEC_LIST_ITEM.match(body[start]).group(2)]
+    index = start + 1
+    attaching = False
+    problem = None
+    while index < len(body):
+        line = body[index].rstrip()
+        stripped = line.strip()
+        if spec_is_comment(line):
+            index += 1
+            continue
+        if spec_is_first_level_item(line):
+            break
+        if not stripped:
+            following = index
+            while following < len(body) and (not body[following].strip() or spec_is_comment(body[following])):
+                following += 1
+            if attaching or following == len(body):
+                break
+            after = body[following].rstrip()
+            item = SPEC_LIST_ITEM.match(after)
+            if after != SPEC_LIST_CONTINUATION and not (item and len(item.group(1)) > 1):
+                if after[0].isspace() and not item:
+                    problem = problem or "an indented paragraph after an empty line"
+                break
+            lines.append("")
+            index = following
+            continue
+        at_margin = not line[0].isspace()
+        if line == SPEC_LIST_CONTINUATION:
+            if attaching:
+                problem = problem or "two list continuations in a row"
+            lines.append(line)
+            attaching = True
+            index += 1
+            continue
+        if at_margin and SPEC_BLOCK_DELIMITER.match(line):
+            if not attaching:
+                break
+            end = index + 1
+            while end < len(body) and body[end].rstrip() != line:
+                end += 1
+            if end == len(body):
+                problem = problem or f"the block that `{line}` opens does not end"
+            lines.extend(inside.rstrip() for inside in body[index : end + 1])
+            attaching = False
+            index = end + 1
+            continue
+        if at_margin and SPEC_BLOCK_ATTRIBUTES.match(line) and not attaching:
+            # The attributes of a block end the text. A delimited block that is not
+            # attached is outside the list, and so are its attributes.
+            block = index
+            while block < len(body) and SPEC_BLOCK_HEADER.match(body[block].rstrip()):
+                block += 1
+            if block == len(body) or not SPEC_BLOCK_DELIMITER.match(body[block].rstrip()):
+                problem = problem or f"the attributes `{line}` in the text of the item"
+            break
+        if at_margin and attaching and SPEC_BLOCK_HEADER.match(line) and not line.startswith("[["):
+            lines.append(line)
+            index += 1
+            continue
+        if at_margin and line.startswith(SPEC_INCLUDES_AFTER_AN_ITEM):
+            break
+        reads_differently_at_the_margin = not at_margin and (
+            stripped == SPEC_LIST_CONTINUATION
+            or SPEC_BLOCK_ATTRIBUTES.match(stripped)
+            or SPEC_BLOCK_DELIMITER.match(stripped)
+        )
+        lines.append(line if reads_differently_at_the_margin else stripped)
+        attaching = False
+        index += 1
+    while lines[-1] in ("", SPEC_LIST_CONTINUATION):
+        lines.pop()
+    return lines, index, problem
+
+
+def spec_described_items(body: list[str], page: str) -> list[dict[str, str]]:
+    """The first-level list items of a reference page block that start with `pname:x` or
+    `ename:x`, in the order of the block, each with everything that belongs to it: nested
+    items and the blocks that list continuations attach stay part of the item's text."""
     described: dict[str, str] = {}
-    for _, lines in items:
+    index = 0
+    while index < len(body):
+        if not spec_is_first_level_item(body[index]):
+            index += 1
+            continue
+        lines, index, problem = spec_list_item(body, index)
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
         if not lines[0]:
             lines.pop(0)
@@ -520,6 +611,10 @@ def spec_described_items(body: list[str]) -> list[dict[str, str]]:
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
         name = SPEC_DESCRIBED_NAME.match(lines[0])
         if name and name.group(1) not in described:
+            if problem:
+                raise RuntimeError(
+                    f"{page}: the list item of {name.group(1)} cannot be read reliably: {problem}"
+                )
             described[name.group(1)] = "\n".join(lines)
     return [{"name": name, "text": text} for name, text in described.items()]
 
@@ -613,7 +708,7 @@ def build_docs(defined: set[str]):
                 "desc": attributes.get("desc", "").strip(),
                 "aliases": attributes.get("alias", "").split(),
                 "file": str(source.relative_to(DOCS)),
-                "items": spec_described_items(lines[index + 2 : end]),
+                "items": spec_described_items(lines[index + 2 : end], name),
             }
             page_blocks.append((index, end, name))
             index = end + 1

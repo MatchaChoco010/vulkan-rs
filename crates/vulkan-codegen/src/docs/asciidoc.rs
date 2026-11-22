@@ -18,6 +18,8 @@ pub(crate) enum Unsupported {
     EscapedSpan,
     Passthrough,
     Unterminated(&'static str),
+    Block(String),
+    Include,
 }
 
 pub(crate) type Converted = Result<String, Unsupported>;
@@ -108,7 +110,7 @@ fn code_len(text: &str) -> usize {
     len + text[len..].chars().take_while(|c| *c == '*').count()
 }
 
-fn code_span(code: &str) -> String {
+pub(super) fn code_span(code: &str) -> String {
     if code.contains('`') {
         format!("`` {code} ``")
     } else {
