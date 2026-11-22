@@ -273,8 +273,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # A failure in one test binary does not hide the results of the others.
       - name: Test
-        run: cargo test -p vulkan -p vulkan-alloc --all-features
+        run: cargo test -p vulkan -p vulkan-alloc --all-features --no-fail-fast
 
       - name: Test without default features
         run: cargo test -p vulkan --no-default-features
