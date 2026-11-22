@@ -72,12 +72,13 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         &inputs.narrowed_counts,
     );
     format!(
-        "{doc}{cfg}pub unsafe fn {name}(&self{signature}){arrow} {{
+        "{doc}{cfg}pub unsafe fn {name}{generics}(&self{signature}){arrow} {{
             unsafe {{
                 {checks}{statements}}}
         }}\n",
         doc = doc.render(),
         name = command_name(&c.name),
+        generics = inputs.generics(),
         signature = inputs.signature(),
         arrow = arrow(&ty),
         checks = inputs.checks,
