@@ -109,11 +109,14 @@ pub unsafe fn build_scene(
                     .dst_acceleration_structure(bottom_level.handle)
                     .scratch_data(scratch_data),
             );
-            // The top level is built from the bottom level.
+            // The top level is built from the bottom level, and its build writes the
+            // scratch memory that the first build wrote.
             build_barrier(
                 device,
                 command_buffer,
                 vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
+                    | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
             );
             build(
                 device,
@@ -127,6 +130,7 @@ pub unsafe fn build_scene(
                 device,
                 command_buffer,
                 vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
+                vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR,
             );
             Ok(())
         })?;
@@ -283,15 +287,17 @@ unsafe fn create_acceleration_structure(
     }
 }
 
-/// Makes what a build wrote visible to the reads of acceleration structures in `stage`.
+/// Makes what a build wrote, to the acceleration structure and to the scratch memory,
+/// visible to the `access`es in `stage`.
 unsafe fn build_barrier(
     device: &Device,
     command_buffer: vk::CommandBuffer,
     stage: vk::PipelineStageFlags,
+    access: vk::AccessFlags,
 ) {
     let barrier = vk::MemoryBarrier::default()
         .src_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR)
-        .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR);
+        .dst_access_mask(access);
     unsafe {
         device.cmd_pipeline_barrier(
             command_buffer,
