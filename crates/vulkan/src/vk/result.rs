@@ -9,6 +9,11 @@ use core::fmt;
 /// them, which use `core::result::Result<Vec<T>, (Vec<T>, VkResult)>` instead and return
 /// every code other than `SUCCESS` as the error, together with the objects.
 ///
+/// The error codes are the negative codes, as for [`VkResult::into_result`], and the
+/// codes that the registry lists as error codes of the command although they are not
+/// negative, such as `VK_TIMEOUT` of `vkAcquireProfilingLockKHR`, which means that the
+/// lock was not acquired. The `# Errors` section of a wrapper names such codes.
+///
 /// `VkResult` implements `Display` (its name) and `core::error::Error`, so `?` converts
 /// it into other error types such as `Box<dyn Error>`.
 pub type Result<T> = core::result::Result<T, VkResult>;
@@ -17,6 +22,9 @@ impl VkResult {
     /// Converts the code into a [`Result`]: `Ok(())` for every non-negative code (the
     /// success codes, including `INCOMPLETE` and `SUBOPTIMAL_KHR`), `Err(self)` for the
     /// negative error codes.
+    ///
+    /// A command wrapper also returns as an error a non-negative code that the registry
+    /// lists as an error code of its command: see [`Result`].
     ///
     /// # Errors
     ///

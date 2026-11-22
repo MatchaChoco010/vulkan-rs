@@ -44750,7 +44750,9 @@ impl crate::Device {
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
+    /// Returns the result code of the command if it is an error, or if it is
+    /// [`VK_TIMEOUT`](VkResult::TIMEOUT), which the registry lists as an error code of the command
+    /// although it is not negative. The registry lists
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_TIMEOUT`](VkResult::TIMEOUT), [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
     /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
@@ -44769,8 +44771,11 @@ impl crate::Device {
         info: &AcquireProfilingLockInfoKHR<'_>,
     ) -> crate::vk::Result<()> {
         unsafe {
-            self.acquire_profiling_lock_khr_raw(core::ptr::from_ref(info))
-                .into_result()
+            let result = self.acquire_profiling_lock_khr_raw(core::ptr::from_ref(info));
+            if matches!(result, VkResult::TIMEOUT) {
+                return Err(result);
+            }
+            result.into_result()
         }
     }
     /// Allocate command buffers from an existing command pool.

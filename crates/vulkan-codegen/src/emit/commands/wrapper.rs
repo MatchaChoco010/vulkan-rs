@@ -5,6 +5,7 @@ use super::{
 };
 use crate::docs::{Doc, join_and, join_or};
 use crate::emit::arrow;
+use crate::emit::command_info::result_code;
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
 use crate::naming::command_name;
 use std::collections::BTreeSet;
@@ -113,13 +114,32 @@ fn doc(
 
 fn error_codes(model: &Model<'_>, cfg: &Cfg, c: &Command) -> String {
     if c.error_codes.is_empty() {
-        "Returns the result code of the command if it is an error.".to_string()
-    } else {
-        format!(
-            "Returns the result code of the command if it is an error. The registry lists {} for it.",
-            codes(model, cfg, &c.error_codes)
-        )
+        return "Returns the result code of the command if it is an error.".to_string();
     }
+    let non_negative = non_negative_error_codes(model, c);
+    let also = match non_negative.len() {
+        0 => String::new(),
+        1 => format!(
+            ", or if it is {}, which the registry lists as an error code of the command although it is not negative",
+            codes(model, cfg, &non_negative)
+        ),
+        _ => format!(
+            ", or if it is {}, which the registry lists as error codes of the command although they are not negative",
+            codes(model, cfg, &non_negative)
+        ),
+    };
+    format!(
+        "Returns the result code of the command if it is an error{also}. The registry lists {} for it.",
+        codes(model, cfg, &c.error_codes)
+    )
+}
+
+fn non_negative_error_codes(model: &Model<'_>, c: &Command) -> Vec<String> {
+    c.error_codes
+        .iter()
+        .filter(|code| model.result_value(code) >= 0)
+        .cloned()
+        .collect()
 }
 
 fn deferred_outputs(model: &Model<'_>, c: &Command, params: &[Field]) -> Option<String> {
@@ -249,8 +269,36 @@ impl Call<'_> {
             .collect()
     }
 
+    fn listed_errors(&self) -> String {
+        let patterns = non_negative_error_codes(self.model, self.c)
+            .iter()
+            .map(|code| result_code(self.model, code))
+            .collect::<Vec<_>>();
+        if patterns.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "if matches!(result, {}) {{ return Err(result); }}\n",
+                patterns.join(" | ")
+            )
+        }
+    }
+
+    fn result_of(&self, call: &str) -> String {
+        let listed_errors = self.listed_errors();
+        if listed_errors.is_empty() {
+            format!("{call}.into_result()")
+        } else {
+            format!(
+                "let result = {call};
+                {listed_errors}result.into_result()"
+            )
+        }
+    }
+
     fn passes_through(&self) -> Returned {
         let call = self.raw(&[]);
+        let listed_errors = self.listed_errors();
         if !self.returns_result() {
             return match self.model.return_ty(&self.c.return_ty).as_str() {
                 "Bool32" => Returned::new("bool", format!("{call} != 0"))
@@ -263,7 +311,7 @@ impl Call<'_> {
                 "crate::vk::Result<bool>",
                 format!(
                     "let result = {call};
-                    result.into_result()?;
+                    {listed_errors}result.into_result()?;
                     Ok(result == VkResult::SUBOPTIMAL_KHR)"
                 ),
             )
@@ -274,13 +322,13 @@ impl Call<'_> {
                 "crate::vk::Result<VkResult>",
                 format!(
                     "let result = {call};
-                    result.into_result()?;
+                    {listed_errors}result.into_result()?;
                     Ok(result)"
                 ),
             )
             .note(format!("Returns {}.", self.success_code()));
         }
-        Returned::new("crate::vk::Result<()>", format!("{call}.into_result()"))
+        Returned::new("crate::vk::Result<()>", self.result_of(&call))
     }
 
     fn returns_value(&self, out: usize) -> Returned {
@@ -294,6 +342,7 @@ impl Call<'_> {
         };
         let declaration = format!("let mut value: {storage_ty} = {init};");
         let call = self.raw(&[(out, "&mut value")]);
+        let listed_errors = self.listed_errors();
         let written = format!("Returns what the command writes to `{}`", p.name);
         if !self.returns_result() {
             return Returned::new(
@@ -329,7 +378,7 @@ impl Call<'_> {
                 format!(
                     "{declaration}
                     let result = {call};
-                    result.into_result()?;
+                    {listed_errors}result.into_result()?;
                     Ok(({value}, result))"
                 ),
             )
@@ -339,8 +388,9 @@ impl Call<'_> {
             format!("crate::vk::Result<{ty}>"),
             format!(
                 "{declaration}
-                {call}.into_result()?;
-                Ok({value})"
+                {}?;
+                Ok({value})",
+                self.result_of(&call)
             ),
         )
         .note(format!("{written}."))
@@ -365,19 +415,21 @@ impl Call<'_> {
             (data, &format!("values.as_mut_ptr(){cast}")),
         ]);
         if self.returns_result() {
+            let listed_errors = self.listed_errors();
             return Returned::new(
                 format!("crate::vk::Result<Vec<{element}>>"),
                 format!(
                     "loop {{
                         let mut count: {count_ty} = 0;
-                        {query}.into_result()?;
+                        {}?;
                         let mut values: Vec<{element}> = alloc::vec![{init}; {len}];
                         let result = {fill};
                         if result == VkResult::INCOMPLETE {{ continue; }}
-                        result.into_result()?;
+                        {listed_errors}result.into_result()?;
                         values.truncate({len});
                         return Ok(values);
-                    }}"
+                    }}",
+                    self.result_of(&query)
                 ),
             )
             .note(format!(
@@ -457,8 +509,9 @@ impl Call<'_> {
             format!("crate::vk::Result<Vec<{element}>>"),
             format!(
                 "{declaration}
-                {call}.into_result()?;
-                Ok(values)"
+                {}?;
+                Ok(values)",
+                self.result_of(&call)
             ),
         )
         .note(format!("{written}."))

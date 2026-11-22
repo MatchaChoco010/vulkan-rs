@@ -128,6 +128,21 @@ impl<'a> Model<'a> {
             .map_or(code, |f| f.name.as_str())
     }
 
+    pub(crate) fn result_value(&self, code: &str) -> i64 {
+        let field = self
+            .get_enum("VkResult")
+            .fields
+            .iter()
+            .find(|f| f.name == code || f.aliases.iter().any(|alias| alias == code))
+            .unwrap_or_else(|| panic!("unknown result code {code}"));
+        field.value.parse().unwrap_or_else(|_| {
+            panic!(
+                "the result code {code} has the value {}, which is not an integer",
+                field.value
+            )
+        })
+    }
+
     pub(crate) fn is_handle(&self, name: &str) -> bool {
         self.handles.contains(self.canonical(name))
     }

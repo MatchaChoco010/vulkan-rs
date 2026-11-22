@@ -247,6 +247,7 @@ fn creates_a_dispatching_handle(c: &Command) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::emit::command_info::result_code;
     use crate::emit::squash;
     use crate::test_support::{
         command, counted, field, optional, registry, result_command, structure, tagged,
@@ -1441,6 +1442,184 @@ mod tests {
         }
         arguments.retain(|argument| !argument.is_empty());
         arguments
+    }
+
+    fn with_error_codes(mut ir: Registry, codes: &[&str]) -> Registry {
+        let results = ir.enums.iter_mut().find(|e| e.name == "VkResult").unwrap();
+        for (name, value) in [
+            ("VK_ERROR_OUT_OF_HOST_MEMORY", "-1"),
+            ("VK_ERROR_DEVICE_LOST", "-4"),
+        ] {
+            results.fields.push(EnumField {
+                name: name.to_string(),
+                value: value.to_string(),
+                ..Default::default()
+            });
+        }
+        for c in &mut ir.commands {
+            c.error_codes = codes.iter().map(|code| code.to_string()).collect();
+        }
+        ir
+    }
+
+    fn commands_of_every_wrapper_shape() -> Vec<Registry> {
+        let get_value = result_command(
+            "vkGetFenceValueNV",
+            &["VK_SUCCESS"],
+            vec![field("fence", "VkFence"), field("pValue", "uint64_t*")],
+        );
+        let get_value_or_not_ready = result_command(
+            "vkGetFenceValueNV",
+            &["VK_SUCCESS", "VK_NOT_READY"],
+            vec![field("fence", "VkFence"), field("pValue", "uint64_t*")],
+        );
+        let enumerate = result_command(
+            "vkGetFencesNV",
+            &["VK_SUCCESS", "VK_INCOMPLETE"],
+            vec![
+                field("pFenceCount", "uint32_t*"),
+                optional(counted("pFences", "VkFence*", "pFenceCount")),
+            ],
+        );
+        let fill = result_command(
+            "vkCreateFencesNV",
+            &["VK_SUCCESS"],
+            vec![
+                field("bufferCount", "uint32_t"),
+                counted("pBuffers", "const VkBuffer*", "bufferCount"),
+                counted("pFences", "VkFence*", "bufferCount"),
+            ],
+        );
+        let pass = |codes: &[&str]| {
+            result_command(
+                "vkLockFenceNV",
+                codes,
+                vec![field("fence", "VkFence"), field("timeout", "uint64_t")],
+            )
+        };
+        [
+            pass(&["VK_SUCCESS"]),
+            pass(&["VK_SUCCESS", "VK_NOT_READY"]),
+            pass(&["VK_SUCCESS", "VK_SUBOPTIMAL_KHR"]),
+            get_value,
+            get_value_or_not_ready,
+            enumerate,
+            fill,
+        ]
+        .into_iter()
+        .map(only)
+        .collect()
+    }
+
+    #[test]
+    fn non_negative_error_codes_are_returned_as_errors_in_every_wrapper_shape() {
+        let guarded =
+            "if matches!(result, VkResult::TIMEOUT) { return Err(result); } result.into_result()";
+        for ir in commands_of_every_wrapper_shape() {
+            let name = ir.commands[0].name.clone();
+            let out = generate(&with_error_codes(
+                ir,
+                &["VK_ERROR_OUT_OF_HOST_MEMORY", "VK_TIMEOUT"],
+            ));
+            let conversions = out.matches(".into_result()").count();
+            assert!(conversions > 0, "{name}: {out}");
+            assert_eq!(
+                out.matches(guarded).count(),
+                conversions,
+                "{name} converts a result code without returning VK_TIMEOUT as an error: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn negative_error_codes_leave_the_wrappers_as_they_are() {
+        for ir in commands_of_every_wrapper_shape() {
+            let name = ir.commands[0].name.clone();
+            let without = generate(&ir);
+            let with = generate(&with_error_codes(
+                ir,
+                &["VK_ERROR_OUT_OF_HOST_MEMORY", "VK_ERROR_DEVICE_LOST"],
+            ));
+            assert_eq!(
+                with, without,
+                "{name} is generated differently for negative error codes"
+            );
+            assert!(!with.contains("matches!(result"), "{name}: {with}");
+        }
+    }
+
+    #[test]
+    fn every_listed_non_negative_error_code_is_returned_as_an_error() {
+        let ir = with_error_codes(
+            only(result_command(
+                "vkAcquireProfilingLockKHR",
+                &["VK_SUCCESS"],
+                vec![field("timeout", "uint64_t")],
+            )),
+            &["VK_ERROR_OUT_OF_HOST_MEMORY", "VK_NOT_READY", "VK_TIMEOUT"],
+        );
+        assert_generated_alike_under_other_names(
+            &ir,
+            &Docs::default(),
+            "vkAcquireProfilingLockKHR",
+            &["vkWaitForFenceNV"],
+            "pub unsafe fn acquire_profiling_lock_khr(&self, timeout: u64) -> crate::vk::Result<()> { unsafe { let result = self.acquire_profiling_lock_khr_raw(timeout); if matches!(result, VkResult::NOT_READY | VkResult::TIMEOUT) { return Err(result); } result.into_result() } }",
+        );
+        let documented = emit(&Model::new(&ir))
+            .split_whitespace()
+            .filter(|word| *word != "///")
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            documented.contains("Returns the result code of the command if it is an error, or if it is [`VK_NOT_READY`](VkResult::NOT_READY) or [`VK_TIMEOUT`](VkResult::TIMEOUT), which the registry lists as error codes of the command although they are not negative."),
+            "{documented}"
+        );
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_return_every_non_negative_error_code_as_an_error() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut found = BTreeSet::new();
+        for c in &model.ir.commands {
+            let non_negative = c
+                .error_codes
+                .iter()
+                .filter(|code| model.result_value(code) >= 0)
+                .collect::<Vec<_>>();
+            if non_negative.is_empty() || creates_a_dispatching_handle(c) {
+                continue;
+            }
+            found.insert(c.name.as_str());
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            let conversions = out.matches(".into_result()").count();
+            let only_success_is_ok = out.contains("error => Err(error)")
+                || out.contains(
+                    "if result == VkResult::SUCCESS { Ok(values) } else { Err((values, result)) }",
+                );
+            assert!(conversions > 0 || only_success_is_ok, "{}: {out}", c.name);
+            for (at, _) in out.match_indices(".into_result()") {
+                let guarded = out[..at]
+                    .strip_suffix(") { return Err(result); } result")
+                    .and_then(|before| {
+                        let start = before.rfind("if matches!(result, ")?;
+                        Some(&before[start + "if matches!(result, ".len()..])
+                    })
+                    .unwrap_or_default()
+                    .split(" | ")
+                    .collect::<BTreeSet<_>>();
+                for code in &non_negative {
+                    assert!(
+                        guarded.contains(result_code(&model, code).as_str()),
+                        "{}: the wrapper converts a result code without returning {code} as an error: {out}",
+                        c.name
+                    );
+                }
+            }
+        }
+        assert!(
+            !found.is_empty(),
+            "the registry lists non-negative error codes"
+        );
     }
 
     #[test]
