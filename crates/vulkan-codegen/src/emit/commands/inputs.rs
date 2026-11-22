@@ -221,14 +221,16 @@ impl Planner<'_> {
         w!(
             self.checks,
             "for (element, entry) in {owner}.iter().zip({name}.iter()) {{
-                assert_eq!(entry.len(), element.{member} as usize, \"{}: each `{name}` entry must have `{member}` elements\");
+                if let Some(entry) = entry {{
+                    assert_eq!(entry.len(), element.{member} as usize, \"{}: each `{name}` entry that is not `None` must have `{member}` elements\");
+                }}
             }}
-            let {name}_pointers = {name}.iter().map(|entry| entry.as_ptr()).collect::<Vec<_>>();",
+            let {name}_pointers = {name}.iter().map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr())).collect::<Vec<_>>();",
             self.c.name
         );
         Input::argument(
             &name,
-            format!("&[&[{element}]]"),
+            format!("&[Option<&[{element}]>]"),
             format!("{name}_pointers.as_ptr()"),
         )
     }
@@ -257,6 +259,7 @@ impl Planner<'_> {
             .any(|slices| slices.iter().any(|&s| self.params[s].name == p.name));
         if shares_a_count_param || (p.len.is_some() && !opaque) {
             self.assert_struct_member_len(p);
+            self.assert_pointed_count_len(p);
             return slice(self.model, p, ty);
         }
         if p.null_terminated && ty.base == "char" && ty.outer_const() {
@@ -274,6 +277,29 @@ impl Planner<'_> {
             return Input::passed_through(&name, self.model.param_ty(p, "'_"));
         }
         reference(self.model, p, ty)
+    }
+
+    fn assert_pointed_count_len(&mut self, p: &Field) {
+        let Some(len) = p.len.as_deref() else {
+            return;
+        };
+        let Some(count) = self.params.iter().find(|q| {
+            let ty = CType::of(q);
+            q.name == len && ty.pointers == [false] && !ty.is_array()
+        }) else {
+            return;
+        };
+        let count_name = argument_name(count);
+        let cast = match self.model.base_ty(&count.ty, "'_").as_str() {
+            "usize" => "",
+            _ => " as usize",
+        };
+        let message = format!(
+            "{}: `{}` must have `*{count_name}` elements",
+            self.c.name,
+            argument_name(p)
+        );
+        self.assert_slice_len(p, &format!("*{count_name}{cast}"), &message);
     }
 
     fn assert_struct_member_len(&mut self, p: &Field) {

@@ -5,8 +5,12 @@ use core::fmt;
 /// [`VkResult`] the command failed with.
 ///
 /// A command with more than one success code returns the code, or a value derived from
-/// it, inside `Ok`. `VkResult` implements `Display` (its name) and `core::error::Error`, so
-/// `?` converts it into other error types such as `Box<dyn Error>`.
+/// it, inside `Ok`, except the commands that create several objects at once and return
+/// them, which use `core::result::Result<Vec<T>, (Vec<T>, VkResult)>` instead and return
+/// every code other than `SUCCESS` as the error, together with the objects.
+///
+/// `VkResult` implements `Display` (its name) and `core::error::Error`, so `?` converts
+/// it into other error types such as `Box<dyn Error>`.
 pub type Result<T> = core::result::Result<T, VkResult>;
 
 impl VkResult {
