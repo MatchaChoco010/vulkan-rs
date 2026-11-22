@@ -1,6 +1,6 @@
 use super::inputs::Inputs;
 use super::shape::Shape;
-use super::{argument_name, called, not_loaded, provided, raw_name};
+use super::{argument_name, called, not_loaded, provided, raw_name, with_deferred_safety};
 use crate::docs::{Doc, join_or};
 use crate::emit::arrow;
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
@@ -101,7 +101,10 @@ fn doc(
             provided(model, cfg, c)
         ))
         .section("Errors", errors)
-        .section("Safety", format!("The same as for [`Self::{raw}`]."))
+        .section(
+            "Safety",
+            with_deferred_safety(model, c, format!("The same as for [`Self::{raw}`].")),
+        )
         .section("Panics", format!("{}{lengths}", not_loaded(c)))
         .alias(&c.name)
 }

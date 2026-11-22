@@ -90,12 +90,24 @@ fn raw_doc(model: &Model<'_>, cfg: &Cfg, c: &Command, params: &[Field]) -> Doc {
     }
     doc.section(
         "Safety",
-        format!(
-            "The call has to satisfy the valid usage that the Vulkan specification states for {}.",
-            model.reference(&c.name)
+        with_deferred_safety(
+            model,
+            c,
+            format!(
+                "The call has to satisfy the valid usage that the Vulkan specification states for {}.",
+                model.reference(&c.name)
+            ),
         ),
     )
     .section("Panics", not_loaded(c))
+}
+
+fn with_deferred_safety(model: &Model<'_>, c: &Command, safety: String) -> String {
+    if can_defer(model, c) {
+        format!("{safety} {DEFERRED_SAFETY}")
+    } else {
+        safety
+    }
 }
 
 fn raw_command(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
@@ -212,6 +224,14 @@ fn described_inner_len(
         None
     }
 }
+
+fn can_defer(model: &Model<'_>, c: &Command) -> bool {
+    c.success_codes
+        .iter()
+        .any(|code| model.result_code(code) == "VK_OPERATION_DEFERRED_KHR")
+}
+
+const DEFERRED_SAFETY: &str = "If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can read and write the memory that the arguments point to until the deferred operation is complete: that memory, including the slices and the structures and arrays that they point to, has to stay allocated and unchanged until then, and what the command writes must not be read before.";
 
 fn creates_a_dispatching_handle(c: &Command) -> bool {
     c.params.last().is_some_and(|p| {
@@ -891,12 +911,6 @@ mod tests {
         assert!(out.contains(
             "self.cmd_assemble_widgets_nv_raw(command_buffer, batch_count_len as u32, batches.as_ptr(), first_indices.as_ptr(), parts_pointers.as_ptr(), limits_pointers.as_ptr())"
         ));
-        assert!(out.contains(
-            "pub unsafe fn join_widgets_nv(&self, deferred_operation: DeferredOperationKHR, batches: &[WidgetBatchNV], parts: &[&[WidgetPartNV]]) -> crate::vk::Result<VkResult> {"
-        ));
-        assert!(out.contains(
-            "let result = self.join_widgets_nv_raw(deferred_operation, batch_count_len as u32, batches.as_ptr(), parts_pointers.as_ptr()); result.into_result()?; Ok(result)"
-        ));
         assert_generated_alike_under_other_names(
             &ir,
             &docs,
@@ -905,13 +919,6 @@ mod tests {
                 "vkCmdBuildAccelerationStructuresKHR",
                 "vkCmdBuildAccelerationStructuresIndirectKHR",
             ],
-            "parts: &[&[WidgetPartNV]]",
-        );
-        assert_generated_alike_under_other_names(
-            &ir,
-            &docs,
-            "vkJoinWidgetsNV",
-            &["vkBuildAccelerationStructuresKHR"],
             "parts: &[&[WidgetPartNV]]",
         );
     }
@@ -1033,14 +1040,12 @@ mod tests {
                     "vkCreateDataGraphPipelinesARM",
                     "vkCreateExecutionGraphPipelinesAMDX",
                     "vkCreateGraphicsPipelines",
-                    "vkCreateRayTracingPipelinesKHR",
                     "vkCreateRayTracingPipelinesNV",
                 ]),
             ),
             (
                 "takes slices of slices",
                 names(&[
-                    "vkBuildAccelerationStructuresKHR",
                     "vkCmdBuildAccelerationStructuresIndirectKHR",
                     "vkCmdBuildAccelerationStructuresKHR",
                 ]),
@@ -1152,5 +1157,129 @@ mod tests {
             name: c_name.to_string(),
             ..Default::default()
         })
+    }
+
+    #[test]
+    fn deferrable_commands_take_arrays_of_arrays_as_caller_owned_pointers() {
+        let (ir, docs) = widgets();
+        let out = generate_with_docs(&ir, &docs);
+        assert!(out.contains(
+            "pub unsafe fn join_widgets_nv(&self, deferred_operation: DeferredOperationKHR, batches: &[WidgetBatchNV], parts: &[*const WidgetPartNV]) -> crate::vk::Result<VkResult> {"
+        ));
+        assert!(out.contains("assert_eq!(parts.len(), batch_count_len,"));
+        assert!(out.contains(
+            "let result = self.join_widgets_nv_raw(deferred_operation, batch_count_len as u32, batches.as_ptr(), parts.as_ptr()); result.into_result()?; Ok(result)"
+        ));
+        assert_generated_alike_under_other_names(
+            &ir,
+            &docs,
+            "vkJoinWidgetsNV",
+            &["vkBuildAccelerationStructuresKHR"],
+            "parts: &[*const WidgetPartNV]",
+        );
+    }
+
+    fn deferrable_creation() -> Registry {
+        only(result_command(
+            "vkCreateRayTracingPipelinesKHR",
+            &[
+                "VK_SUCCESS",
+                "VK_OPERATION_DEFERRED_KHR",
+                "VK_OPERATION_NOT_DEFERRED_KHR",
+                "VK_PIPELINE_COMPILE_REQUIRED_EXT",
+            ],
+            vec![
+                field("device", "VkDevice"),
+                optional(field("deferredOperation", "VkDeferredOperationKHR")),
+                optional(field("pipelineCache", "VkPipelineCache")),
+                field("createInfoCount", "uint32_t"),
+                counted(
+                    "pCreateInfos",
+                    "const VkGraphicsPipelineCreateInfo*",
+                    "createInfoCount",
+                ),
+                counted("pPipelines", "VkPipeline*", "createInfoCount"),
+            ],
+        ))
+    }
+
+    #[test]
+    fn deferrable_commands_write_into_caller_owned_outputs() {
+        let create = deferrable_creation();
+        assert_generated_alike_under_other_names(
+            &create,
+            &Docs::default(),
+            "vkCreateRayTracingPipelinesKHR",
+            &["vkCompileProgramsLaterNV"],
+            "pub unsafe fn create_ray_tracing_pipelines_khr(&self, deferred_operation: DeferredOperationKHR, pipeline_cache: PipelineCache, create_infos: &[GraphicsPipelineCreateInfo<'_>], pipelines: &mut [Pipeline]) -> crate::vk::Result<VkResult> { unsafe { let create_info_count_len: usize = create_infos.len(); assert_eq!(pipelines.len(), create_info_count_len,",
+        );
+        assert!(generate(&create).contains(
+            "let result = self.create_ray_tracing_pipelines_khr_raw(deferred_operation, pipeline_cache, create_info_count_len as u32, create_infos.as_ptr(), pipelines.as_mut_ptr()); result.into_result()?; Ok(result)"
+        ));
+    }
+
+    #[test]
+    fn deferrable_commands_document_how_long_the_memory_has_to_live() {
+        let out = emit(&Model::new(&deferrable_creation()));
+        let documented = out
+            .lines()
+            .filter(|line| line.contains("VK_OPERATION_DEFERRED_KHR"))
+            .count();
+        assert!(
+            out.contains("until the deferred operation is complete"),
+            "{out}"
+        );
+        assert!(
+            documented >= 2,
+            "the raw command and the wrapper document deferral"
+        );
+    }
+
+    #[test]
+    fn deferrable_commands_of_the_registry_pass_no_memory_that_the_wrapper_owns() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut deferrable = BTreeSet::new();
+        for c in &model.ir.commands {
+            if !can_defer(&model, c) {
+                continue;
+            }
+            deferrable.insert(c.name.as_str());
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            for (at, _) in out.match_indices("let ") {
+                let statement = &out[at + "let ".len()..];
+                let local = statement
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .next()
+                    .unwrap_or_default();
+                let a_count =
+                    local.ends_with("_len") && statement[local.len()..].starts_with(": usize = ");
+                let the_result = local == "result" && statement[local.len()..].starts_with(" = ");
+                assert!(
+                    a_count || the_result,
+                    "{}: the wrapper passes memory of its own in `let {}`",
+                    c.name,
+                    &statement[..statement.len().min(80)]
+                );
+            }
+            assert!(
+                !out.contains("for ("),
+                "{}: the wrapper builds arrays of its own",
+                c.name
+            );
+        }
+        assert_eq!(
+            deferrable,
+            BTreeSet::from([
+                "vkBuildAccelerationStructuresKHR",
+                "vkBuildMicromapsEXT",
+                "vkCopyAccelerationStructureKHR",
+                "vkCopyAccelerationStructureToMemoryKHR",
+                "vkCopyMemoryToAccelerationStructureKHR",
+                "vkCopyMemoryToMicromapEXT",
+                "vkCopyMicromapEXT",
+                "vkCopyMicromapToMemoryEXT",
+                "vkCreateRayTracingPipelinesKHR",
+            ])
+        );
     }
 }
