@@ -624,6 +624,91 @@ mod tests {
         }
     }
 
+    type ChainedFlags = Vec<Option<(vk::MemoryAllocateFlags, u32)>>;
+
+    unsafe extern "system" fn record_allocate_memory(
+        device: vk::Device,
+        p_allocate_info: *const vk::MemoryAllocateInfo<'_>,
+        _p_allocator: *const vk::AllocationCallbacks<'_>,
+        p_memory: *mut vk::DeviceMemory,
+    ) -> vk::VkResult {
+        let recorded = unsafe { &*device.0.cast::<std::sync::Mutex<ChainedFlags>>() };
+        let mut next = unsafe { (*p_allocate_info).p_next }.cast::<vk::BaseInStructure<'_>>();
+        let mut flags_info = None;
+        while let Some(structure) = unsafe { next.as_ref() } {
+            if structure.s_type == vk::StructureType::MEMORY_ALLOCATE_FLAGS_INFO {
+                let info = unsafe { &*next.cast::<vk::MemoryAllocateFlagsInfo<'_>>() };
+                flags_info = Some((info.flags, info.device_mask));
+            }
+            next = structure.p_next;
+        }
+        let mut recorded = recorded.lock().unwrap();
+        recorded.push(flags_info);
+        unsafe { p_memory.write(vk::DeviceMemory(recorded.len() as u64)) };
+        vk::VkResult::SUCCESS
+    }
+
+    unsafe extern "system" fn recording_device_proc_addr(
+        _device: vk::Device,
+        p_name: *const std::ffi::c_char,
+    ) -> vk::PFN_vkVoidFunction {
+        if unsafe { std::ffi::CStr::from_ptr(p_name) }.to_bytes() != b"vkAllocateMemory" {
+            return None;
+        }
+        Some(unsafe {
+            std::mem::transmute::<
+                unsafe extern "system" fn(
+                    vk::Device,
+                    *const vk::MemoryAllocateInfo<'_>,
+                    *const vk::AllocationCallbacks<'_>,
+                    *mut vk::DeviceMemory,
+                ) -> vk::VkResult,
+                unsafe extern "system" fn(),
+            >(record_allocate_memory)
+        })
+    }
+
+    #[test]
+    fn memory_allocate_flags_are_chained_as_given_with_a_device_mask_of_0() {
+        let recorded = std::sync::Mutex::new(ChainedFlags::new());
+        let handle = vk::Device(std::ptr::from_ref(&recorded).cast_mut().cast());
+        let device = Device::from_raw(handle, unsafe {
+            vk::DeviceFn::load(Some(recording_device_proc_addr), handle)
+        });
+        let schemes = [
+            DedicatedResource::None,
+            DedicatedResource::Buffer(vk::Buffer(5)),
+            DedicatedResource::Image(vk::Image(6)),
+        ];
+        let export_handle_types = [
+            vk::ExternalMemoryHandleTypeFlags::empty(),
+            vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD,
+        ];
+        let mut expected = ChainedFlags::new();
+        for raw in 0..1u32 << 4 {
+            let memory_allocate_flags = vk::MemoryAllocateFlags::from_raw(raw);
+            for dedicated in schemes {
+                for export_handle_types in export_handle_types {
+                    let request = BlockRequest {
+                        dedicated,
+                        memory_allocate_flags,
+                        export_handle_types,
+                    };
+                    unsafe { request.allocate_memory(&device, 0, 256) }.unwrap();
+                    expected.push(
+                        (!memory_allocate_flags.is_empty()).then_some((memory_allocate_flags, 0)),
+                    );
+                }
+            }
+        }
+        assert_eq!(
+            *recorded.lock().unwrap(),
+            expected,
+            "VkMemoryAllocateFlagsInfo must be chained exactly when the flags are not empty, \
+             with the flags as given and a deviceMask of 0"
+        );
+    }
+
     #[test]
     fn memory_block_tracks_mapped_allocations_individually() {
         let mut block = MemoryBlock::new(
