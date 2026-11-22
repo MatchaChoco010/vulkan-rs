@@ -132,11 +132,11 @@ impl Allocator {
     /// The allocation is placed in an existing shared block of that type when one has
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
     /// [`AllocationCreateDesc::memory_allocate_flags`]. Otherwise a new block is
-    /// allocated with `vkAllocateMemory`: [`AllocatorCreateDesc::block_size`] bytes, or
-    /// the size of the memory heap of the type if that is smaller, or the allocation's
-    /// size if that is larger than both. Dedicated allocations, exportable allocations
-    /// and allocations whose [`AllocationCreateDesc::memory_allocate_flags`] contain
-    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] always get a new
+    /// allocated with `vkAllocateMemory`: the smaller of
+    /// [`AllocatorCreateDesc::block_size`] and the size of the memory heap of the type,
+    /// or the allocation's size if that is larger. Dedicated allocations, exportable
+    /// allocations and allocations whose [`AllocationCreateDesc::memory_allocate_flags`]
+    /// contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] always get a new
     /// `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
     ///
     /// # Errors
@@ -163,9 +163,8 @@ impl Allocator {
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
     ///   type; `desc.requirements.size` must not be larger than the memory heap of the
-    ///   chosen type; and
-    ///   the number of `VkDeviceMemory` objects on the device must stay below
-    ///   `maxMemoryAllocationCount`.
+    ///   chosen type; and the number of `VkDeviceMemory` objects on the device must stay
+    ///   below `maxMemoryAllocationCount`.
     /// - For [`AllocationScheme::DedicatedBuffer`](crate::AllocationScheme::DedicatedBuffer)
     ///   and [`AllocationScheme::DedicatedImage`](crate::AllocationScheme::DedicatedImage),
     ///   the handle must be a resource of this device that is not bound to memory yet,
