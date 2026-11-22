@@ -98,6 +98,26 @@ pub enum HeapLayoutError {
     /// usually means the properties were not filled in by
     /// `vkGetPhysicalDeviceProperties2`.
     ZeroDescriptorSize,
+    /// The reserved range of a [`DescriptorHeapLayout`] does not lie inside the heap:
+    /// `reserved_offset + reserved_size` is larger than `size`.
+    ReservedRangeOutsideHeap {
+        /// [`DescriptorHeapLayout::reserved_offset`].
+        offset: u64,
+        /// [`DescriptorHeapLayout::reserved_size`].
+        size: u64,
+        /// [`DescriptorHeapLayout::size`].
+        heap_size: u64,
+    },
+    /// The address of the heap is 0 although its size is not.
+    NullAddress,
+    /// The heap would reach past the last device address: the address of its last
+    /// byte, `address + size - 1`, does not fit in `u64`.
+    AddressRangeOverflow {
+        /// The address that was passed.
+        address: u64,
+        /// [`DescriptorHeapLayout::size`].
+        size: u64,
+    },
 }
 
 impl fmt::Display for HeapLayoutError {
@@ -117,6 +137,21 @@ impl fmt::Display for HeapLayoutError {
                 "descriptor size {size} is not a multiple of its alignment {alignment}"
             ),
             Self::ZeroDescriptorSize => f.write_str("descriptor size is 0"),
+            Self::ReservedRangeOutsideHeap {
+                offset,
+                size,
+                heap_size,
+            } => write!(
+                f,
+                "reserved range of {size} bytes at offset {offset} does not fit in a \
+                 descriptor heap of {heap_size} bytes"
+            ),
+            Self::NullAddress => f.write_str("descriptor heap address is 0"),
+            Self::AddressRangeOverflow { address, size } => write!(
+                f,
+                "descriptor heap of {size} bytes at {address:#x} reaches past the last \
+                 device address"
+            ),
         }
     }
 }
@@ -246,18 +281,57 @@ impl DescriptorHeapLayout {
     /// `address`, covering [`DescriptorHeapLayout::size`] bytes and naming the reserved
     /// range.
     ///
+    /// It checks what the layout and `address` alone can tell. It cannot check that
+    /// `address` is the address of a buffer created with `DESCRIPTOR_HEAP_EXT` usage and
+    /// at least [`DescriptorHeapLayout::size`] bytes long, that `size` and
+    /// `reserved_size` are within the device limits, or that `reserved_offset` is a
+    /// multiple of the descriptor alignments, which the layout does not store.
+    /// [`ResourceHeapPlan::finish`] and [`SamplerHeapPlan::finish`] make layouts that
+    /// meet the last two.
+    ///
     /// # Errors
     ///
-    /// [`HeapLayoutError::Misaligned`] if `address` is not a multiple of
-    /// [`DescriptorHeapLayout::alignment`].
+    /// The first of these that applies:
+    ///
+    /// - [`HeapLayoutError::ReservedRangeOutsideHeap`] if `reserved_offset +
+    ///   reserved_size` is larger than `size`.
+    /// - [`HeapLayoutError::Misaligned`] if `address` is not a multiple of
+    ///   [`DescriptorHeapLayout::alignment`].
+    /// - [`HeapLayoutError::NullAddress`] if `address` is 0 and `size` is not.
+    /// - [`HeapLayoutError::AddressRangeOverflow`] if the address of the last byte of
+    ///   the heap, `address + size - 1`, does not fit in `u64`.
     pub fn bind_info(
         &self,
         address: vk::DeviceAddress,
     ) -> Result<vk::BindHeapInfoEXT<'static>, HeapLayoutError> {
+        if self
+            .reserved_offset
+            .checked_add(self.reserved_size)
+            .is_none_or(|end| end > self.size)
+        {
+            return Err(HeapLayoutError::ReservedRangeOutsideHeap {
+                offset: self.reserved_offset,
+                size: self.reserved_size,
+                heap_size: self.size,
+            });
+        }
         if !address.is_multiple_of(self.alignment.max(1)) {
             return Err(HeapLayoutError::Misaligned {
                 address,
                 alignment: self.alignment,
+            });
+        }
+        if address == 0 && self.size != 0 {
+            return Err(HeapLayoutError::NullAddress);
+        }
+        if self
+            .size
+            .checked_sub(1)
+            .is_some_and(|last| address.checked_add(last).is_none())
+        {
+            return Err(HeapLayoutError::AddressRangeOverflow {
+                address,
+                size: self.size,
             });
         }
         Ok(vk::BindHeapInfoEXT::default()
@@ -1012,10 +1086,13 @@ mod tests {
             };
             for address in addresses {
                 let context = format!("address {address:#x}, alignment {alignment}");
+                let inside_the_address_space =
+                    address != 0 && u128::from(address) + u128::from(layout.size) <= 1 << 64;
                 match layout.bind_info(address) {
                     Ok(bind) => {
                         accepted += 1;
                         assert!(address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert!(inside_the_address_space, "{context}");
                         assert_eq!(bind.heap_range.address, address, "{context}");
                         assert_eq!(bind.heap_range.size, layout.size, "{context}");
                         assert_eq!(
@@ -1024,18 +1101,94 @@ mod tests {
                         );
                         assert_eq!(bind.reserved_range_size, layout.reserved_size, "{context}");
                     }
-                    Err(error) => {
+                    Err(HeapLayoutError::Misaligned {
+                        address: rejected_address,
+                        alignment: required,
+                    }) => {
                         rejected += 1;
                         assert!(!address.is_multiple_of(alignment.max(1)), "{context}");
-                        assert_eq!(
-                            error,
-                            HeapLayoutError::Misaligned { address, alignment },
-                            "{context}"
-                        );
+                        assert_eq!((rejected_address, required), (address, alignment));
+                    }
+                    Err(error) => {
+                        assert!(address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert!(!inside_the_address_space, "{context}: {error:?}");
                     }
                 }
             }
         }
         assert!(accepted > 20 && rejected > 20);
+    }
+
+    #[test]
+    fn bind_info_rejects_exactly_the_ranges_the_device_must_not_be_given() {
+        let sizes = [0, 1, 0x100, 0x1000, 0x2_0000, 1 << 63, u64::MAX];
+        let reserved_offsets = [0, 0x100, 0x1000, 0x1_f000, 1 << 63, u64::MAX];
+        let reserved_sizes = [0, 0x100, 0x1000, u64::MAX];
+        let alignments = [0, 1, 0x100, 4096];
+        let addresses = [
+            0,
+            1,
+            0x100,
+            0x1000,
+            0x1_0000,
+            1 << 63,
+            u64::MAX - 0x1_ffff,
+            u64::MAX - 0xfff,
+            u64::MAX - 0xff,
+            u64::MAX,
+        ];
+        let mut outcomes = [0; 5];
+        for size in sizes {
+            for reserved_offset in reserved_offsets {
+                for reserved_size in reserved_sizes {
+                    for alignment in alignments {
+                        let layout = DescriptorHeapLayout {
+                            size,
+                            alignment,
+                            reserved_offset,
+                            reserved_size,
+                        };
+                        for address in addresses {
+                            let expected = if u128::from(reserved_offset)
+                                + u128::from(reserved_size)
+                                > u128::from(size)
+                            {
+                                outcomes[0] += 1;
+                                Err(HeapLayoutError::ReservedRangeOutsideHeap {
+                                    offset: reserved_offset,
+                                    size: reserved_size,
+                                    heap_size: size,
+                                })
+                            } else if u128::from(address) % u128::from(alignment.max(1)) != 0 {
+                                outcomes[1] += 1;
+                                Err(HeapLayoutError::Misaligned { address, alignment })
+                            } else if address == 0 && size != 0 {
+                                outcomes[2] += 1;
+                                Err(HeapLayoutError::NullAddress)
+                            } else if u128::from(address) + u128::from(size) > 1 << 64 {
+                                outcomes[3] += 1;
+                                Err(HeapLayoutError::AddressRangeOverflow { address, size })
+                            } else {
+                                outcomes[4] += 1;
+                                Ok((address, size, reserved_offset, reserved_size))
+                            };
+                            let bind = layout.bind_info(address).map(|bind| {
+                                (
+                                    bind.heap_range.address,
+                                    bind.heap_range.size,
+                                    bind.reserved_range_offset,
+                                    bind.reserved_range_size,
+                                )
+                            });
+                            assert_eq!(bind, expected, "{layout:?} at {address:#x}");
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            outcomes.iter().all(|&count| count > 50),
+            "every outcome is exercised: {outcomes:?}"
+        );
     }
 }
