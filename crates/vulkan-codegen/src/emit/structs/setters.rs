@@ -1,4 +1,5 @@
-use super::MethodNames;
+use super::{MethodNames, field_link};
+use crate::docs::Doc;
 use crate::emit::Borrow;
 use crate::model::{CType, Model, is_opaque};
 use crate::naming::{field_name, pointer_setter_name};
@@ -25,6 +26,30 @@ impl<'s> CountedArrays<'s> {
             }
         }
         Self { s, arrays_of_count }
+    }
+
+    fn shares_its_count(&self, count: &Field, m: &Field) -> bool {
+        self.arrays_of_count[count.name.as_str()]
+            .iter()
+            .any(|other| other.name != m.name)
+    }
+
+    fn slice_doc(&self, count: &Field, m: &Field, of: &str) -> Doc {
+        let doc = Doc::new().text(format!(
+            "Sets {} to the start of a slice of {of} and {} to its length.",
+            field_link(&m.name),
+            field_link(&count.name)
+        ));
+        if !self.shares_its_count(count, m) {
+            return doc;
+        }
+        doc.section(
+            "Panics",
+            format!(
+                "Panics if another array that shares `{}` is already set and the slice has a different length.",
+                count.name
+            ),
+        )
     }
 
     fn assert_same_length_as_the_others(&self, count: &Field, m: &Field) -> String {
@@ -60,6 +85,7 @@ fn count_member<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
 }
 
 struct Setter {
+    doc: Doc,
     name: String,
     value_ty: String,
     assignments: String,
@@ -68,12 +94,20 @@ struct Setter {
 impl Setter {
     fn render(&self) -> String {
         let Setter {
+            doc,
             name,
             value_ty,
             assignments,
         } = self;
-        format!("pub fn {name}(mut self, value: {value_ty}) -> Self {{ {assignments} self }}\n")
+        format!(
+            "{}pub fn {name}(mut self, value: {value_ty}) -> Self {{ {assignments} self }}\n",
+            doc.render()
+        )
     }
+}
+
+fn sets(m: &Field, how: &str) -> Doc {
+    Doc::new().text(format!("Sets {}{how}.", field_link(&m.name)))
 }
 
 pub(super) fn member_methods(
@@ -91,6 +125,7 @@ pub(super) fn member_methods(
     }
     let setter = match ty.depth() {
         0 if model.canonical(&m.ty) == "VkBool32" => Setter {
+            doc: sets(m, " to `VK_TRUE` or `VK_FALSE`"),
             name: names.claim(&field),
             value_ty: "bool".to_string(),
             assignments: format!("self.{field} = value as Bool32;"),
@@ -106,6 +141,7 @@ pub(super) fn member_methods(
 fn value_setter(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Setter {
     let field = field_name(&m.name);
     Setter {
+        doc: sets(m, ""),
         name: names.claim(&field),
         value_ty: model.member_ty(m, "'a"),
         assignments: format!("self.{field} = value;"),
@@ -126,16 +162,30 @@ fn fixed_array_reader(
     let plain = field.trim_start_matches("r#");
     if ty.base == "char" {
         let reader = names.claim(&format!("{plain}_as_c_str"));
+        let doc = Doc::new()
+            .text(format!(
+                "Reads {} as a C string that ends at its first NUL.",
+                field_link(&m.name)
+            ))
+            .section("Errors", "Returns an error if the array contains no NUL.")
+            .render();
         return format!(
-            "pub fn {reader}(&self) -> core::result::Result<&CStr, core::ffi::FromBytesUntilNulError> {{ c_str_from_chars(&self.{field}) }}\n"
+            "{doc}pub fn {reader}(&self) -> core::result::Result<&CStr, core::ffi::FromBytesUntilNulError> {{ c_str_from_chars(&self.{field}) }}\n"
         );
     }
     let Some(count) = count_member(s, m) else {
         return String::new();
     };
     let reader = names.claim(&format!("{plain}_as_slice"));
+    let doc = Doc::new()
+        .text(format!(
+            "The first {} elements of {}, or all of them if the count is larger than the array.",
+            field_link(&count.name),
+            field_link(&m.name)
+        ))
+        .render();
     format!(
-        "pub fn {reader}(&self) -> &[{}] {{ let len = (self.{} as usize).min(self.{field}.len()); &self.{field}[..len] }}\n",
+        "{doc}pub fn {reader}(&self) -> &[{}] {{ let len = (self.{} as usize).min(self.{field}.len()); &self.{field}[..len] }}\n",
         model.base_ty(&ty.base, "'a"),
         field_name(&count.name)
     )
@@ -162,12 +212,13 @@ fn pointer_setter(
     let borrow = Borrow::of_pointer(ty.outer_const());
     let as_ptr = borrow.slice_as_ptr();
     let pointee = model.base_ty(&ty.base, "'a");
-    let (value_ty, assignments) = if let Some(count) = count_member(s, m) {
-        let (element, cast) = match ty.base.as_str() {
-            "void" => ("u8", ".cast()"),
-            _ => (pointee.as_str(), ""),
+    let (doc, value_ty, assignments) = if let Some(count) = count_member(s, m) {
+        let (element, cast, of) = match ty.base.as_str() {
+            "void" => ("u8", ".cast()", "bytes"),
+            _ => (pointee.as_str(), "", "elements"),
         };
         (
+            counted.slice_doc(count, m, of),
             borrow.reference("'a", &format!("[{element}]")),
             format!(
                 "{}self.{} = value.len() as _; self.{field} = value.{as_ptr}(){cast};",
@@ -182,6 +233,10 @@ fn pointer_setter(
             s.name
         );
         (
+            Doc::new().text(format!(
+                "Sets {} to the start of a slice of SPIR-V words and [`code_size`](Self::code_size) to its size in bytes.",
+                field_link(&m.name)
+            )),
             "&'a [u32]".to_string(),
             format!(
                 "self.code_size = core::mem::size_of_val(value); self.{field} = value.as_ptr();"
@@ -189,23 +244,36 @@ fn pointer_setter(
         )
     } else if m.null_terminated && ty.base == "char" && borrow == Borrow::Shared {
         (
+            sets(m, " to a NUL-terminated string"),
             "&'a CStr".to_string(),
             format!("self.{field} = value.as_ptr();"),
         )
     } else if is_opaque(&ty.base) {
-        (model.member_ty(m, "'a"), format!("self.{field} = value;"))
-    } else if m.len.is_some() {
         (
+            sets(m, ""),
+            model.member_ty(m, "'a"),
+            format!("self.{field} = value;"),
+        )
+    } else if let Some(len) = m.len.as_deref() {
+        (
+            sets(
+                m,
+                &format!(
+                    " to the start of a slice. No member stores the length: the C API expects `{len}` elements"
+                ),
+            ),
             borrow.reference("'a", &format!("[{pointee}]")),
             format!("self.{field} = value.{as_ptr}();"),
         )
     } else {
         (
+            sets(m, " to point to `value`"),
             borrow.reference("'a", &pointee),
             format!("self.{field} = {}(value);", borrow.ptr_from_reference()),
         )
     };
     Setter {
+        doc,
         name: pointer_setter_method_name(m, names),
         value_ty,
         assignments,
@@ -224,17 +292,24 @@ fn pointer_array_setter(
     if ty.pointers != [true, true] || is_opaque(&ty.base) {
         return None;
     }
-    let element = if ty.base == "char" {
+    let (element, of) = if ty.base == "char" {
         assert!(
             m.null_terminated,
             "{}::{}: char** without NUL",
             s.name, m.name
         );
-        "CStrPtr<'a>".to_string()
+        (
+            "CStrPtr<'a>".to_string(),
+            "pointers to NUL-terminated strings",
+        )
     } else {
-        format!("&'a {}", model.base_ty(&ty.base, "'a"))
+        (
+            format!("&'a {}", model.base_ty(&ty.base, "'a")),
+            "references, passed as an array of pointers",
+        )
     };
     Some(Setter {
+        doc: counted.slice_doc(count, m, of),
         name: pointer_setter_method_name(m, names),
         value_ty: format!("&'a [{element}]"),
         assignments: format!(
@@ -252,7 +327,13 @@ pub(super) fn push_next(p_next: &Field) -> String {
         _ => "push_chain(next, self.p_next.cast()) as _",
     };
     format!(
-        "pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {{
+        "/// Puts `next` at the head of the `pNext` chain of this structure.
+        ///
+        /// `next` has to be a structure that the Vulkan registry lists as extending this one,
+        /// and it stays mutably borrowed for as long as this structure is used. Its own `pNext`
+        /// is overwritten with the previous head of the chain, so structures pushed earlier stay
+        /// in the chain behind it.
+        pub fn push_next<T: Extends<Self> + TaggedStructure>(mut self, next: &'a mut T) -> Self {{
             self.p_next = {head};
             self
         }}\n"

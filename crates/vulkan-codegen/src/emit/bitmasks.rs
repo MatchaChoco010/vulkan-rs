@@ -40,17 +40,26 @@ fn single_bit_type(model: &Model<'_>, b: &Bitmask) -> String {
     let name = type_name(&b.name);
     let flags = type_name(&b.flags_name);
     let variants = bitmask_variants(model, b);
+    let doc = model
+        .type_doc(&cfg, &b.name, "C enumeration of flag bits", "")
+        .text(format!(
+            "A value of this type is one of the constants. Combining values with `|` gives a [`{flags}`], which the API takes wherever several bits can be set."
+        ))
+        .render();
     let mut out = String::new();
     w!(
         out,
-        r#"{cfg}#[repr(transparent)]
+        r#"{doc}{cfg}#[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct {name}(pub {repr});
 
 {cfg}impl {name} {{
+    /// Wraps a value of the C enumeration. Values without a constant are allowed.
     pub const fn from_raw(value: {repr}) -> Self {{ Self(value) }}
+    /// The value as the C API passes it.
     pub const fn as_raw(self) -> {repr} {{ self.0 }}
-    {consts}{name_lookup}pub fn is_known(self) -> bool {{ self.name().is_some() }}
+    {consts}{name_lookup}/// Whether a constant of this type has this value.
+    pub fn is_known(self) -> bool {{ self.name().is_some() }}
 }}
 
 {debug}
@@ -82,7 +91,7 @@ pub struct {name}(pub {repr});
     fn bitand(self, rhs: {name}) -> Self {{ Self(self.0 & rhs.0) }}
 }}
 "#,
-        consts = associated_consts(&variants),
+        consts = associated_consts(model, &b.name, &cfg, &variants),
         name_lookup = name_lookup(&variants),
         debug = debug_impl(&cfg, &name, repr),
     );
@@ -97,22 +106,42 @@ fn flags_type(model: &Model<'_>, f: &Flags, bits: Option<&Bitmask>) -> String {
     let variants = bits
         .map(|bits| bitmask_variants(model, bits))
         .unwrap_or_default();
+    let bits_doc = match bits {
+        Some(bits) => format!(
+            "The bits are the constants of {}, which this type has as well. Values combine with `|`, `&`, `^` and `!`.",
+            model.link(&cfg, &bits.name)
+        ),
+        None => "The registry defines no bits for this type.".to_string(),
+    };
+    let doc = model
+        .type_doc(&cfg, &f.name, "C bitmask type", "")
+        .text(bits_doc)
+        .render();
+    let bits_owner = bits.map_or(f.name.as_str(), |bits| bits.name.as_str());
     let mut out = String::new();
     w!(
         out,
-        r#"{cfg}#[repr(transparent)]
+        r#"{doc}{cfg}#[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct {name}(pub {repr});
 
 {cfg}impl {name} {{
+    /// The value with no bit set.
     pub const fn empty() -> Self {{ Self(0) }}
+    /// Wraps a value of the C bitmask. Bits without a constant are allowed.
     pub const fn from_raw(value: {repr}) -> Self {{ Self(value) }}
+    /// The value as the C API passes it.
     pub const fn as_raw(self) -> {repr} {{ self.0 }}
+    /// Whether no bit is set.
     pub const fn is_empty(self) -> bool {{ self.0 == 0 }}
+    /// Whether every bit of `other` is set in `self`.
     pub const fn contains(self, other: Self) -> bool {{ (self.0 & other.0) == other.0 }}
+    /// Whether at least one bit of `other` is set in `self`.
     pub const fn intersects(self, other: Self) -> bool {{ (self.0 & other.0) != 0 }}
+    /// The bits that are set in `self` or in `other`.
     pub const fn union(self, other: Self) -> Self {{ Self(self.0 | other.0) }}
-    {consts}{name_lookup}pub const fn all() -> Self {{
+    {consts}{name_lookup}/// Every bit that a constant of this type sets.
+    pub const fn all() -> Self {{
         let variants = Self::variants();
         let mut bits = 0;
         let mut index = 0;
@@ -122,11 +151,12 @@ pub struct {name}(pub {repr});
         }}
         Self(bits)
     }}
+    /// Whether every bit that is set is a bit of [`Self::all`].
     pub const fn is_known(self) -> bool {{ (self.0 & !Self::all().0) == 0 }}
 }}
 
 {debug}"#,
-        consts = associated_consts(&variants),
+        consts = associated_consts(model, bits_owner, &cfg, &variants),
         name_lookup = name_lookup(&variants),
         debug = debug_impl(&cfg, &name, repr),
     );

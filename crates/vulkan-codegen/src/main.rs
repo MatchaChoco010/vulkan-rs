@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use vulkan_codegen::{GENERATED_SRC, GENERATED_TESTS, GeneratedFile, generate, required_features};
-use vulkan_registry::Registry;
+use vulkan_registry::{Docs, Registry};
 
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();
@@ -17,7 +17,7 @@ fn main() {
     let ir = Registry::get();
     assert_manifest_declares_features(&root, ir);
 
-    let files = generate(ir);
+    let files = generate(ir, Docs::get());
     remove_files_no_longer_generated(&root, &files);
     for GeneratedFile { path, contents } in &files {
         let path = root.join(path);

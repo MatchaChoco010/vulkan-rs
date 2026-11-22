@@ -9,11 +9,18 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
     commands.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
 
     let mut out = header(&[]);
-    w!(out, "pub mod command {{\n    use crate::vk::*;\n");
+    w!(
+        out,
+        "/// One [`CommandInfo`] constant for each command of the registry, named after the method that calls the command.\npub mod command {{\n    use crate::vk::*;\n"
+    );
     for c in &commands {
         out.push_str(&info(model, c));
     }
     w!(out, "}}\n");
+    w!(
+        out,
+        "/// Every command of the registry, sorted by C name as bytes. [`CommandInfo::get`] searches it."
+    );
     w!(out, "pub const COMMANDS: &[CommandInfo] = &[");
     for c in &commands {
         w!(out, "    command::{},", const_name(c));
@@ -41,7 +48,8 @@ fn info(model: &Model<'_>, c: &Command) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "pub const {const_name}: CommandInfo = CommandInfo {{
+        "/// What the registry states about the C command {reference}.
+        pub const {const_name}: CommandInfo = CommandInfo {{
             name: \"{name}\",
             level: CommandLevel::{level},
             success_codes: &[{success_codes}],
@@ -49,6 +57,7 @@ fn info(model: &Model<'_>, c: &Command) -> String {
             version: {version},
             extensions: &[{extensions}],
         }};\n",
+        reference = model.reference(&c.name),
         const_name = const_name(c),
         name = c.name,
         level = model.dispatch(c).level(),

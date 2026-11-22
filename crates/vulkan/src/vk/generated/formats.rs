@@ -6,6 +6,8 @@
 use crate::vk::*;
 
 impl Format {
+    /// What the registry states about the layout of this format, or `None` for
+    /// `VK_FORMAT_UNDEFINED` and for values that the registry does not define.
     pub const fn info(self) -> Option<&'static FormatInfo> {
         match self.0 {
             1000470000 => Some(&FormatInfo {

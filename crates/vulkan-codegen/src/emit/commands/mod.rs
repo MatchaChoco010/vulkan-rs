@@ -4,8 +4,10 @@ mod shape;
 mod special;
 mod wrapper;
 
+use super::func_pointers::parameter_item;
 use super::{arrow, header, w};
-use crate::model::{CType, Dispatch, Model};
+use crate::docs::{Block, Doc};
+use crate::model::{CType, Cfg, Dispatch, Model};
 use crate::naming::{command_name, field_name, pointer_setter_name};
 use vulkan_registry::{Command, Field};
 
@@ -50,6 +52,54 @@ fn raw_name(c: &Command) -> String {
     format!("{}_raw", command_name(&c.name).trim_start_matches("r#"))
 }
 
+fn called(model: &Model<'_>, cfg: &Cfg, c: &Command) -> String {
+    let alias = match &c.alias {
+        Some(alias) => format!(", an alias of {},", model.link(cfg, alias)),
+        None => String::new(),
+    };
+    format!("the C command {}{alias}", model.reference(&c.name))
+}
+
+fn provided(model: &Model<'_>, cfg: &Cfg, c: &Command) -> String {
+    format!(
+        "The command is provided by {}.",
+        model.provenance(cfg, c.version.as_deref(), &c.extensions, None)
+    )
+}
+
+fn not_loaded(c: &Command) -> String {
+    format!(
+        "Panics if `{}` is not loaded: the loader returned no pointer for it, for example because the version or the extension that provides it is not enabled.",
+        c.name
+    )
+}
+
+fn raw_doc(model: &Model<'_>, cfg: &Cfg, c: &Command, params: &[Field]) -> Doc {
+    let parameters = params
+        .iter()
+        .filter_map(|p| model.described(cfg, &c.name, &p.name))
+        .flat_map(parameter_item)
+        .collect::<Vec<_>>();
+    let mut doc = Doc::new()
+        .text(model.summary(cfg, &c.name).unwrap_or_default())
+        .text(format!(
+            "Calls {} with the arguments as they are. {}",
+            called(model, cfg, c),
+            provided(model, cfg, c)
+        ));
+    if !parameters.is_empty() {
+        doc = doc.blocks([Block::Heading("Parameters"), Block::List(parameters)]);
+    }
+    doc.section(
+        "Safety",
+        format!(
+            "The call has to satisfy the valid usage that the Vulkan specification states for {}.",
+            model.reference(&c.name)
+        ),
+    )
+    .section("Panics", not_loaded(c))
+}
+
 fn raw_command(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
     let params = dispatch.explicit_params(c);
     let signature = params
@@ -64,11 +114,12 @@ fn raw_command(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
         .chain(params.iter().map(|p| field_name(&p.name)))
         .collect::<Vec<_>>()
         .join(", ");
+    let cfg = model.cfg(c.protect.as_deref());
     format!(
-        "{cfg}pub unsafe fn {raw_name}(&self{signature}){arrow} {{
+        "{doc}{cfg}pub unsafe fn {raw_name}(&self{signature}){arrow} {{
             unsafe {{ (self.fp().{pointer}.expect(\"{c_name} is not loaded\"))({arguments}) }}
         }}\n",
-        cfg = model.cfg(c.protect.as_deref()),
+        doc = raw_doc(model, &cfg, c, params).render(),
         raw_name = raw_name(c),
         arrow = arrow(&model.return_ty(&c.return_ty)),
         pointer = command_name(&c.name),

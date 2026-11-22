@@ -14,6 +14,10 @@ impl Cfg {
         self.features.is_empty()
     }
 
+    pub(crate) fn is_implied_by(&self, other: &Cfg) -> bool {
+        self.features.is_subset(&other.features)
+    }
+
     pub(crate) fn and(mut self, other: Cfg) -> Cfg {
         self.features.extend(other.features);
         self
