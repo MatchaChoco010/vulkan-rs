@@ -7,7 +7,7 @@ use vulkan::{Device, vk};
 use crate::allocation::{Allocation, AllocationResourceClass, AllocationScheme};
 use crate::error::AllocationError;
 use crate::report::{MemoryBlockSnapshot, MemoryRegionState, MemoryTypeSnapshot, MemoryTypeStats};
-use crate::suballocator::TlsfSuballocator;
+use crate::suballocator::{Suballocation, TlsfSuballocator};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) enum DedicatedResource {
@@ -37,6 +37,49 @@ impl BlockRequest {
     pub(crate) fn needs_own_block(self) -> bool {
         self.dedicated != DedicatedResource::None || !self.export_handle_types.is_empty()
     }
+
+    pub(crate) fn block_size(self, allocation_size: u64, shared_block_size: u64) -> u64 {
+        if self.needs_own_block() {
+            allocation_size
+        } else {
+            shared_block_size.max(allocation_size)
+        }
+    }
+
+    unsafe fn allocate_memory(
+        self,
+        device: &Device,
+        memory_type_index: u32,
+        size: u64,
+    ) -> Result<vk::DeviceMemory, AllocationError> {
+        let mut flags_info =
+            vk::MemoryAllocateFlagsInfo::default().flags(self.memory_allocate_flags);
+        let mut dedicated_info = match self.dedicated {
+            DedicatedResource::None => None,
+            DedicatedResource::Buffer(buffer) => {
+                Some(vk::MemoryDedicatedAllocateInfo::default().buffer(buffer))
+            }
+            DedicatedResource::Image(image) => {
+                Some(vk::MemoryDedicatedAllocateInfo::default().image(image))
+            }
+        };
+        let mut export_info =
+            vk::ExportMemoryAllocateInfo::default().handle_types(self.export_handle_types);
+
+        let mut allocate_info = vk::MemoryAllocateInfo::default()
+            .allocation_size(size)
+            .memory_type_index(memory_type_index);
+        if !self.memory_allocate_flags.is_empty() {
+            allocate_info = allocate_info.push_next(&mut flags_info);
+        }
+        if let Some(dedicated_info) = dedicated_info.as_mut() {
+            allocate_info = allocate_info.push_next(dedicated_info);
+        }
+        if !self.export_handle_types.is_empty() {
+            allocate_info = allocate_info.push_next(&mut export_info);
+        }
+        Ok(unsafe { device.allocate_memory(&allocate_info, None) }?)
+    }
 }
 
 pub(crate) struct MemoryTypeAllocator {
@@ -45,6 +88,50 @@ pub(crate) struct MemoryTypeAllocator {
 }
 
 impl MemoryTypeAllocator {
+    pub(crate) fn allocate_from_existing_blocks(
+        &mut self,
+        requirements: vk::MemoryRequirements,
+        resource_class: AllocationResourceClass,
+        memory_allocate_flags: vk::MemoryAllocateFlags,
+    ) -> Option<Allocation> {
+        let memory_type_index = self.memory_type_index;
+        self.blocks
+            .iter_mut()
+            .enumerate()
+            .find_map(|(block_index, slot)| {
+                let block = slot.as_mut().filter(|block| {
+                    block.is_shareable_with(resource_class, memory_allocate_flags)
+                })?;
+                let suballocation = block.suballocate(requirements.size, requirements.alignment)?;
+                Some(block.allocation(memory_type_index, block_index, suballocation))
+            })
+    }
+
+    pub(crate) fn insert_block(
+        &mut self,
+        block: MemoryBlock,
+        suballocation: Suballocation,
+    ) -> Allocation {
+        let block_index = self.vacant_slot_index();
+        let allocation = block.allocation(self.memory_type_index, block_index, suballocation);
+        self.blocks[block_index] = Some(block);
+        allocation
+    }
+
+    fn vacant_slot_index(&mut self) -> usize {
+        if let Some(index) = self.blocks.iter().position(Option::is_none) {
+            return index;
+        }
+        self.blocks.push(None);
+        self.blocks.len() - 1
+    }
+
+    pub(crate) unsafe fn free_all_blocks(&mut self, device: &Device) {
+        for block in self.blocks.drain(..).flatten() {
+            unsafe { block.free_memory(device) };
+        }
+    }
+
     pub(crate) fn block(&self, allocation: &Allocation) -> Result<&MemoryBlock, AllocationError> {
         let block = self
             .blocks
@@ -81,7 +168,7 @@ impl MemoryTypeAllocator {
                 .get_mut(allocation.block_index)
                 .and_then(Option::take)
         {
-            unsafe { device.free_memory(block.memory, None) };
+            unsafe { block.free_memory(device) };
         }
         Ok(())
     }
@@ -153,6 +240,58 @@ impl MemoryBlock {
             mapped_allocations: HashMap::new(),
             names: HashMap::new(),
             persistent: HashSet::new(),
+        }
+    }
+
+    pub(crate) unsafe fn allocate(
+        device: &Device,
+        memory_type_index: u32,
+        size: u64,
+        resource_class: AllocationResourceClass,
+        request: BlockRequest,
+    ) -> Result<Self, AllocationError> {
+        let memory = unsafe { request.allocate_memory(device, memory_type_index, size) }?;
+        Ok(Self::new(
+            memory,
+            size,
+            resource_class,
+            request.needs_own_block(),
+            request.memory_allocate_flags,
+        ))
+    }
+
+    pub(crate) unsafe fn free_memory(self, device: &Device) {
+        unsafe { device.free_memory(self.memory, None) };
+    }
+
+    fn is_shareable_with(
+        &self,
+        resource_class: AllocationResourceClass,
+        memory_allocate_flags: vk::MemoryAllocateFlags,
+    ) -> bool {
+        !self.dedicated
+            && self.resource_class == resource_class
+            && self.memory_allocate_flags == memory_allocate_flags
+    }
+
+    pub(crate) fn suballocate(&mut self, size: u64, alignment: u64) -> Option<Suballocation> {
+        self.suballocator.allocate(size, alignment)
+    }
+
+    fn allocation(
+        &self,
+        memory_type_index: u32,
+        block_index: usize,
+        suballocation: Suballocation,
+    ) -> Allocation {
+        Allocation {
+            memory_type_index,
+            block_index,
+            allocation_id: suballocation.id,
+            resource_class: self.resource_class,
+            memory: self.memory,
+            offset: suballocation.offset,
+            size: suballocation.size,
         }
     }
 

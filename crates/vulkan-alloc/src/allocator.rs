@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 use vulkan::{Device, vk};
 
 use crate::allocation::{Allocation, AllocationCreateDesc, AllocationResourceClass};
-use crate::block::{BlockRequest, DedicatedResource, MemoryBlock, MemoryTypeAllocator};
+use crate::block::{BlockRequest, MemoryBlock, MemoryTypeAllocator};
 use crate::error::AllocationError;
 use crate::mapping::{MappedAllocation, mapped_range_bounds};
 use crate::memory_type::{effective_alignment, find_memory_type_index};
@@ -226,9 +226,7 @@ impl Allocator {
     pub unsafe fn free_all(&mut self) -> usize {
         let live = self.live_allocation_count();
         for memory_type in &mut self.memory_types {
-            for block in memory_type.blocks.drain(..).flatten() {
-                unsafe { self.device.free_memory(block.memory, None) };
-            }
+            unsafe { memory_type.free_all_blocks(&self.device) };
         }
         live
     }
@@ -243,119 +241,36 @@ impl Allocator {
         if requirements.size == 0 {
             return Err(AllocationError::OutOfMemory);
         }
-        if !request.needs_own_block() {
-            let memory_type = self
-                .memory_types
-                .get_mut(memory_type_index as usize)
-                .ok_or(AllocationError::NoCompatibleMemoryType)?;
-            for (block_index, block) in memory_type
-                .blocks
-                .iter_mut()
-                .enumerate()
-                .filter_map(|(index, block)| block.as_mut().map(|block| (index, block)))
-            {
-                if block.resource_class != resource_class
-                    || block.dedicated
-                    || block.memory_allocate_flags != request.memory_allocate_flags
-                {
-                    continue;
-                }
-                if let Some(suballocation) = block
-                    .suballocator
-                    .allocate(requirements.size, requirements.alignment.max(1))
-                {
-                    return Ok(Allocation {
-                        memory_type_index,
-                        block_index,
-                        allocation_id: suballocation.id,
-                        resource_class,
-                        memory: block.memory,
-                        offset: suballocation.offset,
-                        size: suballocation.size,
-                    });
-                }
-            }
-        }
-
-        let block_size = if request.needs_own_block() {
-            requirements.size
-        } else {
-            self.block_size.max(requirements.size)
-        };
-        let memory =
-            unsafe { self.allocate_device_memory(block_size, memory_type_index, request) }?;
-        let mut block = MemoryBlock::new(
-            memory,
-            block_size,
-            resource_class,
-            request.needs_own_block(),
-            request.memory_allocate_flags,
-        );
-        let Some(suballocation) = block
-            .suballocator
-            .allocate(requirements.size, requirements.alignment.max(1))
-        else {
-            unsafe {
-                self.device.free_memory(memory, None);
-            }
-            return Err(AllocationError::OutOfMemory);
-        };
         let memory_type = self
             .memory_types
             .get_mut(memory_type_index as usize)
             .ok_or(AllocationError::NoCompatibleMemoryType)?;
-        let block_index = if let Some(index) = memory_type.blocks.iter().position(Option::is_none) {
-            memory_type.blocks[index] = Some(block);
-            index
-        } else {
-            let index = memory_type.blocks.len();
-            memory_type.blocks.push(Some(block));
-            index
-        };
-        Ok(Allocation {
-            memory_type_index,
-            block_index,
-            allocation_id: suballocation.id,
-            resource_class,
-            memory,
-            offset: suballocation.offset,
-            size: suballocation.size,
-        })
-    }
+        if !request.needs_own_block()
+            && let Some(allocation) = memory_type.allocate_from_existing_blocks(
+                requirements,
+                resource_class,
+                request.memory_allocate_flags,
+            )
+        {
+            return Ok(allocation);
+        }
 
-    unsafe fn allocate_device_memory(
-        &self,
-        block_size: u64,
-        memory_type_index: u32,
-        request: BlockRequest,
-    ) -> Result<vk::DeviceMemory, AllocationError> {
-        let mut flags_info =
-            vk::MemoryAllocateFlagsInfo::default().flags(request.memory_allocate_flags);
-        let mut dedicated_info = match request.dedicated {
-            DedicatedResource::None => None,
-            DedicatedResource::Buffer(buffer) => {
-                Some(vk::MemoryDedicatedAllocateInfo::default().buffer(buffer))
-            }
-            DedicatedResource::Image(image) => {
-                Some(vk::MemoryDedicatedAllocateInfo::default().image(image))
-            }
+        let block_size = request.block_size(requirements.size, self.block_size);
+        let mut block = unsafe {
+            MemoryBlock::allocate(
+                &self.device,
+                memory_type_index,
+                block_size,
+                resource_class,
+                request,
+            )
+        }?;
+        let Some(suballocation) = block.suballocate(requirements.size, requirements.alignment)
+        else {
+            unsafe { block.free_memory(&self.device) };
+            return Err(AllocationError::OutOfMemory);
         };
-        let mut export_info =
-            vk::ExportMemoryAllocateInfo::default().handle_types(request.export_handle_types);
-
-        let mut allocate_info = vk::MemoryAllocateInfo::default()
-            .allocation_size(block_size)
-            .memory_type_index(memory_type_index);
-        if !request.memory_allocate_flags.is_empty() {
-            allocate_info = allocate_info.push_next(&mut flags_info);
-        }
-        if let Some(dedicated_info) = dedicated_info.as_mut() {
-            allocate_info = allocate_info.push_next(dedicated_info);
-        }
-        if !request.export_handle_types.is_empty() {
-            allocate_info = allocate_info.push_next(&mut export_info);
-        }
-        Ok(unsafe { self.device.allocate_memory(&allocate_info, None) }?)
+        Ok(memory_type.insert_block(block, suballocation))
     }
 
     unsafe fn map_host_visible(
