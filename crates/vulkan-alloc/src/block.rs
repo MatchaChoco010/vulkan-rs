@@ -6,7 +6,10 @@ use vulkan::{Device, vk};
 
 use crate::allocation::{Allocation, AllocationResourceClass, AllocationScheme};
 use crate::error::AllocationError;
-use crate::report::{MemoryBlockSnapshot, MemoryRegionState, MemoryTypeSnapshot, MemoryTypeStats};
+use crate::mapping::mapped_range_bounds;
+use crate::report::{
+    LiveAllocation, MemoryBlockSnapshot, MemoryRegionState, MemoryTypeSnapshot, MemoryTypeStats,
+};
 use crate::suballocator::{Suballocation, TlsfSuballocator};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -83,11 +86,22 @@ impl BlockRequest {
 }
 
 pub(crate) struct MemoryTypeAllocator {
-    pub(crate) memory_type_index: u32,
-    pub(crate) blocks: Vec<Option<MemoryBlock>>,
+    memory_type_index: u32,
+    blocks: Vec<Option<MemoryBlock>>,
 }
 
 impl MemoryTypeAllocator {
+    pub(crate) fn new(memory_type_index: u32) -> Self {
+        Self {
+            memory_type_index,
+            blocks: Vec::new(),
+        }
+    }
+
+    pub(crate) fn memory_type_index(&self) -> u32 {
+        self.memory_type_index
+    }
+
     pub(crate) fn allocate_from_existing_blocks(
         &mut self,
         requirements: vk::MemoryRequirements,
@@ -124,12 +138,6 @@ impl MemoryTypeAllocator {
         }
         self.blocks.push(None);
         self.blocks.len() - 1
-    }
-
-    pub(crate) unsafe fn free_all_blocks(&mut self, device: &Device) {
-        for block in self.blocks.drain(..).flatten() {
-            unsafe { block.free_memory(device) };
-        }
     }
 
     pub(crate) fn block(&self, allocation: &Allocation) -> Result<&MemoryBlock, AllocationError> {
@@ -173,6 +181,12 @@ impl MemoryTypeAllocator {
         Ok(())
     }
 
+    pub(crate) unsafe fn free_all_blocks(&mut self, device: &Device) {
+        for block in self.blocks.drain(..).flatten() {
+            unsafe { block.free_memory(device) };
+        }
+    }
+
     pub(crate) fn stats(&self) -> MemoryTypeStats {
         let mut stats = MemoryTypeStats {
             memory_type_index: self.memory_type_index,
@@ -206,19 +220,26 @@ impl MemoryTypeAllocator {
                 .collect(),
         }
     }
+
+    pub(crate) fn live_allocations(&self) -> impl Iterator<Item = LiveAllocation> + '_ {
+        self.blocks
+            .iter()
+            .flatten()
+            .flat_map(|block| block.live_allocations(self.memory_type_index))
+    }
 }
 
 pub(crate) struct MemoryBlock {
-    pub(crate) memory: vk::DeviceMemory,
-    pub(crate) size: u64,
-    pub(crate) resource_class: AllocationResourceClass,
-    pub(crate) dedicated: bool,
-    pub(crate) memory_allocate_flags: vk::MemoryAllocateFlags,
-    pub(crate) suballocator: TlsfSuballocator,
-    pub(crate) mapped_ptr: Option<NonNull<c_void>>,
-    pub(crate) mapped_allocations: HashMap<u64, usize>,
-    pub(crate) names: HashMap<u64, Box<str>>,
-    pub(crate) persistent: HashSet<u64>,
+    memory: vk::DeviceMemory,
+    size: u64,
+    resource_class: AllocationResourceClass,
+    dedicated: bool,
+    memory_allocate_flags: vk::MemoryAllocateFlags,
+    suballocator: TlsfSuballocator,
+    mapped_ptr: Option<NonNull<c_void>>,
+    mapped_allocations: HashMap<u64, usize>,
+    names: HashMap<u64, Box<str>>,
+    persistent: HashSet<u64>,
 }
 
 impl MemoryBlock {
@@ -295,66 +316,16 @@ impl MemoryBlock {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.suballocator.is_wholly_free(self.size)
-    }
-
-    fn snapshot(&self, block_index: usize) -> MemoryBlockSnapshot {
-        let regions = self.suballocator.region_snapshots(&self.mapped_allocations);
-        let mut snapshot = MemoryBlockSnapshot {
-            block_index,
-            resource_class: self.resource_class,
-            dedicated: self.dedicated,
-            memory: self.memory,
-            size: self.size,
-            free_bytes: 0,
-            allocated_bytes: 0,
-            largest_free_region_bytes: 0,
-            free_region_count: 0,
-            allocated_region_count: 0,
-            regions,
+    fn validate_allocation(&self, allocation: &Allocation) -> Result<(), AllocationError> {
+        let expected = Suballocation {
+            id: allocation.allocation_id,
+            offset: allocation.offset,
+            size: allocation.size,
         };
-        for region in &snapshot.regions {
-            match region.state {
-                MemoryRegionState::Free => {
-                    snapshot.free_bytes += region.size;
-                    snapshot.free_region_count += 1;
-                    snapshot.largest_free_region_bytes =
-                        snapshot.largest_free_region_bytes.max(region.size);
-                }
-                MemoryRegionState::Allocated { .. } => {
-                    snapshot.allocated_bytes += region.size;
-                    snapshot.allocated_region_count += 1;
-                }
-            }
-        }
-        snapshot
-    }
-
-    pub(crate) fn is_allocation_mapped(&self, allocation_id: u64) -> bool {
-        self.mapped_allocations.contains_key(&allocation_id)
-    }
-
-    pub(crate) fn validate_allocation(
-        &self,
-        allocation: &Allocation,
-    ) -> Result<(), AllocationError> {
-        if self.memory != allocation.memory || self.resource_class != allocation.resource_class {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        if self
-            .suballocator
-            .allocation_offset(allocation.allocation_id)
-            != Some(allocation.offset)
+        if self.memory != allocation.memory
+            || self.resource_class != allocation.resource_class
+            || self.suballocator.allocation(allocation.allocation_id) != Some(expected)
         {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        let block = self
-            .suballocator
-            .blocks
-            .get(&allocation.offset)
-            .ok_or(AllocationError::InvalidAllocation)?;
-        if block.free || block.size != allocation.size {
             return Err(AllocationError::InvalidAllocation);
         }
         let end = allocation
@@ -365,6 +336,14 @@ impl MemoryBlock {
             return Err(AllocationError::InvalidAllocation);
         }
         Ok(())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.suballocator.is_wholly_free(self.size)
+    }
+
+    pub(crate) fn set_name(&mut self, allocation_id: u64, name: &str) {
+        self.names.insert(allocation_id, name.into());
     }
 
     pub(crate) unsafe fn map(
@@ -448,13 +427,17 @@ impl MemoryBlock {
         Ok(())
     }
 
-    pub(crate) fn mark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
+    fn is_allocation_mapped(&self, allocation_id: u64) -> bool {
+        self.mapped_allocations.contains_key(&allocation_id)
+    }
+
+    fn mark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
         let count = self.mapped_allocations.entry(allocation_id).or_default();
         *count = count.checked_add(1).ok_or(AllocationError::OutOfMemory)?;
         Ok(())
     }
 
-    pub(crate) fn unmark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
+    fn unmark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
         let count = self
             .mapped_allocations
             .get_mut(&allocation_id)
@@ -464,6 +447,78 @@ impl MemoryBlock {
             self.mapped_allocations.remove(&allocation_id);
         }
         Ok(())
+    }
+
+    pub(crate) fn mapped_range(
+        &self,
+        allocation: &Allocation,
+        non_coherent_atom_size: u64,
+    ) -> Result<vk::MappedMemoryRange<'static>, AllocationError> {
+        if !self.is_allocation_mapped(allocation.allocation_id) {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        let (offset, size) = mapped_range_bounds(
+            allocation.offset,
+            allocation.size,
+            self.size,
+            non_coherent_atom_size,
+        )
+        .ok_or(AllocationError::InvalidAllocation)?;
+        Ok(vk::MappedMemoryRange::default()
+            .memory(self.memory)
+            .offset(offset)
+            .size(size))
+    }
+
+    fn snapshot(&self, block_index: usize) -> MemoryBlockSnapshot {
+        let regions = self.suballocator.region_snapshots(&self.mapped_allocations);
+        let mut snapshot = MemoryBlockSnapshot {
+            block_index,
+            resource_class: self.resource_class,
+            dedicated: self.dedicated,
+            memory: self.memory,
+            size: self.size,
+            free_bytes: 0,
+            allocated_bytes: 0,
+            largest_free_region_bytes: 0,
+            free_region_count: 0,
+            allocated_region_count: 0,
+            regions,
+        };
+        for region in &snapshot.regions {
+            match region.state {
+                MemoryRegionState::Free => {
+                    snapshot.free_bytes += region.size;
+                    snapshot.free_region_count += 1;
+                    snapshot.largest_free_region_bytes =
+                        snapshot.largest_free_region_bytes.max(region.size);
+                }
+                MemoryRegionState::Allocated { .. } => {
+                    snapshot.allocated_bytes += region.size;
+                    snapshot.allocated_region_count += 1;
+                }
+            }
+        }
+        snapshot
+    }
+
+    fn live_allocations(
+        &self,
+        memory_type_index: u32,
+    ) -> impl Iterator<Item = LiveAllocation> + '_ {
+        self.suballocator
+            .region_snapshots(&self.mapped_allocations)
+            .into_iter()
+            .filter_map(move |region| match region.state {
+                MemoryRegionState::Allocated { allocation_id, .. } => Some(LiveAllocation {
+                    name: self.names.get(&allocation_id).map(|name| name.to_string()),
+                    memory: self.memory,
+                    offset: region.offset,
+                    size: region.size,
+                    memory_type_index,
+                }),
+                MemoryRegionState::Free => None,
+            })
     }
 }
 
@@ -561,7 +616,7 @@ mod tests {
 
     #[test]
     fn memory_type_stats_aggregate_blocks() {
-        let memory_type = MemoryTypeAllocator {
+        let mut memory_type = MemoryTypeAllocator {
             memory_type_index: 7,
             blocks: vec![
                 Some(MemoryBlock::new(
@@ -580,7 +635,6 @@ mod tests {
                 )),
             ],
         };
-        let mut memory_type = memory_type;
         let a = memory_type.blocks[0]
             .as_mut()
             .unwrap()

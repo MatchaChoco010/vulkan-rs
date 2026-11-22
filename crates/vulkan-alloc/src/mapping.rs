@@ -10,12 +10,24 @@ use crate::error::AllocationError;
 
 #[must_use = "dropping the guard unmaps the allocation"]
 pub struct MappedAllocation<'a> {
-    pub(crate) allocator: &'a mut Allocator,
-    pub(crate) allocation: &'a Allocation,
-    pub(crate) ptr: NonNull<u8>,
+    allocator: &'a mut Allocator,
+    allocation: &'a Allocation,
+    ptr: NonNull<u8>,
 }
 
-impl MappedAllocation<'_> {
+impl<'a> MappedAllocation<'a> {
+    pub(crate) fn new(
+        allocator: &'a mut Allocator,
+        allocation: &'a Allocation,
+        ptr: NonNull<u8>,
+    ) -> Self {
+        Self {
+            allocator,
+            allocation,
+            ptr,
+        }
+    }
+
     pub fn as_ptr(&self) -> *mut c_void {
         self.ptr.as_ptr().cast()
     }

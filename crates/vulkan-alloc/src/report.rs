@@ -106,7 +106,7 @@ pub(crate) fn snapshot_from_memory_types(
             continue;
         }
         let property_flags =
-            memory_properties.memory_types[memory_type.memory_type_index as usize].property_flags;
+            memory_properties.memory_types[memory_type.memory_type_index() as usize].property_flags;
         snapshots.push(memory_type.snapshot(property_flags, stats));
     }
     AllocatorSnapshot {
@@ -120,47 +120,44 @@ mod tests {
     use super::*;
     use crate::block::MemoryBlock;
     use crate::memory_type::tests::memory_properties;
+    use crate::suballocator::Suballocation;
+
+    fn memory_type_holding(
+        memory_type_index: u32,
+        mut block: MemoryBlock,
+        allocation_size: u64,
+    ) -> (MemoryTypeAllocator, Suballocation) {
+        let suballocation = block.suballocate(allocation_size, 1).unwrap();
+        let mut memory_type = MemoryTypeAllocator::new(memory_type_index);
+        memory_type.insert_block(block, suballocation);
+        (memory_type, suballocation)
+    }
 
     #[test]
     fn allocator_stats_aggregate_non_empty_memory_types() {
-        let mut memory_types = vec![
-            MemoryTypeAllocator {
-                memory_type_index: 0,
-                blocks: Vec::new(),
-            },
-            MemoryTypeAllocator {
-                memory_type_index: 1,
-                blocks: vec![Some(MemoryBlock::new(
-                    vk::DeviceMemory(21),
-                    1024,
-                    AllocationResourceClass::Linear,
-                    false,
-                    vk::MemoryAllocateFlags::empty(),
-                ))],
-            },
-            MemoryTypeAllocator {
-                memory_type_index: 2,
-                blocks: vec![Some(MemoryBlock::new(
-                    vk::DeviceMemory(22),
-                    2048,
-                    AllocationResourceClass::Optimal,
-                    false,
-                    vk::MemoryAllocateFlags::empty(),
-                ))],
-            },
-        ];
-        let a = memory_types[1].blocks[0]
-            .as_mut()
-            .unwrap()
-            .suballocator
-            .allocate(128, 1)
-            .unwrap();
-        let b = memory_types[2].blocks[0]
-            .as_mut()
-            .unwrap()
-            .suballocator
-            .allocate(256, 1)
-            .unwrap();
+        let (linear, a) = memory_type_holding(
+            1,
+            MemoryBlock::new(
+                vk::DeviceMemory(21),
+                1024,
+                AllocationResourceClass::Linear,
+                false,
+                vk::MemoryAllocateFlags::empty(),
+            ),
+            128,
+        );
+        let (optimal, b) = memory_type_holding(
+            2,
+            MemoryBlock::new(
+                vk::DeviceMemory(22),
+                2048,
+                AllocationResourceClass::Optimal,
+                false,
+                vk::MemoryAllocateFlags::empty(),
+            ),
+            256,
+        );
+        let memory_types = vec![MemoryTypeAllocator::new(0), linear, optimal];
 
         let stats = stats_from_memory_types(&memory_types);
         assert_eq!(stats.memory_types.len(), 2);
@@ -182,28 +179,18 @@ mod tests {
             vk::MemoryPropertyFlags::empty(),
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
         ]);
-        let mut memory_types = vec![
-            MemoryTypeAllocator {
-                memory_type_index: 0,
-                blocks: Vec::new(),
-            },
-            MemoryTypeAllocator {
-                memory_type_index: 1,
-                blocks: vec![Some(MemoryBlock::new(
-                    vk::DeviceMemory(42),
-                    1024,
-                    AllocationResourceClass::Optimal,
-                    true,
-                    vk::MemoryAllocateFlags::empty(),
-                ))],
-            },
-        ];
-        let allocation = memory_types[1].blocks[0]
-            .as_mut()
-            .unwrap()
-            .suballocator
-            .allocate(128, 1)
-            .unwrap();
+        let (dedicated, allocation) = memory_type_holding(
+            1,
+            MemoryBlock::new(
+                vk::DeviceMemory(42),
+                1024,
+                AllocationResourceClass::Optimal,
+                true,
+                vk::MemoryAllocateFlags::empty(),
+            ),
+            128,
+        );
+        let memory_types = vec![MemoryTypeAllocator::new(0), dedicated];
 
         let snapshot = snapshot_from_memory_types(&memory_types, &properties);
         assert_eq!(snapshot.stats.block_count, 1);

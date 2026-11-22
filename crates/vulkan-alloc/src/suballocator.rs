@@ -20,15 +20,15 @@ pub(crate) struct SuballocatorStats {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub(crate) struct Block {
-    pub(crate) size: u64,
-    pub(crate) free: bool,
+struct Block {
+    size: u64,
+    free: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct TlsfSuballocator {
     size: u64,
-    pub(crate) blocks: BTreeMap<u64, Block>,
+    blocks: BTreeMap<u64, Block>,
     free_bins: BTreeMap<u32, BTreeSet<u64>>,
     allocations: HashMap<u64, u64>,
     next_id: u64,
@@ -130,8 +130,14 @@ impl TlsfSuballocator {
         None
     }
 
-    pub(crate) fn allocation_offset(&self, id: u64) -> Option<u64> {
-        self.allocations.get(&id).copied()
+    pub(crate) fn allocation(&self, id: u64) -> Option<Suballocation> {
+        let offset = self.allocations.get(&id).copied()?;
+        let block = self.blocks.get(&offset).filter(|block| !block.free)?;
+        Some(Suballocation {
+            id,
+            offset,
+            size: block.size,
+        })
     }
 
     pub(crate) fn free(&mut self, id: u64) -> Option<()> {

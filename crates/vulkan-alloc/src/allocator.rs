@@ -6,11 +6,11 @@ use vulkan::{Device, vk};
 use crate::allocation::{Allocation, AllocationCreateDesc, AllocationResourceClass};
 use crate::block::{BlockRequest, MemoryBlock, MemoryTypeAllocator};
 use crate::error::AllocationError;
-use crate::mapping::{MappedAllocation, mapped_range_bounds};
+use crate::mapping::MappedAllocation;
 use crate::memory_type::{effective_alignment, find_memory_type_index};
 use crate::report::{
-    AllocatorSnapshot, AllocatorStats, LiveAllocation, MemoryRegionState,
-    snapshot_from_memory_types, stats_from_memory_types,
+    AllocatorSnapshot, AllocatorStats, LiveAllocation, snapshot_from_memory_types,
+    stats_from_memory_types,
 };
 
 const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
@@ -53,10 +53,7 @@ pub struct Allocator {
 impl Allocator {
     pub fn new(desc: AllocatorCreateDesc<'_>) -> Self {
         let memory_types = (0..desc.memory_properties.memory_type_count)
-            .map(|index| MemoryTypeAllocator {
-                memory_type_index: index,
-                blocks: Vec::new(),
-            })
+            .map(MemoryTypeAllocator::new)
             .collect();
         Self {
             device: desc.device.clone(),
@@ -102,7 +99,7 @@ impl Allocator {
             && let Ok(memory_type) = memory_type_mut(&mut self.memory_types, &allocation)
             && let Ok(block) = memory_type.block_mut(&allocation)
         {
-            block.names.insert(allocation.allocation_id, name.into());
+            block.set_name(allocation.allocation_id, name);
         }
         Ok(allocation)
     }
@@ -126,11 +123,7 @@ impl Allocator {
         allocation: &'b Allocation,
     ) -> Result<MappedAllocation<'b>, AllocationError> {
         let ptr = unsafe { self.map_host_visible(allocation) }?;
-        Ok(MappedAllocation {
-            allocator: self,
-            allocation,
-            ptr,
-        })
+        Ok(MappedAllocation::new(self, allocation, ptr))
     }
 
     pub unsafe fn map_persistent(
@@ -189,11 +182,7 @@ impl Allocator {
     }
 
     pub fn live_allocation_count(&self) -> usize {
-        self.memory_types
-            .iter()
-            .flat_map(|memory_type| memory_type.blocks.iter().flatten())
-            .map(|block| block.suballocator.stats().allocation_count)
-            .sum()
+        self.stats().allocation_count
     }
 
     pub fn is_empty(&self) -> bool {
@@ -201,26 +190,10 @@ impl Allocator {
     }
 
     pub fn live_allocations(&self) -> Vec<LiveAllocation> {
-        let mut live = Vec::new();
-        for memory_type in &self.memory_types {
-            for block in memory_type.blocks.iter().flatten() {
-                for region in block
-                    .suballocator
-                    .region_snapshots(&block.mapped_allocations)
-                {
-                    if let MemoryRegionState::Allocated { allocation_id, .. } = region.state {
-                        live.push(LiveAllocation {
-                            name: block.names.get(&allocation_id).map(|name| name.to_string()),
-                            memory: block.memory,
-                            offset: region.offset,
-                            size: region.size,
-                            memory_type_index: memory_type.memory_type_index,
-                        });
-                    }
-                }
-            }
-        }
-        live
+        self.memory_types
+            .iter()
+            .flat_map(MemoryTypeAllocator::live_allocations)
+            .collect()
     }
 
     pub unsafe fn free_all(&mut self) -> usize {
@@ -304,28 +277,8 @@ impl Allocator {
         &self,
         allocation: &Allocation,
     ) -> Result<vk::MappedMemoryRange<'static>, AllocationError> {
-        let block = self.block(allocation)?;
-        if !block.is_allocation_mapped(allocation.allocation_id) {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        let end = allocation
-            .offset()
-            .checked_add(allocation.size())
-            .ok_or(AllocationError::InvalidAllocation)?;
-        if end > block.size {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        let (offset, size) = mapped_range_bounds(
-            allocation.offset(),
-            allocation.size(),
-            block.size,
-            self.non_coherent_atom_size,
-        )
-        .ok_or(AllocationError::InvalidAllocation)?;
-        Ok(vk::MappedMemoryRange::default()
-            .memory(allocation.memory())
-            .offset(offset)
-            .size(size))
+        self.block(allocation)?
+            .mapped_range(allocation, self.non_coherent_atom_size)
     }
 
     fn adjusted_requirements(
