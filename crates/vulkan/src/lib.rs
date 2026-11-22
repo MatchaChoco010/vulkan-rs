@@ -56,7 +56,9 @@
 //! Structs that can hold pointers carry a lifetime `'a`, and their setters take references
 //! and slices with that lifetime, so the struct cannot outlive the data it points to. A
 //! setter for an array also sets the member that holds its length; when several arrays
-//! share one length member, the setters panic if the lengths differ. `VkBool32` members
+//! share one length member, the setters panic if the lengths differ. A setter also panics
+//! if the slice has more elements than the type of the length member can count, such as
+//! more than 255 for a `uint8_t` member. `VkBool32` members
 //! take `bool`, and strings take [`&CStr`](core::ffi::CStr) or, in arrays,
 //! [`vk::CStrPtr`].
 //!
@@ -132,7 +134,8 @@
 //! panics. Whether a command of an extension or version that is not enabled has a null
 //! pointer depends on the loader and the driver; calling it is invalid either way. The
 //! wrappers also panic when two slices that the C signature passes with one shared length
-//! have different lengths.
+//! have different lengths, and when a slice has more elements than the type of its count
+//! parameter can count, such as more than `u32::MAX` for a `uint32_t` count.
 //!
 //! Nothing is destroyed on drop: [`Entry`], [`Instance`] and [`Device`] only hold a handle
 //! and a shared function pointer table, and are cheap to clone, `Send` and `Sync`. Destroy
