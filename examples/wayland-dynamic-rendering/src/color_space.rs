@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use vulkan::{Device, vk};
 use vulkan_example_common::device::Gpu;
 
@@ -13,7 +13,49 @@ pub unsafe fn choose_surface_format(
             .get_physical_device_surface_formats_khr(gpu.physical_device, surface)
     }?;
     let wanted = std::env::var("VULKAN_EXAMPLE_COLOR_SPACE").unwrap_or_default();
-    let find = |color_space: vk::ColorSpaceKHR, candidates: &[vk::Format]| {
+    let (chosen, offered) = pick_surface_format(&formats, &wanted)?;
+    if !offered && !matches!(wanted.as_str(), "" | "srgb") {
+        println!("color space `{wanted}` is not offered by the surface; using sRGB");
+    }
+    Ok(chosen)
+}
+
+/// 8-bit sRGB, which every example can draw to and which is the fallback.
+const SRGB: (vk::ColorSpaceKHR, &[vk::Format]) = (
+    vk::ColorSpaceKHR::SRGB_NONLINEAR,
+    &[vk::Format::B8G8R8A8_UNORM, vk::Format::R8G8B8A8_UNORM],
+);
+
+/// The color space that `wanted` asks for and the formats that go with it, in order of
+/// preference. `None` for `srgb` and for anything else.
+fn wanted_candidates(wanted: &str) -> Option<(vk::ColorSpaceKHR, &'static [vk::Format])> {
+    match wanted {
+        // BT.2020 primaries with the PQ transfer function; needs 10 bits or more.
+        "hdr10" => Some((
+            vk::ColorSpaceKHR::HDR10_ST2084_EXT,
+            &[
+                vk::Format::A2B10G10R10_UNORM_PACK32,
+                vk::Format::A2R10G10B10_UNORM_PACK32,
+                vk::Format::R16G16B16A16_SFLOAT,
+            ],
+        )),
+        // sRGB primaries, linear, values outside [0, 1] allowed.
+        "scrgb" => Some((
+            vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+            &[vk::Format::R16G16B16A16_SFLOAT],
+        )),
+        _ => None,
+    }
+}
+
+/// From the `formats` that a surface offers: the first candidate of `wanted` that is
+/// among them, else the first 8-bit sRGB one, else the first of them. The flag tells
+/// whether a candidate of `wanted` was found. An error when the surface offers no format.
+fn pick_surface_format(
+    formats: &[vk::SurfaceFormatKHR],
+    wanted: &str,
+) -> Result<(vk::SurfaceFormatKHR, bool)> {
+    let find = |(color_space, candidates): (vk::ColorSpaceKHR, &[vk::Format])| {
         candidates.iter().find_map(|&format| {
             formats
                 .iter()
@@ -21,34 +63,13 @@ pub unsafe fn choose_surface_format(
                 .find(|f| f.format == format && f.color_space == color_space)
         })
     };
-    let chosen = match wanted.as_str() {
-        // BT.2020 primaries with the PQ transfer function; needs 10 bits or more.
-        "hdr10" => find(
-            vk::ColorSpaceKHR::HDR10_ST2084_EXT,
-            &[
-                vk::Format::A2B10G10R10_UNORM_PACK32,
-                vk::Format::A2R10G10B10_UNORM_PACK32,
-                vk::Format::R16G16B16A16_SFLOAT,
-            ],
-        ),
-        // sRGB primaries, linear, values outside [0, 1] allowed.
-        "scrgb" => find(
-            vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
-            &[vk::Format::R16G16B16A16_SFLOAT],
-        ),
-        _ => None,
-    };
-    if chosen.is_none() && !matches!(wanted.as_str(), "" | "srgb") {
-        println!("color space `{wanted}` is not offered by the surface; using sRGB");
+    if let Some(chosen) = wanted_candidates(wanted).and_then(find) {
+        return Ok((chosen, true));
     }
-    Ok(chosen
-        .or_else(|| {
-            find(
-                vk::ColorSpaceKHR::SRGB_NONLINEAR,
-                &[vk::Format::B8G8R8A8_UNORM, vk::Format::R8G8B8A8_UNORM],
-            )
-        })
-        .unwrap_or(formats[0]))
+    let chosen = find(SRGB)
+        .or(formats.first().copied())
+        .context("the surface offers no format")?;
+    Ok((chosen, false))
 }
 
 /// Describes the mastering display to the compositor when the swapchain is HDR10.
@@ -74,4 +95,92 @@ pub unsafe fn set_hdr_metadata(
         .max_frame_average_light_level(400.0);
     unsafe { device.set_hdr_metadata_ext(&[swapchain], &[metadata]) };
     println!("set HDR10 metadata");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FORMATS: [vk::Format; 5] = [
+        vk::Format::B8G8R8A8_UNORM,
+        vk::Format::R8G8B8A8_UNORM,
+        vk::Format::A2B10G10R10_UNORM_PACK32,
+        vk::Format::R16G16B16A16_SFLOAT,
+        vk::Format::B8G8R8A8_SRGB,
+    ];
+    const COLOR_SPACES: [vk::ColorSpaceKHR; 3] = [
+        vk::ColorSpaceKHR::SRGB_NONLINEAR,
+        vk::ColorSpaceKHR::HDR10_ST2084_EXT,
+        vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+    ];
+
+    fn pair(format: vk::SurfaceFormatKHR) -> (vk::Format, vk::ColorSpaceKHR) {
+        (format.format, format.color_space)
+    }
+
+    /// Pseudo-random lists of up to six formats, the empty list among them.
+    fn format_lists() -> impl Iterator<Item = Vec<vk::SurfaceFormatKHR>> {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as usize % bound
+        };
+        (0..500).map(move |_| {
+            (0..next(7))
+                .map(|_| vk::SurfaceFormatKHR {
+                    format: FORMATS[next(FORMATS.len())],
+                    color_space: COLOR_SPACES[next(COLOR_SPACES.len())],
+                })
+                .collect()
+        })
+    }
+
+    /// The documented preference as one ranked list: the candidates of `wanted`, then
+    /// those of 8-bit sRGB.
+    fn preference(wanted: &str) -> Vec<(vk::Format, vk::ColorSpaceKHR)> {
+        wanted_candidates(wanted)
+            .into_iter()
+            .chain([SRGB])
+            .flat_map(|(color_space, formats)| {
+                formats.iter().map(move |&format| (format, color_space))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn picks_the_most_preferred_offered_format_and_fails_only_on_an_empty_list() {
+        for wanted in ["", "srgb", "hdr10", "scrgb", "unknown"] {
+            let ranked = preference(wanted);
+            let wanted_count = wanted_candidates(wanted).map_or(0, |(_, formats)| formats.len());
+            for formats in format_lists() {
+                let listed = formats.iter().copied().map(pair).collect::<Vec<_>>();
+                let picked = pick_surface_format(&formats, wanted);
+                if formats.is_empty() {
+                    assert!(picked.is_err(), "`{wanted}`: an empty list gave a format");
+                    continue;
+                }
+                let (picked, offered) = picked.unwrap();
+                let picked = pair(picked);
+                assert!(
+                    listed.contains(&picked),
+                    "`{wanted}`: {picked:?} is not in {listed:?}"
+                );
+                let best = ranked
+                    .iter()
+                    .position(|candidate| listed.contains(candidate));
+                match best {
+                    Some(rank) => {
+                        assert_eq!(picked, ranked[rank], "`{wanted}` from {listed:?}");
+                        assert_eq!(offered, rank < wanted_count, "`{wanted}` from {listed:?}");
+                    }
+                    None => {
+                        assert_eq!(picked, listed[0], "`{wanted}` from {listed:?}");
+                        assert!(!offered, "`{wanted}` from {listed:?}");
+                    }
+                }
+            }
+        }
+    }
 }

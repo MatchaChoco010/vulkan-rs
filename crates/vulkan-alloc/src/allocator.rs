@@ -120,8 +120,9 @@ impl Allocator {
     /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
     /// are left out unless the required or preferred flags of the location include one
     /// of these two flags, and memory types with `PROTECTED` are left out unless those
-    /// flags include `PROTECTED` (see [`MemoryLocation`](crate::MemoryLocation)). Only
-    /// the chosen memory type is tried.
+    /// flags include `PROTECTED`; memory types of a tile memory heap are always left out
+    /// (see [`MemoryLocation`](crate::MemoryLocation)). Only the chosen memory type is
+    /// tried.
     ///
     /// The allocation is placed in an existing shared block of that type when one has
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
