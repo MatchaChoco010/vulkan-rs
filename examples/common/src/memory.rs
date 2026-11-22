@@ -8,6 +8,7 @@ use vulkan_alloc::{
 
 use crate::commands::submit_and_wait;
 use crate::device::Gpu;
+use crate::image::{DRM_FORMAT_MOD_LINEAR, drm_format_modifier, is_linear_image};
 
 /// The allocator must be dropped before the device is destroyed.
 pub unsafe fn create_allocator(gpu: &Gpu) -> Allocator {
@@ -337,11 +338,23 @@ pub unsafe fn create_image(
 ) -> Result<Image> {
     unsafe {
         let image = device.create_image(info, None)?;
+        // A DRM-modifier image is linear or not by the modifier it was given.
+        let modifier = if info.tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
+            match drm_format_modifier(device, image) {
+                Ok(modifier) => modifier,
+                Err(error) => {
+                    device.destroy_image(image, None);
+                    return Err(error);
+                }
+            }
+        } else {
+            DRM_FORMAT_MOD_LINEAR
+        };
         let allocation = match allocator.allocate(AllocationCreateDesc {
             name: Some(name),
             requirements: device.get_image_memory_requirements(image),
             location: MemoryLocation::GpuOnly,
-            linear: info.tiling == vk::ImageTiling::LINEAR,
+            linear: is_linear_image(info.tiling, modifier),
             memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
             export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
             allocation_scheme: AllocationScheme::GpuAllocatorManaged,
