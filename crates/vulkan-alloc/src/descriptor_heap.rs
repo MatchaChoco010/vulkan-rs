@@ -93,6 +93,11 @@ pub enum HeapLayoutError {
         /// The descriptor alignment, in bytes.
         alignment: u64,
     },
+    /// The size of a descriptor type is 0, so its descriptors cannot be indexed in units
+    /// of their size. A device reports a power of two for every descriptor size; 0
+    /// usually means the properties were not filled in by
+    /// `vkGetPhysicalDeviceProperties2`.
+    ZeroDescriptorSize,
 }
 
 impl fmt::Display for HeapLayoutError {
@@ -111,6 +116,7 @@ impl fmt::Display for HeapLayoutError {
                 f,
                 "descriptor size {size} is not a multiple of its alignment {alignment}"
             ),
+            Self::ZeroDescriptorSize => f.write_str("descriptor size is 0"),
         }
     }
 }
@@ -282,7 +288,9 @@ impl Plan {
         descriptor_size: u64,
         alignment: u64,
     ) -> Result<DescriptorSlots, HeapLayoutError> {
-        let stride = stride.max(1);
+        if stride == 0 {
+            return Err(HeapLayoutError::ZeroDescriptorSize);
+        }
         let alignment = alignment.max(1);
         if !stride.is_multiple_of(alignment) {
             return Err(HeapLayoutError::UnalignedDescriptorSize {
@@ -384,6 +392,7 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `bufferDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `bufferDescriptorSize` is not a
     ///   multiple of `bufferDescriptorAlignment`.
     /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
@@ -402,6 +411,7 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `imageDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `imageDescriptorSize` is not a
     ///   multiple of `imageDescriptorAlignment`.
     /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
@@ -428,9 +438,12 @@ impl ResourceHeapPlan {
     /// - [`HeapLayoutError::Overflow`] if the least common multiple of the two
     ///   descriptor alignments, the stride, an index of the run, or its end does not
     ///   fit.
-    /// - [`HeapLayoutError::UnalignedDescriptorSize`] if both descriptor sizes are 0 and
-    ///   an alignment is larger than 1.
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `bufferDescriptorSize` or
+    ///   `imageDescriptorSize` is 0.
     pub fn uniform(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
+        if self.buffer_size == 0 || self.image_size == 0 {
+            return Err(HeapLayoutError::ZeroDescriptorSize);
+        }
         let alignment =
             lcm(self.buffer_alignment, self.image_alignment).ok_or(HeapLayoutError::Overflow)?;
         let size = self.buffer_size.max(self.image_size);
@@ -487,6 +500,7 @@ impl SamplerHeapPlan {
     ///
     /// # Errors
     ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `samplerDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `samplerDescriptorSize` is not
     ///   a multiple of `samplerDescriptorAlignment`.
     /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
@@ -608,6 +622,113 @@ mod tests {
         let layout = plan.finish().unwrap();
         assert_eq!(layout.reserved_offset, 8 * 96);
         assert_eq!(layout.size, 8 * 96 + 1024);
+    }
+
+    #[test]
+    fn rejected_descriptor_sizes_are_reported_as_the_device_reports_them() {
+        let values = [
+            0,
+            1,
+            2,
+            3,
+            8,
+            16,
+            24,
+            32,
+            40,
+            48,
+            64,
+            72,
+            96,
+            128,
+            1 << 32,
+            1 << 63,
+            u64::MAX - 1,
+            u64::MAX,
+        ];
+        let mut unaligned = 0;
+        let mut zero = 0;
+        for size in values {
+            for alignment in values {
+                for kind in 0..3 {
+                    let context = format!("kind {kind}, size {size}, alignment {alignment}");
+                    let pair = |of: usize, valid: u64| {
+                        if of == kind {
+                            (size, alignment)
+                        } else {
+                            (valid, valid)
+                        }
+                    };
+                    let (buffer_size, buffer_alignment) = pair(0, 16);
+                    let (image_size, image_alignment) = pair(1, 32);
+                    let (sampler_size, sampler_alignment) = pair(2, 8);
+                    let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+                        .max_resource_heap_size(u64::MAX)
+                        .max_sampler_heap_size(u64::MAX)
+                        .buffer_descriptor_size(buffer_size)
+                        .buffer_descriptor_alignment(buffer_alignment)
+                        .image_descriptor_size(image_size)
+                        .image_descriptor_alignment(image_alignment)
+                        .sampler_descriptor_size(sampler_size)
+                        .sampler_descriptor_alignment(sampler_alignment);
+                    let expected = if size == 0 {
+                        zero += 1;
+                        Err(HeapLayoutError::ZeroDescriptorSize)
+                    } else if size.is_multiple_of(alignment.max(1)) {
+                        Ok(size)
+                    } else {
+                        unaligned += 1;
+                        Err(HeapLayoutError::UnalignedDescriptorSize { size, alignment })
+                    };
+
+                    let mut resources = ResourceHeapPlan::new(&properties);
+                    let mut samplers = SamplerHeapPlan::new(&properties);
+                    let run = match kind {
+                        0 => resources.buffers(1),
+                        1 => resources.images(1),
+                        _ => samplers.samplers(1),
+                    };
+                    assert_eq!(run.map(|slots| slots.stride), expected, "{context}");
+                    if let Err(HeapLayoutError::UnalignedDescriptorSize { size, alignment }) = run {
+                        assert!(
+                            size != 0 && !size.is_multiple_of(alignment.max(1)),
+                            "{context}"
+                        );
+                    }
+
+                    if kind != 2 {
+                        let uniform = ResourceHeapPlan::new(&properties).uniform(1);
+                        assert!(
+                            !matches!(
+                                uniform,
+                                Err(HeapLayoutError::UnalignedDescriptorSize { .. })
+                            ),
+                            "{context}: {uniform:?}"
+                        );
+                        assert_eq!(
+                            uniform == Err(HeapLayoutError::ZeroDescriptorSize),
+                            size == 0,
+                            "{context}: {uniform:?}"
+                        );
+                        if let Ok(slots) = uniform {
+                            assert!(slots.stride >= slots.descriptor_size, "{context}");
+                            assert_eq!(slots.descriptor_size, buffer_size.max(image_size));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(unaligned > 100 && zero > 10);
+
+        let unqueried = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default();
+        let mut plan = ResourceHeapPlan::new(&unqueried);
+        assert_eq!(plan.buffers(1), Err(HeapLayoutError::ZeroDescriptorSize));
+        assert_eq!(plan.images(0), Err(HeapLayoutError::ZeroDescriptorSize));
+        assert_eq!(plan.uniform(1), Err(HeapLayoutError::ZeroDescriptorSize));
+        assert_eq!(
+            SamplerHeapPlan::new(&unqueried).samplers(1),
+            Err(HeapLayoutError::ZeroDescriptorSize)
+        );
     }
 
     #[test]
