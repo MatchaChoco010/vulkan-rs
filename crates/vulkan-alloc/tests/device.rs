@@ -377,7 +377,7 @@ fn free_all_releases_memory_that_still_has_live_allocations() {
             let mapped = allocator.map(&allocation).unwrap();
             assert!(mapped.byte_range(0, 4096).is_some());
             assert!(mapped.byte_range(4096, usize::MAX).is_none());
-            assert!(mapped.byte_range(1 << 40, 1).is_none());
+            assert!(mapped.byte_range(usize::MAX - 1, 1).is_none());
         }
 
         gpu.device.destroy_buffer(buffer, None);

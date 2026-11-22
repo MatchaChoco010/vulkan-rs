@@ -30,7 +30,11 @@ fn c_facts() -> Result<CFacts, String> {
     let source = manifest_dir.join("tests/generated/layout.c");
     let exe = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("vulkan-layout");
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
-    let output = Command::new(&cc)
+    let mut command = Command::new(&cc);
+    if cfg!(target_arch = "x86") {
+        command.arg("-m32");
+    }
+    let output = command
         .arg("-std=c11")
         .arg("-I")
         .arg(&include)
