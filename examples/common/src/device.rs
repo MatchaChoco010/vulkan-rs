@@ -133,6 +133,17 @@ pub unsafe fn supports_extensions(
     Ok(names.iter().all(|name| has_extension(&available, name)))
 }
 
+/// Whether a physical device that reports `api_version` and the device extensions
+/// `available` has at least `required_version` and every extension in `required`.
+pub fn meets_requirements(
+    api_version: u32,
+    available: &[vk::ExtensionProperties],
+    required_version: u32,
+    required: &[&CStr],
+) -> bool {
+    api_version >= required_version && required.iter().all(|name| has_extension(available, name))
+}
+
 /// The first queue family that supports all of `flags`.
 pub unsafe fn find_queue_family(
     instance: &Instance,

@@ -16370,6 +16370,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkBuildAccelerationStructuresKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkBuildAccelerationStructuresKHR.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -16416,6 +16423,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkBuildMicromapsEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkBuildMicromapsEXT.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -29650,6 +29664,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkCopyAccelerationStructureKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyAccelerationStructureKHR.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -29690,6 +29711,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkCopyAccelerationStructureToMemoryKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyAccelerationStructureToMemoryKHR.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -29873,6 +29901,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkCopyMemoryToAccelerationStructureKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyMemoryToAccelerationStructureKHR.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -29985,6 +30020,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkCopyMemoryToMicromapEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyMemoryToMicromapEXT.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -30024,6 +30066,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkCopyMicromapEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyMicromapEXT.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -30063,6 +30112,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkCopyMicromapToMemoryEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyMicromapToMemoryEXT.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -31808,6 +31864,13 @@ impl crate::Device {
     ///
     /// The call has to satisfy the valid usage that the Vulkan specification states for
     /// [`vkCreateRayTracingPipelinesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateRayTracingPipelinesKHR.html).
+    /// If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the
+    /// implementation can access the arguments until the deferred operation is complete. Until
+    /// then, the memory that the arguments point to, including the slices and the structures and
+    /// arrays that they point to, has to stay allocated and unchanged, and what the command writes
+    /// must not be read; the arguments that the command requires to be externally synchronized must
+    /// not be accessed; and the Vulkan objects passed to it must not be passed to any other command
+    /// as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -45256,8 +45319,7 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkBuildAccelerationStructuresKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkBuildAccelerationStructuresKHR.html)
     /// through [`Self::build_acceleration_structures_khr_raw`], which describes the parameters.
-    /// Each slice of slices is passed as an array of pointers to the inner slices. Returns the
-    /// result code of the command when it is not an error, which the registry lists as
+    /// Returns the result code of the command when it is not an error, which the registry lists as
     /// [`VK_SUCCESS`](VkResult::SUCCESS),
     /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR) or
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
@@ -45273,7 +45335,14 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::build_acceleration_structures_khr_raw`].
+    /// The same as for [`Self::build_acceleration_structures_khr_raw`]. If the command is deferred,
+    /// that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments
+    /// until the deferred operation is complete. Until then, the memory that the arguments point
+    /// to, including the slices and the structures and arrays that they point to, has to stay
+    /// allocated and unchanged, and what the command writes must not be read; the arguments that
+    /// the command requires to be externally synchronized must not be accessed; and the Vulkan
+    /// objects passed to it must not be passed to any other command as externally synchronized
+    /// parameters.
     ///
     /// # Panics
     ///
@@ -45287,7 +45356,7 @@ impl crate::Device {
         &self,
         deferred_operation: DeferredOperationKHR,
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
-        build_range_infos: &[&[AccelerationStructureBuildRangeInfoKHR]],
+        build_range_infos: &[*const AccelerationStructureBuildRangeInfoKHR],
     ) -> crate::vk::Result<VkResult> {
         unsafe {
             let info_count_len: usize = infos.len();
@@ -45296,22 +45365,11 @@ impl crate::Device {
                 info_count_len,
                 "vkBuildAccelerationStructuresKHR: `build_range_infos` must have the same length as the other arrays sharing `infoCount`"
             );
-            for (element, entry) in infos.iter().zip(build_range_infos.iter()) {
-                assert_eq!(
-                    entry.len(),
-                    element.geometry_count as usize,
-                    "vkBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
-                );
-            }
-            let build_range_infos_pointers = build_range_infos
-                .iter()
-                .map(|entry| entry.as_ptr())
-                .collect::<Vec<_>>();
             let result = self.build_acceleration_structures_khr_raw(
                 deferred_operation,
                 info_count_len as u32,
                 infos.as_ptr(),
-                build_range_infos_pointers.as_ptr(),
+                build_range_infos.as_ptr(),
             );
             result.into_result()?;
             Ok(result)
@@ -45338,7 +45396,13 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::build_micromaps_ext_raw`].
+    /// The same as for [`Self::build_micromaps_ext_raw`]. If the command is deferred, that is, it
+    /// returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments until the
+    /// deferred operation is complete. Until then, the memory that the arguments point to,
+    /// including the slices and the structures and arrays that they point to, has to stay allocated
+    /// and unchanged, and what the command writes must not be read; the arguments that the command
+    /// requires to be externally synchronized must not be accessed; and the Vulkan objects passed
+    /// to it must not be passed to any other command as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -54983,7 +55047,14 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::copy_acceleration_structure_khr_raw`].
+    /// The same as for [`Self::copy_acceleration_structure_khr_raw`]. If the command is deferred,
+    /// that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments
+    /// until the deferred operation is complete. Until then, the memory that the arguments point
+    /// to, including the slices and the structures and arrays that they point to, has to stay
+    /// allocated and unchanged, and what the command writes must not be read; the arguments that
+    /// the command requires to be externally synchronized must not be accessed; and the Vulkan
+    /// objects passed to it must not be passed to any other command as externally synchronized
+    /// parameters.
     ///
     /// # Panics
     ///
@@ -55023,7 +55094,14 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::copy_acceleration_structure_to_memory_khr_raw`].
+    /// The same as for [`Self::copy_acceleration_structure_to_memory_khr_raw`]. If the command is
+    /// deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the
+    /// arguments until the deferred operation is complete. Until then, the memory that the
+    /// arguments point to, including the slices and the structures and arrays that they point to,
+    /// has to stay allocated and unchanged, and what the command writes must not be read; the
+    /// arguments that the command requires to be externally synchronized must not be accessed; and
+    /// the Vulkan objects passed to it must not be passed to any other command as externally
+    /// synchronized parameters.
     ///
     /// # Panics
     ///
@@ -55208,7 +55286,14 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::copy_memory_to_acceleration_structure_khr_raw`].
+    /// The same as for [`Self::copy_memory_to_acceleration_structure_khr_raw`]. If the command is
+    /// deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the
+    /// arguments until the deferred operation is complete. Until then, the memory that the
+    /// arguments point to, including the slices and the structures and arrays that they point to,
+    /// has to stay allocated and unchanged, and what the command writes must not be read; the
+    /// arguments that the command requires to be externally synchronized must not be accessed; and
+    /// the Vulkan objects passed to it must not be passed to any other command as externally
+    /// synchronized parameters.
     ///
     /// # Panics
     ///
@@ -55322,7 +55407,14 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::copy_memory_to_micromap_ext_raw`].
+    /// The same as for [`Self::copy_memory_to_micromap_ext_raw`]. If the command is deferred, that
+    /// is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments
+    /// until the deferred operation is complete. Until then, the memory that the arguments point
+    /// to, including the slices and the structures and arrays that they point to, has to stay
+    /// allocated and unchanged, and what the command writes must not be read; the arguments that
+    /// the command requires to be externally synchronized must not be accessed; and the Vulkan
+    /// objects passed to it must not be passed to any other command as externally synchronized
+    /// parameters.
     ///
     /// # Panics
     ///
@@ -55362,7 +55454,13 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::copy_micromap_ext_raw`].
+    /// The same as for [`Self::copy_micromap_ext_raw`]. If the command is deferred, that is, it
+    /// returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments until the
+    /// deferred operation is complete. Until then, the memory that the arguments point to,
+    /// including the slices and the structures and arrays that they point to, has to stay allocated
+    /// and unchanged, and what the command writes must not be read; the arguments that the command
+    /// requires to be externally synchronized must not be accessed; and the Vulkan objects passed
+    /// to it must not be passed to any other command as externally synchronized parameters.
     ///
     /// # Panics
     ///
@@ -55401,7 +55499,14 @@ impl crate::Device {
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::copy_micromap_to_memory_ext_raw`].
+    /// The same as for [`Self::copy_micromap_to_memory_ext_raw`]. If the command is deferred, that
+    /// is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments
+    /// until the deferred operation is complete. Until then, the memory that the arguments point
+    /// to, including the slices and the structures and arrays that they point to, has to stay
+    /// allocated and unchanged, and what the command writes must not be read; the arguments that
+    /// the command requires to be externally synchronized must not be accessed; and the Vulkan
+    /// objects passed to it must not be passed to any other command as externally synchronized
+    /// parameters.
     ///
     /// # Panics
     ///
@@ -57075,33 +57180,45 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCreateRayTracingPipelinesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateRayTracingPipelinesKHR.html)
     /// through [`Self::create_ray_tracing_pipelines_khr_raw`], which describes the parameters.
-    /// Returns the elements that the command writes to `pPipelines`. Any result other than
-    /// `VK_SUCCESS` is returned as the error, together with the same elements. The command is
-    /// provided by [`VK_KHR_ray_tracing_pipeline`](KHR_RAY_TRACING_PIPELINE_NAME).
+    /// Returns the result code of the command when it is not an error, which the registry lists as
+    /// [`VK_SUCCESS`](VkResult::SUCCESS),
+    /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR),
+    /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR) or
+    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT). What
+    /// `pipelines` holds depends on the result: after `VK_SUCCESS`, the created handles; after
+    /// `VK_OPERATION_DEFERRED_KHR`, nothing that may be read before the deferred operation is
+    /// complete, and then what the result of the deferred operation says; after any other result,
+    /// null handles for the elements that the command could not create, and valid handles, which
+    /// have to be destroyed, for the others. The command is provided by
+    /// [`VK_KHR_ray_tracing_pipeline`](KHR_RAY_TRACING_PIPELINE_NAME).
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command, together with the elements, if it is not
-    /// `VK_SUCCESS`: another success code, which the registry lists as
-    /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR),
-    /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR) or
-    /// [`VK_PIPELINE_COMPILE_REQUIRED_EXT`](VkResult::PIPELINE_COMPILE_REQUIRED_EXT), or an error
-    /// code, which the registry lists as
+    /// Returns the result code of the command if it is an error. The registry lists
     /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS`](VkResult::ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS),
     /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED). The elements that the
-    /// command could not create are null handles; the others are valid and have to be destroyed.
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
     ///
     /// # Safety
     ///
-    /// The same as for [`Self::create_ray_tracing_pipelines_khr_raw`].
+    /// The same as for [`Self::create_ray_tracing_pipelines_khr_raw`]. If the command is deferred,
+    /// that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments
+    /// until the deferred operation is complete. Until then, the memory that the arguments point
+    /// to, including the slices and the structures and arrays that they point to, has to stay
+    /// allocated and unchanged, and what the command writes must not be read; the arguments that
+    /// the command requires to be externally synchronized must not be accessed; and the Vulkan
+    /// objects passed to it must not be passed to any other command as externally synchronized
+    /// parameters.
     ///
     /// # Panics
     ///
     /// Panics if `vkCreateRayTracingPipelinesKHR` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if the slices do not have the lengths that the command needs: slices that it counts
+    /// with one parameter have to be equally long, and a slice whose length it reads from another
+    /// argument has to have that length.
     #[doc(alias = "vkCreateRayTracingPipelinesKHR")]
     pub unsafe fn create_ray_tracing_pipelines_khr(
         &self,
@@ -57109,23 +57226,25 @@ impl crate::Device {
         pipeline_cache: PipelineCache,
         create_infos: &[RayTracingPipelineCreateInfoKHR<'_>],
         allocator: Option<&AllocationCallbacks<'_>>,
-    ) -> core::result::Result<Vec<Pipeline>, (Vec<Pipeline>, VkResult)> {
+        pipelines: &mut [Pipeline],
+    ) -> crate::vk::Result<VkResult> {
         unsafe {
             let create_info_count_len: usize = create_infos.len();
-            let mut values: Vec<Pipeline> = alloc::vec![Default::default(); create_info_count_len];
+            assert_eq!(
+                pipelines.len(),
+                create_info_count_len,
+                "vkCreateRayTracingPipelinesKHR: `pipelines` must have the same length as the other arrays sharing `createInfoCount`"
+            );
             let result = self.create_ray_tracing_pipelines_khr_raw(
                 deferred_operation,
                 pipeline_cache,
                 create_info_count_len as u32,
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
-                values.as_mut_ptr(),
+                pipelines.as_mut_ptr(),
             );
-            if result == VkResult::SUCCESS {
-                Ok(values)
-            } else {
-                Err((values, result))
-            }
+            result.into_result()?;
+            Ok(result)
         }
     }
     /// Creates a new ray tracing pipeline object.

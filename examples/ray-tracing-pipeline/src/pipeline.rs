@@ -95,15 +95,21 @@ pub unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Resul
             .groups(&groups)
             .max_pipeline_ray_recursion_depth(1)
             .push_next(&mut flags);
+        let mut pipelines = [vk::Pipeline::null()];
         let result = device.create_ray_tracing_pipelines_khr(
             vk::DeferredOperationKHR::null(),
             vk::PipelineCache::null(),
             &[info],
             None,
+            &mut pipelines,
         );
         for module in [closest_hit, miss, raygen] {
             device.destroy_shader_module(module, None);
         }
+        let result = match result {
+            Ok(vk::VkResult::SUCCESS) => Ok(pipelines.to_vec()),
+            Ok(code) | Err(code) => Err((pipelines.to_vec(), code)),
+        };
         single_pipeline(device, result)
     }
 }

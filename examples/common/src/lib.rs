@@ -7,6 +7,7 @@
 
 pub mod commands;
 pub mod device;
+pub mod env;
 pub mod extensions;
 pub mod image;
 pub mod instance;
