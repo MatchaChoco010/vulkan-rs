@@ -1,8 +1,9 @@
 use super::{MethodNames, field_link, member_origin};
-use crate::docs::Doc;
+use crate::docs::{Block, Doc};
 use crate::emit::Borrow;
-use crate::model::{CType, Model, is_opaque, null_ptr};
-use crate::naming::{field_name, pointer_setter_name};
+use crate::model::{CType, Model, TypedValues, VoidArrayLength, is_opaque, null_ptr};
+use crate::model::{void_array_len, void_array_length};
+use crate::naming::{field_name, pointer_setter_name, type_name};
 use std::collections::BTreeMap;
 use vulkan_registry::{Field, Struct};
 
@@ -34,12 +35,21 @@ impl<'s> CountedArrays<'s> {
             .any(|other| other.name != m.name)
     }
 
-    fn slice_doc(&self, model: &Model<'_>, count: &Field, m: &Field, of: &str) -> Doc {
-        let doc = Doc::new().text(format!(
-            "Sets {} to the start of a slice of {of} and {} to its length.",
-            field_link(&m.name),
-            field_link(&count.name)
-        ));
+    fn slice_doc(
+        &self,
+        model: &Model<'_>,
+        count: &Field,
+        m: &Field,
+        of: &str,
+        element_types: Vec<Block>,
+    ) -> Doc {
+        let doc = Doc::new()
+            .text(format!(
+                "Sets {} to the start of a slice of {of} and {} to its length.",
+                field_link(&m.name),
+                field_link(&count.name)
+            ))
+            .blocks(element_types);
         let mut panics = Vec::new();
         if self.shares_its_count(count, m) {
             panics.push(format!(
@@ -105,6 +115,7 @@ fn count_member<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
 struct Setter {
     doc: Doc,
     name: String,
+    generics: String,
     value_ty: String,
     assignments: String,
 }
@@ -114,11 +125,12 @@ impl Setter {
         let Setter {
             doc,
             name,
+            generics,
             value_ty,
             assignments,
         } = self;
         format!(
-            "{}pub fn {name}(mut self, value: {value_ty}) -> Self {{ {assignments} self }}\n",
+            "{}pub fn {name}{generics}(mut self, value: {value_ty}) -> Self {{ {assignments} self }}\n",
             doc.render()
         )
     }
@@ -145,6 +157,7 @@ pub(super) fn member_methods(
         0 if model.canonical(&m.ty) == "VkBool32" => Setter {
             doc: sets(m, " to `VK_TRUE` or `VK_FALSE`"),
             name: names.claim(&field, &member_origin(m)),
+            generics: String::new(),
             value_ty: "bool".to_string(),
             assignments: format!("self.{field} = value as Bool32;"),
         },
@@ -161,6 +174,7 @@ fn value_setter(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Se
     Setter {
         doc: sets(m, ""),
         name: names.claim(&field, &member_origin(m)),
+        generics: String::new(),
         value_ty: model.member_ty(m, "'a"),
         assignments: format!("self.{field} = value;"),
     }
@@ -230,13 +244,27 @@ fn pointer_setter(
     let borrow = Borrow::of_pointer(ty.outer_const());
     let as_ptr = borrow.slice_as_ptr();
     let pointee = model.base_ty(&ty.base, "'a");
-    let (doc, value_ty, assignments) = if let Some(count) = count_member(s, m) {
-        let (element, cast, of) = match ty.base.as_str() {
-            "void" => ("u8", ".cast()", "bytes"),
-            _ => (pointee.as_str(), "", "elements"),
+    let mut generics = String::new();
+    let count = count_member(s, m);
+    let length = void_array_len(m).map(|len| (len, void_array_length(&s.name, m)));
+    if let (Some((len, VoidArrayLength::Values(_))), None) = (length, count) {
+        panic!(
+            "{}::{}: the specification counts this `void` array in values, and `{len}` is not a member that a setter could store their number in",
+            s.name, m.name
+        );
+    }
+    let (doc, value_ty, assignments) = if let Some(count) = count {
+        let (element, cast, of, element_types) = match length.map(|(_, length)| length) {
+            Some(VoidArrayLength::Bytes) => ("u8", ".cast()", "bytes", Vec::new()),
+            Some(VoidArrayLength::Values(typed)) => {
+                generics = format!("<T: {}>", typed.value_trait);
+                let element_types = typed_values_doc(model, s, count, typed);
+                ("T", ".cast()", "values", element_types)
+            }
+            None => (pointee.as_str(), "", "elements", Vec::new()),
         };
         (
-            counted.slice_doc(model, count, m, of),
+            counted.slice_doc(model, count, m, of, element_types),
             borrow.reference("'a", &format!("[{element}]")),
             format!(
                 "{}{} self.{field} = value.{as_ptr}(){cast};",
@@ -299,9 +327,58 @@ fn pointer_setter(
     Setter {
         doc,
         name: pointer_setter_method_name(m, names),
+        generics,
         value_ty,
         assignments,
     }
+}
+
+fn typed_values_doc(
+    model: &Model<'_>,
+    s: &Struct,
+    count: &Field,
+    typed: &TypedValues,
+) -> Vec<Block> {
+    let type_member = s
+        .members
+        .iter()
+        .find(|m| m.name == typed.type_member && m.ty == typed.type_enum)
+        .unwrap_or_else(|| {
+            panic!(
+                "{} has no member `{}` of the type {}",
+                s.name, typed.type_member, typed.type_enum
+            )
+        });
+    let values = &model.get_enum(typed.type_enum).fields;
+    let listed = typed.value_types.iter().map(|(value, _)| *value);
+    assert!(
+        listed.eq(values.iter().map(|value| value.name.as_str())),
+        "{}: the Rust types listed for the values of {} have to follow its values in the registry",
+        s.name,
+        typed.type_enum
+    );
+    let types = typed.value_types.iter().map(|(value, rust_ty)| {
+        let variant = model.enum_variant(typed.type_enum, value);
+        (
+            0,
+            format!(
+                "[`{}::{variant}`] stands for {rust_ty}",
+                type_name(typed.type_enum)
+            ),
+        )
+    });
+    vec![
+        Block::Text(format!(
+            "`T` has to be the type of the values that {} names, because the C API reads `{}` values of that type from the array:",
+            field_link(&type_member.name),
+            count.name
+        )),
+        Block::List(types.collect()),
+        Block::Text(format!(
+            "[`{}`] is implemented for these types and for no other.",
+            typed.value_trait
+        )),
+    ]
 }
 
 fn pointer_array_setter(
@@ -333,8 +410,9 @@ fn pointer_array_setter(
         )
     };
     Some(Setter {
-        doc: counted.slice_doc(model, count, m, of),
+        doc: counted.slice_doc(model, count, m, of, Vec::new()),
         name: pointer_setter_method_name(m, names),
+        generics: String::new(),
         value_ty: format!("&'a [{element}]"),
         assignments: format!(
             "{}{} self.{} = value.as_ptr().cast();",
@@ -422,6 +500,185 @@ mod tests {
                 "Sets [`p_version_data`](Self::p_version_data) to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API expects `2*VK_UUID_SIZE` elements. The member is not optional: the C API needs the elements."
             ]
         );
+    }
+
+    fn registry_struct(name: &str) -> &'static Struct {
+        Registry::get()
+            .structs
+            .iter()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("the registry has no {name}"))
+    }
+
+    #[test]
+    fn a_void_array_counted_in_values_takes_a_typed_slice_and_stores_the_number_of_values() {
+        let model = Model::new(Registry::get());
+        let out = definition(&model, registry_struct("VkLayerSettingEXT"));
+        assert!(
+            squash(&out).contains(
+                "pub fn values<T: LayerSettingValue>(mut self, value: &'a [T]) -> Self { self.value_count = len_as_count(value.len(), \"VkLayerSettingEXT::pValues\", \"valueCount\"); self.p_values = value.as_ptr().cast(); self }"
+            ),
+            "{out}"
+        );
+        assert_eq!(
+            doc_of(&out, "pub fn values<T: LayerSettingValue>("),
+            [
+                "Sets [`p_values`](Self::p_values) to the start of a slice of values and [`value_count`](Self::value_count) to its length.",
+                "`T` has to be the type of the values that [`ty`](Self::ty) names, because the C API reads `valueCount` values of that type from the array:",
+                "- [`LayerSettingTypeEXT::BOOL32`] stands for [`Bool32`] - [`LayerSettingTypeEXT::INT32`] stands for `i32` - [`LayerSettingTypeEXT::INT64`] stands for `i64` - [`LayerSettingTypeEXT::UINT32`] stands for `u32` - [`LayerSettingTypeEXT::UINT64`] stands for `u64` - [`LayerSettingTypeEXT::FLOAT32`] stands for `f32` - [`LayerSettingTypeEXT::FLOAT64`] stands for `f64` - [`LayerSettingTypeEXT::STRING`] stands for [`CStrPtr`], or `*const c_char`, a pointer to a NUL-terminated string",
+                "[`LayerSettingValue`] is implemented for these types and for no other.",
+                "# Panics",
+                "Panics if the slice has more elements than `valueCount`, a `uint32_t`, can count.",
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "VkBlobInfo::pData: the registry gives `2*VK_BLOB_COUNT` as the length of this `void` array, which is not the name of a size in bytes"
+    )]
+    fn a_void_array_whose_length_is_not_a_member_is_checked_as_well() {
+        let mut ir = registry();
+        ir.structs.push(structure(
+            "VkBlobInfo",
+            vec![counted("pData", "const void*", "2*VK_BLOB_COUNT")],
+        ));
+        definition(&Model::new(&ir), &ir.structs[0]);
+    }
+
+    #[test]
+    fn a_void_array_whose_size_in_bytes_is_not_a_member_keeps_its_pointer_setter() {
+        let mut ir = registry();
+        ir.structs.push(structure(
+            "VkBlobInfo",
+            vec![counted("pData", "const void*", "pOwner->dataSize")],
+        ));
+        let out = definition(&Model::new(&ir), &ir.structs[0]);
+        assert!(
+            squash(&out).contains(
+                "pub fn data(mut self, value: *const c_void) -> Self { self.p_data = value; self }"
+            ),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_void_array_counted_in_values_by_something_else_than_a_member_stops_the_generator() {
+        let mut layer_setting = registry_struct("VkLayerSettingEXT").clone();
+        layer_setting.members.retain(|m| m.name != "valueCount");
+        let mut ir = Registry::get().clone();
+        let message = crate::test_support::catch_quietly(|| {
+            ir.structs.retain(|s| s.name != "VkLayerSettingEXT");
+            ir.structs.push(layer_setting);
+            let model = Model::new(&ir);
+            definition(&model, ir.structs.last().expect("the structure"))
+        })
+        .expect_err("no member holds the number of values");
+        assert_eq!(
+            message,
+            "VkLayerSettingEXT::pValues: the specification counts this `void` array in values, and `valueCount` is not a member that a setter could store their number in"
+        );
+    }
+
+    #[test]
+    fn a_setting_type_without_a_listed_rust_type_stops_the_generator() {
+        let mut ir = Registry::get().clone();
+        let types = ir
+            .enums
+            .iter_mut()
+            .find(|e| e.name == "VkLayerSettingTypeEXT")
+            .expect("VkLayerSettingTypeEXT");
+        let mut added = types.fields[0].clone();
+        added.name = "VK_LAYER_SETTING_TYPE_INT16_EXT".to_string();
+        added.value = "8".to_string();
+        types.fields.push(added);
+        let model = Model::new(&ir);
+        let message = crate::test_support::catch_quietly(|| {
+            definition(&model, registry_struct("VkLayerSettingEXT"))
+        })
+        .expect_err("a value without a Rust type");
+        assert_eq!(
+            message,
+            "VkLayerSettingEXT: the Rust types listed for the values of VkLayerSettingTypeEXT have to follow its values in the registry"
+        );
+    }
+
+    #[test]
+    fn a_void_array_counted_in_bytes_takes_bytes() {
+        let mut ir = registry();
+        ir.structs.push(structure(
+            "VkBlobInfo",
+            vec![
+                field("dataSize", "size_t"),
+                counted("pData", "const void*", "dataSize"),
+            ],
+        ));
+        let model = Model::new(&ir);
+        let out = definition(&model, &ir.structs[0]);
+        assert!(
+            squash(&out).contains(
+                "pub fn data(mut self, value: &'a [u8]) -> Self { self.data_size = value.len() as _; self.p_data = value.as_ptr().cast(); self }"
+            ),
+            "{out}"
+        );
+        assert_eq!(
+            doc_of(&out, "pub fn data("),
+            [
+                "Sets [`p_data`](Self::p_data) to the start of a slice of bytes and [`data_size`](Self::data_size) to its length."
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "VkBlobInfo::pData: the registry gives `blobCount` as the length of this `void` array, which is not the name of a size in bytes"
+    )]
+    fn a_void_array_whose_length_is_not_named_as_a_size_stops_the_generator() {
+        let mut ir = registry();
+        ir.structs.push(structure(
+            "VkBlobInfo",
+            vec![
+                field("blobCount", "uint32_t"),
+                counted("pData", "const void*", "blobCount"),
+            ],
+        ));
+        definition(&Model::new(&ir), &ir.structs[0]);
+    }
+
+    #[test]
+    fn the_void_array_setters_of_the_registry_take_bytes_unless_the_length_counts_values() {
+        let model = Model::new(Registry::get());
+        let mut checked = 0;
+        for s in &model.ir.structs {
+            let out = squash(&definition(&model, s));
+            for m in s.members.iter().filter(|m| void_array_len(m).is_some()) {
+                let Some(count) = count_member(s, m) else {
+                    panic!("{}::{}: no member holds the length", s.name, m.name);
+                };
+                let setter = pointer_setter_name(&m.name);
+                let (generics, element) = match void_array_length(&s.name, m) {
+                    VoidArrayLength::Bytes => (String::new(), "u8"),
+                    VoidArrayLength::Values(typed) => (format!("<T: {}>", typed.value_trait), "T"),
+                };
+                let mutability = if CType::of(m).outer_const() {
+                    ""
+                } else {
+                    "mut "
+                };
+                let signature = format!(
+                    "pub fn {setter}{generics}(mut self, value: &'a {mutability}[{element}]) -> Self {{"
+                );
+                assert!(out.contains(&signature), "{}: {signature}: {out}", s.name);
+                assert!(
+                    out.contains(&format!("self.{} = ", field_name(&count.name))),
+                    "{}::{}",
+                    s.name,
+                    m.name
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked >= 20, "{checked}");
     }
 
     #[test]

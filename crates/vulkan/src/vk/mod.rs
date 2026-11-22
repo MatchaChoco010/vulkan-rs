@@ -87,6 +87,7 @@ mod format;
 /// [`vk`](crate::vk). Refer to them through `vk`, for example as `vk::BufferCreateInfo`.
 pub mod generated;
 mod handle;
+mod layer_setting;
 mod names;
 mod platform;
 mod result;
@@ -103,6 +104,7 @@ pub use extension::*;
 pub use format::*;
 pub use generated::*;
 pub use handle::Handle;
+pub use layer_setting::LayerSettingValue;
 pub(crate) use names::{debug_enum, debug_flags, name_of, value_of};
 pub use platform::*;
 pub use result::Result;

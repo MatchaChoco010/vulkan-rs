@@ -51340,13 +51340,28 @@ impl<'a> LayerSettingEXT<'a> {
         self.value_count = value;
         self
     }
-    /// Sets [`p_values`](Self::p_values) to the start of a slice of bytes and
+    /// Sets [`p_values`](Self::p_values) to the start of a slice of values and
     /// [`value_count`](Self::value_count) to its length.
+    ///
+    /// `T` has to be the type of the values that [`ty`](Self::ty) names, because the C API reads
+    /// `valueCount` values of that type from the array:
+    ///
+    /// - [`LayerSettingTypeEXT::BOOL32`] stands for [`Bool32`]
+    /// - [`LayerSettingTypeEXT::INT32`] stands for `i32`
+    /// - [`LayerSettingTypeEXT::INT64`] stands for `i64`
+    /// - [`LayerSettingTypeEXT::UINT32`] stands for `u32`
+    /// - [`LayerSettingTypeEXT::UINT64`] stands for `u64`
+    /// - [`LayerSettingTypeEXT::FLOAT32`] stands for `f32`
+    /// - [`LayerSettingTypeEXT::FLOAT64`] stands for `f64`
+    /// - [`LayerSettingTypeEXT::STRING`] stands for [`CStrPtr`], or `*const c_char`, a pointer to a
+    ///   NUL-terminated string
+    ///
+    /// [`LayerSettingValue`] is implemented for these types and for no other.
     ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `valueCount`, a `uint32_t`, can count.
-    pub fn values(mut self, value: &'a [u8]) -> Self {
+    pub fn values<T: LayerSettingValue>(mut self, value: &'a [T]) -> Self {
         self.value_count = len_as_count(value.len(), "VkLayerSettingEXT::pValues", "valueCount");
         self.p_values = value.as_ptr().cast();
         self
