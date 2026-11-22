@@ -589,6 +589,69 @@ fn extensions_know_their_dependencies() {
 }
 
 #[test]
+fn dependency_on_an_extension_is_met_by_everything_it_was_promoted_to() {
+    use std::ffi::CStr;
+    use vk::{Dependency, ExtensionInfo};
+
+    let nothing_enabled = |_: &CStr| false;
+    let mut chains_longer_than_one_step = 0;
+    for info in vk::EXTENSIONS {
+        let dependency = Dependency::Extension(info.name);
+        let mut successors = Vec::new();
+        let mut core_version = info.promoted_to_version;
+        let mut next = info.promoted_to_extension;
+        while let Some(name) = next {
+            assert!(
+                name != info.name && !successors.contains(&name),
+                "{info:?}: the promotion chain {successors:?} loops back to {name:?}"
+            );
+            successors.push(name);
+            let successor = ExtensionInfo::get(name)
+                .unwrap_or_else(|| panic!("{info:?}: promoted to {name:?}, which is not listed"));
+            core_version = successor.promoted_to_version;
+            next = successor.promoted_to_extension;
+        }
+        if successors.len() + usize::from(core_version.is_some()) >= 2 {
+            chains_longer_than_one_step += 1;
+        }
+
+        for &successor in &successors {
+            assert!(
+                dependency.is_met(vk::API_VERSION_1_0, &|name: &CStr| name == successor),
+                "a dependency on {:?} is not met with {successor:?}, which it was promoted to (chain {successors:?})",
+                info.name
+            );
+        }
+        if let Some(version) = core_version {
+            assert!(
+                dependency.is_met(version, &nothing_enabled),
+                "a dependency on {:?} is not met by Vulkan {}.{}, which it was promoted to through {successors:?}",
+                info.name,
+                vk::api_version_major(version),
+                vk::api_version_minor(version)
+            );
+            assert!(
+                !dependency.is_met(version - vk::make_api_version(0, 0, 1, 0), &nothing_enabled),
+                "a dependency on {:?} is met by the version before Vulkan {}.{}, which it was promoted to",
+                info.name,
+                vk::api_version_major(version),
+                vk::api_version_minor(version)
+            );
+        }
+        assert!(
+            !dependency.is_met(vk::API_VERSION_1_0, &nothing_enabled)
+                || core_version == Some(vk::API_VERSION_1_0),
+            "a dependency on {:?} is met with nothing enabled on Vulkan 1.0",
+            info.name
+        );
+    }
+    assert!(
+        chains_longer_than_one_step >= 7,
+        "the registry has at least the seven chains such as VK_EXT_index_type_uint8 -> VK_KHR_index_type_uint8 -> Vulkan 1.4, found {chains_longer_than_one_step}"
+    );
+}
+
+#[test]
 fn keyword_members_have_plain_names() {
     let size = vk::DescriptorPoolSize::default()
         .ty(vk::DescriptorType::SAMPLED_IMAGE)

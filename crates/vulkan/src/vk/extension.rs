@@ -96,29 +96,56 @@ impl Dependency {
     /// Evaluates the expression. See [`ExtensionInfo::dependencies_met`] for `api_version`
     /// and `enabled`.
     ///
-    /// A dependency on an extension holds when `enabled` returns `true` for it, when the
-    /// extension was promoted to a core version not above `api_version`, or when it was
-    /// promoted to another extension for which `enabled` returns `true`. A dependency on
-    /// an extension that is not in [`EXTENSIONS`](super::EXTENSIONS) holds only when
-    /// `enabled` returns `true` for it.
+    /// A dependency on an extension holds when `enabled` returns `true` for it or for any
+    /// extension in its promotion chain, or when the chain ends in a core version not above
+    /// `api_version`. The promotion chain follows
+    /// [`promoted_to_extension`](ExtensionInfo::promoted_to_extension) from extension to
+    /// extension: `VK_EXT_index_type_uint8` was promoted to `VK_KHR_index_type_uint8`, which
+    /// was promoted to Vulkan 1.4, so a dependency on `VK_EXT_index_type_uint8` holds with
+    /// either extension enabled or on Vulkan 1.4. A dependency on an extension that is not
+    /// in [`EXTENSIONS`](super::EXTENSIONS) holds only when `enabled` returns `true` for it.
     pub fn is_met(&self, api_version: u32, enabled: &impl Fn(&CStr) -> bool) -> bool {
         match *self {
             Dependency::Version(version) => api_version >= version,
             Dependency::Extension(name) => {
-                if enabled(name) {
-                    return true;
-                }
-                let Some(info) = ExtensionInfo::get(name) else {
-                    return false;
-                };
-                info.promoted_to_version
-                    .is_some_and(|version| api_version >= version)
-                    || info.promoted_to_extension.is_some_and(enabled)
+                extension_is_met(super::EXTENSIONS, name, api_version, enabled)
             }
             Dependency::All(all) => all.iter().all(|d| d.is_met(api_version, enabled)),
             Dependency::Any(any) => any.iter().any(|d| d.is_met(api_version, enabled)),
         }
     }
+}
+
+fn extension_is_met(
+    table: &[ExtensionInfo],
+    name: &CStr,
+    api_version: u32,
+    enabled: &impl Fn(&CStr) -> bool,
+) -> bool {
+    if enabled(name) {
+        return true;
+    }
+    let mut current = name;
+    for _ in 0..table.len() {
+        let Ok(index) = table.binary_search_by(|info| info.name.cmp(current)) else {
+            return false;
+        };
+        let info = &table[index];
+        if info
+            .promoted_to_version
+            .is_some_and(|version| api_version >= version)
+        {
+            return true;
+        }
+        let Some(next) = info.promoted_to_extension else {
+            return false;
+        };
+        if enabled(next) {
+            return true;
+        }
+        current = next;
+    }
+    false
 }
 
 impl fmt::Display for Dependency {
@@ -144,5 +171,71 @@ impl fmt::Display for Dependency {
             Dependency::All(all) => list(f, all, "+"),
             Dependency::Any(any) => list(f, any, ","),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{API_VERSION_1_2, API_VERSION_1_3};
+    use super::*;
+
+    const fn extension(
+        name: &'static CStr,
+        promoted_to_version: Option<u32>,
+        promoted_to_extension: Option<&'static CStr>,
+    ) -> ExtensionInfo {
+        ExtensionInfo {
+            name,
+            spec_version: 1,
+            level: ExtensionLevel::Device,
+            depends: None,
+            promoted_to_version,
+            promoted_to_extension,
+        }
+    }
+
+    const CHAIN: &[ExtensionInfo] = &[
+        extension(c"VK_A", None, Some(c"VK_B")),
+        extension(c"VK_B", None, Some(c"VK_C")),
+        extension(c"VK_C", Some(API_VERSION_1_3), None),
+    ];
+
+    const CYCLE: &[ExtensionInfo] = &[
+        extension(c"VK_A", None, Some(c"VK_B")),
+        extension(c"VK_B", None, Some(c"VK_C")),
+        extension(c"VK_C", None, Some(c"VK_A")),
+    ];
+
+    #[test]
+    fn every_extension_of_a_chain_and_its_final_core_version_meet_the_first() {
+        let nothing = |_: &CStr| false;
+        assert!(extension_is_met(CHAIN, c"VK_A", API_VERSION_1_3, &nothing));
+        assert!(!extension_is_met(CHAIN, c"VK_A", API_VERSION_1_2, &nothing));
+        for successor in [c"VK_B", c"VK_C"] {
+            assert!(extension_is_met(
+                CHAIN,
+                c"VK_A",
+                API_VERSION_1_2,
+                &|name: &CStr| name == successor
+            ));
+        }
+        assert!(!extension_is_met(
+            CHAIN,
+            c"VK_B",
+            API_VERSION_1_2,
+            &|name: &CStr| name == c"VK_A"
+        ));
+    }
+
+    #[test]
+    fn a_promotion_cycle_ends_the_search_instead_of_looping() {
+        let nothing = |_: &CStr| false;
+        assert!(!extension_is_met(CYCLE, c"VK_A", API_VERSION_1_3, &nothing));
+        assert!(extension_is_met(
+            CYCLE,
+            c"VK_B",
+            API_VERSION_1_3,
+            &|name: &CStr| name == c"VK_A"
+        ));
     }
 }
