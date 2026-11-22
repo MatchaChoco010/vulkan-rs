@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ffi::{CStr, c_char, c_void};
 use std::sync::Mutex;
 
@@ -39,7 +39,7 @@ struct Memory {
 #[derive(Default)]
 struct State {
     memories: HashMap<u64, Memory>,
-    released_handles: Vec<u64>,
+    released_handles: BTreeSet<u64>,
     last_handle: u64,
     calls: Calls,
     misuse: Vec<String>,
@@ -223,7 +223,7 @@ unsafe extern "system" fn allocate_memory(
     let mut state = unsafe { state_of(device) };
     let info = unsafe { &*p_allocate_info };
     state.calls.allocate += 1;
-    let handle = state.released_handles.pop().unwrap_or_else(|| {
+    let handle = state.released_handles.pop_first().unwrap_or_else(|| {
         state.last_handle += 1;
         state.last_handle
     });
@@ -250,7 +250,7 @@ unsafe extern "system" fn free_memory(
     let mut state = unsafe { state_of(device) };
     state.calls.free += 1;
     if state.memories.remove(&memory.0).is_some() {
-        state.released_handles.push(memory.0);
+        state.released_handles.insert(memory.0);
     } else {
         state
             .misuse

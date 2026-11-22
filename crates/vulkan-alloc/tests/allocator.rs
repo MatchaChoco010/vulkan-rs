@@ -2,8 +2,10 @@ mod fake_device;
 
 use std::collections::HashMap;
 
-use fake_device::{FakeDevice, HOST_COHERENT, HOST_NON_COHERENT, MemoryObject, Random, desc};
-use vulkan_alloc::{AllocationError, Allocator, FreeError, MemoryRegionState};
+use fake_device::{
+    DEVICE_LOCAL, FakeDevice, HOST_COHERENT, HOST_NON_COHERENT, MemoryObject, Random, desc,
+};
+use vulkan_alloc::{Allocation, AllocationError, Allocator, FreeError, MemoryRegionState};
 
 fn assert_device_holds_what_the_allocator_reports(allocator: &Allocator, fake: &FakeDevice) {
     let mut reported = HashMap::new();
@@ -113,4 +115,135 @@ fn an_allocation_of_another_allocator_is_returned_and_stays_usable() {
     }
     assert_eq!(fake.misuse(), Vec::<String>::new());
     assert!(fake.memory_objects().is_empty());
+}
+
+unsafe fn allocate_in_sequence(allocator: &mut Allocator, seed: u64) -> Vec<Allocation> {
+    let mut random = Random::new(seed);
+    let mut allocations = Vec::new();
+    for _ in 0..1 + random.below(12) {
+        let memory_type =
+            [DEVICE_LOCAL, HOST_COHERENT, HOST_NON_COHERENT][random.below(3) as usize];
+        let size = 1 + random.below(2048);
+        allocations.push(unsafe { allocator.allocate(desc(size, 1, memory_type)) }.unwrap());
+    }
+    allocations
+}
+
+unsafe fn assert_not_held(allocator: &mut Allocator, fake: &FakeDevice, stale: Allocation) {
+    let snapshot = allocator.snapshot();
+    let memory_objects = fake.memory_objects();
+    let calls = fake.calls();
+    unsafe {
+        assert_eq!(
+            allocator.allocation_memory_flags(&stale),
+            Err(AllocationError::InvalidAllocation)
+        );
+        assert_eq!(
+            allocator.map_memory(&stale),
+            Err(AllocationError::InvalidAllocation)
+        );
+        assert_eq!(
+            allocator.map(&stale).err(),
+            Some(AllocationError::InvalidAllocation)
+        );
+        assert_eq!(
+            allocator.map_persistent(&stale),
+            Err(AllocationError::InvalidAllocation)
+        );
+        assert_eq!(allocator.persistent_ptr(&stale), None);
+        assert_eq!(
+            allocator.unmap_memory(&stale),
+            Err(AllocationError::InvalidAllocation)
+        );
+        assert_eq!(
+            allocator.flush_allocation(&stale),
+            Err(AllocationError::InvalidAllocation)
+        );
+        assert_eq!(
+            allocator.invalidate_allocation(&stale),
+            Err(AllocationError::InvalidAllocation)
+        );
+        let FreeError { error, .. } = allocator.free(stale).unwrap_err();
+        assert_eq!(error, AllocationError::InvalidAllocation);
+    }
+    assert_eq!(allocator.snapshot(), snapshot);
+    assert_eq!(fake.memory_objects(), memory_objects);
+    assert_eq!(fake.calls(), calls);
+}
+
+#[test]
+fn allocations_from_before_free_all_are_rejected_whatever_is_allocated_afterwards() {
+    for seed in 1..200 {
+        let fake = FakeDevice::new();
+        let mut allocator = fake.allocator();
+        unsafe {
+            let stale = allocate_in_sequence(&mut allocator, seed);
+            let layout = allocator.snapshot();
+            assert_eq!(allocator.free_all(), stale.len());
+
+            let live = allocate_in_sequence(&mut allocator, seed);
+            let memories = |snapshot: &vulkan_alloc::AllocatorSnapshot| {
+                snapshot
+                    .memory_types
+                    .iter()
+                    .flat_map(|memory_type| &memory_type.blocks)
+                    .map(|block| (block.memory, block.size, block.allocated_bytes))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                memories(&allocator.snapshot()),
+                memories(&layout),
+                "seed {seed}: the device reuses the handles, and the layout repeats"
+            );
+            for (stale, live) in stale.iter().zip(&live) {
+                assert_eq!(
+                    (stale.memory(), stale.offset(), stale.size()),
+                    (live.memory(), live.offset(), live.size()),
+                    "seed {seed}"
+                );
+                assert_ne!(stale, live, "seed {seed}");
+            }
+
+            for stale in stale {
+                assert_not_held(&mut allocator, &fake, stale);
+            }
+            for live in live {
+                assert_eq!(allocator.free(live), Ok(()), "seed {seed}");
+            }
+        }
+        assert!(allocator.is_empty(), "seed {seed}");
+        assert_eq!(fake.misuse(), Vec::<String>::new(), "seed {seed}");
+    }
+}
+
+#[test]
+fn allocations_of_another_allocator_with_the_same_layout_are_rejected() {
+    for seed in 1..200 {
+        let first_device = FakeDevice::new();
+        let second_device = FakeDevice::new();
+        let mut first = first_device.allocator();
+        let mut second = second_device.allocator();
+        unsafe {
+            let of_first = allocate_in_sequence(&mut first, seed);
+            let of_second = allocate_in_sequence(&mut second, seed);
+            for (a, b) in of_first.iter().zip(&of_second) {
+                assert_eq!(
+                    (a.memory(), a.offset(), a.size(), a.memory_type_index()),
+                    (b.memory(), b.offset(), b.size(), b.memory_type_index()),
+                    "seed {seed}"
+                );
+            }
+            for foreign in of_first {
+                assert_not_held(&mut second, &second_device, foreign);
+            }
+            assert_eq!(second.live_allocation_count(), of_second.len());
+            for own in of_second {
+                assert_eq!(second.free(own), Ok(()), "seed {seed}");
+            }
+            first.free_all();
+        }
+        assert!(second.is_empty(), "seed {seed}");
+        assert_eq!(first_device.misuse(), Vec::<String>::new(), "seed {seed}");
+        assert_eq!(second_device.misuse(), Vec::<String>::new(), "seed {seed}");
+    }
 }
