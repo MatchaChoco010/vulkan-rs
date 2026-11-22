@@ -112,8 +112,8 @@ impl Allocator {
     /// [`AllocationCreateDesc::location`] requires: the lowest-indexed one that also has
     /// every preferred flag, or else the one with the most preferred flags (the lowest
     /// index on a tie). Memory types that need the `deviceCoherentMemory` feature are
-    /// left out unless the location names them (see [`MemoryLocation`]). Only the
-    /// chosen memory type is tried.
+    /// left out unless the location names them (see
+    /// [`MemoryLocation`](crate::MemoryLocation)). Only the chosen memory type is tried.
     ///
     /// The allocation is placed in an existing shared block of that type when one has
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
