@@ -145,6 +145,11 @@ impl Allocator {
     /// contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] always get a new
     /// `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
     ///
+    /// The allocation is placed in a shared block whenever one of the block's free
+    /// ranges can hold it at its alignment. Looking for that range can take time
+    /// proportional to the number of free ranges of each block that is tried (see
+    /// the [crate documentation](crate#what-the-allocator-does-and-does-not-do)).
+    ///
     /// # Errors
     ///
     /// - [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the

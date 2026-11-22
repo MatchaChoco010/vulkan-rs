@@ -4,8 +4,10 @@
 //! (`maxMemoryAllocationCount`, which the specification only guarantees to be at least
 //! 4096), so buffers and images are normally bound to ranges of larger memory objects.
 //! [`Allocator`] allocates `VkDeviceMemory` in blocks, keeps the blocks of each memory
-//! type apart, and cuts allocations out of them with a TLSF (two-level segregated fit)
-//! free list.
+//! type apart, and cuts allocations out of them with TLSF (two-level segregated fit)
+//! free lists, which it searches further than TLSF does when that is needed to place an
+//! allocation (see
+//! [What the allocator does and does not do](#what-the-allocator-does-and-does-not-do)).
 //!
 //! # Use
 //!
@@ -96,6 +98,22 @@
 //! [`AllocationCreateDesc::memory_allocate_flags`]) get a `VkDeviceMemory` of their own.
 //! When the last allocation of a block is freed, the block's `VkDeviceMemory` is freed
 //! at once.
+//!
+//! The free ranges of a block are kept in lists by size class. A request first looks
+//! only at the first free range of each list, from the class of the requested size
+//! upward, which takes a number of steps that does not depend on how many free ranges
+//! the block has. If none of these ranges can hold the allocation at its alignment, the
+//! request walks the rest of those lists. So, unlike plain TLSF, which can fail while a
+//! large enough free range exists, a request is placed in a block whenever one of the
+//! block's free ranges can hold it at its alignment.
+//!
+//! The price is that a request for which no first range of a list will do, in
+//! particular one that does not fit in the block at all, can take time proportional to
+//! the number of free ranges of the block. [`Allocator::allocate`] tries the shared
+//! blocks that the allocation may share in turn before it allocates a new one, so such
+//! a request pays this for each of them. The padding left before an allocation to align
+//! it stays a free range however small it is, so many aligned allocations can add many
+//! free ranges.
 //!
 //! The allocator does not:
 //!
