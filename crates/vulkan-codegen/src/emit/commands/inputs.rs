@@ -1,4 +1,5 @@
 use super::{argument_name, can_defer, inner_len, struct_member_len, value_count_param};
+use crate::docs::join_and;
 use crate::emit::{Borrow, w};
 use crate::model::{CType, Model, is_opaque, null_ptr};
 use crate::naming::field_name;
@@ -37,6 +38,7 @@ pub(super) struct Inputs {
     by_param: Vec<Option<Input>>,
     pub(super) checks: String,
     pub(super) notes: Vec<String>,
+    pub(super) narrowed_counts: Vec<String>,
     pub(super) has_slices_of_slices: bool,
 }
 
@@ -62,6 +64,7 @@ impl Inputs {
             caller_owns_every_pointer: can_defer(model, c),
             checks: String::new(),
             notes: Vec::new(),
+            narrowed_counts: Vec::new(),
         };
         let by_param = (0..params.len())
             .map(|index| (!outputs.contains(&index)).then(|| planner.input(index)))
@@ -70,6 +73,7 @@ impl Inputs {
             by_param,
             checks: planner.checks,
             notes: planner.notes,
+            narrowed_counts: planner.narrowed_counts,
             has_slices_of_slices: !planner.inner_lens.is_empty()
                 && !planner.caller_owns_every_pointer,
         }
@@ -138,6 +142,7 @@ struct Planner<'a> {
     caller_owns_every_pointer: bool,
     checks: String,
     notes: Vec<String>,
+    narrowed_counts: Vec<String>,
 }
 
 impl Planner<'_> {
@@ -207,14 +212,29 @@ impl Planner<'_> {
             );
             self.assert_slice_len(slice, &local, &message);
         }
-        let cast = match self.model.base_ty(&count.ty, "'_").as_str() {
-            "usize" => String::new(),
-            count_ty => format!(" as {count_ty}"),
+        let pass = if !self.model.holds_every_slice_len(&count.ty) {
+            let names = slices
+                .iter()
+                .map(|slice| format!("`{}`", argument_name(slice)))
+                .collect::<Vec<_>>();
+            let has = if names.len() == 1 { "has" } else { "have" };
+            self.narrowed_counts.push(format!(
+                "Also panics if {} {has} more elements than `{}`, a `{}`, can count.",
+                join_and(names),
+                count.name,
+                count.ty
+            ));
+            format!(
+                "len_as_count({local}, \"{}\", \"{}\")",
+                self.c.name, count.name
+            )
+        } else {
+            match self.model.base_ty(&count.ty, "'_").as_str() {
+                "usize" => local.clone(),
+                count_ty => format!("{local} as {count_ty}"),
+            }
         };
-        Input::SliceLen {
-            pass: format!("{local}{cast}"),
-            local,
-        }
+        Input::SliceLen { pass, local }
     }
 
     fn slice_of_slices(&mut self, p: &Field, ty: &CType, owner: usize, member: &str) -> Input {

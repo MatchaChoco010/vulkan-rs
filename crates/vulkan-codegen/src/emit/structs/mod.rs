@@ -292,7 +292,7 @@ mod tests {
         assert!(out.contains("pub struct DeviceQueueCreateInfo<'a> {"));
         assert!(out.contains("pub _marker: PhantomData<&'a ()>,"));
         assert!(out.contains(
-            "pub fn queue_priorities(mut self, value: &'a [f32]) -> Self { self.queue_count = value.len() as _; self.p_queue_priorities = value.as_ptr(); self }"
+            "pub fn queue_priorities(mut self, value: &'a [f32]) -> Self { self.queue_count = len_as_count(value.len(), \"VkDeviceQueueCreateInfo::pQueuePriorities\", \"queueCount\"); self.p_queue_priorities = value.as_ptr(); self }"
         ));
         assert!(out.contains("s_type: StructureType::DEVICE_QUEUE_CREATE_INFO,"));
         assert!(out.contains("unsafe impl TaggedStructure for DeviceQueueCreateInfo<'_> {"));
@@ -348,11 +348,107 @@ mod tests {
         let out = squash(&emit(&Model::new(&ir)));
         assert!(out.contains("pub pp_enabled_extension_names: *const *const c_char,"));
         assert!(out.contains(
-            "pub fn enabled_extension_names(mut self, value: &'a [CStrPtr<'a>]) -> Self { self.enabled_extension_count = value.len() as _; self.pp_enabled_extension_names = value.as_ptr().cast(); self }"
+            "pub fn enabled_extension_names(mut self, value: &'a [CStrPtr<'a>]) -> Self { self.enabled_extension_count = len_as_count(value.len(), \"VkInstanceCreateInfo::ppEnabledExtensionNames\", \"enabledExtensionCount\"); self.pp_enabled_extension_names = value.as_ptr().cast(); self }"
         ));
         assert!(out.contains(
             "pub fn application_name(mut self, value: &'a CStr) -> Self { self.p_application_name = value.as_ptr(); self }"
         ));
+    }
+
+    #[test]
+    fn slice_setters_check_only_the_counts_narrower_than_usize() {
+        let mut ir = registry();
+        ir.structs.push(structure(
+            "VkCountsInfo",
+            vec![
+                field("byteCount", "uint8_t"),
+                counted("pBytes", "const uint8_t*", "byteCount"),
+                field("wordCount", "uint32_t"),
+                counted("pWords", "const uint32_t*", "wordCount"),
+                field("dataSize", "size_t"),
+                counted("pData", "const void*", "dataSize"),
+                field("messageSize", "uint64_t"),
+                counted("pMessage", "const void*", "messageSize"),
+            ],
+        ));
+        let model = Model::new(&ir);
+        let out = squash(&emit(&model));
+        for (setter, element, member, count, ty) in [
+            ("bytes", "u8", "pBytes", "byteCount", "uint8_t"),
+            ("words", "u32", "pWords", "wordCount", "uint32_t"),
+        ] {
+            assert!(
+                out.contains(&format!(
+                    "pub fn {setter}(mut self, value: &'a [{element}]) -> Self {{ self.{} = len_as_count(value.len(), \"VkCountsInfo::{member}\", \"{count}\");",
+                    field_name(count),
+                )),
+                "{setter}: {out}"
+            );
+            let doc = crate::emit::doc_of(&emit(&model), &format!("pub fn {setter}("));
+            assert!(
+                doc.join(" ").contains(&format!(
+                    "# Panics Panics if the slice has more elements than `{count}`, a `{ty}`, can count."
+                )),
+                "{setter}: {doc:?}"
+            );
+        }
+        for (setter, count) in [("data", "data_size"), ("message", "message_size")] {
+            assert!(
+                out.contains(&format!(
+                    "pub fn {setter}(mut self, value: &'a [u8]) -> Self {{ self.{count} = value.len() as _;"
+                )),
+                "{setter}: {out}"
+            );
+            let doc = crate::emit::doc_of(&emit(&model), &format!("pub fn {setter}("));
+            assert!(!doc.join(" ").contains("# Panics"), "{setter}: {doc:?}");
+        }
+    }
+
+    #[test]
+    fn the_slice_setters_of_the_registry_check_every_count_narrower_than_usize() {
+        let model = Model::new(vulkan_registry::Registry::get());
+        let mut checked = 0;
+        for s in &model.ir.structs {
+            let out = squash(&definition(&model, s));
+            let unchecked = out.matches("value.len() as _").count();
+            let mut wide = 0;
+            for m in &s.members {
+                let ty = crate::model::CType::of(m);
+                let count = m.len.as_deref().and_then(|len| {
+                    let name = len.strip_suffix(",1").unwrap_or(len);
+                    s.members.iter().find(|c| {
+                        c.name == name
+                            && crate::model::CType::of(c).depth() == 0
+                            && !crate::model::CType::of(c).is_array()
+                    })
+                });
+                let Some(count) = count else { continue };
+                if ty.depth() == 0 || ty.is_array() {
+                    continue;
+                }
+                if model.holds_every_slice_len(&count.ty) {
+                    wide += 1;
+                    continue;
+                }
+                checked += 1;
+                assert!(
+                    out.contains(&format!(
+                        "= len_as_count(value.len(), \"{}::{}\", \"{}\");",
+                        s.name, m.name, count.name
+                    )),
+                    "{}::{} sets its {} count without a check: {out}",
+                    s.name,
+                    m.name,
+                    count.ty
+                );
+            }
+            assert!(
+                unchecked <= wide,
+                "{} sets a count with `as _` that is not a size: {out}",
+                s.name
+            );
+        }
+        assert!(checked > 0, "the registry has counts narrower than usize");
     }
 
     #[test]

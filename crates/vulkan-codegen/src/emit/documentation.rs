@@ -273,7 +273,9 @@ fn setters_name_the_members_they_set() {
     assert_eq!(
         doc_of(&out, "pub fn priorities("),
         [
-            "Sets [`p_priorities`](Self::p_priorities) to the start of a slice of elements and [`queue_count`](Self::queue_count) to its length."
+            "Sets [`p_priorities`](Self::p_priorities) to the start of a slice of elements and [`queue_count`](Self::queue_count) to its length.",
+            "# Panics",
+            "Panics if the slice has more elements than `queueCount`, a `uint32_t`, can count."
         ]
     );
     assert!(doc_of(&out, "pub fn push_next<")[0].starts_with("Puts `next` at the head"));

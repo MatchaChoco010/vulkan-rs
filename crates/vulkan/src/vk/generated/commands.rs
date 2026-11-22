@@ -44978,7 +44978,8 @@ impl crate::Device {
     ///
     /// Panics if `vkBindAccelerationStructureMemoryNV` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `bind_infos` has more elements than `bindInfoCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkBindAccelerationStructureMemoryNV")]
     pub unsafe fn bind_acceleration_structure_memory_nv(
         &self,
@@ -44987,7 +44988,11 @@ impl crate::Device {
         unsafe {
             let bind_info_count_len: usize = bind_infos.len();
             self.bind_acceleration_structure_memory_nv_raw(
-                bind_info_count_len as u32,
+                len_as_count(
+                    bind_info_count_len,
+                    "vkBindAccelerationStructureMemoryNV",
+                    "bindInfoCount",
+                ),
                 bind_infos.as_ptr(),
             )
             .into_result()
@@ -45052,7 +45057,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkBindBufferMemory2` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `bind_infos` has more elements than `bindInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkBindBufferMemory2")]
     pub unsafe fn bind_buffer_memory2(
         &self,
@@ -45060,8 +45066,11 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let bind_info_count_len: usize = bind_infos.len();
-            self.bind_buffer_memory2_raw(bind_info_count_len as u32, bind_infos.as_ptr())
-                .into_result()
+            self.bind_buffer_memory2_raw(
+                len_as_count(bind_info_count_len, "vkBindBufferMemory2", "bindInfoCount"),
+                bind_infos.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Bind device memory to buffer objects.
@@ -45088,7 +45097,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkBindBufferMemory2KHR` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `bind_infos` has more elements than `bindInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkBindBufferMemory2KHR")]
     pub unsafe fn bind_buffer_memory2_khr(
         &self,
@@ -45096,8 +45106,15 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let bind_info_count_len: usize = bind_infos.len();
-            self.bind_buffer_memory2_khr_raw(bind_info_count_len as u32, bind_infos.as_ptr())
-                .into_result()
+            self.bind_buffer_memory2_khr_raw(
+                len_as_count(
+                    bind_info_count_len,
+                    "vkBindBufferMemory2KHR",
+                    "bindInfoCount",
+                ),
+                bind_infos.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Bind device memory to a data graph pipeline session object.
@@ -45123,7 +45140,8 @@ impl crate::Device {
     ///
     /// Panics if `vkBindDataGraphPipelineSessionMemoryARM` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `bind_infos` has more elements than `bindInfoCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkBindDataGraphPipelineSessionMemoryARM")]
     pub unsafe fn bind_data_graph_pipeline_session_memory_arm(
         &self,
@@ -45132,7 +45150,11 @@ impl crate::Device {
         unsafe {
             let bind_info_count_len: usize = bind_infos.len();
             self.bind_data_graph_pipeline_session_memory_arm_raw(
-                bind_info_count_len as u32,
+                len_as_count(
+                    bind_info_count_len,
+                    "vkBindDataGraphPipelineSessionMemoryARM",
+                    "bindInfoCount",
+                ),
                 bind_infos.as_ptr(),
             )
             .into_result()
@@ -45195,7 +45217,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkBindImageMemory2` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `bind_infos` has more elements than `bindInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkBindImageMemory2")]
     pub unsafe fn bind_image_memory2(
         &self,
@@ -45203,8 +45226,11 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let bind_info_count_len: usize = bind_infos.len();
-            self.bind_image_memory2_raw(bind_info_count_len as u32, bind_infos.as_ptr())
-                .into_result()
+            self.bind_image_memory2_raw(
+                len_as_count(bind_info_count_len, "vkBindImageMemory2", "bindInfoCount"),
+                bind_infos.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Bind device memory to image objects.
@@ -45230,7 +45256,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkBindImageMemory2KHR` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `bind_infos` has more elements than `bindInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkBindImageMemory2KHR")]
     pub unsafe fn bind_image_memory2_khr(
         &self,
@@ -45238,8 +45265,15 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let bind_info_count_len: usize = bind_infos.len();
-            self.bind_image_memory2_khr_raw(bind_info_count_len as u32, bind_infos.as_ptr())
-                .into_result()
+            self.bind_image_memory2_khr_raw(
+                len_as_count(
+                    bind_info_count_len,
+                    "vkBindImageMemory2KHR",
+                    "bindInfoCount",
+                ),
+                bind_infos.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Bind image to an optical flow session.
@@ -45300,7 +45334,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkBindTensorMemoryARM` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `bind_infos` has more elements than `bindInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkBindTensorMemoryARM")]
     pub unsafe fn bind_tensor_memory_arm(
         &self,
@@ -45308,8 +45343,15 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let bind_info_count_len: usize = bind_infos.len();
-            self.bind_tensor_memory_arm_raw(bind_info_count_len as u32, bind_infos.as_ptr())
-                .into_result()
+            self.bind_tensor_memory_arm_raw(
+                len_as_count(
+                    bind_info_count_len,
+                    "vkBindTensorMemoryARM",
+                    "bindInfoCount",
+                ),
+                bind_infos.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Bind Video Memory.
@@ -45334,7 +45376,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkBindVideoSessionMemoryKHR` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `bind_session_memory_infos` has more elements than `bindSessionMemoryInfoCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkBindVideoSessionMemoryKHR")]
     pub unsafe fn bind_video_session_memory_khr(
         &self,
@@ -45345,7 +45389,11 @@ impl crate::Device {
             let bind_session_memory_info_count_len: usize = bind_session_memory_infos.len();
             self.bind_video_session_memory_khr_raw(
                 video_session,
-                bind_session_memory_info_count_len as u32,
+                len_as_count(
+                    bind_session_memory_info_count_len,
+                    "vkBindVideoSessionMemoryKHR",
+                    "bindSessionMemoryInfoCount",
+                ),
                 bind_session_memory_infos.as_ptr(),
             )
             .into_result()
@@ -45387,7 +45435,8 @@ impl crate::Device {
     /// for it, for example because the version or the extension that provides it is not enabled.
     /// Also panics if the slices do not have the lengths that the command needs: slices that it
     /// counts with one parameter have to be equally long, and a slice whose length it reads from
-    /// another argument has to have that length.
+    /// another argument has to have that length. Also panics if `infos` and `build_range_infos`
+    /// have more elements than `infoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkBuildAccelerationStructuresKHR")]
     pub unsafe fn build_acceleration_structures_khr(
         &self,
@@ -45404,7 +45453,11 @@ impl crate::Device {
             );
             let result = self.build_acceleration_structures_khr_raw(
                 deferred_operation,
-                info_count_len as u32,
+                len_as_count(
+                    info_count_len,
+                    "vkBuildAccelerationStructuresKHR",
+                    "infoCount",
+                ),
                 infos.as_ptr(),
                 build_range_infos.as_ptr(),
             );
@@ -45444,7 +45497,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkBuildMicromapsEXT` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `infos` has more elements than `infoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkBuildMicromapsEXT")]
     pub unsafe fn build_micromaps_ext(
         &self,
@@ -45455,7 +45509,7 @@ impl crate::Device {
             let info_count_len: usize = infos.len();
             let result = self.build_micromaps_ext_raw(
                 deferred_operation,
-                info_count_len as u32,
+                len_as_count(info_count_len, "vkBuildMicromapsEXT", "infoCount"),
                 infos.as_ptr(),
             );
             result.into_result()?;
@@ -45936,6 +45990,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdBeginTransformFeedback2EXT` is not loaded: the loader returned no pointer
     /// for it, for example because the version or the extension that provides it is not enabled.
+    /// Also panics if `counter_infos` has more elements than `counterRangeCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdBeginTransformFeedback2EXT")]
     pub unsafe fn cmd_begin_transform_feedback2_ext(
         &self,
@@ -45952,7 +46008,11 @@ impl crate::Device {
             self.cmd_begin_transform_feedback2_ext_raw(
                 command_buffer,
                 first_counter_range,
-                counter_range_count_len as u32,
+                len_as_count(
+                    counter_range_count_len,
+                    "vkCmdBeginTransformFeedback2EXT",
+                    "counterRangeCount",
+                ),
                 counter_infos.map_or(core::ptr::null(), |x| x.as_ptr()),
             )
         }
@@ -45974,7 +46034,9 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `counter_buffers` and
+    /// `counter_buffer_offsets` have more elements than `counterBufferCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdBeginTransformFeedbackEXT")]
     pub unsafe fn cmd_begin_transform_feedback_ext(
         &self,
@@ -45995,7 +46057,11 @@ impl crate::Device {
             self.cmd_begin_transform_feedback_ext_raw(
                 command_buffer,
                 first_counter_buffer,
-                counter_buffer_count_len as u32,
+                len_as_count(
+                    counter_buffer_count_len,
+                    "vkCmdBeginTransformFeedbackEXT",
+                    "counterBufferCount",
+                ),
                 counter_buffers.as_ptr(),
                 counter_buffer_offsets.map_or(core::ptr::null(), |x| x.as_ptr()),
             )
@@ -46105,7 +46171,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdBindDescriptorBuffersEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `binding_infos` has more elements than `bufferCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBindDescriptorBuffersEXT")]
     pub unsafe fn cmd_bind_descriptor_buffers_ext(
         &self,
@@ -46116,7 +46183,11 @@ impl crate::Device {
             let buffer_count_len: usize = binding_infos.len();
             self.cmd_bind_descriptor_buffers_ext_raw(
                 command_buffer,
-                buffer_count_len as u32,
+                len_as_count(
+                    buffer_count_len,
+                    "vkCmdBindDescriptorBuffersEXT",
+                    "bufferCount",
+                ),
                 binding_infos.as_ptr(),
             )
         }
@@ -46135,7 +46206,10 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdBindDescriptorSets` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `descriptor_sets` has more elements than `descriptorSetCount`, a `uint32_t`, can
+    /// count. Also panics if `dynamic_offsets` has more elements than `dynamicOffsetCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkCmdBindDescriptorSets")]
     pub unsafe fn cmd_bind_descriptor_sets(
         &self,
@@ -46154,9 +46228,17 @@ impl crate::Device {
                 pipeline_bind_point,
                 layout,
                 first_set,
-                descriptor_set_count_len as u32,
+                len_as_count(
+                    descriptor_set_count_len,
+                    "vkCmdBindDescriptorSets",
+                    "descriptorSetCount",
+                ),
                 descriptor_sets.as_ptr(),
-                dynamic_offset_count_len as u32,
+                len_as_count(
+                    dynamic_offset_count_len,
+                    "vkCmdBindDescriptorSets",
+                    "dynamicOffsetCount",
+                ),
                 dynamic_offsets.as_ptr(),
             )
         }
@@ -46471,7 +46553,8 @@ impl crate::Device {
     /// example because the version or the extension that provides it is not enabled. Also panics if
     /// the slices do not have the lengths that the command needs: slices that it counts with one
     /// parameter have to be equally long, and a slice whose length it reads from another argument
-    /// has to have that length.
+    /// has to have that length. Also panics if `stages` and `shaders` have more elements than
+    /// `stageCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBindShadersEXT")]
     pub unsafe fn cmd_bind_shaders_ext(
         &self,
@@ -46490,7 +46573,7 @@ impl crate::Device {
             }
             self.cmd_bind_shaders_ext_raw(
                 command_buffer,
-                stage_count_len as u32,
+                len_as_count(stage_count_len, "vkCmdBindShadersEXT", "stageCount"),
                 stages.as_ptr(),
                 shaders.map_or(core::ptr::null(), |x| x.as_ptr()),
             )
@@ -46564,7 +46647,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdBindTransformFeedbackBuffers2EXT` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `binding_infos` has more elements than `bindingCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkCmdBindTransformFeedbackBuffers2EXT")]
     pub unsafe fn cmd_bind_transform_feedback_buffers2_ext(
         &self,
@@ -46581,7 +46665,11 @@ impl crate::Device {
             self.cmd_bind_transform_feedback_buffers2_ext_raw(
                 command_buffer,
                 first_binding,
-                binding_count_len as u32,
+                len_as_count(
+                    binding_count_len,
+                    "vkCmdBindTransformFeedbackBuffers2EXT",
+                    "bindingCount",
+                ),
                 binding_infos.map_or(core::ptr::null(), |x| x.as_ptr()),
             )
         }
@@ -46604,7 +46692,8 @@ impl crate::Device {
     /// pointer for it, for example because the version or the extension that provides it is not
     /// enabled. Also panics if the slices do not have the lengths that the command needs: slices
     /// that it counts with one parameter have to be equally long, and a slice whose length it reads
-    /// from another argument has to have that length.
+    /// from another argument has to have that length. Also panics if `buffers`, `offsets` and
+    /// `sizes` have more elements than `bindingCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBindTransformFeedbackBuffersEXT")]
     pub unsafe fn cmd_bind_transform_feedback_buffers_ext(
         &self,
@@ -46631,7 +46720,11 @@ impl crate::Device {
             self.cmd_bind_transform_feedback_buffers_ext_raw(
                 command_buffer,
                 first_binding,
-                binding_count_len as u32,
+                len_as_count(
+                    binding_count_len,
+                    "vkCmdBindTransformFeedbackBuffersEXT",
+                    "bindingCount",
+                ),
                 buffers.as_ptr(),
                 offsets.as_ptr(),
                 sizes.map_or(core::ptr::null(), |x| x.as_ptr()),
@@ -46655,7 +46748,8 @@ impl crate::Device {
     /// example because the version or the extension that provides it is not enabled. Also panics if
     /// the slices do not have the lengths that the command needs: slices that it counts with one
     /// parameter have to be equally long, and a slice whose length it reads from another argument
-    /// has to have that length.
+    /// has to have that length. Also panics if `buffers` and `offsets` have more elements than
+    /// `bindingCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBindVertexBuffers")]
     pub unsafe fn cmd_bind_vertex_buffers(
         &self,
@@ -46674,7 +46768,7 @@ impl crate::Device {
             self.cmd_bind_vertex_buffers_raw(
                 command_buffer,
                 first_binding,
-                binding_count_len as u32,
+                len_as_count(binding_count_len, "vkCmdBindVertexBuffers", "bindingCount"),
                 buffers.as_ptr(),
                 offsets.as_ptr(),
             )
@@ -46697,7 +46791,8 @@ impl crate::Device {
     /// for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `buffers`, `offsets`, `sizes` and `strides`
+    /// have more elements than `bindingCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBindVertexBuffers2")]
     pub unsafe fn cmd_bind_vertex_buffers2(
         &self,
@@ -46732,7 +46827,7 @@ impl crate::Device {
             self.cmd_bind_vertex_buffers2_raw(
                 command_buffer,
                 first_binding,
-                binding_count_len as u32,
+                len_as_count(binding_count_len, "vkCmdBindVertexBuffers2", "bindingCount"),
                 buffers.as_ptr(),
                 offsets.as_ptr(),
                 sizes.map_or(core::ptr::null(), |x| x.as_ptr()),
@@ -46759,7 +46854,8 @@ impl crate::Device {
     /// for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `buffers`, `offsets`, `sizes` and `strides`
+    /// have more elements than `bindingCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBindVertexBuffers2EXT")]
     pub unsafe fn cmd_bind_vertex_buffers2_ext(
         &self,
@@ -46794,7 +46890,11 @@ impl crate::Device {
             self.cmd_bind_vertex_buffers2_ext_raw(
                 command_buffer,
                 first_binding,
-                binding_count_len as u32,
+                len_as_count(
+                    binding_count_len,
+                    "vkCmdBindVertexBuffers2EXT",
+                    "bindingCount",
+                ),
                 buffers.as_ptr(),
                 offsets.as_ptr(),
                 sizes.map_or(core::ptr::null(), |x| x.as_ptr()),
@@ -46817,7 +46917,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdBindVertexBuffers3KHR` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `binding_infos` has more elements than `bindingCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBindVertexBuffers3KHR")]
     pub unsafe fn cmd_bind_vertex_buffers3_khr(
         &self,
@@ -46830,7 +46931,11 @@ impl crate::Device {
             self.cmd_bind_vertex_buffers3_khr_raw(
                 command_buffer,
                 first_binding,
-                binding_count_len as u32,
+                len_as_count(
+                    binding_count_len,
+                    "vkCmdBindVertexBuffers3KHR",
+                    "bindingCount",
+                ),
                 binding_infos.as_ptr(),
             )
         }
@@ -46849,7 +46954,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdBlitImage` is not loaded: the loader returned no pointer for it, for example
-    /// because the version or the extension that provides it is not enabled.
+    /// because the version or the extension that provides it is not enabled. Also panics if
+    /// `regions` has more elements than `regionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBlitImage")]
     pub unsafe fn cmd_blit_image(
         &self,
@@ -46869,7 +46975,7 @@ impl crate::Device {
                 src_image_layout,
                 dst_image,
                 dst_image_layout,
-                region_count_len as u32,
+                len_as_count(region_count_len, "vkCmdBlitImage", "regionCount"),
                 regions.as_ptr(),
                 filter,
             )
@@ -46985,7 +47091,9 @@ impl crate::Device {
     /// no pointer for it, for example because the version or the extension that provides it is not
     /// enabled. Also panics if the slices do not have the lengths that the command needs: slices
     /// that it counts with one parameter have to be equally long, and a slice whose length it reads
-    /// from another argument has to have that length.
+    /// from another argument has to have that length. Also panics if `infos`,
+    /// `indirect_device_addresses`, `indirect_strides` and `max_primitive_counts` have more
+    /// elements than `infoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBuildAccelerationStructuresIndirectKHR")]
     pub unsafe fn cmd_build_acceleration_structures_indirect_khr(
         &self,
@@ -47027,7 +47135,11 @@ impl crate::Device {
                 .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_indirect_khr_raw(
                 command_buffer,
-                info_count_len as u32,
+                len_as_count(
+                    info_count_len,
+                    "vkCmdBuildAccelerationStructuresIndirectKHR",
+                    "infoCount",
+                ),
                 infos.as_ptr(),
                 indirect_device_addresses.as_ptr(),
                 indirect_strides.as_ptr(),
@@ -47054,7 +47166,8 @@ impl crate::Device {
     /// pointer for it, for example because the version or the extension that provides it is not
     /// enabled. Also panics if the slices do not have the lengths that the command needs: slices
     /// that it counts with one parameter have to be equally long, and a slice whose length it reads
-    /// from another argument has to have that length.
+    /// from another argument has to have that length. Also panics if `infos` and
+    /// `build_range_infos` have more elements than `infoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBuildAccelerationStructuresKHR")]
     pub unsafe fn cmd_build_acceleration_structures_khr(
         &self,
@@ -47084,7 +47197,11 @@ impl crate::Device {
                 .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_khr_raw(
                 command_buffer,
-                info_count_len as u32,
+                len_as_count(
+                    info_count_len,
+                    "vkCmdBuildAccelerationStructuresKHR",
+                    "infoCount",
+                ),
                 infos.as_ptr(),
                 build_range_infos_pointers.as_ptr(),
             )
@@ -47134,7 +47251,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdBuildMicromapsEXT` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `infos` has more elements than `infoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdBuildMicromapsEXT")]
     pub unsafe fn cmd_build_micromaps_ext(
         &self,
@@ -47143,7 +47261,11 @@ impl crate::Device {
     ) {
         unsafe {
             let info_count_len: usize = infos.len();
-            self.cmd_build_micromaps_ext_raw(command_buffer, info_count_len as u32, infos.as_ptr())
+            self.cmd_build_micromaps_ext_raw(
+                command_buffer,
+                len_as_count(info_count_len, "vkCmdBuildMicromapsEXT", "infoCount"),
+                infos.as_ptr(),
+            )
         }
     }
     /// Command for building a PTLAS.
@@ -47190,7 +47312,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdClearAttachments` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `attachments` has more elements than `attachmentCount`, a `uint32_t`, can count. Also panics
+    /// if `rects` has more elements than `rectCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdClearAttachments")]
     pub unsafe fn cmd_clear_attachments(
         &self,
@@ -47203,9 +47327,13 @@ impl crate::Device {
             let rect_count_len: usize = rects.len();
             self.cmd_clear_attachments_raw(
                 command_buffer,
-                attachment_count_len as u32,
+                len_as_count(
+                    attachment_count_len,
+                    "vkCmdClearAttachments",
+                    "attachmentCount",
+                ),
                 attachments.as_ptr(),
-                rect_count_len as u32,
+                len_as_count(rect_count_len, "vkCmdClearAttachments", "rectCount"),
                 rects.as_ptr(),
             )
         }
@@ -47224,7 +47352,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdClearColorImage` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `ranges` has more elements than `rangeCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdClearColorImage")]
     pub unsafe fn cmd_clear_color_image(
         &self,
@@ -47241,7 +47370,7 @@ impl crate::Device {
                 image,
                 image_layout,
                 core::ptr::from_ref(color),
-                range_count_len as u32,
+                len_as_count(range_count_len, "vkCmdClearColorImage", "rangeCount"),
                 ranges.as_ptr(),
             )
         }
@@ -47260,7 +47389,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdClearDepthStencilImage` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `ranges` has more elements than `rangeCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdClearDepthStencilImage")]
     pub unsafe fn cmd_clear_depth_stencil_image(
         &self,
@@ -47277,7 +47407,7 @@ impl crate::Device {
                 image,
                 image_layout,
                 core::ptr::from_ref(depth_stencil),
-                range_count_len as u32,
+                len_as_count(range_count_len, "vkCmdClearDepthStencilImage", "rangeCount"),
                 ranges.as_ptr(),
             )
         }
@@ -47326,7 +47456,7 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdConvertCooperativeVectorMatrixNV` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `infos` has more elements than `infoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdConvertCooperativeVectorMatrixNV")]
     pub unsafe fn cmd_convert_cooperative_vector_matrix_nv(
         &self,
@@ -47337,7 +47467,11 @@ impl crate::Device {
             let info_count_len: usize = infos.len();
             self.cmd_convert_cooperative_vector_matrix_nv_raw(
                 command_buffer,
-                info_count_len as u32,
+                len_as_count(
+                    info_count_len,
+                    "vkCmdConvertCooperativeVectorMatrixNV",
+                    "infoCount",
+                ),
                 infos.as_ptr(),
             )
         }
@@ -47437,7 +47571,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdCopyBuffer` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `regions` has more elements than `regionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdCopyBuffer")]
     pub unsafe fn cmd_copy_buffer(
         &self,
@@ -47452,7 +47587,7 @@ impl crate::Device {
                 command_buffer,
                 src_buffer,
                 dst_buffer,
-                region_count_len as u32,
+                len_as_count(region_count_len, "vkCmdCopyBuffer", "regionCount"),
                 regions.as_ptr(),
             )
         }
@@ -47520,7 +47655,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdCopyBufferToImage` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `regions` has more elements than `regionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdCopyBufferToImage")]
     pub unsafe fn cmd_copy_buffer_to_image(
         &self,
@@ -47537,7 +47673,7 @@ impl crate::Device {
                 src_buffer,
                 dst_image,
                 dst_image_layout,
-                region_count_len as u32,
+                len_as_count(region_count_len, "vkCmdCopyBufferToImage", "regionCount"),
                 regions.as_ptr(),
             )
         }
@@ -47636,7 +47772,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdCopyImage` is not loaded: the loader returned no pointer for it, for example
-    /// because the version or the extension that provides it is not enabled.
+    /// because the version or the extension that provides it is not enabled. Also panics if
+    /// `regions` has more elements than `regionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdCopyImage")]
     pub unsafe fn cmd_copy_image(
         &self,
@@ -47655,7 +47792,7 @@ impl crate::Device {
                 src_image_layout,
                 dst_image,
                 dst_image_layout,
-                region_count_len as u32,
+                len_as_count(region_count_len, "vkCmdCopyImage", "regionCount"),
                 regions.as_ptr(),
             )
         }
@@ -47723,7 +47860,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdCopyImageToBuffer` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `regions` has more elements than `regionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdCopyImageToBuffer")]
     pub unsafe fn cmd_copy_image_to_buffer(
         &self,
@@ -47740,7 +47878,7 @@ impl crate::Device {
                 src_image,
                 src_image_layout,
                 dst_buffer,
-                region_count_len as u32,
+                len_as_count(region_count_len, "vkCmdCopyImageToBuffer", "regionCount"),
                 regions.as_ptr(),
             )
         }
@@ -47991,6 +48129,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdCopyMemoryToImageIndirectNV` is not loaded: the loader returned no pointer
     /// for it, for example because the version or the extension that provides it is not enabled.
+    /// Also panics if `image_subresources` has more elements than `copyCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdCopyMemoryToImageIndirectNV")]
     pub unsafe fn cmd_copy_memory_to_image_indirect_nv(
         &self,
@@ -48006,7 +48146,11 @@ impl crate::Device {
             self.cmd_copy_memory_to_image_indirect_nv_raw(
                 command_buffer,
                 copy_buffer_address,
-                copy_count_len as u32,
+                len_as_count(
+                    copy_count_len,
+                    "vkCmdCopyMemoryToImageIndirectNV",
+                    "copyCount",
+                ),
                 stride,
                 dst_image,
                 dst_image_layout,
@@ -48477,7 +48621,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdDecompressMemoryNV` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `decompress_memory_regions` has more elements than `decompressRegionCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkCmdDecompressMemoryNV")]
     pub unsafe fn cmd_decompress_memory_nv(
         &self,
@@ -48488,7 +48634,11 @@ impl crate::Device {
             let decompress_region_count_len: usize = decompress_memory_regions.len();
             self.cmd_decompress_memory_nv_raw(
                 command_buffer,
-                decompress_region_count_len as u32,
+                len_as_count(
+                    decompress_region_count_len,
+                    "vkCmdDecompressMemoryNV",
+                    "decompressRegionCount",
+                ),
                 decompress_memory_regions.as_ptr(),
             )
         }
@@ -49657,7 +49807,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdDrawMultiEXT` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `vertex_info` has more elements than `drawCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdDrawMultiEXT")]
     pub unsafe fn cmd_draw_multi_ext(
         &self,
@@ -49671,7 +49822,7 @@ impl crate::Device {
             let draw_count_len: usize = vertex_info.len();
             self.cmd_draw_multi_ext_raw(
                 command_buffer,
-                draw_count_len as u32,
+                len_as_count(draw_count_len, "vkCmdDrawMultiEXT", "drawCount"),
                 vertex_info.as_ptr(),
                 instance_count,
                 first_instance,
@@ -49693,7 +49844,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdDrawMultiIndexedEXT` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `index_info` has more elements than `drawCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdDrawMultiIndexedEXT")]
     pub unsafe fn cmd_draw_multi_indexed_ext(
         &self,
@@ -49708,7 +49860,7 @@ impl crate::Device {
             let draw_count_len: usize = index_info.len();
             self.cmd_draw_multi_indexed_ext_raw(
                 command_buffer,
-                draw_count_len as u32,
+                len_as_count(draw_count_len, "vkCmdDrawMultiIndexedEXT", "drawCount"),
                 index_info.as_ptr(),
                 instance_count,
                 first_instance,
@@ -50113,7 +50265,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdEndTransformFeedback2EXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `counter_infos` has more elements than `counterRangeCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdEndTransformFeedback2EXT")]
     pub unsafe fn cmd_end_transform_feedback2_ext(
         &self,
@@ -50130,7 +50284,11 @@ impl crate::Device {
             self.cmd_end_transform_feedback2_ext_raw(
                 command_buffer,
                 first_counter_range,
-                counter_range_count_len as u32,
+                len_as_count(
+                    counter_range_count_len,
+                    "vkCmdEndTransformFeedback2EXT",
+                    "counterRangeCount",
+                ),
                 counter_infos.map_or(core::ptr::null(), |x| x.as_ptr()),
             )
         }
@@ -50152,7 +50310,9 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `counter_buffers` and
+    /// `counter_buffer_offsets` have more elements than `counterBufferCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdEndTransformFeedbackEXT")]
     pub unsafe fn cmd_end_transform_feedback_ext(
         &self,
@@ -50173,7 +50333,11 @@ impl crate::Device {
             self.cmd_end_transform_feedback_ext_raw(
                 command_buffer,
                 first_counter_buffer,
-                counter_buffer_count_len as u32,
+                len_as_count(
+                    counter_buffer_count_len,
+                    "vkCmdEndTransformFeedbackEXT",
+                    "counterBufferCount",
+                ),
                 counter_buffers.as_ptr(),
                 counter_buffer_offsets.map_or(core::ptr::null(), |x| x.as_ptr()),
             )
@@ -50218,7 +50382,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdExecuteCommands` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `command_buffers` has more elements than `commandBufferCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdExecuteCommands")]
     pub unsafe fn cmd_execute_commands(
         &self,
@@ -50229,7 +50394,11 @@ impl crate::Device {
             let command_buffer_count_len: usize = command_buffers.len();
             self.cmd_execute_commands_raw(
                 command_buffer,
-                command_buffer_count_len as u32,
+                len_as_count(
+                    command_buffer_count_len,
+                    "vkCmdExecuteCommands",
+                    "commandBufferCount",
+                ),
                 command_buffers.as_ptr(),
             )
         }
@@ -50544,7 +50713,11 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdPipelineBarrier` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `memory_barriers` has more elements than `memoryBarrierCount`, a `uint32_t`, can count. Also
+    /// panics if `buffer_memory_barriers` has more elements than `bufferMemoryBarrierCount`, a
+    /// `uint32_t`, can count. Also panics if `image_memory_barriers` has more elements than
+    /// `imageMemoryBarrierCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdPipelineBarrier")]
     pub unsafe fn cmd_pipeline_barrier(
         &self,
@@ -50565,11 +50738,23 @@ impl crate::Device {
                 src_stage_mask,
                 dst_stage_mask,
                 dependency_flags,
-                memory_barrier_count_len as u32,
+                len_as_count(
+                    memory_barrier_count_len,
+                    "vkCmdPipelineBarrier",
+                    "memoryBarrierCount",
+                ),
                 memory_barriers.as_ptr(),
-                buffer_memory_barrier_count_len as u32,
+                len_as_count(
+                    buffer_memory_barrier_count_len,
+                    "vkCmdPipelineBarrier",
+                    "bufferMemoryBarrierCount",
+                ),
                 buffer_memory_barriers.as_ptr(),
-                image_memory_barrier_count_len as u32,
+                len_as_count(
+                    image_memory_barrier_count_len,
+                    "vkCmdPipelineBarrier",
+                    "imageMemoryBarrierCount",
+                ),
                 image_memory_barriers.as_ptr(),
             )
         }
@@ -50700,7 +50885,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdPushConstants` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `values` has more elements than `size`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdPushConstants")]
     pub unsafe fn cmd_push_constants(
         &self,
@@ -50717,7 +50903,7 @@ impl crate::Device {
                 layout,
                 stage_flags,
                 offset,
-                size_len as u32,
+                len_as_count(size_len, "vkCmdPushConstants", "size"),
                 values.as_ptr().cast(),
             )
         }
@@ -50813,7 +50999,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdPushDescriptorSet` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `descriptor_writes` has more elements than `descriptorWriteCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdPushDescriptorSet")]
     pub unsafe fn cmd_push_descriptor_set(
         &self,
@@ -50830,7 +51017,11 @@ impl crate::Device {
                 pipeline_bind_point,
                 layout,
                 set,
-                descriptor_write_count_len as u32,
+                len_as_count(
+                    descriptor_write_count_len,
+                    "vkCmdPushDescriptorSet",
+                    "descriptorWriteCount",
+                ),
                 descriptor_writes.as_ptr(),
             )
         }
@@ -50907,7 +51098,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdPushDescriptorSetKHR` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `descriptor_writes` has more elements than `descriptorWriteCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkCmdPushDescriptorSetKHR")]
     pub unsafe fn cmd_push_descriptor_set_khr(
         &self,
@@ -50924,7 +51117,11 @@ impl crate::Device {
                 pipeline_bind_point,
                 layout,
                 set,
-                descriptor_write_count_len as u32,
+                len_as_count(
+                    descriptor_write_count_len,
+                    "vkCmdPushDescriptorSetKHR",
+                    "descriptorWriteCount",
+                ),
                 descriptor_writes.as_ptr(),
             )
         }
@@ -51175,7 +51372,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdResolveImage` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `regions` has more elements than `regionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdResolveImage")]
     pub unsafe fn cmd_resolve_image(
         &self,
@@ -51194,7 +51392,7 @@ impl crate::Device {
                 src_image_layout,
                 dst_image,
                 dst_image_layout,
-                region_count_len as u32,
+                len_as_count(region_count_len, "vkCmdResolveImage", "regionCount"),
                 regions.as_ptr(),
             )
         }
@@ -51391,7 +51589,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetCoarseSampleOrderNV` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `custom_sample_orders` has more elements than `customSampleOrderCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkCmdSetCoarseSampleOrderNV")]
     pub unsafe fn cmd_set_coarse_sample_order_nv(
         &self,
@@ -51404,7 +51604,11 @@ impl crate::Device {
             self.cmd_set_coarse_sample_order_nv_raw(
                 command_buffer,
                 sample_order_type,
-                custom_sample_order_count_len as u32,
+                len_as_count(
+                    custom_sample_order_count_len,
+                    "vkCmdSetCoarseSampleOrderNV",
+                    "customSampleOrderCount",
+                ),
                 custom_sample_orders.as_ptr(),
             )
         }
@@ -51424,7 +51628,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetColorBlendAdvancedEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `color_blend_advanced` has more elements than `attachmentCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdSetColorBlendAdvancedEXT")]
     pub unsafe fn cmd_set_color_blend_advanced_ext(
         &self,
@@ -51437,7 +51643,11 @@ impl crate::Device {
             self.cmd_set_color_blend_advanced_ext_raw(
                 command_buffer,
                 first_attachment,
-                attachment_count_len as u32,
+                len_as_count(
+                    attachment_count_len,
+                    "vkCmdSetColorBlendAdvancedEXT",
+                    "attachmentCount",
+                ),
                 color_blend_advanced.as_ptr(),
             )
         }
@@ -51457,7 +51667,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetColorBlendEnableEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `color_blend_enables` has more elements than `attachmentCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdSetColorBlendEnableEXT")]
     pub unsafe fn cmd_set_color_blend_enable_ext(
         &self,
@@ -51470,7 +51682,11 @@ impl crate::Device {
             self.cmd_set_color_blend_enable_ext_raw(
                 command_buffer,
                 first_attachment,
-                attachment_count_len as u32,
+                len_as_count(
+                    attachment_count_len,
+                    "vkCmdSetColorBlendEnableEXT",
+                    "attachmentCount",
+                ),
                 color_blend_enables.as_ptr(),
             )
         }
@@ -51490,7 +51706,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetColorBlendEquationEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `color_blend_equations` has more elements than `attachmentCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkCmdSetColorBlendEquationEXT")]
     pub unsafe fn cmd_set_color_blend_equation_ext(
         &self,
@@ -51503,7 +51721,11 @@ impl crate::Device {
             self.cmd_set_color_blend_equation_ext_raw(
                 command_buffer,
                 first_attachment,
-                attachment_count_len as u32,
+                len_as_count(
+                    attachment_count_len,
+                    "vkCmdSetColorBlendEquationEXT",
+                    "attachmentCount",
+                ),
                 color_blend_equations.as_ptr(),
             )
         }
@@ -51522,7 +51744,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetColorWriteEnableEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `color_write_enables` has more elements than `attachmentCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdSetColorWriteEnableEXT")]
     pub unsafe fn cmd_set_color_write_enable_ext(
         &self,
@@ -51533,7 +51757,11 @@ impl crate::Device {
             let attachment_count_len: usize = color_write_enables.len();
             self.cmd_set_color_write_enable_ext_raw(
                 command_buffer,
-                attachment_count_len as u32,
+                len_as_count(
+                    attachment_count_len,
+                    "vkCmdSetColorWriteEnableEXT",
+                    "attachmentCount",
+                ),
                 color_write_enables.as_ptr(),
             )
         }
@@ -51553,7 +51781,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetColorWriteMaskEXT` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `color_write_masks` has more elements than `attachmentCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdSetColorWriteMaskEXT")]
     pub unsafe fn cmd_set_color_write_mask_ext(
         &self,
@@ -51566,7 +51796,11 @@ impl crate::Device {
             self.cmd_set_color_write_mask_ext_raw(
                 command_buffer,
                 first_attachment,
-                attachment_count_len as u32,
+                len_as_count(
+                    attachment_count_len,
+                    "vkCmdSetColorWriteMaskEXT",
+                    "attachmentCount",
+                ),
                 color_write_masks.as_ptr(),
             )
         }
@@ -51706,6 +51940,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdSetCoverageModulationTableNV` is not loaded: the loader returned no pointer
     /// for it, for example because the version or the extension that provides it is not enabled.
+    /// Also panics if `coverage_modulation_table` has more elements than
+    /// `coverageModulationTableCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetCoverageModulationTableNV")]
     pub unsafe fn cmd_set_coverage_modulation_table_nv(
         &self,
@@ -51716,7 +51952,11 @@ impl crate::Device {
             let coverage_modulation_table_count_len: usize = coverage_modulation_table.len();
             self.cmd_set_coverage_modulation_table_nv_raw(
                 command_buffer,
-                coverage_modulation_table_count_len as u32,
+                len_as_count(
+                    coverage_modulation_table_count_len,
+                    "vkCmdSetCoverageModulationTableNV",
+                    "coverageModulationTableCount",
+                ),
                 coverage_modulation_table.as_ptr(),
             )
         }
@@ -52354,7 +52594,8 @@ impl crate::Device {
     /// for it, for example because the version or the extension that provides it is not enabled.
     /// Also panics if the slices do not have the lengths that the command needs: slices that it
     /// counts with one parameter have to be equally long, and a slice whose length it reads from
-    /// another argument has to have that length.
+    /// another argument has to have that length. Also panics if `buffer_indices` and `offsets` have
+    /// more elements than `setCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetDescriptorBufferOffsetsEXT")]
     pub unsafe fn cmd_set_descriptor_buffer_offsets_ext(
         &self,
@@ -52377,7 +52618,11 @@ impl crate::Device {
                 pipeline_bind_point,
                 layout,
                 first_set,
-                set_count_len as u32,
+                len_as_count(
+                    set_count_len,
+                    "vkCmdSetDescriptorBufferOffsetsEXT",
+                    "setCount",
+                ),
                 buffer_indices.as_ptr(),
                 offsets.as_ptr(),
             )
@@ -52436,7 +52681,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetDiscardRectangleEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `discard_rectangles` has more elements than `discardRectangleCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkCmdSetDiscardRectangleEXT")]
     pub unsafe fn cmd_set_discard_rectangle_ext(
         &self,
@@ -52449,7 +52696,11 @@ impl crate::Device {
             self.cmd_set_discard_rectangle_ext_raw(
                 command_buffer,
                 first_discard_rectangle,
-                discard_rectangle_count_len as u32,
+                len_as_count(
+                    discard_rectangle_count_len,
+                    "vkCmdSetDiscardRectangleEXT",
+                    "discardRectangleCount",
+                ),
                 discard_rectangles.as_ptr(),
             )
         }
@@ -52627,6 +52878,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdSetExclusiveScissorEnableNV` is not loaded: the loader returned no pointer
     /// for it, for example because the version or the extension that provides it is not enabled.
+    /// Also panics if `exclusive_scissor_enables` has more elements than `exclusiveScissorCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkCmdSetExclusiveScissorEnableNV")]
     pub unsafe fn cmd_set_exclusive_scissor_enable_nv(
         &self,
@@ -52639,7 +52892,11 @@ impl crate::Device {
             self.cmd_set_exclusive_scissor_enable_nv_raw(
                 command_buffer,
                 first_exclusive_scissor,
-                exclusive_scissor_count_len as u32,
+                len_as_count(
+                    exclusive_scissor_count_len,
+                    "vkCmdSetExclusiveScissorEnableNV",
+                    "exclusiveScissorCount",
+                ),
                 exclusive_scissor_enables.as_ptr(),
             )
         }
@@ -52658,7 +52915,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetExclusiveScissorNV` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `exclusive_scissors` has more elements than `exclusiveScissorCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkCmdSetExclusiveScissorNV")]
     pub unsafe fn cmd_set_exclusive_scissor_nv(
         &self,
@@ -52671,7 +52930,11 @@ impl crate::Device {
             self.cmd_set_exclusive_scissor_nv_raw(
                 command_buffer,
                 first_exclusive_scissor,
-                exclusive_scissor_count_len as u32,
+                len_as_count(
+                    exclusive_scissor_count_len,
+                    "vkCmdSetExclusiveScissorNV",
+                    "exclusiveScissorCount",
+                ),
                 exclusive_scissors.as_ptr(),
             )
         }
@@ -53738,7 +54001,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetScissor` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `scissors` has more elements than `scissorCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetScissor")]
     pub unsafe fn cmd_set_scissor(
         &self,
@@ -53751,7 +54015,7 @@ impl crate::Device {
             self.cmd_set_scissor_raw(
                 command_buffer,
                 first_scissor,
-                scissor_count_len as u32,
+                len_as_count(scissor_count_len, "vkCmdSetScissor", "scissorCount"),
                 scissors.as_ptr(),
             )
         }
@@ -53770,7 +54034,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetScissorWithCount` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `scissors` has more elements than `scissorCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetScissorWithCount")]
     pub unsafe fn cmd_set_scissor_with_count(
         &self,
@@ -53781,7 +54046,11 @@ impl crate::Device {
             let scissor_count_len: usize = scissors.len();
             self.cmd_set_scissor_with_count_raw(
                 command_buffer,
-                scissor_count_len as u32,
+                len_as_count(
+                    scissor_count_len,
+                    "vkCmdSetScissorWithCount",
+                    "scissorCount",
+                ),
                 scissors.as_ptr(),
             )
         }
@@ -53802,7 +54071,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetScissorWithCountEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `scissors` has more elements than `scissorCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetScissorWithCountEXT")]
     pub unsafe fn cmd_set_scissor_with_count_ext(
         &self,
@@ -53813,7 +54083,11 @@ impl crate::Device {
             let scissor_count_len: usize = scissors.len();
             self.cmd_set_scissor_with_count_ext_raw(
                 command_buffer,
-                scissor_count_len as u32,
+                len_as_count(
+                    scissor_count_len,
+                    "vkCmdSetScissorWithCountEXT",
+                    "scissorCount",
+                ),
                 scissors.as_ptr(),
             )
         }
@@ -54087,7 +54361,10 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetVertexInputEXT` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `vertex_binding_descriptions` has more elements than `vertexBindingDescriptionCount`, a
+    /// `uint32_t`, can count. Also panics if `vertex_attribute_descriptions` has more elements than
+    /// `vertexAttributeDescriptionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetVertexInputEXT")]
     pub unsafe fn cmd_set_vertex_input_ext(
         &self,
@@ -54100,9 +54377,17 @@ impl crate::Device {
             let vertex_attribute_description_count_len: usize = vertex_attribute_descriptions.len();
             self.cmd_set_vertex_input_ext_raw(
                 command_buffer,
-                vertex_binding_description_count_len as u32,
+                len_as_count(
+                    vertex_binding_description_count_len,
+                    "vkCmdSetVertexInputEXT",
+                    "vertexBindingDescriptionCount",
+                ),
                 vertex_binding_descriptions.as_ptr(),
-                vertex_attribute_description_count_len as u32,
+                len_as_count(
+                    vertex_attribute_description_count_len,
+                    "vkCmdSetVertexInputEXT",
+                    "vertexAttributeDescriptionCount",
+                ),
                 vertex_attribute_descriptions.as_ptr(),
             )
         }
@@ -54121,7 +54406,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetViewport` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `viewports` has more elements than `viewportCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetViewport")]
     pub unsafe fn cmd_set_viewport(
         &self,
@@ -54134,7 +54420,7 @@ impl crate::Device {
             self.cmd_set_viewport_raw(
                 command_buffer,
                 first_viewport,
-                viewport_count_len as u32,
+                len_as_count(viewport_count_len, "vkCmdSetViewport", "viewportCount"),
                 viewports.as_ptr(),
             )
         }
@@ -54155,7 +54441,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdSetViewportShadingRatePaletteNV` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `shading_rate_palettes` has more elements than `viewportCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkCmdSetViewportShadingRatePaletteNV")]
     pub unsafe fn cmd_set_viewport_shading_rate_palette_nv(
         &self,
@@ -54168,7 +54455,11 @@ impl crate::Device {
             self.cmd_set_viewport_shading_rate_palette_nv_raw(
                 command_buffer,
                 first_viewport,
-                viewport_count_len as u32,
+                len_as_count(
+                    viewport_count_len,
+                    "vkCmdSetViewportShadingRatePaletteNV",
+                    "viewportCount",
+                ),
                 shading_rate_palettes.as_ptr(),
             )
         }
@@ -54188,7 +54479,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetViewportSwizzleNV` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `viewport_swizzles` has more elements than `viewportCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdSetViewportSwizzleNV")]
     pub unsafe fn cmd_set_viewport_swizzle_nv(
         &self,
@@ -54201,7 +54494,11 @@ impl crate::Device {
             self.cmd_set_viewport_swizzle_nv_raw(
                 command_buffer,
                 first_viewport,
-                viewport_count_len as u32,
+                len_as_count(
+                    viewport_count_len,
+                    "vkCmdSetViewportSwizzleNV",
+                    "viewportCount",
+                ),
                 viewport_swizzles.as_ptr(),
             )
         }
@@ -54250,7 +54547,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetViewportWScalingNV` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `viewport_w_scalings` has more elements than `viewportCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkCmdSetViewportWScalingNV")]
     pub unsafe fn cmd_set_viewport_w_scaling_nv(
         &self,
@@ -54263,7 +54562,11 @@ impl crate::Device {
             self.cmd_set_viewport_w_scaling_nv_raw(
                 command_buffer,
                 first_viewport,
-                viewport_count_len as u32,
+                len_as_count(
+                    viewport_count_len,
+                    "vkCmdSetViewportWScalingNV",
+                    "viewportCount",
+                ),
                 viewport_w_scalings.as_ptr(),
             )
         }
@@ -54282,7 +54585,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetViewportWithCount` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `viewports` has more elements than `viewportCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetViewportWithCount")]
     pub unsafe fn cmd_set_viewport_with_count(
         &self,
@@ -54293,7 +54597,11 @@ impl crate::Device {
             let viewport_count_len: usize = viewports.len();
             self.cmd_set_viewport_with_count_raw(
                 command_buffer,
-                viewport_count_len as u32,
+                len_as_count(
+                    viewport_count_len,
+                    "vkCmdSetViewportWithCount",
+                    "viewportCount",
+                ),
                 viewports.as_ptr(),
             )
         }
@@ -54314,7 +54622,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetViewportWithCountEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `viewports` has more elements than `viewportCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdSetViewportWithCountEXT")]
     pub unsafe fn cmd_set_viewport_with_count_ext(
         &self,
@@ -54325,7 +54634,11 @@ impl crate::Device {
             let viewport_count_len: usize = viewports.len();
             self.cmd_set_viewport_with_count_ext_raw(
                 command_buffer,
-                viewport_count_len as u32,
+                len_as_count(
+                    viewport_count_len,
+                    "vkCmdSetViewportWithCountEXT",
+                    "viewportCount",
+                ),
                 viewports.as_ptr(),
             )
         }
@@ -54617,7 +54930,12 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdWaitEvents` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `events` has more elements than `eventCount`, a `uint32_t`, can count. Also panics if
+    /// `memory_barriers` has more elements than `memoryBarrierCount`, a `uint32_t`, can count. Also
+    /// panics if `buffer_memory_barriers` has more elements than `bufferMemoryBarrierCount`, a
+    /// `uint32_t`, can count. Also panics if `image_memory_barriers` has more elements than
+    /// `imageMemoryBarrierCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdWaitEvents")]
     pub unsafe fn cmd_wait_events(
         &self,
@@ -54636,15 +54954,27 @@ impl crate::Device {
             let image_memory_barrier_count_len: usize = image_memory_barriers.len();
             self.cmd_wait_events_raw(
                 command_buffer,
-                event_count_len as u32,
+                len_as_count(event_count_len, "vkCmdWaitEvents", "eventCount"),
                 events.as_ptr(),
                 src_stage_mask,
                 dst_stage_mask,
-                memory_barrier_count_len as u32,
+                len_as_count(
+                    memory_barrier_count_len,
+                    "vkCmdWaitEvents",
+                    "memoryBarrierCount",
+                ),
                 memory_barriers.as_ptr(),
-                buffer_memory_barrier_count_len as u32,
+                len_as_count(
+                    buffer_memory_barrier_count_len,
+                    "vkCmdWaitEvents",
+                    "bufferMemoryBarrierCount",
+                ),
                 buffer_memory_barriers.as_ptr(),
-                image_memory_barrier_count_len as u32,
+                len_as_count(
+                    image_memory_barrier_count_len,
+                    "vkCmdWaitEvents",
+                    "imageMemoryBarrierCount",
+                ),
                 image_memory_barriers.as_ptr(),
             )
         }
@@ -54666,7 +54996,8 @@ impl crate::Device {
     /// example because the version or the extension that provides it is not enabled. Also panics if
     /// the slices do not have the lengths that the command needs: slices that it counts with one
     /// parameter have to be equally long, and a slice whose length it reads from another argument
-    /// has to have that length.
+    /// has to have that length. Also panics if `events` and `dependency_infos` have more elements
+    /// than `eventCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdWaitEvents2")]
     pub unsafe fn cmd_wait_events2(
         &self,
@@ -54683,7 +55014,7 @@ impl crate::Device {
             );
             self.cmd_wait_events2_raw(
                 command_buffer,
-                event_count_len as u32,
+                len_as_count(event_count_len, "vkCmdWaitEvents2", "eventCount"),
                 events.as_ptr(),
                 dependency_infos.as_ptr(),
             )
@@ -54707,7 +55038,8 @@ impl crate::Device {
     /// example because the version or the extension that provides it is not enabled. Also panics if
     /// the slices do not have the lengths that the command needs: slices that it counts with one
     /// parameter have to be equally long, and a slice whose length it reads from another argument
-    /// has to have that length.
+    /// has to have that length. Also panics if `events` and `dependency_infos` have more elements
+    /// than `eventCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdWaitEvents2KHR")]
     pub unsafe fn cmd_wait_events2_khr(
         &self,
@@ -54724,7 +55056,7 @@ impl crate::Device {
             );
             self.cmd_wait_events2_khr_raw(
                 command_buffer,
-                event_count_len as u32,
+                len_as_count(event_count_len, "vkCmdWaitEvents2KHR", "eventCount"),
                 events.as_ptr(),
                 dependency_infos.as_ptr(),
             )
@@ -54746,7 +55078,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdWriteAccelerationStructuresPropertiesKHR` is not loaded: the loader returned
     /// no pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `acceleration_structures` has more elements than
+    /// `accelerationStructureCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdWriteAccelerationStructuresPropertiesKHR")]
     pub unsafe fn cmd_write_acceleration_structures_properties_khr(
         &self,
@@ -54760,7 +55093,11 @@ impl crate::Device {
             let acceleration_structure_count_len: usize = acceleration_structures.len();
             self.cmd_write_acceleration_structures_properties_khr_raw(
                 command_buffer,
-                acceleration_structure_count_len as u32,
+                len_as_count(
+                    acceleration_structure_count_len,
+                    "vkCmdWriteAccelerationStructuresPropertiesKHR",
+                    "accelerationStructureCount",
+                ),
                 acceleration_structures.as_ptr(),
                 query_type,
                 query_pool,
@@ -54783,7 +55120,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdWriteAccelerationStructuresPropertiesNV` is not loaded: the loader returned
     /// no pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `acceleration_structures` has more elements than
+    /// `accelerationStructureCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdWriteAccelerationStructuresPropertiesNV")]
     pub unsafe fn cmd_write_acceleration_structures_properties_nv(
         &self,
@@ -54797,7 +55135,11 @@ impl crate::Device {
             let acceleration_structure_count_len: usize = acceleration_structures.len();
             self.cmd_write_acceleration_structures_properties_nv_raw(
                 command_buffer,
-                acceleration_structure_count_len as u32,
+                len_as_count(
+                    acceleration_structure_count_len,
+                    "vkCmdWriteAccelerationStructuresPropertiesNV",
+                    "accelerationStructureCount",
+                ),
                 acceleration_structures.as_ptr(),
                 query_type,
                 query_pool,
@@ -54913,6 +55255,7 @@ impl crate::Device {
     ///
     /// Panics if `vkCmdWriteMicromapsPropertiesEXT` is not loaded: the loader returned no pointer
     /// for it, for example because the version or the extension that provides it is not enabled.
+    /// Also panics if `micromaps` has more elements than `micromapCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCmdWriteMicromapsPropertiesEXT")]
     pub unsafe fn cmd_write_micromaps_properties_ext(
         &self,
@@ -54926,7 +55269,11 @@ impl crate::Device {
             let micromap_count_len: usize = micromaps.len();
             self.cmd_write_micromaps_properties_ext_raw(
                 command_buffer,
-                micromap_count_len as u32,
+                len_as_count(
+                    micromap_count_len,
+                    "vkCmdWriteMicromapsPropertiesEXT",
+                    "micromapCount",
+                ),
                 micromaps.as_ptr(),
                 query_type,
                 query_pool,
@@ -55890,7 +56237,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCreateComputePipelines` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `create_infos` has more elements than `createInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCreateComputePipelines")]
     pub unsafe fn create_compute_pipelines(
         &self,
@@ -55903,7 +56251,11 @@ impl crate::Device {
             let mut values: Vec<Pipeline> = alloc::vec![Default::default(); create_info_count_len];
             let result = self.create_compute_pipelines_raw(
                 pipeline_cache,
-                create_info_count_len as u32,
+                len_as_count(
+                    create_info_count_len,
+                    "vkCreateComputePipelines",
+                    "createInfoCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
@@ -56151,7 +56503,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCreateDataGraphPipelinesARM` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `create_infos` has more elements than `createInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCreateDataGraphPipelinesARM")]
     pub unsafe fn create_data_graph_pipelines_arm(
         &self,
@@ -56166,7 +56519,11 @@ impl crate::Device {
             let result = self.create_data_graph_pipelines_arm_raw(
                 deferred_operation,
                 pipeline_cache,
-                create_info_count_len as u32,
+                len_as_count(
+                    create_info_count_len,
+                    "vkCreateDataGraphPipelinesARM",
+                    "createInfoCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
@@ -56451,7 +56808,8 @@ impl crate::Device {
     ///
     /// Panics if `vkCreateExecutionGraphPipelinesAMDX` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `create_infos` has more elements than `createInfoCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkCreateExecutionGraphPipelinesAMDX")]
     #[cfg(feature = "beta")]
     pub unsafe fn create_execution_graph_pipelines_amdx(
@@ -56465,7 +56823,11 @@ impl crate::Device {
             let mut values: Vec<Pipeline> = alloc::vec![Default::default(); create_info_count_len];
             let result = self.create_execution_graph_pipelines_amdx_raw(
                 pipeline_cache,
-                create_info_count_len as u32,
+                len_as_count(
+                    create_info_count_len,
+                    "vkCreateExecutionGraphPipelinesAMDX",
+                    "createInfoCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
@@ -56668,7 +57030,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCreateGraphicsPipelines` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `create_infos` has more elements than `createInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCreateGraphicsPipelines")]
     pub unsafe fn create_graphics_pipelines(
         &self,
@@ -56681,7 +57044,11 @@ impl crate::Device {
             let mut values: Vec<Pipeline> = alloc::vec![Default::default(); create_info_count_len];
             let result = self.create_graphics_pipelines_raw(
                 pipeline_cache,
-                create_info_count_len as u32,
+                len_as_count(
+                    create_info_count_len,
+                    "vkCreateGraphicsPipelines",
+                    "createInfoCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
@@ -57268,7 +57635,8 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `create_infos` and `pipelines` have more
+    /// elements than `createInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCreateRayTracingPipelinesKHR")]
     pub unsafe fn create_ray_tracing_pipelines_khr(
         &self,
@@ -57288,7 +57656,11 @@ impl crate::Device {
             let result = self.create_ray_tracing_pipelines_khr_raw(
                 deferred_operation,
                 pipeline_cache,
-                create_info_count_len as u32,
+                len_as_count(
+                    create_info_count_len,
+                    "vkCreateRayTracingPipelinesKHR",
+                    "createInfoCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 pipelines.as_mut_ptr(),
@@ -57326,7 +57698,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCreateRayTracingPipelinesNV` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `create_infos` has more elements than `createInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCreateRayTracingPipelinesNV")]
     pub unsafe fn create_ray_tracing_pipelines_nv(
         &self,
@@ -57339,7 +57712,11 @@ impl crate::Device {
             let mut values: Vec<Pipeline> = alloc::vec![Default::default(); create_info_count_len];
             let result = self.create_ray_tracing_pipelines_nv_raw(
                 pipeline_cache,
-                create_info_count_len as u32,
+                len_as_count(
+                    create_info_count_len,
+                    "vkCreateRayTracingPipelinesNV",
+                    "createInfoCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
@@ -57749,7 +58126,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCreateShadersEXT` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `create_infos` has more elements than `createInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCreateShadersEXT")]
     pub unsafe fn create_shaders_ext(
         &self,
@@ -57760,7 +58138,11 @@ impl crate::Device {
             let create_info_count_len: usize = create_infos.len();
             let mut values: Vec<ShaderEXT> = alloc::vec![Default::default(); create_info_count_len];
             let result = self.create_shaders_ext_raw(
-                create_info_count_len as u32,
+                len_as_count(
+                    create_info_count_len,
+                    "vkCreateShadersEXT",
+                    "createInfoCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
@@ -57798,7 +58180,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCreateSharedSwapchainsKHR` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `create_infos` has more elements than `swapchainCount`, a `uint32_t`, can count.
     #[doc(alias = "vkCreateSharedSwapchainsKHR")]
     pub unsafe fn create_shared_swapchains_khr(
         &self,
@@ -57810,7 +58193,11 @@ impl crate::Device {
             let mut values: Vec<SwapchainKHR> =
                 alloc::vec![Default::default(); swapchain_count_len];
             self.create_shared_swapchains_khr_raw(
-                swapchain_count_len as u32,
+                len_as_count(
+                    swapchain_count_len,
+                    "vkCreateSharedSwapchainsKHR",
+                    "swapchainCount",
+                ),
                 create_infos.as_ptr(),
                 allocator.map_or(core::ptr::null(), core::ptr::from_ref),
                 values.as_mut_ptr(),
@@ -59711,7 +60098,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkFlushMappedMemoryRanges` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `memory_ranges` has more elements than `memoryRangeCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkFlushMappedMemoryRanges")]
     pub unsafe fn flush_mapped_memory_ranges(
         &self,
@@ -59720,7 +60109,11 @@ impl crate::Device {
         unsafe {
             let memory_range_count_len: usize = memory_ranges.len();
             self.flush_mapped_memory_ranges_raw(
-                memory_range_count_len as u32,
+                len_as_count(
+                    memory_range_count_len,
+                    "vkFlushMappedMemoryRanges",
+                    "memoryRangeCount",
+                ),
                 memory_ranges.as_ptr(),
             )
             .into_result()
@@ -59740,7 +60133,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkFreeCommandBuffers` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `command_buffers` has more elements than `commandBufferCount`, a `uint32_t`, can count.
     #[doc(alias = "vkFreeCommandBuffers")]
     pub unsafe fn free_command_buffers(
         &self,
@@ -59751,7 +60145,11 @@ impl crate::Device {
             let command_buffer_count_len: usize = command_buffers.len();
             self.free_command_buffers_raw(
                 command_pool,
-                command_buffer_count_len as u32,
+                len_as_count(
+                    command_buffer_count_len,
+                    "vkFreeCommandBuffers",
+                    "commandBufferCount",
+                ),
                 command_buffers.as_ptr(),
             )
         }
@@ -59776,7 +60174,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkFreeDescriptorSets` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `descriptor_sets` has more elements than `descriptorSetCount`, a `uint32_t`, can count.
     #[doc(alias = "vkFreeDescriptorSets")]
     pub unsafe fn free_descriptor_sets(
         &self,
@@ -59787,7 +60186,11 @@ impl crate::Device {
             let descriptor_set_count_len: usize = descriptor_sets.len();
             self.free_descriptor_sets_raw(
                 descriptor_pool,
-                descriptor_set_count_len as u32,
+                len_as_count(
+                    descriptor_set_count_len,
+                    "vkFreeDescriptorSets",
+                    "descriptorSetCount",
+                ),
                 descriptor_sets.as_ptr(),
             )
             .into_result()
@@ -60335,7 +60738,8 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `timestamp_infos` and `timestamps` have
+    /// more elements than `timestampCount`, a `uint32_t`, can count.
     #[doc(alias = "vkGetCalibratedTimestampsEXT")]
     pub unsafe fn get_calibrated_timestamps_ext(
         &self,
@@ -60351,7 +60755,11 @@ impl crate::Device {
             );
             let mut value: u64 = core::mem::zeroed::<u64>();
             self.get_calibrated_timestamps_ext_raw(
-                timestamp_count_len as u32,
+                len_as_count(
+                    timestamp_count_len,
+                    "vkGetCalibratedTimestampsEXT",
+                    "timestampCount",
+                ),
                 timestamp_infos.as_ptr(),
                 timestamps.as_mut_ptr(),
                 &mut value,
@@ -60386,7 +60794,8 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `timestamp_infos` and `timestamps` have
+    /// more elements than `timestampCount`, a `uint32_t`, can count.
     #[doc(alias = "vkGetCalibratedTimestampsKHR")]
     pub unsafe fn get_calibrated_timestamps_khr(
         &self,
@@ -60402,7 +60811,11 @@ impl crate::Device {
             );
             let mut value: u64 = core::mem::zeroed::<u64>();
             self.get_calibrated_timestamps_khr_raw(
-                timestamp_count_len as u32,
+                len_as_count(
+                    timestamp_count_len,
+                    "vkGetCalibratedTimestampsKHR",
+                    "timestampCount",
+                ),
                 timestamp_infos.as_ptr(),
                 timestamps.as_mut_ptr(),
                 &mut value,
@@ -60572,7 +60985,8 @@ impl crate::Device {
     ///
     /// Panics if `vkGetDataGraphPipelinePropertiesARM` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `properties` has more elements than `propertiesCount`, a `uint32_t`,
+    /// can count.
     #[doc(alias = "vkGetDataGraphPipelinePropertiesARM")]
     pub unsafe fn get_data_graph_pipeline_properties_arm(
         &self,
@@ -60583,7 +60997,11 @@ impl crate::Device {
             let properties_count_len: usize = properties.len();
             let result = self.get_data_graph_pipeline_properties_arm_raw(
                 core::ptr::from_ref(pipeline_info),
-                properties_count_len as u32,
+                len_as_count(
+                    properties_count_len,
+                    "vkGetDataGraphPipelinePropertiesARM",
+                    "propertiesCount",
+                ),
                 properties.as_mut_ptr(),
             );
             result.into_result()?;
@@ -62530,7 +62948,8 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `images` and `datas` have more elements
+    /// than `imageCount`, a `uint32_t`, can count.
     #[doc(alias = "vkGetImageOpaqueCaptureDataEXT")]
     pub unsafe fn get_image_opaque_capture_data_ext(
         &self,
@@ -62545,7 +62964,11 @@ impl crate::Device {
                 "vkGetImageOpaqueCaptureDataEXT: `datas` must have the same length as the other arrays sharing `imageCount`"
             );
             self.get_image_opaque_capture_data_ext_raw(
-                image_count_len as u32,
+                len_as_count(
+                    image_count_len,
+                    "vkGetImageOpaqueCaptureDataEXT",
+                    "imageCount",
+                ),
                 images.as_ptr(),
                 datas.as_mut_ptr(),
             )
@@ -65364,7 +65787,8 @@ impl crate::Device {
     /// for it, for example because the version or the extension that provides it is not enabled.
     /// Also panics if the slices do not have the lengths that the command needs: slices that it
     /// counts with one parameter have to be equally long, and a slice whose length it reads from
-    /// another argument has to have that length.
+    /// another argument has to have that length. Also panics if `tensors` and `datas` have more
+    /// elements than `tensorCount`, a `uint32_t`, can count.
     #[doc(alias = "vkGetTensorOpaqueCaptureDataARM")]
     pub unsafe fn get_tensor_opaque_capture_data_arm(
         &self,
@@ -65379,7 +65803,11 @@ impl crate::Device {
                 "vkGetTensorOpaqueCaptureDataARM: `datas` must have the same length as the other arrays sharing `tensorCount`"
             );
             self.get_tensor_opaque_capture_data_arm_raw(
-                tensor_count_len as u32,
+                len_as_count(
+                    tensor_count_len,
+                    "vkGetTensorOpaqueCaptureDataARM",
+                    "tensorCount",
+                ),
                 tensors.as_ptr(),
                 datas.as_mut_ptr(),
             )
@@ -65799,7 +66227,9 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkInvalidateMappedMemoryRanges` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `memory_ranges` has more elements than `memoryRangeCount`, a `uint32_t`, can
+    /// count.
     #[doc(alias = "vkInvalidateMappedMemoryRanges")]
     pub unsafe fn invalidate_mapped_memory_ranges(
         &self,
@@ -65808,7 +66238,11 @@ impl crate::Device {
         unsafe {
             let memory_range_count_len: usize = memory_ranges.len();
             self.invalidate_mapped_memory_ranges_raw(
-                memory_range_count_len as u32,
+                len_as_count(
+                    memory_range_count_len,
+                    "vkInvalidateMappedMemoryRanges",
+                    "memoryRangeCount",
+                ),
                 memory_ranges.as_ptr(),
             )
             .into_result()
@@ -66000,7 +66434,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkMergePipelineCaches` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `src_caches` has more elements than `srcCacheCount`, a `uint32_t`, can count.
     #[doc(alias = "vkMergePipelineCaches")]
     pub unsafe fn merge_pipeline_caches(
         &self,
@@ -66011,7 +66446,11 @@ impl crate::Device {
             let src_cache_count_len: usize = src_caches.len();
             self.merge_pipeline_caches_raw(
                 dst_cache,
-                src_cache_count_len as u32,
+                len_as_count(
+                    src_cache_count_len,
+                    "vkMergePipelineCaches",
+                    "srcCacheCount",
+                ),
                 src_caches.as_ptr(),
             )
             .into_result()
@@ -66039,7 +66478,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkMergeValidationCachesEXT` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `src_caches` has more elements than `srcCacheCount`, a `uint32_t`, can count.
     #[doc(alias = "vkMergeValidationCachesEXT")]
     pub unsafe fn merge_validation_caches_ext(
         &self,
@@ -66050,7 +66490,11 @@ impl crate::Device {
             let src_cache_count_len: usize = src_caches.len();
             self.merge_validation_caches_ext_raw(
                 dst_cache,
-                src_cache_count_len as u32,
+                len_as_count(
+                    src_cache_count_len,
+                    "vkMergeValidationCachesEXT",
+                    "srcCacheCount",
+                ),
                 src_caches.as_ptr(),
             )
             .into_result()
@@ -66104,7 +66548,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkQueueBindSparse` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `bind_info` has more elements than `bindInfoCount`, a `uint32_t`, can count.
     #[doc(alias = "vkQueueBindSparse")]
     pub unsafe fn queue_bind_sparse(
         &self,
@@ -66114,8 +66559,13 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let bind_info_count_len: usize = bind_info.len();
-            self.queue_bind_sparse_raw(queue, bind_info_count_len as u32, bind_info.as_ptr(), fence)
-                .into_result()
+            self.queue_bind_sparse_raw(
+                queue,
+                len_as_count(bind_info_count_len, "vkQueueBindSparse", "bindInfoCount"),
+                bind_info.as_ptr(),
+                fence,
+            )
+            .into_result()
         }
     }
     /// Close a queue debug label region.
@@ -66338,7 +66788,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkQueueSubmit` is not loaded: the loader returned no pointer for it, for example
-    /// because the version or the extension that provides it is not enabled.
+    /// because the version or the extension that provides it is not enabled. Also panics if
+    /// `submits` has more elements than `submitCount`, a `uint32_t`, can count.
     #[doc(alias = "vkQueueSubmit")]
     pub unsafe fn queue_submit(
         &self,
@@ -66348,8 +66799,13 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let submit_count_len: usize = submits.len();
-            self.queue_submit_raw(queue, submit_count_len as u32, submits.as_ptr(), fence)
-                .into_result()
+            self.queue_submit_raw(
+                queue,
+                len_as_count(submit_count_len, "vkQueueSubmit", "submitCount"),
+                submits.as_ptr(),
+                fence,
+            )
+            .into_result()
         }
     }
     /// Submits command buffers to a queue.
@@ -66375,7 +66831,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkQueueSubmit2` is not loaded: the loader returned no pointer for it, for example
-    /// because the version or the extension that provides it is not enabled.
+    /// because the version or the extension that provides it is not enabled. Also panics if
+    /// `submits` has more elements than `submitCount`, a `uint32_t`, can count.
     #[doc(alias = "vkQueueSubmit2")]
     pub unsafe fn queue_submit2(
         &self,
@@ -66385,8 +66842,13 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let submit_count_len: usize = submits.len();
-            self.queue_submit2_raw(queue, submit_count_len as u32, submits.as_ptr(), fence)
-                .into_result()
+            self.queue_submit2_raw(
+                queue,
+                len_as_count(submit_count_len, "vkQueueSubmit2", "submitCount"),
+                submits.as_ptr(),
+                fence,
+            )
+            .into_result()
         }
     }
     /// Submits command buffers to a queue.
@@ -66413,7 +66875,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkQueueSubmit2KHR` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `submits` has more elements than `submitCount`, a `uint32_t`, can count.
     #[doc(alias = "vkQueueSubmit2KHR")]
     pub unsafe fn queue_submit2_khr(
         &self,
@@ -66423,8 +66886,13 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let submit_count_len: usize = submits.len();
-            self.queue_submit2_khr_raw(queue, submit_count_len as u32, submits.as_ptr(), fence)
-                .into_result()
+            self.queue_submit2_khr_raw(
+                queue,
+                len_as_count(submit_count_len, "vkQueueSubmit2KHR", "submitCount"),
+                submits.as_ptr(),
+                fence,
+            )
+            .into_result()
         }
     }
     /// Wait for a queue to become idle.
@@ -66916,13 +67384,17 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkResetFences` is not loaded: the loader returned no pointer for it, for example
-    /// because the version or the extension that provides it is not enabled.
+    /// because the version or the extension that provides it is not enabled. Also panics if
+    /// `fences` has more elements than `fenceCount`, a `uint32_t`, can count.
     #[doc(alias = "vkResetFences")]
     pub unsafe fn reset_fences(&self, fences: &[Fence]) -> crate::vk::Result<()> {
         unsafe {
             let fence_count_len: usize = fences.len();
-            self.reset_fences_raw(fence_count_len as u32, fences.as_ptr())
-                .into_result()
+            self.reset_fences_raw(
+                len_as_count(fence_count_len, "vkResetFences", "fenceCount"),
+                fences.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Reset a GPA session.
@@ -67249,7 +67721,8 @@ impl crate::Device {
     /// example because the version or the extension that provides it is not enabled. Also panics if
     /// the slices do not have the lengths that the command needs: slices that it counts with one
     /// parameter have to be equally long, and a slice whose length it reads from another argument
-    /// has to have that length.
+    /// has to have that length. Also panics if `swapchains` and `metadata` have more elements than
+    /// `swapchainCount`, a `uint32_t`, can count.
     #[doc(alias = "vkSetHdrMetadataEXT")]
     pub unsafe fn set_hdr_metadata_ext(
         &self,
@@ -67264,7 +67737,7 @@ impl crate::Device {
                 "vkSetHdrMetadataEXT: `metadata` must have the same length as the other arrays sharing `swapchainCount`"
             );
             self.set_hdr_metadata_ext_raw(
-                swapchain_count_len as u32,
+                len_as_count(swapchain_count_len, "vkSetHdrMetadataEXT", "swapchainCount"),
                 swapchains.as_ptr(),
                 metadata.as_ptr(),
             )
@@ -67620,7 +68093,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkTransitionImageLayout` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `transitions` has more elements than `transitionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkTransitionImageLayout")]
     pub unsafe fn transition_image_layout(
         &self,
@@ -67628,8 +68102,15 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let transition_count_len: usize = transitions.len();
-            self.transition_image_layout_raw(transition_count_len as u32, transitions.as_ptr())
-                .into_result()
+            self.transition_image_layout_raw(
+                len_as_count(
+                    transition_count_len,
+                    "vkTransitionImageLayout",
+                    "transitionCount",
+                ),
+                transitions.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Perform an image layout transition on the host.
@@ -67657,7 +68138,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkTransitionImageLayoutEXT` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `transitions` has more elements than `transitionCount`, a `uint32_t`, can count.
     #[doc(alias = "vkTransitionImageLayoutEXT")]
     pub unsafe fn transition_image_layout_ext(
         &self,
@@ -67665,8 +68147,15 @@ impl crate::Device {
     ) -> crate::vk::Result<()> {
         unsafe {
             let transition_count_len: usize = transitions.len();
-            self.transition_image_layout_ext_raw(transition_count_len as u32, transitions.as_ptr())
-                .into_result()
+            self.transition_image_layout_ext_raw(
+                len_as_count(
+                    transition_count_len,
+                    "vkTransitionImageLayoutEXT",
+                    "transitionCount",
+                ),
+                transitions.as_ptr(),
+            )
+            .into_result()
         }
     }
     /// Trim a command pool.
@@ -67912,7 +68401,10 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkUpdateDescriptorSets` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `descriptor_writes` has more elements than `descriptorWriteCount`, a `uint32_t`, can count.
+    /// Also panics if `descriptor_copies` has more elements than `descriptorCopyCount`, a
+    /// `uint32_t`, can count.
     #[doc(alias = "vkUpdateDescriptorSets")]
     pub unsafe fn update_descriptor_sets(
         &self,
@@ -67923,9 +68415,17 @@ impl crate::Device {
             let descriptor_write_count_len: usize = descriptor_writes.len();
             let descriptor_copy_count_len: usize = descriptor_copies.len();
             self.update_descriptor_sets_raw(
-                descriptor_write_count_len as u32,
+                len_as_count(
+                    descriptor_write_count_len,
+                    "vkUpdateDescriptorSets",
+                    "descriptorWriteCount",
+                ),
                 descriptor_writes.as_ptr(),
-                descriptor_copy_count_len as u32,
+                len_as_count(
+                    descriptor_copy_count_len,
+                    "vkUpdateDescriptorSets",
+                    "descriptorCopyCount",
+                ),
                 descriptor_copies.as_ptr(),
             )
         }
@@ -67946,7 +68446,8 @@ impl crate::Device {
     ///
     /// Panics if `vkUpdateIndirectExecutionSetPipelineEXT` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `execution_set_writes` has more elements than
+    /// `executionSetWriteCount`, a `uint32_t`, can count.
     #[doc(alias = "vkUpdateIndirectExecutionSetPipelineEXT")]
     pub unsafe fn update_indirect_execution_set_pipeline_ext(
         &self,
@@ -67957,7 +68458,11 @@ impl crate::Device {
             let execution_set_write_count_len: usize = execution_set_writes.len();
             self.update_indirect_execution_set_pipeline_ext_raw(
                 indirect_execution_set,
-                execution_set_write_count_len as u32,
+                len_as_count(
+                    execution_set_write_count_len,
+                    "vkUpdateIndirectExecutionSetPipelineEXT",
+                    "executionSetWriteCount",
+                ),
                 execution_set_writes.as_ptr(),
             )
         }
@@ -67978,7 +68483,8 @@ impl crate::Device {
     ///
     /// Panics if `vkUpdateIndirectExecutionSetShaderEXT` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `execution_set_writes` has more elements than
+    /// `executionSetWriteCount`, a `uint32_t`, can count.
     #[doc(alias = "vkUpdateIndirectExecutionSetShaderEXT")]
     pub unsafe fn update_indirect_execution_set_shader_ext(
         &self,
@@ -67989,7 +68495,11 @@ impl crate::Device {
             let execution_set_write_count_len: usize = execution_set_writes.len();
             self.update_indirect_execution_set_shader_ext_raw(
                 indirect_execution_set,
-                execution_set_write_count_len as u32,
+                len_as_count(
+                    execution_set_write_count_len,
+                    "vkUpdateIndirectExecutionSetShaderEXT",
+                    "executionSetWriteCount",
+                ),
                 execution_set_writes.as_ptr(),
             )
         }
@@ -68057,7 +68567,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkWaitForFences` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `fences` has more elements than `fenceCount`, a `uint32_t`, can count.
     #[doc(alias = "vkWaitForFences")]
     pub unsafe fn wait_for_fences(
         &self,
@@ -68068,7 +68579,7 @@ impl crate::Device {
         unsafe {
             let fence_count_len: usize = fences.len();
             let result = self.wait_for_fences_raw(
-                fence_count_len as u32,
+                len_as_count(fence_count_len, "vkWaitForFences", "fenceCount"),
                 fences.as_ptr(),
                 wait_all as Bool32,
                 timeout,
@@ -68264,7 +68775,8 @@ impl crate::Device {
     ///
     /// Panics if `vkWriteAccelerationStructuresPropertiesKHR` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
-    /// enabled.
+    /// enabled. Also panics if `acceleration_structures` has more elements than
+    /// `accelerationStructureCount`, a `uint32_t`, can count.
     #[doc(alias = "vkWriteAccelerationStructuresPropertiesKHR")]
     pub unsafe fn write_acceleration_structures_properties_khr(
         &self,
@@ -68277,7 +68789,11 @@ impl crate::Device {
             let acceleration_structure_count_len: usize = acceleration_structures.len();
             let data_size_len: usize = data.len();
             self.write_acceleration_structures_properties_khr_raw(
-                acceleration_structure_count_len as u32,
+                len_as_count(
+                    acceleration_structure_count_len,
+                    "vkWriteAccelerationStructuresPropertiesKHR",
+                    "accelerationStructureCount",
+                ),
                 acceleration_structures.as_ptr(),
                 query_type,
                 data_size_len,
@@ -68309,7 +68825,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkWriteMicromapsPropertiesEXT` is not loaded: the loader returned no pointer for
-    /// it, for example because the version or the extension that provides it is not enabled.
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `micromaps` has more elements than `micromapCount`, a `uint32_t`, can count.
     #[doc(alias = "vkWriteMicromapsPropertiesEXT")]
     pub unsafe fn write_micromaps_properties_ext(
         &self,
@@ -68322,7 +68839,11 @@ impl crate::Device {
             let micromap_count_len: usize = micromaps.len();
             let data_size_len: usize = data.len();
             self.write_micromaps_properties_ext_raw(
-                micromap_count_len as u32,
+                len_as_count(
+                    micromap_count_len,
+                    "vkWriteMicromapsPropertiesEXT",
+                    "micromapCount",
+                ),
                 micromaps.as_ptr(),
                 query_type,
                 data_size_len,
@@ -68357,7 +68878,8 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `resources` and `descriptors` have more
+    /// elements than `resourceCount`, a `uint32_t`, can count.
     #[doc(alias = "vkWriteResourceDescriptorsEXT")]
     pub unsafe fn write_resource_descriptors_ext(
         &self,
@@ -68372,7 +68894,11 @@ impl crate::Device {
                 "vkWriteResourceDescriptorsEXT: `descriptors` must have the same length as the other arrays sharing `resourceCount`"
             );
             self.write_resource_descriptors_ext_raw(
-                resource_count_len as u32,
+                len_as_count(
+                    resource_count_len,
+                    "vkWriteResourceDescriptorsEXT",
+                    "resourceCount",
+                ),
                 resources.as_ptr(),
                 descriptors.as_ptr(),
             )
@@ -68404,7 +68930,8 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if the slices do not have the lengths that the command needs: slices that it counts
     /// with one parameter have to be equally long, and a slice whose length it reads from another
-    /// argument has to have that length.
+    /// argument has to have that length. Also panics if `samplers` and `descriptors` have more
+    /// elements than `samplerCount`, a `uint32_t`, can count.
     #[doc(alias = "vkWriteSamplerDescriptorsEXT")]
     pub unsafe fn write_sampler_descriptors_ext(
         &self,
@@ -68419,7 +68946,11 @@ impl crate::Device {
                 "vkWriteSamplerDescriptorsEXT: `descriptors` must have the same length as the other arrays sharing `samplerCount`"
             );
             self.write_sampler_descriptors_ext_raw(
-                sampler_count_len as u32,
+                len_as_count(
+                    sampler_count_len,
+                    "vkWriteSamplerDescriptorsEXT",
+                    "samplerCount",
+                ),
                 samplers.as_ptr(),
                 descriptors.as_ptr(),
             )
