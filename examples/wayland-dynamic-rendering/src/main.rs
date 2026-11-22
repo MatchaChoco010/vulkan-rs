@@ -90,9 +90,6 @@ struct App {
 /// recreated together. The fields drop in order, the reverse of creation.
 struct Target {
     pipeline: Owned<vk::Pipeline>,
-    /// The layout each swapchain image was left in: `UNDEFINED` until it is first drawn
-    /// to, `PRESENT_SRC_KHR` after.
-    image_layouts: Vec<vk::ImageLayout>,
     swapchain: Swapchain,
 }
 
@@ -112,7 +109,6 @@ impl Target {
             if hdr_metadata {
                 set_hdr_metadata(&gpu.device, swapchain.handle, surface_format.color_space);
             }
-            let image_layouts = vec![vk::ImageLayout::UNDEFINED; swapchain.images.len()];
             let pipeline = pipeline::create_pipeline(
                 gpu,
                 surface_format.format,
@@ -121,7 +117,6 @@ impl Target {
             )?;
             Ok(Self {
                 pipeline,
-                image_layouts,
                 swapchain,
             })
         }
@@ -191,7 +186,7 @@ impl Renderer for App {
     unsafe fn draw(&mut self) -> Result<SwapchainStatus> {
         unsafe {
             let device = &self.gpu.device;
-            let target = self.target.as_mut().context("there is no swapchain")?;
+            let target = self.target.as_ref().context("there is no swapchain")?;
             // The barrier into COLOR_ATTACHMENT_OPTIMAL starts at TOP_OF_PIPE, so the
             // frame has to wait for the image there for the transition to come after
             // the acquire.
@@ -201,12 +196,7 @@ impl Renderer for App {
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 |command_buffer, image_index| {
                     let image = target.swapchain.images[image_index];
-                    to_color_attachment(
-                        device,
-                        command_buffer,
-                        image,
-                        target.image_layouts[image_index],
-                    );
+                    to_color_attachment(device, command_buffer, image);
 
                     let color_attachments = [vk::RenderingAttachmentInfo::default()
                         .image_view(*target.swapchain.image_views[image_index])
@@ -238,7 +228,6 @@ impl Renderer for App {
                     device.cmd_end_rendering(command_buffer);
 
                     to_present(device, command_buffer, image);
-                    target.image_layouts[image_index] = vk::ImageLayout::PRESENT_SRC_KHR;
                 },
             )
         }
@@ -273,18 +262,19 @@ impl Renderer for App {
     }
 }
 
-/// Moves a swapchain image from `old_layout` into `COLOR_ATTACHMENT_OPTIMAL` before the
-/// rendering writes it.
+/// Moves a swapchain image into `COLOR_ATTACHMENT_OPTIMAL` before the rendering writes
+/// it. The old layout is given as `UNDEFINED`, which is right whatever layout the image
+/// is in, whether it was never drawn to or a frame that drew to it failed before its
+/// submission; it discards the contents, which the rendering clears anyway.
 unsafe fn to_color_attachment(
     device: &Device,
     command_buffer: vk::CommandBuffer,
     image: vk::Image,
-    old_layout: vk::ImageLayout,
 ) {
     let barriers = [vk::ImageMemoryBarrier::default()
         .src_access_mask(vk::AccessFlags::empty())
         .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-        .old_layout(old_layout)
+        .old_layout(vk::ImageLayout::UNDEFINED)
         .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
         .image(image)
         .subresource_range(subresource_range(vk::ImageAspectFlags::COLOR))];
