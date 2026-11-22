@@ -10,3 +10,4 @@ anyhow = "1"
 bytemuck = { version = "1.25", features = ["derive"] }
 vulkan = { workspace = true, features = ["std"] }
 vulkan-alloc.workspace = true
+vulkan-example-common = { path = "../common" }

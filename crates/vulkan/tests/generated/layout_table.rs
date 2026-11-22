@@ -1371,7 +1371,7 @@ pub const STRUCTS: &[StructLayout] = &[
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX",
         size: size_of::<vk::AccelerationStructureDenseGeometryFormatTrianglesDataAMDX<'static>>(),
         align: align_of::<vk::AccelerationStructureDenseGeometryFormatTrianglesDataAMDX<'static>>(),
@@ -1606,7 +1606,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkAccelerationStructureTrianglesDisplacementMicromapNV",
         size: size_of::<vk::AccelerationStructureTrianglesDisplacementMicromapNV<'static>>(),
         align: align_of::<vk::AccelerationStructureTrianglesDisplacementMicromapNV<'static>>(),
@@ -3345,7 +3345,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkCudaFunctionCreateInfoNV",
         size: size_of::<vk::CudaFunctionCreateInfoNV<'static>>(),
         align: align_of::<vk::CudaFunctionCreateInfoNV<'static>>(),
@@ -3357,7 +3357,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkCudaLaunchInfoNV",
         size: size_of::<vk::CudaLaunchInfoNV<'static>>(),
         align: align_of::<vk::CudaLaunchInfoNV<'static>>(),
@@ -3379,7 +3379,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkCudaModuleCreateInfoNV",
         size: size_of::<vk::CudaModuleCreateInfoNV<'static>>(),
         align: align_of::<vk::CudaModuleCreateInfoNV<'static>>(),
@@ -4679,7 +4679,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkDeviceOrHostAddressConstAMDX",
         size: size_of::<vk::DeviceOrHostAddressConstAMDX<'static>>(),
         align: align_of::<vk::DeviceOrHostAddressConstAMDX<'static>>(),
@@ -4805,7 +4805,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkDispatchGraphCountInfoAMDX",
         size: size_of::<vk::DispatchGraphCountInfoAMDX<'static>>(),
         align: align_of::<vk::DispatchGraphCountInfoAMDX<'static>>(),
@@ -4816,7 +4816,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkDispatchGraphInfoAMDX",
         size: size_of::<vk::DispatchGraphInfoAMDX<'static>>(),
         align: align_of::<vk::DispatchGraphInfoAMDX<'static>>(),
@@ -5198,7 +5198,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkExecutionGraphPipelineCreateInfoAMDX",
         size: size_of::<vk::ExecutionGraphPipelineCreateInfoAMDX<'static>>(),
         align: align_of::<vk::ExecutionGraphPipelineCreateInfoAMDX<'static>>(),
@@ -5215,7 +5215,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkExecutionGraphPipelineScratchSizeAMDX",
         size: size_of::<vk::ExecutionGraphPipelineScratchSizeAMDX<'static>>(),
         align: align_of::<vk::ExecutionGraphPipelineScratchSizeAMDX<'static>>(),
@@ -8296,7 +8296,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDeviceCudaKernelLaunchFeaturesNV",
         size: size_of::<vk::PhysicalDeviceCudaKernelLaunchFeaturesNV<'static>>(),
         align: align_of::<vk::PhysicalDeviceCudaKernelLaunchFeaturesNV<'static>>(),
@@ -8307,7 +8307,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDeviceCudaKernelLaunchPropertiesNV",
         size: size_of::<vk::PhysicalDeviceCudaKernelLaunchPropertiesNV<'static>>(),
         align: align_of::<vk::PhysicalDeviceCudaKernelLaunchPropertiesNV<'static>>(),
@@ -8423,7 +8423,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDeviceDenseGeometryFormatFeaturesAMDX",
         size: size_of::<vk::PhysicalDeviceDenseGeometryFormatFeaturesAMDX<'static>>(),
         align: align_of::<vk::PhysicalDeviceDenseGeometryFormatFeaturesAMDX<'static>>(),
@@ -8831,7 +8831,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDeviceDisplacementMicromapFeaturesNV",
         size: size_of::<vk::PhysicalDeviceDisplacementMicromapFeaturesNV<'static>>(),
         align: align_of::<vk::PhysicalDeviceDisplacementMicromapFeaturesNV<'static>>(),
@@ -8842,7 +8842,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDeviceDisplacementMicromapPropertiesNV",
         size: size_of::<vk::PhysicalDeviceDisplacementMicromapPropertiesNV<'static>>(),
         align: align_of::<vk::PhysicalDeviceDisplacementMicromapPropertiesNV<'static>>(),
@@ -10869,7 +10869,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDevicePortabilitySubsetFeaturesKHR",
         size: size_of::<vk::PhysicalDevicePortabilitySubsetFeaturesKHR<'static>>(),
         align: align_of::<vk::PhysicalDevicePortabilitySubsetFeaturesKHR<'static>>(),
@@ -10894,7 +10894,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDevicePortabilitySubsetPropertiesKHR",
         size: size_of::<vk::PhysicalDevicePortabilitySubsetPropertiesKHR<'static>>(),
         align: align_of::<vk::PhysicalDevicePortabilitySubsetPropertiesKHR<'static>>(),
@@ -11731,7 +11731,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDeviceShaderEnqueueFeaturesAMDX",
         size: size_of::<vk::PhysicalDeviceShaderEnqueueFeaturesAMDX<'static>>(),
         align: align_of::<vk::PhysicalDeviceShaderEnqueueFeaturesAMDX<'static>>(),
@@ -11743,7 +11743,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPhysicalDeviceShaderEnqueuePropertiesAMDX",
         size: size_of::<vk::PhysicalDeviceShaderEnqueuePropertiesAMDX<'static>>(),
         align: align_of::<vk::PhysicalDeviceShaderEnqueuePropertiesAMDX<'static>>(),
@@ -13762,7 +13762,7 @@ StructLayout {
         ],
     },
     #[cfg(feature = "beta")]
-StructLayout {
+    StructLayout {
         name: "VkPipelineShaderStageNodeCreateInfoAMDX",
         size: size_of::<vk::PipelineShaderStageNodeCreateInfoAMDX<'static>>(),
         align: align_of::<vk::PipelineShaderStageNodeCreateInfoAMDX<'static>>(),
@@ -20306,7 +20306,7 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_COMPONENT_TYPE_FLOAT_E4M3_NV", vk::ComponentTypeKHR::FLOAT_E4M3_NV.0 as i64),
     ("VK_COMPONENT_TYPE_FLOAT_E5M2_NV", vk::ComponentTypeKHR::FLOAT_E5M2_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_COMPRESSED_TRIANGLE_FORMAT_DGF1_AMDX", vk::CompressedTriangleFormatAMDX::DGF1.0 as i64),
+    ("VK_COMPRESSED_TRIANGLE_FORMAT_DGF1_AMDX", vk::CompressedTriangleFormatAMDX::DGF1.0 as i64),
     ("VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT", vk::ConservativeRasterizationModeEXT::DISABLED.0 as i64),
     ("VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT", vk::ConservativeRasterizationModeEXT::OVERESTIMATE.0 as i64),
     ("VK_CONSERVATIVE_RASTERIZATION_MODE_UNDERESTIMATE_EXT", vk::ConservativeRasterizationModeEXT::UNDERESTIMATE.0 as i64),
@@ -20472,11 +20472,11 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_DISCARD_RECTANGLE_MODE_INCLUSIVE_EXT", vk::DiscardRectangleModeEXT::INCLUSIVE.0 as i64),
     ("VK_DISCARD_RECTANGLE_MODE_EXCLUSIVE_EXT", vk::DiscardRectangleModeEXT::EXCLUSIVE.0 as i64),
     #[cfg(feature = "beta")]
-("VK_DISPLACEMENT_MICROMAP_FORMAT_64_TRIANGLES_64_BYTES_NV", vk::DisplacementMicromapFormatNV::_64_TRIANGLES_64_BYTES.0 as i64),
+    ("VK_DISPLACEMENT_MICROMAP_FORMAT_64_TRIANGLES_64_BYTES_NV", vk::DisplacementMicromapFormatNV::_64_TRIANGLES_64_BYTES.0 as i64),
     #[cfg(feature = "beta")]
-("VK_DISPLACEMENT_MICROMAP_FORMAT_256_TRIANGLES_128_BYTES_NV", vk::DisplacementMicromapFormatNV::_256_TRIANGLES_128_BYTES.0 as i64),
+    ("VK_DISPLACEMENT_MICROMAP_FORMAT_256_TRIANGLES_128_BYTES_NV", vk::DisplacementMicromapFormatNV::_256_TRIANGLES_128_BYTES.0 as i64),
     #[cfg(feature = "beta")]
-("VK_DISPLACEMENT_MICROMAP_FORMAT_1024_TRIANGLES_128_BYTES_NV", vk::DisplacementMicromapFormatNV::_1024_TRIANGLES_128_BYTES.0 as i64),
+    ("VK_DISPLACEMENT_MICROMAP_FORMAT_1024_TRIANGLES_128_BYTES_NV", vk::DisplacementMicromapFormatNV::_1024_TRIANGLES_128_BYTES.0 as i64),
     ("VK_DISPLAY_EVENT_TYPE_FIRST_PIXEL_OUT_EXT", vk::DisplayEventTypeEXT::FIRST_PIXEL_OUT.0 as i64),
     ("VK_DISPLAY_POWER_STATE_OFF_EXT", vk::DisplayPowerStateEXT::OFF.0 as i64),
     ("VK_DISPLAY_POWER_STATE_SUSPEND_EXT", vk::DisplayPowerStateEXT::SUSPEND.0 as i64),
@@ -21004,7 +21004,7 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_GEOMETRY_TYPE_SPHERES_NV", vk::GeometryTypeKHR::SPHERES_NV.0 as i64),
     ("VK_GEOMETRY_TYPE_LINEAR_SWEPT_SPHERES_NV", vk::GeometryTypeKHR::LINEAR_SWEPT_SPHERES_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_GEOMETRY_TYPE_DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX", vk::GeometryTypeKHR::DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX.0 as i64),
+    ("VK_GEOMETRY_TYPE_DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX", vk::GeometryTypeKHR::DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX.0 as i64),
     ("VK_GEOMETRY_TYPE_MICROMAP_KHR", vk::GeometryTypeKHR::MICROMAP.0 as i64),
     ("VK_GEOMETRY_TYPE_TRIANGLES_NV", vk::GeometryTypeKHR::TRIANGLES_NV.0 as i64),
     ("VK_GEOMETRY_TYPE_AABBS_NV", vk::GeometryTypeKHR::AABBS_NV.0 as i64),
@@ -21228,7 +21228,7 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_MEMORY_OVERALLOCATION_BEHAVIOR_DISALLOWED_AMD", vk::MemoryOverallocationBehaviorAMD::DISALLOWED.0 as i64),
     ("VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT", vk::MicromapTypeEXT::OPACITY_MICROMAP.0 as i64),
     #[cfg(feature = "beta")]
-("VK_MICROMAP_TYPE_DISPLACEMENT_MICROMAP_NV", vk::MicromapTypeEXT::DISPLACEMENT_MICROMAP_NV.0 as i64),
+    ("VK_MICROMAP_TYPE_DISPLACEMENT_MICROMAP_NV", vk::MicromapTypeEXT::DISPLACEMENT_MICROMAP_NV.0 as i64),
     ("VK_NEURAL_ACCELERATOR_STATISTICS_MODE_DISABLED_ARM", vk::NeuralAcceleratorStatisticsModeARM::DISABLED.0 as i64),
     ("VK_NEURAL_ACCELERATOR_STATISTICS_MODE_STATISTICS0_ARM", vk::NeuralAcceleratorStatisticsModeARM::STATISTICS0.0 as i64),
     ("VK_NEURAL_ACCELERATOR_STATISTICS_MODE_STATISTICS1_ARM", vk::NeuralAcceleratorStatisticsModeARM::STATISTICS1.0 as i64),
@@ -21279,9 +21279,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV", vk::ObjectType::INDIRECT_COMMANDS_LAYOUT_NV.0 as i64),
     ("VK_OBJECT_TYPE_PRIVATE_DATA_SLOT", vk::ObjectType::PRIVATE_DATA_SLOT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_OBJECT_TYPE_CUDA_MODULE_NV", vk::ObjectType::CUDA_MODULE_NV.0 as i64),
+    ("VK_OBJECT_TYPE_CUDA_MODULE_NV", vk::ObjectType::CUDA_MODULE_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_OBJECT_TYPE_CUDA_FUNCTION_NV", vk::ObjectType::CUDA_FUNCTION_NV.0 as i64),
+    ("VK_OBJECT_TYPE_CUDA_FUNCTION_NV", vk::ObjectType::CUDA_FUNCTION_NV.0 as i64),
     ("VK_OBJECT_TYPE_BUFFER_COLLECTION_FUCHSIA", vk::ObjectType::BUFFER_COLLECTION_FUCHSIA.0 as i64),
     ("VK_OBJECT_TYPE_MICROMAP_EXT", vk::ObjectType::MICROMAP_EXT.0 as i64),
     ("VK_OBJECT_TYPE_TENSOR_ARM", vk::ObjectType::TENSOR_ARM.0 as i64),
@@ -21385,7 +21385,7 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_PIPELINE_BIND_POINT_GRAPHICS", vk::PipelineBindPoint::GRAPHICS.0 as i64),
     ("VK_PIPELINE_BIND_POINT_COMPUTE", vk::PipelineBindPoint::COMPUTE.0 as i64),
     #[cfg(feature = "beta")]
-("VK_PIPELINE_BIND_POINT_EXECUTION_GRAPH_AMDX", vk::PipelineBindPoint::EXECUTION_GRAPH_AMDX.0 as i64),
+    ("VK_PIPELINE_BIND_POINT_EXECUTION_GRAPH_AMDX", vk::PipelineBindPoint::EXECUTION_GRAPH_AMDX.0 as i64),
     ("VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR", vk::PipelineBindPoint::RAY_TRACING_KHR.0 as i64),
     ("VK_PIPELINE_BIND_POINT_SUBPASS_SHADING_HUAWEI", vk::PipelineBindPoint::SUBPASS_SHADING_HUAWEI.0 as i64),
     ("VK_PIPELINE_BIND_POINT_DATA_GRAPH_ARM", vk::PipelineBindPoint::DATA_GRAPH_ARM.0 as i64),
@@ -21939,15 +21939,15 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GPA_PROPERTIES_2_AMD", vk::StructureType::PHYSICAL_DEVICE_GPA_PROPERTIES_2_AMD.0 as i64),
     ("VK_STRUCTURE_TYPE_GPA_DEVICE_GET_CLOCK_INFO_AMD", vk::StructureType::GPA_DEVICE_GET_CLOCK_INFO_AMD.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ENQUEUE_FEATURES_AMDX", vk::StructureType::PHYSICAL_DEVICE_SHADER_ENQUEUE_FEATURES_AMDX.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ENQUEUE_FEATURES_AMDX", vk::StructureType::PHYSICAL_DEVICE_SHADER_ENQUEUE_FEATURES_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ENQUEUE_PROPERTIES_AMDX", vk::StructureType::PHYSICAL_DEVICE_SHADER_ENQUEUE_PROPERTIES_AMDX.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ENQUEUE_PROPERTIES_AMDX", vk::StructureType::PHYSICAL_DEVICE_SHADER_ENQUEUE_PROPERTIES_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_EXECUTION_GRAPH_PIPELINE_SCRATCH_SIZE_AMDX", vk::StructureType::EXECUTION_GRAPH_PIPELINE_SCRATCH_SIZE_AMDX.0 as i64),
+    ("VK_STRUCTURE_TYPE_EXECUTION_GRAPH_PIPELINE_SCRATCH_SIZE_AMDX", vk::StructureType::EXECUTION_GRAPH_PIPELINE_SCRATCH_SIZE_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_EXECUTION_GRAPH_PIPELINE_CREATE_INFO_AMDX", vk::StructureType::EXECUTION_GRAPH_PIPELINE_CREATE_INFO_AMDX.0 as i64),
+    ("VK_STRUCTURE_TYPE_EXECUTION_GRAPH_PIPELINE_CREATE_INFO_AMDX", vk::StructureType::EXECUTION_GRAPH_PIPELINE_CREATE_INFO_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_NODE_CREATE_INFO_AMDX", vk::StructureType::PIPELINE_SHADER_STAGE_NODE_CREATE_INFO_AMDX.0 as i64),
+    ("VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_NODE_CREATE_INFO_AMDX", vk::StructureType::PIPELINE_SHADER_STAGE_NODE_CREATE_INFO_AMDX.0 as i64),
     ("VK_STRUCTURE_TYPE_TEXEL_BUFFER_DESCRIPTOR_INFO_EXT", vk::StructureType::TEXEL_BUFFER_DESCRIPTOR_INFO_EXT.0 as i64),
     ("VK_STRUCTURE_TYPE_IMAGE_DESCRIPTOR_INFO_EXT", vk::StructureType::IMAGE_DESCRIPTOR_INFO_EXT.0 as i64),
     ("VK_STRUCTURE_TYPE_RESOURCE_DESCRIPTOR_INFO_EXT", vk::StructureType::RESOURCE_DESCRIPTOR_INFO_EXT.0 as i64),
@@ -22030,9 +22030,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO", vk::StructureType::DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO.0 as i64),
     ("VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT", vk::StructureType::DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_LAYOUT_SUPPORT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR", vk::StructureType::PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR", vk::StructureType::PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR", vk::StructureType::PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR", vk::StructureType::PHYSICAL_DEVICE_PORTABILITY_SUBSET_PROPERTIES_KHR.0 as i64),
     ("VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_SHADING_RATE_IMAGE_STATE_CREATE_INFO_NV", vk::StructureType::PIPELINE_VIEWPORT_SHADING_RATE_IMAGE_STATE_CREATE_INFO_NV.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADING_RATE_IMAGE_FEATURES_NV", vk::StructureType::PHYSICAL_DEVICE_SHADING_RATE_IMAGE_FEATURES_NV.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADING_RATE_IMAGE_PROPERTIES_NV", vk::StructureType::PHYSICAL_DEVICE_SHADING_RATE_IMAGE_PROPERTIES_NV.0 as i64),
@@ -22279,15 +22279,15 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SPLIT_BARRIER_FEATURES_EXT", vk::StructureType::PHYSICAL_DEVICE_SHADER_SPLIT_BARRIER_FEATURES_EXT.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SPLIT_BARRIER_PROPERTIES_EXT", vk::StructureType::PHYSICAL_DEVICE_SHADER_SPLIT_BARRIER_PROPERTIES_EXT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_CUDA_MODULE_CREATE_INFO_NV", vk::StructureType::CUDA_MODULE_CREATE_INFO_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_CUDA_MODULE_CREATE_INFO_NV", vk::StructureType::CUDA_MODULE_CREATE_INFO_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_CUDA_FUNCTION_CREATE_INFO_NV", vk::StructureType::CUDA_FUNCTION_CREATE_INFO_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_CUDA_FUNCTION_CREATE_INFO_NV", vk::StructureType::CUDA_FUNCTION_CREATE_INFO_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_CUDA_LAUNCH_INFO_NV", vk::StructureType::CUDA_LAUNCH_INFO_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_CUDA_LAUNCH_INFO_NV", vk::StructureType::CUDA_LAUNCH_INFO_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_FEATURES_NV", vk::StructureType::PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_FEATURES_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_FEATURES_NV", vk::StructureType::PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_FEATURES_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_PROPERTIES_NV", vk::StructureType::PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_PROPERTIES_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_PROPERTIES_NV", vk::StructureType::PHYSICAL_DEVICE_CUDA_KERNEL_LAUNCH_PROPERTIES_NV.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TILE_SHADING_FEATURES_QCOM", vk::StructureType::PHYSICAL_DEVICE_TILE_SHADING_FEATURES_QCOM.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TILE_SHADING_PROPERTIES_QCOM", vk::StructureType::PHYSICAL_DEVICE_TILE_SHADING_PROPERTIES_QCOM.0 as i64),
     ("VK_STRUCTURE_TYPE_RENDER_PASS_TILE_SHADING_CREATE_INFO_QCOM", vk::StructureType::RENDER_PASS_TILE_SHADING_CREATE_INFO_QCOM.0 as i64),
@@ -22466,11 +22466,11 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_STRUCTURE_TYPE_MICROMAP_BUILD_SIZES_INFO_EXT", vk::StructureType::MICROMAP_BUILD_SIZES_INFO_EXT.0 as i64),
     ("VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_EXT", vk::StructureType::ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_EXT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_FEATURES_NV", vk::StructureType::PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_FEATURES_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_FEATURES_NV", vk::StructureType::PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_FEATURES_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_PROPERTIES_NV", vk::StructureType::PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_PROPERTIES_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_PROPERTIES_NV", vk::StructureType::PHYSICAL_DEVICE_DISPLACEMENT_MICROMAP_PROPERTIES_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_DISPLACEMENT_MICROMAP_NV", vk::StructureType::ACCELERATION_STRUCTURE_TRIANGLES_DISPLACEMENT_MICROMAP_NV.0 as i64),
+    ("VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_DISPLACEMENT_MICROMAP_NV", vk::StructureType::ACCELERATION_STRUCTURE_TRIANGLES_DISPLACEMENT_MICROMAP_NV.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CLUSTER_CULLING_SHADER_FEATURES_HUAWEI", vk::StructureType::PHYSICAL_DEVICE_CLUSTER_CULLING_SHADER_FEATURES_HUAWEI.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CLUSTER_CULLING_SHADER_PROPERTIES_HUAWEI", vk::StructureType::PHYSICAL_DEVICE_CLUSTER_CULLING_SHADER_PROPERTIES_HUAWEI.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CLUSTER_CULLING_SHADER_VRS_FEATURES_HUAWEI", vk::StructureType::PHYSICAL_DEVICE_CLUSTER_CULLING_SHADER_VRS_FEATURES_HUAWEI.0 as i64),
@@ -22586,9 +22586,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD", vk::StructureType::ANTI_LAG_DATA_AMD.0 as i64),
     ("VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD", vk::StructureType::ANTI_LAG_PRESENTATION_INFO_AMD.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DENSE_GEOMETRY_FORMAT_FEATURES_AMDX", vk::StructureType::PHYSICAL_DEVICE_DENSE_GEOMETRY_FORMAT_FEATURES_AMDX.0 as i64),
+    ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DENSE_GEOMETRY_FORMAT_FEATURES_AMDX", vk::StructureType::PHYSICAL_DEVICE_DENSE_GEOMETRY_FORMAT_FEATURES_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DENSE_GEOMETRY_FORMAT_TRIANGLES_DATA_AMDX", vk::StructureType::ACCELERATION_STRUCTURE_DENSE_GEOMETRY_FORMAT_TRIANGLES_DATA_AMDX.0 as i64),
+    ("VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DENSE_GEOMETRY_FORMAT_TRIANGLES_DATA_AMDX", vk::StructureType::ACCELERATION_STRUCTURE_DENSE_GEOMETRY_FORMAT_TRIANGLES_DATA_AMDX.0 as i64),
     ("VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_PRESENT_ID_2_KHR", vk::StructureType::SURFACE_CAPABILITIES_PRESENT_ID_2_KHR.0 as i64),
     ("VK_STRUCTURE_TYPE_PRESENT_ID_2_KHR", vk::StructureType::PRESENT_ID_2_KHR.0 as i64),
     ("VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR", vk::StructureType::PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR.0 as i64),
@@ -23578,9 +23578,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT", vk::BufferUsageFlagBits::MICROMAP_STORAGE_EXT.0 as i64),
     ("VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT", vk::BufferUsageFlags::MICROMAP_STORAGE_EXT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUFFER_USAGE_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlagBits::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
+    ("VK_BUFFER_USAGE_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlagBits::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUFFER_USAGE_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlags::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
+    ("VK_BUFFER_USAGE_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlags::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
     ("VK_BUFFER_USAGE_PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_BIT_EXT", vk::BufferUsageFlagBits::PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_BUFFER_USAGE_PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_BIT_EXT", vk::BufferUsageFlags::PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_BUFFER_USAGE_TILE_MEMORY_BIT_QCOM", vk::BufferUsageFlagBits::TILE_MEMORY_QCOM.0 as i64),
@@ -23642,9 +23642,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_BUFFER_USAGE_2_MICROMAP_STORAGE_BIT_EXT", vk::BufferUsageFlagBits2::MICROMAP_STORAGE_EXT.0 as i64),
     ("VK_BUFFER_USAGE_2_MICROMAP_STORAGE_BIT_EXT", vk::BufferUsageFlags2::MICROMAP_STORAGE_EXT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUFFER_USAGE_2_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlagBits2::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
+    ("VK_BUFFER_USAGE_2_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlagBits2::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUFFER_USAGE_2_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlags2::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
+    ("VK_BUFFER_USAGE_2_EXECUTION_GRAPH_SCRATCH_BIT_AMDX", vk::BufferUsageFlags2::EXECUTION_GRAPH_SCRATCH_AMDX.0 as i64),
     ("VK_BUFFER_USAGE_2_PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_BIT_EXT", vk::BufferUsageFlagBits2::PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_BUFFER_USAGE_2_PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_BIT_EXT", vk::BufferUsageFlags2::PUSH_DESCRIPTORS_DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_BUFFER_USAGE_2_TILE_MEMORY_BIT_QCOM", vk::BufferUsageFlagBits2::TILE_MEMORY_QCOM.0 as i64),
@@ -23658,9 +23658,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_BUFFER_USAGE_2_MEMORY_DECOMPRESSION_BIT_EXT", vk::BufferUsageFlagBits2::MEMORY_DECOMPRESSION_EXT.0 as i64),
     ("VK_BUFFER_USAGE_2_MEMORY_DECOMPRESSION_BIT_EXT", vk::BufferUsageFlags2::MEMORY_DECOMPRESSION_EXT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUFFER_USAGE_2_COMPRESSED_DATA_DGF1_BIT_AMDX", vk::BufferUsageFlagBits2::COMPRESSED_DATA_DGF1_AMDX.0 as i64),
+    ("VK_BUFFER_USAGE_2_COMPRESSED_DATA_DGF1_BIT_AMDX", vk::BufferUsageFlagBits2::COMPRESSED_DATA_DGF1_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUFFER_USAGE_2_COMPRESSED_DATA_DGF1_BIT_AMDX", vk::BufferUsageFlags2::COMPRESSED_DATA_DGF1_AMDX.0 as i64),
+    ("VK_BUFFER_USAGE_2_COMPRESSED_DATA_DGF1_BIT_AMDX", vk::BufferUsageFlags2::COMPRESSED_DATA_DGF1_AMDX.0 as i64),
     ("VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR", vk::BufferUsageFlagBits2::TRANSFER_SRC_KHR.0 as i64),
     ("VK_BUFFER_USAGE_2_TRANSFER_SRC_BIT_KHR", vk::BufferUsageFlags2::TRANSFER_SRC_KHR.0 as i64),
     ("VK_BUFFER_USAGE_2_TRANSFER_DST_BIT_KHR", vk::BufferUsageFlagBits2::TRANSFER_DST_KHR.0 as i64),
@@ -23702,9 +23702,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT", vk::BuildAccelerationStructureFlagBitsKHR::ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT.0 as i64),
     ("VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT", vk::BuildAccelerationStructureFlagsKHR::ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV", vk::BuildAccelerationStructureFlagBitsKHR::ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV.0 as i64),
+    ("VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV", vk::BuildAccelerationStructureFlagBitsKHR::ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV", vk::BuildAccelerationStructureFlagsKHR::ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV.0 as i64),
+    ("VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV", vk::BuildAccelerationStructureFlagsKHR::ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV.0 as i64),
     ("VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR", vk::BuildAccelerationStructureFlagBitsKHR::MICROMAP_LOSSY.0 as i64),
     ("VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR", vk::BuildAccelerationStructureFlagsKHR::MICROMAP_LOSSY.0 as i64),
     ("VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR", vk::BuildAccelerationStructureFlagBitsKHR::ALLOW_DATA_ACCESS.0 as i64),
@@ -24958,9 +24958,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_PIPELINE_CREATE_NO_PROTECTED_ACCESS_BIT", vk::PipelineCreateFlagBits::NO_PROTECTED_ACCESS.0 as i64),
     ("VK_PIPELINE_CREATE_NO_PROTECTED_ACCESS_BIT", vk::PipelineCreateFlags::NO_PROTECTED_ACCESS.0 as i64),
     #[cfg(feature = "beta")]
-("VK_PIPELINE_CREATE_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlagBits::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
+    ("VK_PIPELINE_CREATE_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlagBits::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_PIPELINE_CREATE_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlags::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
+    ("VK_PIPELINE_CREATE_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlags::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
     ("VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT", vk::PipelineCreateFlagBits::DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT", vk::PipelineCreateFlags::DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_PIPELINE_CREATE_PROTECTED_ACCESS_ONLY_BIT", vk::PipelineCreateFlagBits::PROTECTED_ACCESS_ONLY.0 as i64),
@@ -25040,9 +25040,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_PIPELINE_CREATE_2_NO_PROTECTED_ACCESS_BIT", vk::PipelineCreateFlagBits2::NO_PROTECTED_ACCESS.0 as i64),
     ("VK_PIPELINE_CREATE_2_NO_PROTECTED_ACCESS_BIT", vk::PipelineCreateFlags2::NO_PROTECTED_ACCESS.0 as i64),
     #[cfg(feature = "beta")]
-("VK_PIPELINE_CREATE_2_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlagBits2::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
+    ("VK_PIPELINE_CREATE_2_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlagBits2::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
     #[cfg(feature = "beta")]
-("VK_PIPELINE_CREATE_2_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlags2::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
+    ("VK_PIPELINE_CREATE_2_RAY_TRACING_DISPLACEMENT_MICROMAP_BIT_NV", vk::PipelineCreateFlags2::RAY_TRACING_DISPLACEMENT_MICROMAP_NV.0 as i64),
     ("VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT", vk::PipelineCreateFlagBits2::DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_PIPELINE_CREATE_2_DESCRIPTOR_BUFFER_BIT_EXT", vk::PipelineCreateFlags2::DESCRIPTOR_BUFFER_EXT.0 as i64),
     ("VK_PIPELINE_CREATE_2_PROTECTED_ACCESS_ONLY_BIT", vk::PipelineCreateFlagBits2::PROTECTED_ACCESS_ONLY.0 as i64),
@@ -25050,9 +25050,9 @@ pub const VALUES: &[(&str, i64)] = &[
     ("VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR", vk::PipelineCreateFlagBits2::CAPTURE_DATA_KHR.0 as i64),
     ("VK_PIPELINE_CREATE_2_CAPTURE_DATA_BIT_KHR", vk::PipelineCreateFlags2::CAPTURE_DATA_KHR.0 as i64),
     #[cfg(feature = "beta")]
-("VK_PIPELINE_CREATE_2_EXECUTION_GRAPH_BIT_AMDX", vk::PipelineCreateFlagBits2::EXECUTION_GRAPH_AMDX.0 as i64),
+    ("VK_PIPELINE_CREATE_2_EXECUTION_GRAPH_BIT_AMDX", vk::PipelineCreateFlagBits2::EXECUTION_GRAPH_AMDX.0 as i64),
     #[cfg(feature = "beta")]
-("VK_PIPELINE_CREATE_2_EXECUTION_GRAPH_BIT_AMDX", vk::PipelineCreateFlags2::EXECUTION_GRAPH_AMDX.0 as i64),
+    ("VK_PIPELINE_CREATE_2_EXECUTION_GRAPH_BIT_AMDX", vk::PipelineCreateFlags2::EXECUTION_GRAPH_AMDX.0 as i64),
     ("VK_PIPELINE_CREATE_2_RAY_TRACING_ALLOW_SPHERES_AND_LINEAR_SWEPT_SPHERES_BIT_NV", vk::PipelineCreateFlagBits2::RAY_TRACING_ALLOW_SPHERES_AND_LINEAR_SWEPT_SPHERES_NV.0 as i64),
     ("VK_PIPELINE_CREATE_2_RAY_TRACING_ALLOW_SPHERES_AND_LINEAR_SWEPT_SPHERES_BIT_NV", vk::PipelineCreateFlags2::RAY_TRACING_ALLOW_SPHERES_AND_LINEAR_SWEPT_SPHERES_NV.0 as i64),
     ("VK_PIPELINE_CREATE_2_ENABLE_LEGACY_DITHERING_BIT_EXT", vk::PipelineCreateFlagBits2::ENABLE_LEGACY_DITHERING_EXT.0 as i64),

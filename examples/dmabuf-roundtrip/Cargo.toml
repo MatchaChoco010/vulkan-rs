@@ -9,3 +9,4 @@ publish = false
 anyhow = "1"
 vulkan = { workspace = true, features = ["std"] }
 vulkan-alloc.workspace = true
+vulkan-example-common = { path = "../common" }

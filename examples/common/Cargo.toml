@@ -1,0 +1,19 @@
+[package]
+name = "vulkan-example-common"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+window = ["dep:raw-window-handle", "dep:winit", "vulkan/wayland"]
+
+[dependencies]
+anyhow = "1"
+raw-window-handle = { version = "0.6", optional = true }
+vulkan = { workspace = true, features = ["std"] }
+vulkan-alloc.workspace = true
+winit = { version = "0.30", default-features = false, features = ["wayland", "rwh_06"], optional = true }
+
+[lints]
+workspace = true

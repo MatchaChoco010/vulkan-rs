@@ -1119,7 +1119,7 @@ dependencies = [
 
 [[package]]
 name = "source-lint"
-version = "0.3.1+vulkan-sdk-1.4.363.0"
+version = "0.4.0+vulkan-sdk-1.4.363.0"
 dependencies = [
  "ra-ap-rustc_lexer",
 ]
@@ -1318,7 +1318,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vulkan"
-version = "0.3.1+vulkan-sdk-1.4.363.0"
+version = "0.4.0+vulkan-sdk-1.4.363.0"
 dependencies = [
  "libloading",
  "trybuild",
@@ -1326,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "vulkan-alloc"
-version = "0.3.1+vulkan-sdk-1.4.363.0"
+version = "0.4.0+vulkan-sdk-1.4.363.0"
 dependencies = [
  "log",
  "vulkan",
@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "vulkan-codegen"
-version = "0.3.1+vulkan-sdk-1.4.363.0"
+version = "0.4.0+vulkan-sdk-1.4.363.0"
 dependencies = [
  "vulkan-registry",
 ]
@@ -1344,9 +1344,9 @@ name = "vulkan-compute-buffer"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "bytemuck",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
@@ -1358,6 +1358,7 @@ dependencies = [
  "glam",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
@@ -1367,6 +1368,18 @@ dependencies = [
  "anyhow",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
+]
+
+[[package]]
+name = "vulkan-example-common"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "raw-window-handle",
+ "vulkan",
+ "vulkan-alloc",
+ "winit",
 ]
 
 [[package]]
@@ -1377,6 +1390,7 @@ dependencies = [
  "bytemuck",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
@@ -1388,6 +1402,7 @@ dependencies = [
  "glam",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
@@ -1399,11 +1414,12 @@ dependencies = [
  "glam",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
 name = "vulkan-registry"
-version = "0.3.1+vulkan-sdk-1.4.363.0"
+version = "0.4.0+vulkan-sdk-1.4.363.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1415,10 +1431,9 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "bytemuck",
- "raw-window-handle",
  "vulkan",
  "vulkan-alloc",
- "winit",
+ "vulkan-example-common",
 ]
 
 [[package]]
@@ -1427,10 +1442,9 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "bytemuck",
- "raw-window-handle",
  "vulkan",
  "vulkan-alloc",
- "winit",
+ "vulkan-example-common",
 ]
 
 [[package]]

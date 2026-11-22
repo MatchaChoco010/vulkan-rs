@@ -7,6 +7,6 @@ publish = false
 
 [dependencies]
 anyhow = "1"
-bytemuck = "1.25"
 vulkan = { workspace = true, features = ["std"] }
 vulkan-alloc.workspace = true
+vulkan-example-common = { path = "../common" }

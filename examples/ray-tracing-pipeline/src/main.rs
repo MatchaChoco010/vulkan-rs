@@ -1,278 +1,54 @@
 //! A ray tracing pipeline that traces one triangle, with `VK_EXT_descriptor_heap`.
 //!
-//! The ray generation shader (`shaders/raygen.slang`) declares an acceleration structure
-//! and an output buffer with `set = 0` and bindings 0 and 1, and a push constant block.
-//! There is no descriptor set and no pipeline layout. Both descriptors are written into
-//! the resource heap, the pipeline is created with a mapping from each binding to the
-//! byte offset of its descriptor, and `vkCmdPushDataEXT` supplies the push constants.
+//! The triangle goes into a bottom-level acceleration structure, and one instance of
+//! that into the top level that rays are traced against (`acceleration.rs`). The
+//! pipeline has a ray generation shader, a miss shader and a closest hit shader, and
+//! the shader binding table holds one record for each (`shader_binding_table.rs`).
+//!
+//! The ray generation shader (`shaders/raygen.slang`) declares the acceleration
+//! structure and an output buffer with `set = 0` and bindings 0 and 1, and a push
+//! constant block. There is no descriptor set and no pipeline layout. Both descriptors
+//! are written into the resource heap, the pipeline is created with a mapping from each
+//! binding to the byte offset of its descriptor (`pipeline.rs`), and
+//! `vkCmdPushDataEXT` supplies the push constants.
 //!
 //! The image goes to `target/example-output/ray_tracing.ppm`.
 
-#![allow(unsafe_op_in_unsafe_fn)]
+mod acceleration;
+mod geometry;
+mod gpu;
+mod pipeline;
+mod shader_binding_table;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, bail};
 use glam::{Mat4, Vec3};
-use std::ffi::{CStr, CString, c_void};
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use vulkan::{Device, Entry, Instance, vk};
+use vulkan::{Device, vk};
+use vulkan_alloc::MemoryLocation;
 use vulkan_alloc::descriptor_heap::{DescriptorSlots, ResourceHeapPlan};
-use vulkan_alloc::{
-    Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc,
-    MemoryLocation,
+use vulkan_example_common::commands::submit_and_wait;
+use vulkan_example_common::memory::{
+    Buffer, MappedBuffer, buffer_device_address, create_aligned_buffer, create_allocator,
+    create_mapped_buffer, read_buffer, write_buffer,
 };
+use vulkan_example_common::output::{output_path, write_ppm};
 
-const WIDTH: u32 = 128;
-const HEIGHT: u32 = 128;
-const OUTPUT_BYTES: u64 = (WIDTH * HEIGHT * 4) as u64;
+use acceleration::AccelerationStructure;
+use shader_binding_table::ShaderBindingTable;
 
-fn main() -> Result<()> {
-    unsafe {
-        let entry = Entry::load()?;
-        let mut instance_extensions = Vec::new();
-        if has_instance_extension(&entry, vk::EXT_DEBUG_UTILS_NAME)? {
-            instance_extensions.push(vk::EXT_DEBUG_UTILS_NAME);
-        }
-        let debug_utils_enabled = instance_extensions.contains(&vk::EXT_DEBUG_UTILS_NAME);
-        let instance = create_instance(&entry, &instance_extensions)?;
-        let debug_messenger = create_debug_messenger(&instance, debug_utils_enabled)?;
-        let Some(selection) = pick_physical_device(&instance)? else {
-            println!(
-                "skipped: no Vulkan 1.4 device with ray tracing pipelines and descriptor heaps"
-            );
-            if !debug_messenger.is_null() {
-                instance.destroy_debug_utils_messenger_ext(debug_messenger, None);
-            }
-            instance.destroy_instance(None);
-            return Ok(());
-        };
-        let (device, queue) =
-            create_device_and_queue(&instance, selection.physical_device, selection.queue_family)?;
-        let physical_properties =
-            instance.get_physical_device_properties(selection.physical_device);
-        let memory_properties =
-            instance.get_physical_device_memory_properties(selection.physical_device);
-        let mut allocator = Allocator::new(AllocatorCreateDesc::new(
-            &device,
-            memory_properties,
-            physical_properties,
-        ));
+/// The size that the ray generation shader assumes.
+const EXTENT: vk::Extent2D = vk::Extent2D {
+    width: 128,
+    height: 128,
+};
+/// One `uint` per pixel.
+const OUTPUT_BYTES: u64 = EXTENT.width as u64 * EXTENT.height as u64 * 4;
 
-        let command_pool = create_command_pool(&device, selection.queue_family)?;
-        let command_buffer = allocate_command_buffer(&device, command_pool)?;
-        let fence = create_fence(&device)?;
-        let output = create_buffer_allocation(
-            &device,
-            &mut allocator,
-            "ray tracing output",
-            OUTPUT_BYTES,
-            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            // The address in a storage buffer descriptor has to be a multiple of this.
-            selection.storage_buffer_alignment,
-            MemoryLocation::GpuToCpu,
-        )?;
-        initialize_output(&mut allocator, &output.allocation)?;
-        let scene = create_scene_acceleration_structures(
-            &device,
-            &mut allocator,
-            command_buffer,
-            queue,
-            fence,
-            &selection.acceleration_structure_properties,
-        )?;
-
-        // The resource heap: one descriptor for the acceleration structure and one for
-        // the output buffer, then the range the implementation reserves for itself.
-        let mut plan = ResourceHeapPlan::new(&selection.heap_properties);
-        let slots = plan.buffers(2)?;
-        let heap_layout = plan.finish()?;
-        // The acceleration structure goes into a slot sized for a buffer descriptor:
-        // both hold an address range. Ask for the exact size instead of assuming it fits.
-        let acceleration_structure_descriptor_size = instance
-            .get_physical_device_descriptor_size_ext(
-                selection.physical_device,
-                vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
-            );
-        if acceleration_structure_descriptor_size > slots.descriptor_size {
-            return Err(anyhow!(
-                "an acceleration structure descriptor needs {acceleration_structure_descriptor_size} bytes, a buffer slot has {}",
-                slots.descriptor_size
-            ));
-        }
-        let heap = create_buffer_allocation(
-            &device,
-            &mut allocator,
-            "ray tracing resource heap",
-            heap_layout.size,
-            vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            heap_layout.alignment,
-            MemoryLocation::CpuToGpu,
-        )?;
-        write_descriptors(
-            &device,
-            &mut allocator,
-            &heap,
-            &slots,
-            &scene.top_level,
-            &output,
-        )?;
-        let pipeline = create_ray_tracing_pipeline(&device, &slots)?;
-        let shader_binding_table = create_shader_binding_table_buffer(
-            &device,
-            &mut allocator,
-            pipeline,
-            &selection.ray_tracing_properties,
-        )?;
-
-        let begin = vk::CommandBufferBeginInfo::default();
-        device.begin_command_buffer(command_buffer, &begin)?;
-        device.cmd_bind_pipeline(
-            command_buffer,
-            vk::PipelineBindPoint::RAY_TRACING_KHR,
-            pipeline,
-        );
-        device.cmd_bind_resource_heap_ext(
-            command_buffer,
-            &heap_layout.bind_info(buffer_device_address(&device, heap.buffer))?,
-        );
-        let push_constants = RayTracingPushConstants {
-            vertex_address: buffer_device_address(&device, scene.vertex_buffer.buffer),
-            index_address: buffer_device_address(&device, scene.index_buffer.buffer),
-            camera_origin: ray_tracing_camera_origin().to_array(),
-            _pad0: 0.0,
-            world_from_clip: ray_tracing_world_from_clip().to_cols_array_2d(),
-            background_bottom: [0.03, 0.05, 0.09],
-            _pad1: 0.0,
-            background_top: [0.24, 0.35, 0.58],
-            _pad2: 0.0,
-        };
-        // The shader's push constant block reads the push data from offset 0.
-        device.cmd_push_data_ext(
-            command_buffer,
-            &vk::PushDataInfoEXT::default().data(
-                vk::HostAddressRangeConstEXT::default()
-                    .address(bytemuck::bytes_of(&push_constants)),
-            ),
-        );
-        let address_info =
-            vk::BufferDeviceAddressInfo::default().buffer(shader_binding_table.buffer);
-        let record_stride = align_up(
-            selection.ray_tracing_properties.shader_group_handle_size as u64,
-            selection.ray_tracing_properties.shader_group_base_alignment as u64,
-        );
-        let base_address = device.get_buffer_device_address(&address_info);
-        let raygen_region = vk::StridedDeviceAddressRegionKHR::default()
-            .device_address(base_address)
-            .stride(record_stride)
-            .size(record_stride);
-        let miss_region = vk::StridedDeviceAddressRegionKHR::default()
-            .device_address(base_address + record_stride)
-            .stride(record_stride)
-            .size(record_stride);
-        let hit_region = vk::StridedDeviceAddressRegionKHR::default()
-            .device_address(base_address + record_stride * 2)
-            .stride(record_stride)
-            .size(record_stride);
-        let callable_region = vk::StridedDeviceAddressRegionKHR::default();
-        device.cmd_trace_rays_khr(
-            command_buffer,
-            &raygen_region,
-            &miss_region,
-            &hit_region,
-            &callable_region,
-            WIDTH,
-            HEIGHT,
-            1,
-        );
-        let output_barrier = vk::BufferMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::SHADER_WRITE)
-            .dst_access_mask(vk::AccessFlags::HOST_READ)
-            .buffer(output.buffer)
-            .offset(0)
-            .size(OUTPUT_BYTES);
-        device.cmd_pipeline_barrier(
-            command_buffer,
-            vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
-            vk::PipelineStageFlags::HOST,
-            vk::DependencyFlags::empty(),
-            &[],
-            &[output_barrier],
-            &[],
-        );
-        device.end_command_buffer(command_buffer)?;
-        let command_buffers = [command_buffer];
-        let submit = vk::SubmitInfo::default().command_buffers(&command_buffers);
-        device.queue_submit(queue, &[submit], fence)?;
-        device.wait_for_fences(&[fence], true, u64::MAX)?;
-        verify_and_write_ppm(
-            &mut allocator,
-            &output.allocation,
-            &output_path("ray_tracing.ppm"),
-        )?;
-
-        device.destroy_pipeline(pipeline, None);
-        device.destroy_buffer(heap.buffer, None);
-        allocator.free(heap.allocation)?;
-        device.destroy_fence(fence, None);
-        device.destroy_command_pool(command_pool, None);
-        scene.destroy(&device, &mut allocator)?;
-        device.destroy_buffer(shader_binding_table.buffer, None);
-        allocator.free(shader_binding_table.allocation)?;
-        device.destroy_buffer(output.buffer, None);
-        allocator.free(output.allocation)?;
-        drop(allocator);
-        device.destroy_device(None);
-        if !debug_messenger.is_null() {
-            instance.destroy_debug_utils_messenger_ext(debug_messenger, None);
-        }
-        instance.destroy_instance(None);
-    }
-
-    println!("wrote {}", output_path("ray_tracing.ppm").display());
-    Ok(())
-}
-
-struct PhysicalDeviceSelection {
-    physical_device: vk::PhysicalDevice,
-    queue_family: u32,
-    ray_tracing_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'static>,
-    acceleration_structure_properties:
-        vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'static>,
-    heap_properties: vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'static>,
-    storage_buffer_alignment: u64,
-}
-
-struct BufferAllocation {
-    buffer: vk::Buffer,
-    allocation: Allocation,
-}
-
-struct AccelerationStructureAllocation {
-    handle: vk::AccelerationStructureKHR,
-    buffer: BufferAllocation,
-    size: u64,
-    build_scratch_size: u64,
-}
-
-struct SceneAccelerationStructures {
-    vertex_buffer: BufferAllocation,
-    index_buffer: BufferAllocation,
-    instance_buffer: BufferAllocation,
-    scratch_buffer: BufferAllocation,
-    bottom_level: AccelerationStructureAllocation,
-    top_level: AccelerationStructureAllocation,
-}
-
+/// What `vkCmdPushDataEXT` sends; the ray generation shader reads it as its push
+/// constant block.
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
-struct Vertex {
-    position: [f32; 4],
-    color: [f32; 4],
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
-struct RayTracingPushConstants {
+#[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+struct PushData {
+    /// Where the shader looks up the colors of the triangle that a ray hit.
     vertex_address: u64,
     index_address: u64,
     camera_origin: [f32; 3],
@@ -284,1038 +60,229 @@ struct RayTracingPushConstants {
     _pad2: f32,
 }
 
-fn ray_tracing_camera_origin() -> Vec3 {
-    Vec3::new(0.0, 0.0, -2.6)
+fn main() -> Result<()> {
+    // SAFETY: the example upholds the valid usage rules of the commands it calls; the
+    // validation layer, when installed, reports any violation.
+    unsafe { run() }
 }
 
-fn ray_tracing_world_from_clip() -> Mat4 {
-    let origin = ray_tracing_camera_origin();
-    let view = glam::camera::rh::view::look_at_mat4(origin, Vec3::ZERO, Vec3::Y);
+unsafe fn run() -> Result<()> {
+    unsafe {
+        let Some((gpu, properties)) = gpu::create_gpu()? else {
+            println!(
+                "skipped: no Vulkan 1.4 device with ray tracing pipelines and descriptor heaps"
+            );
+            return Ok(());
+        };
+        let device = &gpu.device;
+        let mut allocator = create_allocator(&gpu);
+
+        let scene = acceleration::build_scene(&gpu, &mut allocator, properties.scratch_alignment)?;
+        let output = create_aligned_buffer(
+            device,
+            &mut allocator,
+            "output",
+            OUTPUT_BYTES,
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            MemoryLocation::GpuToCpu,
+            properties.storage_buffer_alignment,
+        )?;
+        // Cleared, so that a pixel that the shader did not write cannot pass the check.
+        write_buffer(&mut allocator, &output, &vec![0; OUTPUT_BYTES as usize])?;
+
+        // The resource heap: one descriptor for the acceleration structure and one for
+        // the output buffer, then the range the implementation reserves for itself.
+        let mut plan = ResourceHeapPlan::new(&properties.heap);
+        let slots = plan.buffers(2)?;
+        let layout = plan.finish()?;
+        // The acceleration structure goes into a slot sized for a buffer descriptor:
+        // both hold an address range. Ask for the exact size instead of assuming it fits.
+        let acceleration_structure_descriptor_size =
+            gpu.instance.get_physical_device_descriptor_size_ext(
+                gpu.physical_device,
+                vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+            );
+        if acceleration_structure_descriptor_size > slots.descriptor_size {
+            bail!(
+                "an acceleration structure descriptor needs {acceleration_structure_descriptor_size} bytes, a buffer slot has {}",
+                slots.descriptor_size
+            );
+        }
+        let mut heap = create_mapped_buffer(
+            device,
+            &mut allocator,
+            "resource heap",
+            layout.size,
+            vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            MemoryLocation::CpuToGpu,
+            layout.alignment,
+        )?;
+        write_descriptors(device, &mut heap, &slots, &scene.top_level, &output)?;
+
+        let pipeline = pipeline::create_pipeline(device, &slots)?;
+        let shader_binding_table =
+            ShaderBindingTable::new(device, &mut allocator, pipeline, &properties.ray_tracing)?;
+
+        let push_data = PushData {
+            vertex_address: buffer_device_address(device, scene.vertex_buffer.buffer),
+            index_address: buffer_device_address(device, scene.index_buffer.buffer),
+            camera_origin: CAMERA_ORIGIN.to_array(),
+            _pad0: 0.0,
+            world_from_clip: world_from_clip().to_cols_array_2d(),
+            background_bottom: [0.03, 0.05, 0.09],
+            _pad1: 0.0,
+            background_top: [0.24, 0.35, 0.58],
+            _pad2: 0.0,
+        };
+        submit_and_wait(&gpu, |command_buffer| {
+            device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
+                pipeline,
+            );
+            device.cmd_bind_resource_heap_ext(
+                command_buffer,
+                &layout.bind_info(buffer_device_address(device, heap.buffer))?,
+            );
+            device.cmd_push_data_ext(
+                command_buffer,
+                &vk::PushDataInfoEXT::default().data(
+                    vk::HostAddressRangeConstEXT::default().address(bytemuck::bytes_of(&push_data)),
+                ),
+            );
+            // One ray generation invocation per pixel.
+            device.cmd_trace_rays_khr(
+                command_buffer,
+                &shader_binding_table.raygen,
+                &shader_binding_table.miss,
+                &shader_binding_table.hit,
+                &shader_binding_table.callable,
+                EXTENT.width,
+                EXTENT.height,
+                1,
+            );
+            make_output_visible_to_host(device, command_buffer, &output);
+            Ok(())
+        })?;
+
+        let pixels = read_buffer(&mut allocator, &output)?
+            .chunks_exact(4)
+            .map(|word| u32::from_ne_bytes([word[0], word[1], word[2], word[3]]))
+            .collect::<Vec<_>>();
+        verify(&pixels)?;
+        let path = output_path("ray_tracing.ppm")?;
+        write_ppm(
+            &path,
+            EXTENT.width,
+            EXTENT.height,
+            pixels.iter().map(|&pixel| rgb(pixel)),
+        )?;
+        println!("wrote {}", path.display());
+
+        shader_binding_table.destroy(device, &mut allocator)?;
+        device.destroy_pipeline(pipeline, None);
+        heap.destroy(device, &mut allocator)?;
+        output.destroy(device, &mut allocator)?;
+        scene.destroy(device, &mut allocator)?;
+        drop(allocator);
+        gpu.destroy();
+        Ok(())
+    }
+}
+
+const CAMERA_ORIGIN: Vec3 = Vec3::new(0.0, 0.0, -2.6);
+
+/// The inverse of the camera's view and projection, with which the ray generation
+/// shader turns a pixel into the direction of its ray.
+fn world_from_clip() -> Mat4 {
+    let view = glam::camera::rh::view::look_at_mat4(CAMERA_ORIGIN, Vec3::ZERO, Vec3::Y);
     let projection = glam::camera::rh::proj::directx::perspective(
         50.0_f32.to_radians(),
-        WIDTH as f32 / HEIGHT as f32,
+        EXTENT.width as f32 / EXTENT.height as f32,
         0.1,
         1000.0,
     );
     (projection * view).inverse()
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
-struct PodAccelerationStructureInstance {
-    transform: [[f32; 4]; 3],
-    instance_custom_index_and_mask: u32,
-    instance_shader_binding_table_record_offset_and_flags: u32,
-    acceleration_structure_reference: u64,
-}
-
-impl PodAccelerationStructureInstance {
-    fn new(acceleration_structure_reference: u64) -> Self {
-        // Let the bindings pack the C bit-fields, then copy the two storage words.
-        let packed = vk::AccelerationStructureInstanceKHR::default()
-            .instance_custom_index(0)
-            .mask(0xff)
-            .instance_shader_binding_table_record_offset(0)
-            .flags(vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE);
-        Self {
-            transform: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-            ],
-            instance_custom_index_and_mask: packed.bitfield0,
-            instance_shader_binding_table_record_offset_and_flags: packed.bitfield1,
-            acceleration_structure_reference,
-        }
-    }
-}
-
-impl SceneAccelerationStructures {
-    unsafe fn destroy(self, device: &Device, allocator: &mut Allocator) -> Result<()> {
-        device.destroy_acceleration_structure_khr(self.top_level.handle, None);
-        device.destroy_buffer(self.top_level.buffer.buffer, None);
-        allocator.free(self.top_level.buffer.allocation)?;
-        device.destroy_acceleration_structure_khr(self.bottom_level.handle, None);
-        device.destroy_buffer(self.bottom_level.buffer.buffer, None);
-        allocator.free(self.bottom_level.buffer.allocation)?;
-        device.destroy_buffer(self.scratch_buffer.buffer, None);
-        allocator.free(self.scratch_buffer.allocation)?;
-        device.destroy_buffer(self.instance_buffer.buffer, None);
-        allocator.free(self.instance_buffer.allocation)?;
-        device.destroy_buffer(self.index_buffer.buffer, None);
-        allocator.free(self.index_buffer.allocation)?;
-        device.destroy_buffer(self.vertex_buffer.buffer, None);
-        allocator.free(self.vertex_buffer.allocation)?;
+/// Writes the descriptors of the top level and the output buffer into the heap, one
+/// per slot.
+unsafe fn write_descriptors(
+    device: &Device,
+    heap: &mut MappedBuffer,
+    slots: &DescriptorSlots,
+    top_level: &AccelerationStructure,
+    output: &Buffer,
+) -> Result<()> {
+    unsafe {
+        let top_level_range = vk::DeviceAddressRangeKHR::default()
+            .address(top_level.device_address(device))
+            .size(top_level.size);
+        let output_range = vk::DeviceAddressRangeKHR::default()
+            .address(buffer_device_address(device, output.buffer))
+            .size(output.size);
+        let descriptors = [
+            vk::ResourceDescriptorInfoEXT::default()
+                .ty(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                .data(vk::ResourceDescriptorDataEXT::address_range(
+                    &top_level_range,
+                )),
+            vk::ResourceDescriptorInfoEXT::default()
+                .ty(vk::DescriptorType::STORAGE_BUFFER)
+                .data(vk::ResourceDescriptorDataEXT::address_range(&output_range)),
+        ];
+        let destinations = slots
+            .slices(heap.bytes())
+            .context("the resource heap is smaller than its layout")?
+            .map(|bytes| vk::HostAddressRangeEXT::default().address(bytes))
+            .collect::<Vec<_>>();
+        device.write_resource_descriptors_ext(&descriptors, &destinations)?;
         Ok(())
     }
 }
 
-unsafe fn create_instance(entry: &Entry, extensions: &[&CStr]) -> Result<Instance> {
-    let app_name = CString::new("vulkan-ray-tracing-pipeline")?;
-    let enabled_layers = validation_layers(entry)?;
-    let enabled_layer_names = enabled_layers
-        .iter()
-        .map(|layer| vk::CStrPtr::new(layer))
-        .collect::<Vec<_>>();
-    let extension_names = extensions
-        .iter()
-        .map(|extension| vk::CStrPtr::new(extension))
-        .collect::<Vec<_>>();
-    let app_info = vk::ApplicationInfo::default()
-        .application_name(app_name.as_c_str())
-        .engine_name(app_name.as_c_str())
-        // With Vulkan 1.4 in use, VK_EXT_descriptor_heap needs no other extension.
-        .api_version(vk::API_VERSION_1_4);
-    let create_info = vk::InstanceCreateInfo::default()
-        .application_info(&app_info)
-        .enabled_layer_names(&enabled_layer_names)
-        .enabled_extension_names(&extension_names);
-    Ok(entry.create_instance(&create_info, None)?)
-}
-
-unsafe fn has_instance_extension(entry: &Entry, name: &CStr) -> Result<bool> {
-    Ok(entry
-        .enumerate_instance_extension_properties(None)?
-        .iter()
-        .any(|extension| extension.extension_name_as_c_str() == Ok(name)))
-}
-
-unsafe fn validation_layers(entry: &Entry) -> Result<Vec<&'static CStr>> {
-    let validation = c"VK_LAYER_KHRONOS_validation";
-    let available = entry.enumerate_instance_layer_properties()?;
-    let has_validation = available
-        .iter()
-        .any(|layer| layer.layer_name_as_c_str() == Ok(validation));
-    Ok(if has_validation {
-        vec![validation]
-    } else {
-        Vec::new()
-    })
-}
-
-unsafe fn create_debug_messenger(
-    instance: &Instance,
-    enabled: bool,
-) -> Result<vk::DebugUtilsMessengerEXT> {
-    if !enabled {
-        return Ok(vk::DebugUtilsMessengerEXT::null());
-    }
-    let info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-        .message_severity(
-            vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-        )
-        .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-        )
-        .pfn_user_callback(Some(vulkan_debug_callback));
-    Ok(instance.create_debug_utils_messenger_ext(&info, None)?)
-}
-
-unsafe extern "system" fn vulkan_debug_callback(
-    _severity: vk::DebugUtilsMessageSeverityFlagBitsEXT,
-    _types: vk::DebugUtilsMessageTypeFlagsEXT,
-    data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
-    _user_data: *mut c_void,
-) -> u32 {
-    if !data.is_null() && !(*data).p_message.is_null() {
-        eprintln!("{}", CStr::from_ptr((*data).p_message).to_string_lossy());
-    }
-    vk::FALSE
-}
-
-unsafe fn pick_physical_device(instance: &Instance) -> Result<Option<PhysicalDeviceSelection>> {
-    let required_extensions = [
-        vk::KHR_DEFERRED_HOST_OPERATIONS_NAME,
-        vk::KHR_ACCELERATION_STRUCTURE_NAME,
-        vk::KHR_RAY_TRACING_PIPELINE_NAME,
-        vk::EXT_DESCRIPTOR_HEAP_NAME,
-    ];
-    let mut best = None;
-    for physical_device in instance.enumerate_physical_devices()? {
-        let extensions = instance.enumerate_device_extension_properties(physical_device, None)?;
-        if required_extensions
-            .iter()
-            .any(|name| !has_extension(&extensions, name))
-        {
-            continue;
-        }
-
-        let mut buffer_device_address_features =
-            vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
-        let mut acceleration_structure_features =
-            vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
-        let mut ray_tracing_features = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
-        let mut heap_features = vk::PhysicalDeviceDescriptorHeapFeaturesEXT::default();
-        let shader_int64 = {
-            let mut features2 = vk::PhysicalDeviceFeatures2::default()
-                .push_next(&mut buffer_device_address_features)
-                .push_next(&mut acceleration_structure_features)
-                .push_next(&mut ray_tracing_features)
-                .push_next(&mut heap_features);
-            instance.get_physical_device_features2(physical_device, &mut features2);
-            features2.features.shader_int64
-        };
-        if ray_tracing_features.ray_tracing_pipeline == 0
-            || acceleration_structure_features.acceleration_structure == 0
-            || buffer_device_address_features.buffer_device_address == 0
-            || heap_features.descriptor_heap == 0
-            || shader_int64 == 0
-        {
-            continue;
-        }
-        let mut ray_tracing_properties =
-            vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
-        let mut acceleration_structure_properties =
-            vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
-        let mut heap_properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default();
-        {
-            let mut properties2 = vk::PhysicalDeviceProperties2::default()
-                .push_next(&mut ray_tracing_properties)
-                .push_next(&mut acceleration_structure_properties)
-                .push_next(&mut heap_properties);
-            instance.get_physical_device_properties2(physical_device, &mut properties2);
-        }
-
-        let queue_families = instance.get_physical_device_queue_family_properties(physical_device);
-        let Some(queue_family) = queue_families
-            .iter()
-            .position(|p| p.queue_flags.contains(vk::QueueFlags::COMPUTE))
-        else {
-            continue;
-        };
-        let properties = instance.get_physical_device_properties(physical_device);
-        if properties.api_version < vk::API_VERSION_1_4 {
-            continue;
-        }
-        let score = match properties.device_type {
-            vk::PhysicalDeviceType::DISCRETE_GPU => 3,
-            vk::PhysicalDeviceType::INTEGRATED_GPU => 2,
-            vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
-            _ => 0,
-        };
-        if best
-            .as_ref()
-            .is_none_or(|(best_score, _)| score > *best_score)
-        {
-            best = Some((
-                score,
-                PhysicalDeviceSelection {
-                    physical_device,
-                    queue_family: queue_family as u32,
-                    ray_tracing_properties,
-                    acceleration_structure_properties,
-                    heap_properties,
-                    storage_buffer_alignment: properties.limits.min_storage_buffer_offset_alignment,
-                },
-            ));
-        }
-    }
-    Ok(best.map(|(_, selection)| selection))
-}
-
-unsafe fn create_device_and_queue(
-    instance: &Instance,
-    physical_device: vk::PhysicalDevice,
-    queue_family: u32,
-) -> Result<(Device, vk::Queue)> {
-    let priorities = [1.0_f32];
-    let queue_info = [vk::DeviceQueueCreateInfo::default()
-        .queue_family_index(queue_family)
-        .queue_priorities(&priorities)];
-    let extension_names = [
-        vk::CStrPtr::new(vk::KHR_DEFERRED_HOST_OPERATIONS_NAME),
-        vk::CStrPtr::new(vk::KHR_ACCELERATION_STRUCTURE_NAME),
-        vk::CStrPtr::new(vk::KHR_RAY_TRACING_PIPELINE_NAME),
-        vk::CStrPtr::new(vk::EXT_DESCRIPTOR_HEAP_NAME),
-    ];
-    let mut buffer_device_address_features =
-        vk::PhysicalDeviceBufferDeviceAddressFeatures::default().buffer_device_address(true);
-    let mut acceleration_structure_features =
-        vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default().acceleration_structure(true);
-    let mut ray_tracing_features =
-        vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default().ray_tracing_pipeline(true);
-    let mut heap_features =
-        vk::PhysicalDeviceDescriptorHeapFeaturesEXT::default().descriptor_heap(true);
-    let enabled_features = vk::PhysicalDeviceFeatures::default().shader_int64(true);
-    let create_info = vk::DeviceCreateInfo::default()
-        .queue_create_infos(&queue_info)
-        .enabled_extension_names(&extension_names)
-        .enabled_features(&enabled_features)
-        .push_next(&mut buffer_device_address_features)
-        .push_next(&mut acceleration_structure_features)
-        .push_next(&mut ray_tracing_features)
-        .push_next(&mut heap_features);
-    let device = instance.create_device(physical_device, &create_info, None)?;
-    let queue = device.get_device_queue(queue_family, 0);
-    Ok((device, queue))
-}
-
-unsafe fn create_scene_acceleration_structures(
-    device: &Device,
-    allocator: &mut Allocator,
-    command_buffer: vk::CommandBuffer,
-    queue: vk::Queue,
-    fence: vk::Fence,
-    properties: &vk::PhysicalDeviceAccelerationStructurePropertiesKHR<'_>,
-) -> Result<SceneAccelerationStructures> {
-    let vertices = [
-        Vertex {
-            position: [-0.9, -0.8, 0.0, 1.0],
-            color: [0.95, 0.20, 0.16, 1.0],
-        },
-        Vertex {
-            position: [0.9, -0.8, 0.0, 1.0],
-            color: [0.16, 0.78, 0.34, 1.0],
-        },
-        Vertex {
-            position: [0.0, 0.9, 0.0, 1.0],
-            color: [0.22, 0.45, 1.0, 1.0],
-        },
-    ];
-    let indices = [0_u32, 1, 2];
-    let vertex_buffer = create_gpu_buffer_from_data(
-        device,
-        allocator,
-        command_buffer,
-        queue,
-        fence,
-        vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        &vertices,
-    )?;
-
-    let index_buffer = create_gpu_buffer_from_data(
-        device,
-        allocator,
-        command_buffer,
-        queue,
-        fence,
-        vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        &indices,
-    )?;
-
-    let vertex_address = buffer_device_address(device, vertex_buffer.buffer);
-    let index_address = buffer_device_address(device, index_buffer.buffer);
-    let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
-        .vertex_format(vk::Format::R32G32B32_SFLOAT)
-        .vertex_data(vk::DeviceOrHostAddressConstKHR::device_address(
-            vertex_address,
-        ))
-        .vertex_stride(core::mem::size_of::<Vertex>() as u64)
-        .max_vertex(2)
-        .index_type(vk::IndexType::UINT32)
-        .index_data(vk::DeviceOrHostAddressConstKHR::device_address(
-            index_address,
-        ));
-    let blas_geometry = vk::AccelerationStructureGeometryKHR::default()
-        .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-        .geometry(vk::AccelerationStructureGeometryDataKHR::triangles(
-            triangles,
-        ))
-        .flags(vk::GeometryFlagsKHR::OPAQUE);
-    let blas_geometries = [blas_geometry];
-    let blas_build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
-        .ty(vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-        .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-        .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-        .geometries(&blas_geometries);
-    let bottom_level =
-        create_acceleration_structure(device, allocator, &blas_build_info, &[1], "bottom level")?;
-    let bottom_level_address = device.get_acceleration_structure_device_address_khr(
-        &vk::AccelerationStructureDeviceAddressInfoKHR::default()
-            .acceleration_structure(bottom_level.handle),
-    );
-
-    let instances = [PodAccelerationStructureInstance::new(bottom_level_address)];
-    let instance_buffer = create_gpu_buffer_from_data(
-        device,
-        allocator,
-        command_buffer,
-        queue,
-        fence,
-        vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
-            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        &instances,
-    )?;
-
-    let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR::default()
-        .array_of_pointers(false)
-        .data(vk::DeviceOrHostAddressConstKHR::device_address(
-            buffer_device_address(device, instance_buffer.buffer),
-        ));
-    let tlas_geometry = vk::AccelerationStructureGeometryKHR::default()
-        .geometry_type(vk::GeometryTypeKHR::INSTANCES)
-        .geometry(vk::AccelerationStructureGeometryDataKHR::instances(
-            instances_data,
-        ));
-    let tlas_geometries = [tlas_geometry];
-    let tlas_build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
-        .ty(vk::AccelerationStructureTypeKHR::TOP_LEVEL)
-        .flags(vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
-        .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
-        .geometries(&tlas_geometries);
-    let top_level =
-        create_acceleration_structure(device, allocator, &tlas_build_info, &[1], "top level")?;
-
-    let scratch_size = bottom_level
-        .build_scratch_size
-        .max(top_level.build_scratch_size);
-    let scratch_buffer = {
-        let info = vk::BufferCreateInfo::default()
-            .size(scratch_size)
-            .usage(
-                vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            )
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        let buffer = device.create_buffer(&info, None)?;
-        let mut requirements = device.get_buffer_memory_requirements(buffer);
-        requirements.alignment = requirements
-            .alignment
-            .max(properties.min_acceleration_structure_scratch_offset_alignment as u64);
-        let allocation = match allocator.allocate(AllocationCreateDesc {
-            name: Some("ray tracing acceleration scratch"),
-            requirements,
-            location: MemoryLocation::GpuOnly,
-            linear: true,
-            memory_allocate_flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
-            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-        }) {
-            Ok(allocation) => allocation,
-            Err(err) => {
-                device.destroy_buffer(buffer, None);
-                return Err(err.into());
-            }
-        };
-        if let Err(err) =
-            device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
-        {
-            let _ = allocator.free(allocation);
-            device.destroy_buffer(buffer, None);
-            return Err(err.into());
-        }
-        BufferAllocation { buffer, allocation }
-    };
-    let scratch_address = buffer_device_address(device, scratch_buffer.buffer);
-
-    let blas_build_ranges = [vk::AccelerationStructureBuildRangeInfoKHR::default()
-        .primitive_count(1)
-        .primitive_offset(0)
-        .first_vertex(0)
-        .transform_offset(0)];
-    let tlas_build_ranges = [vk::AccelerationStructureBuildRangeInfoKHR::default()
-        .primitive_count(1)
-        .primitive_offset(0)
-        .first_vertex(0)
-        .transform_offset(0)];
-    let blas_build_info = blas_build_info
-        .dst_acceleration_structure(bottom_level.handle)
-        .scratch_data(vk::DeviceOrHostAddressKHR::device_address(scratch_address));
-    let tlas_build_info = tlas_build_info
-        .dst_acceleration_structure(top_level.handle)
-        .scratch_data(vk::DeviceOrHostAddressKHR::device_address(scratch_address));
-
-    let begin =
-        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    device.begin_command_buffer(command_buffer, &begin)?;
-    let upload_barriers = [
-        vk::BufferMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR)
-            .buffer(vertex_buffer.buffer)
-            .offset(0)
-            .size(core::mem::size_of_val(&vertices) as u64),
-        vk::BufferMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR)
-            .buffer(index_buffer.buffer)
-            .offset(0)
-            .size(core::mem::size_of_val(&indices) as u64),
-        vk::BufferMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR)
-            .buffer(instance_buffer.buffer)
-            .offset(0)
-            .size(core::mem::size_of_val(&instances) as u64),
-    ];
-    device.cmd_pipeline_barrier(
-        command_buffer,
-        vk::PipelineStageFlags::TRANSFER,
-        vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-        vk::DependencyFlags::empty(),
-        &[],
-        &upload_barriers,
-        &[],
-    );
-    device.cmd_build_acceleration_structures_khr(
-        command_buffer,
-        &[blas_build_info],
-        &[&blas_build_ranges],
-    );
-    let build_barrier = vk::MemoryBarrier::default()
-        .src_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR)
-        .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR);
-    device.cmd_pipeline_barrier(
-        command_buffer,
-        vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-        vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-        vk::DependencyFlags::empty(),
-        &[build_barrier],
-        &[],
-        &[],
-    );
-    device.cmd_build_acceleration_structures_khr(
-        command_buffer,
-        &[tlas_build_info],
-        &[&tlas_build_ranges],
-    );
-    let trace_barrier = vk::MemoryBarrier::default()
-        .src_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR)
-        .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR);
-    device.cmd_pipeline_barrier(
-        command_buffer,
-        vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-        vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
-        vk::DependencyFlags::empty(),
-        &[trace_barrier],
-        &[],
-        &[],
-    );
-    device.end_command_buffer(command_buffer)?;
-    let command_buffers = [command_buffer];
-    let submit = vk::SubmitInfo::default().command_buffers(&command_buffers);
-    device.queue_submit(queue, &[submit], fence)?;
-    device.wait_for_fences(&[fence], true, u64::MAX)?;
-    device.reset_fences(&[fence])?;
-    device.reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())?;
-
-    Ok(SceneAccelerationStructures {
-        vertex_buffer,
-        index_buffer,
-        instance_buffer,
-        scratch_buffer,
-        bottom_level,
-        top_level,
-    })
-}
-
-unsafe fn create_acceleration_structure(
-    device: &Device,
-    allocator: &mut Allocator,
-    build_info: &vk::AccelerationStructureBuildGeometryInfoKHR<'_>,
-    primitive_counts: &[u32],
-    name: &'static str,
-) -> Result<AccelerationStructureAllocation> {
-    let mut sizes = vk::AccelerationStructureBuildSizesInfoKHR::default();
-    device.get_acceleration_structure_build_sizes_khr(
-        vk::AccelerationStructureBuildTypeKHR::DEVICE,
-        build_info,
-        Some(primitive_counts),
-        &mut sizes,
-    );
-    let buffer = create_buffer_allocation(
-        device,
-        allocator,
-        name,
-        sizes.acceleration_structure_size,
-        vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        // The address that goes into a descriptor heap has to be a multiple of 256
-        // (VUID-VkResourceDescriptorInfoEXT-type-11454). The acceleration structure
-        // starts at offset 0 of this buffer, so the buffer is what gets aligned.
-        256,
-        MemoryLocation::GpuOnly,
-    )?;
-    let create_info = vk::AccelerationStructureCreateInfoKHR::default()
-        .buffer(buffer.buffer)
-        .size(sizes.acceleration_structure_size)
-        .ty(build_info.ty);
-    let handle = match device.create_acceleration_structure_khr(&create_info, None) {
-        Ok(handle) => handle,
-        Err(err) => {
-            device.destroy_buffer(buffer.buffer, None);
-            allocator.free(buffer.allocation)?;
-            return Err(err.into());
-        }
-    };
-    Ok(AccelerationStructureAllocation {
-        handle,
-        buffer,
-        size: sizes.acceleration_structure_size,
-        build_scratch_size: sizes.build_scratch_size,
-    })
-}
-
-unsafe fn create_buffer_allocation(
-    device: &Device,
-    allocator: &mut Allocator,
-    name: &'static str,
-    size: u64,
-    usage: vk::BufferUsageFlags,
-    alignment: u64,
-    location: MemoryLocation,
-) -> Result<BufferAllocation> {
-    // Memory for a buffer whose address is taken has to be allocated for that.
-    let memory_allocate_flags = if usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
-        vk::MemoryAllocateFlags::DEVICE_ADDRESS
-    } else {
-        vk::MemoryAllocateFlags::empty()
-    };
-    let info = vk::BufferCreateInfo::default()
-        .size(size)
-        .usage(usage)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let buffer = device.create_buffer(&info, None)?;
-    let mut requirements = device.get_buffer_memory_requirements(buffer);
-    // What the device address of the buffer has to be a multiple of.
-    requirements.alignment = requirements.alignment.max(alignment);
-    let allocation = match allocator.allocate(AllocationCreateDesc {
-        name: Some(name),
-        requirements,
-        location,
-        linear: true,
-        memory_allocate_flags,
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }) {
-        Ok(allocation) => allocation,
-        Err(err) => {
-            device.destroy_buffer(buffer, None);
-            return Err(err.into());
-        }
-    };
-    if let Err(err) = device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) {
-        let _ = allocator.free(allocation);
-        device.destroy_buffer(buffer, None);
-        return Err(err.into());
-    }
-    Ok(BufferAllocation { buffer, allocation })
-}
-
-unsafe fn create_gpu_buffer_from_data<T: bytemuck::Pod>(
-    device: &Device,
-    allocator: &mut Allocator,
-    command_buffer: vk::CommandBuffer,
-    queue: vk::Queue,
-    fence: vk::Fence,
-    usage: vk::BufferUsageFlags,
-    values: &[T],
-) -> Result<BufferAllocation> {
-    let bytes: &[u8] = bytemuck::cast_slice(values);
-    let buffer = create_buffer_allocation(
-        device,
-        allocator,
-        "ray tracing GPU upload target",
-        bytes.len() as u64,
-        usage | vk::BufferUsageFlags::TRANSFER_DST,
-        1,
-        MemoryLocation::GpuOnly,
-    )?;
-    let staging = create_buffer_allocation(
-        device,
-        allocator,
-        "ray tracing staging buffer",
-        bytes.len() as u64,
-        vk::BufferUsageFlags::TRANSFER_SRC,
-        1,
-        MemoryLocation::CpuToGpu,
-    )?;
-    upload_pod_slice(allocator, &staging.allocation, values)?;
-    copy_buffer_one_time(
-        device,
-        command_buffer,
-        queue,
-        fence,
-        staging.buffer,
-        buffer.buffer,
-        bytes.len() as u64,
-    )?;
-    device.destroy_buffer(staging.buffer, None);
-    allocator.free(staging.allocation)?;
-    Ok(buffer)
-}
-
-unsafe fn copy_buffer_one_time(
+/// Makes what the shader wrote to `output` visible to the host once the submission is
+/// waited for.
+unsafe fn make_output_visible_to_host(
     device: &Device,
     command_buffer: vk::CommandBuffer,
-    queue: vk::Queue,
-    fence: vk::Fence,
-    src: vk::Buffer,
-    dst: vk::Buffer,
-    size: u64,
-) -> Result<()> {
-    device.reset_fences(&[fence])?;
-    device.reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())?;
-    let begin =
-        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-    device.begin_command_buffer(command_buffer, &begin)?;
-    let region = vk::BufferCopy::default().size(size);
-    device.cmd_copy_buffer(command_buffer, src, dst, &[region]);
-    device.end_command_buffer(command_buffer)?;
-    let command_buffers = [command_buffer];
-    let submit = vk::SubmitInfo::default().command_buffers(&command_buffers);
-    device.queue_submit(queue, &[submit], fence)?;
-    device.wait_for_fences(&[fence], true, u64::MAX)?;
-    device.reset_command_buffer(command_buffer, vk::CommandBufferResetFlags::empty())?;
-    device.reset_fences(&[fence])?;
-    Ok(())
-}
-
-unsafe fn upload_pod_slice<T: bytemuck::Pod>(
-    allocator: &mut Allocator,
-    allocation: &Allocation,
-    values: &[T],
-) -> Result<()> {
-    let flags = allocator.allocation_memory_flags(allocation)?;
-    let mut mapped = allocator.map(allocation)?;
-    let bytes = bytemuck::cast_slice(values);
-    mapped.byte_range_mut(0, bytes.len()).copy_from_slice(bytes);
-    if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-        mapped.flush()?;
+    output: &Buffer,
+) {
+    let barrier = vk::BufferMemoryBarrier::default()
+        .src_access_mask(vk::AccessFlags::SHADER_WRITE)
+        .dst_access_mask(vk::AccessFlags::HOST_READ)
+        .buffer(output.buffer)
+        .size(output.size);
+    unsafe {
+        device.cmd_pipeline_barrier(
+            command_buffer,
+            vk::PipelineStageFlags::RAY_TRACING_SHADER_KHR,
+            vk::PipelineStageFlags::HOST,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[barrier],
+            &[],
+        );
     }
-    Ok(())
 }
 
-unsafe fn buffer_device_address(device: &Device, buffer: vk::Buffer) -> u64 {
-    device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
+/// The shader packs each pixel into a `uint`, red in the low bits.
+fn rgb(pixel: u32) -> [u8; 3] {
+    [pixel as u8, (pixel >> 8) as u8, (pixel >> 16) as u8]
 }
 
-unsafe fn create_shader_binding_table_buffer(
-    device: &Device,
-    allocator: &mut Allocator,
-    pipeline: vk::Pipeline,
-    properties: &vk::PhysicalDeviceRayTracingPipelinePropertiesKHR<'_>,
-) -> Result<BufferAllocation> {
-    let handle_size = properties.shader_group_handle_size as usize;
-    let record_stride = align_up(
-        handle_size as u64,
-        properties.shader_group_base_alignment as u64,
-    );
-    let group_count = 3_u32;
-    let info = vk::BufferCreateInfo::default()
-        .size(record_stride * group_count as u64)
-        .usage(
-            vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR
-                | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        )
-        .sharing_mode(vk::SharingMode::EXCLUSIVE);
-    let buffer = device.create_buffer(&info, None)?;
-    let mut requirements = device.get_buffer_memory_requirements(buffer);
-    requirements.alignment = requirements
-        .alignment
-        .max(properties.shader_group_base_alignment as u64);
-    let allocation = match allocator.allocate(AllocationCreateDesc {
-        name: Some("ray tracing shader binding table"),
-        requirements,
-        location: MemoryLocation::CpuToGpu,
-        linear: true,
-        memory_allocate_flags: vk::MemoryAllocateFlags::DEVICE_ADDRESS,
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }) {
-        Ok(allocation) => allocation,
-        Err(err) => {
-            device.destroy_buffer(buffer, None);
-            return Err(err.into());
-        }
-    };
-    if let Err(err) = device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) {
-        let _ = allocator.free(allocation);
-        device.destroy_buffer(buffer, None);
-        return Err(err.into());
-    }
-    let address =
-        device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer));
-    let base_alignment = properties.shader_group_base_alignment as u64;
-    if !address.is_multiple_of(base_alignment) {
-        let _ = allocator.free(allocation);
-        device.destroy_buffer(buffer, None);
-        return Err(anyhow!(
-            "shader binding table address {address:#x} is not aligned to {base_alignment}"
-        ));
-    }
-    let mut handles = vec![0_u8; handle_size * group_count as usize];
-    device.get_ray_tracing_shader_group_handles_khr(pipeline, 0, group_count, &mut handles)?;
-    let flags = allocator.allocation_memory_flags(&allocation)?;
-    {
-        let mut mapped = allocator.map(&allocation)?;
-        let bytes = mapped.as_bytes_mut();
-        bytes[..(record_stride * group_count as u64) as usize].fill(0);
-        for group in 0..group_count as usize {
-            let dst = group * record_stride as usize;
-            let src = group * handle_size;
-            bytes[dst..dst + handle_size].copy_from_slice(&handles[src..src + handle_size]);
-        }
-        if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-            mapped.flush()?;
-        }
-    }
-    Ok(BufferAllocation { buffer, allocation })
-}
-
-/// Writes the descriptors of the acceleration structure and the output buffer into the
-/// heap, one per slot.
-unsafe fn write_descriptors(
-    device: &Device,
-    allocator: &mut Allocator,
-    heap: &BufferAllocation,
-    slots: &DescriptorSlots,
-    top_level: &AccelerationStructureAllocation,
-    output: &BufferAllocation,
-) -> Result<()> {
-    // The descriptor of an acceleration structure holds the address of the acceleration
-    // structure itself, not the address of the buffer it was created in.
-    let top_level_address = device.get_acceleration_structure_device_address_khr(
-        &vk::AccelerationStructureDeviceAddressInfoKHR::default()
-            .acceleration_structure(top_level.handle),
-    );
-    let top_level_range = vk::DeviceAddressRangeKHR::default()
-        .address(top_level_address)
-        .size(top_level.size);
-    let output_range = vk::DeviceAddressRangeKHR::default()
-        .address(buffer_device_address(device, output.buffer))
-        .size(OUTPUT_BYTES);
-    let descriptors = [
-        vk::ResourceDescriptorInfoEXT::default()
-            .ty(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
-            .data(vk::ResourceDescriptorDataEXT::address_range(
-                &top_level_range,
-            )),
-        vk::ResourceDescriptorInfoEXT::default()
-            .ty(vk::DescriptorType::STORAGE_BUFFER)
-            .data(vk::ResourceDescriptorDataEXT::address_range(&output_range)),
-    ];
-
-    let flags = allocator.allocation_memory_flags(&heap.allocation)?;
-    let mut mapped = allocator.map(&heap.allocation)?;
-    let destinations = slots
-        .slices(mapped.as_bytes_mut())
-        .ok_or_else(|| anyhow!("the resource heap is smaller than its layout"))?
-        .map(|bytes| vk::HostAddressRangeEXT::default().address(bytes))
-        .collect::<Vec<_>>();
-    device.write_resource_descriptors_ext(&descriptors, &destinations)?;
-    if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-        mapped.flush()?;
-    }
-    Ok(())
-}
-
-/// A ray tracing pipeline without a pipeline layout. `slots` is where, in the resource
-/// heap, the descriptors of bindings 0 and 1 are.
-unsafe fn create_ray_tracing_pipeline(
-    device: &Device,
-    slots: &DescriptorSlots,
-) -> Result<vk::Pipeline> {
-    let raygen = create_shader_module(device, include_bytes!("shaders/raygen.spv"))?;
-    let miss = create_shader_module(device, include_bytes!("shaders/miss.spv"))?;
-    let closest_hit = create_shader_module(device, include_bytes!("shaders/closesthit.spv"))?;
-    let raygen_main = c"raygenMain";
-    let miss_main = c"missMain";
-    let closest_hit_main = c"closestHitMain";
-
-    // Only the ray generation shader uses resources. Each of its bindings is the
-    // descriptor at a fixed byte offset of the resource heap.
-    let mapping = |binding: u32, resource: vk::SpirvResourceTypeFlagBitsEXT| {
-        let offset = slots
-            .offset(binding)
-            .ok_or_else(|| anyhow!("the resource heap has no slot {binding}"))?;
-        Ok::<_, anyhow::Error>(
-            vk::DescriptorSetAndBindingMappingEXT::default()
-                .descriptor_set(0)
-                .first_binding(binding)
-                .binding_count(1)
-                .resource_mask(resource.into())
-                .source(vk::DescriptorMappingSourceEXT::HEAP_WITH_CONSTANT_OFFSET)
-                .source_data(vk::DescriptorMappingSourceDataEXT::constant_offset(
-                    vk::DescriptorMappingSourceConstantOffsetEXT::default()
-                        .heap_offset(u32::try_from(offset)?),
-                )),
-        )
-    };
-    let mappings = [
-        mapping(0, vk::SpirvResourceTypeFlagBitsEXT::ACCELERATION_STRUCTURE)?,
-        mapping(
-            1,
-            vk::SpirvResourceTypeFlagBitsEXT::READ_WRITE_STORAGE_BUFFER,
-        )?,
-    ];
-    let mut raygen_mappings =
-        vk::ShaderDescriptorSetAndBindingMappingInfoEXT::default().mappings(&mappings);
-    let stages = [
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlagBits::RAYGEN_KHR)
-            .module(raygen)
-            .name(raygen_main)
-            .push_next(&mut raygen_mappings),
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlagBits::MISS_KHR)
-            .module(miss)
-            .name(miss_main),
-        vk::PipelineShaderStageCreateInfo::default()
-            .stage(vk::ShaderStageFlagBits::CLOSEST_HIT_KHR)
-            .module(closest_hit)
-            .name(closest_hit_main),
-    ];
-    let groups = [
-        vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-            .general_shader(0)
-            .closest_hit_shader(vk::SHADER_UNUSED_KHR)
-            .any_hit_shader(vk::SHADER_UNUSED_KHR)
-            .intersection_shader(vk::SHADER_UNUSED_KHR),
-        vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-            .general_shader(1)
-            .closest_hit_shader(vk::SHADER_UNUSED_KHR)
-            .any_hit_shader(vk::SHADER_UNUSED_KHR)
-            .intersection_shader(vk::SHADER_UNUSED_KHR),
-        vk::RayTracingShaderGroupCreateInfoKHR::default()
-            .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
-            .general_shader(vk::SHADER_UNUSED_KHR)
-            .closest_hit_shader(2)
-            .any_hit_shader(vk::SHADER_UNUSED_KHR)
-            .intersection_shader(vk::SHADER_UNUSED_KHR),
-    ];
-    // `DESCRIPTOR_HEAP_EXT` is what allows the layout to be null.
-    let mut flags = vk::PipelineCreateFlags2CreateInfo::default()
-        .flags(vk::PipelineCreateFlags2::DESCRIPTOR_HEAP_EXT);
-    let info = vk::RayTracingPipelineCreateInfoKHR::default()
-        .stages(&stages)
-        .groups(&groups)
-        .max_pipeline_ray_recursion_depth(1)
-        .push_next(&mut flags);
-    let result = device.create_ray_tracing_pipelines_khr(
-        vk::DeferredOperationKHR::null(),
-        vk::PipelineCache::null(),
-        &[info],
-        None,
-    );
-    device.destroy_shader_module(raygen, None);
-    device.destroy_shader_module(miss, None);
-    device.destroy_shader_module(closest_hit, None);
-    let pipelines = match result {
-        Ok(pipelines) => pipelines,
-        Err((pipelines, err)) => {
-            for pipeline in pipelines {
-                if !pipeline.is_null() {
-                    device.destroy_pipeline(pipeline, None);
-                }
-            }
-            return Err(anyhow!("vkCreateRayTracingPipelinesKHR failed: {err:?}"));
-        }
-    };
-    pipelines
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow!("vkCreateRayTracingPipelinesKHR returned no pipeline"))
-}
-
-unsafe fn create_shader_module(device: &Device, bytes: &[u8]) -> Result<vk::ShaderModule> {
-    let code = spirv_words(bytes)?;
-    let create_info = vk::ShaderModuleCreateInfo::default().code(&code);
-    Ok(device.create_shader_module(&create_info, None)?)
-}
-
-fn spirv_words(bytes: &[u8]) -> Result<Vec<u32>> {
-    if !bytes.len().is_multiple_of(4) {
-        return Err(anyhow!("SPIR-V byte length is not divisible by 4"));
-    }
-    Ok(bytes
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-        .collect())
-}
-
-unsafe fn create_command_pool(device: &Device, queue_family: u32) -> Result<vk::CommandPool> {
-    let info = vk::CommandPoolCreateInfo::default()
-        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-        .queue_family_index(queue_family);
-    Ok(device.create_command_pool(&info, None)?)
-}
-
-unsafe fn allocate_command_buffer(
-    device: &Device,
-    pool: vk::CommandPool,
-) -> Result<vk::CommandBuffer> {
-    let info = vk::CommandBufferAllocateInfo::default()
-        .command_pool(pool)
-        .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(1);
-    device
-        .allocate_command_buffers(&info)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow!("vkAllocateCommandBuffers returned no command buffer"))
-}
-
-unsafe fn create_fence(device: &Device) -> Result<vk::Fence> {
-    let info = vk::FenceCreateInfo::default();
-    Ok(device.create_fence(&info, None)?)
-}
-
-unsafe fn initialize_output(allocator: &mut Allocator, allocation: &Allocation) -> Result<()> {
-    let flags = allocator.allocation_memory_flags(allocation)?;
-    let mut mapped = allocator.map(allocation)?;
-    mapped.as_bytes_mut().fill(0);
-    if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-        mapped.flush()?;
-    }
-    Ok(())
-}
-
-unsafe fn verify_and_write_ppm(
-    allocator: &mut Allocator,
-    allocation: &Allocation,
-    path: &std::path::Path,
-) -> Result<()> {
-    let flags = allocator.allocation_memory_flags(allocation)?;
-    let mut mapped = allocator.map(allocation)?;
-    if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-        mapped.invalidate()?;
-    }
-    let pixels = bytemuck::cast_slice::<u8, u32>(mapped.byte_range(0, OUTPUT_BYTES as usize));
+/// Checks that enough rays hit the triangle: the background is nowhere this red or
+/// green.
+fn verify(pixels: &[u32]) -> Result<()> {
     let hit_pixels = pixels
         .iter()
-        .filter(|&&px| (px & 255) > 120 || ((px >> 8) & 255) > 120)
+        .filter(|&&pixel| {
+            let [r, g, _] = rgb(pixel);
+            r > 120 || g > 120
+        })
         .count();
     if hit_pixels < 500 {
-        return Err(anyhow!(
-            "ray tracing output has too few closest-hit pixels: {hit_pixels}"
-        ));
-    }
-
-    let mut file = BufWriter::new(File::create(path)?);
-    writeln!(file, "P6\n{} {}\n255", WIDTH, HEIGHT)?;
-    for px in pixels.iter().copied() {
-        file.write_all(&[
-            (px & 255) as u8,
-            ((px >> 8) & 255) as u8,
-            ((px >> 16) & 255) as u8,
-        ])?;
+        bail!("ray tracing output has too few closest-hit pixels: {hit_pixels}");
     }
     Ok(())
-}
-
-fn align_up(value: u64, alignment: u64) -> u64 {
-    if alignment == 0 {
-        return value;
-    }
-    value.div_ceil(alignment) * alignment
-}
-
-fn has_extension(properties: &[vk::ExtensionProperties], name: &std::ffi::CStr) -> bool {
-    properties
-        .iter()
-        .any(|property| property.extension_name_as_c_str() == Ok(name))
-}
-
-/// Example images go to `target/example-output/`, never into the source tree.
-fn output_path(file_name: &str) -> std::path::PathBuf {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/example-output");
-    std::fs::create_dir_all(&dir).expect("create target/example-output");
-    dir.join(file_name)
 }

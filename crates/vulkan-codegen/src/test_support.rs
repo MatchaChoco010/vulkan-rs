@@ -1,6 +1,6 @@
 use vulkan_registry::{Command, Enum, Field, Registry, Struct};
 
-pub fn registry() -> Registry {
+pub(crate) fn registry() -> Registry {
     Registry {
         header_version: 1,
         header_version_complete: "1.4.1".to_string(),
@@ -19,7 +19,7 @@ pub fn registry() -> Registry {
     }
 }
 
-pub fn field(name: &str, full_ty: &str) -> Field {
+pub(crate) fn field(name: &str, full_ty: &str) -> Field {
     let ty = full_ty
         .replace('*', " ")
         .split_whitespace()
@@ -30,25 +30,23 @@ pub fn field(name: &str, full_ty: &str) -> Field {
         name: name.to_string(),
         ty,
         full_ty: full_ty.to_string(),
-        is_const: full_ty.contains("const"),
-        pointer: full_ty.contains('*'),
         ..Default::default()
     }
 }
 
-pub fn counted(name: &str, full_ty: &str, len: &str) -> Field {
+pub(crate) fn counted(name: &str, full_ty: &str, len: &str) -> Field {
     Field {
         len: Some(len.to_string()),
         ..field(name, full_ty)
     }
 }
 
-pub fn optional(mut field: Field) -> Field {
+pub(crate) fn optional(mut field: Field) -> Field {
     field.optional = true;
     field
 }
 
-pub fn structure(name: &str, members: Vec<Field>) -> Struct {
+pub(crate) fn structure(name: &str, members: Vec<Field>) -> Struct {
     Struct {
         name: name.to_string(),
         members,
@@ -56,7 +54,7 @@ pub fn structure(name: &str, members: Vec<Field>) -> Struct {
     }
 }
 
-pub fn tagged(name: &str, s_type: &str, mut members: Vec<Field>) -> Struct {
+pub(crate) fn tagged(name: &str, s_type: &str, mut members: Vec<Field>) -> Struct {
     let mut all = vec![
         field("sType", "VkStructureType"),
         optional(field("pNext", "const void*")),
@@ -68,7 +66,7 @@ pub fn tagged(name: &str, s_type: &str, mut members: Vec<Field>) -> Struct {
     }
 }
 
-pub fn command(name: &str, params: Vec<Field>) -> Command {
+pub(crate) fn command(name: &str, params: Vec<Field>) -> Command {
     Command {
         name: name.to_string(),
         return_ty: "void".to_string(),
@@ -77,7 +75,7 @@ pub fn command(name: &str, params: Vec<Field>) -> Command {
     }
 }
 
-pub fn result_command(name: &str, success_codes: &[&str], params: Vec<Field>) -> Command {
+pub(crate) fn result_command(name: &str, success_codes: &[&str], params: Vec<Field>) -> Command {
     Command {
         return_ty: "VkResult".to_string(),
         success_codes: success_codes.iter().map(|s| s.to_string()).collect(),

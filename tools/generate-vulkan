@@ -235,7 +235,7 @@ def build_ir(vk, allow_non_sdk_tag: bool):
                 "name": fp.name,
                 "return_ty": fp.returnType,
                 "protect": fp.protect,
-                "params": [{"name": p.name, "ty": p.type, "full_ty": p.fullType} for p in fp.params],
+                "params": [{"name": p.name, "full_ty": p.fullType} for p in fp.params],
             }
             for fp in sorted(vk.funcPointers.values(), key=lambda x: x.name)
         ],
@@ -323,8 +323,6 @@ def param_ir(p):
         "name": p.name,
         "ty": p.type,
         "full_ty": p.fullType,
-        "is_const": p.const,
-        "pointer": p.pointer,
         "optional": p.optional,
         "optional_pointer": p.optionalPointer,
         "len": p.length,
