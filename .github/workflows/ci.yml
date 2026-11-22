@@ -258,6 +258,8 @@ jobs:
 
       # gcc-multilib: links the test binaries and builds the C side of the layout test
       # (crates/vulkan/tests/layout.rs) with -m32. libvulkan-dev:i386: the `linked` feature.
+      # Ubuntu 24.04 has no i386 build of the validation layers, so the device tests run
+      # without them here, and the test that needs VK_EXT_debug_utils skips itself.
       - name: Install the 32-bit C toolchain, lavapipe and the Vulkan loader
         run: |
           sudo dpkg --add-architecture i386
