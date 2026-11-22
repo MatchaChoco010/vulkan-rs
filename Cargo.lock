@@ -1344,9 +1344,9 @@ name = "vulkan-compute-buffer"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "bytemuck",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
