@@ -298,9 +298,11 @@ impl Plan {
             stride,
             descriptor_size,
         };
-        first_index
-            .checked_add(count)
-            .ok_or(HeapLayoutError::Overflow)?;
+        if let Some(last_slot) = count.checked_sub(1) {
+            first_index
+                .checked_add(last_slot)
+                .ok_or(HeapLayoutError::Overflow)?;
+        }
         self.cursor = (u64::from(first_index) + u64::from(count))
             .checked_mul(stride)
             .ok_or(HeapLayoutError::Overflow)?;
@@ -659,6 +661,11 @@ mod tests {
 
         let mut plan = ResourceHeapPlan::new(&properties);
         plan.images(u32::MAX).unwrap();
+        assert_eq!(
+            plan.images(1).map(|slots| slots.index(0)),
+            Ok(Some(u32::MAX))
+        );
+        assert_eq!(plan.images(0), Err(HeapLayoutError::Overflow));
         assert_eq!(plan.images(1), Err(HeapLayoutError::Overflow));
 
         let odd = radv().image_descriptor_size(40);
@@ -669,6 +676,62 @@ mod tests {
                 alignment: 32
             })
         );
+    }
+
+    #[test]
+    fn a_run_fits_exactly_when_every_index_of_it_fits_in_u32() {
+        let near_the_limit = [
+            0,
+            1,
+            2,
+            1 << 31,
+            (1 << 31) + 1,
+            u32::MAX - 2,
+            u32::MAX - 1,
+            u32::MAX,
+        ];
+        let properties = awkward();
+        let stride = properties.image_descriptor_size;
+        let mut fitting = 0;
+        let mut overflowing = 0;
+        for first in near_the_limit {
+            for count in near_the_limit {
+                let context = format!("first index {first}, count {count}");
+                let mut plan = ResourceHeapPlan::new(&properties);
+                assert_eq!(
+                    plan.images(first).map(|slots| slots.end()),
+                    Ok(u64::from(first) * stride),
+                    "{context}"
+                );
+                let end = u64::from(first) + u64::from(count);
+                let every_index_fits = count == 0 || end - 1 <= u64::from(u32::MAX);
+                match plan.images(count) {
+                    Ok(slots) => {
+                        fitting += 1;
+                        assert!(every_index_fits, "{context}");
+                        assert_eq!(slots.first_index, first, "{context}");
+                        assert_eq!(slots.count, count, "{context}");
+                        assert_eq!(slots.end(), end * stride, "{context}");
+                        if let Some(last) = count.checked_sub(1) {
+                            assert_eq!(slots.index(last), Some(first + last), "{context}");
+                            assert_eq!(slots.offset(last), Some((end - 1) * stride), "{context}");
+                        }
+                        assert_eq!(slots.index(count), None, "{context}");
+                    }
+                    Err(error) => {
+                        overflowing += 1;
+                        assert!(!every_index_fits, "{context}");
+                        assert_eq!(error, HeapLayoutError::Overflow, "{context}");
+                        assert_eq!(
+                            plan.images(0).map(|slots| slots.first_index),
+                            Ok(first),
+                            "{context}: a rejected run leaves the plan unchanged"
+                        );
+                    }
+                }
+            }
+        }
+        assert!(fitting > 20 && overflowing > 10);
     }
 
     #[test]
