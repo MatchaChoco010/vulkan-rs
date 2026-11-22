@@ -226,30 +226,45 @@ impl DescriptorSlots {
         heap.get_mut(self.range(slot)?)
     }
 
-    /// The bytes of every slot of the run inside the mapped heap `heap`, in slot order,
-    /// each `descriptor_size` bytes long (at most `stride`).
+    /// The bytes of every slot of the run inside the mapped heap `heap`, in slot order.
+    ///
+    /// The slice of slot `slot` starts at [`DescriptorSlots::offset`] and is
+    /// `descriptor_size` bytes long, or `stride` bytes long if `descriptor_size` is
+    /// larger than `stride`. When `stride` is not 0 and `descriptor_size` is at most
+    /// `stride`, as in every run the plans make, each slice is the one [`DescriptorSlots::bytes`] returns for its
+    /// slot, and the result is `Some` exactly when `bytes` is `Some` for every slot of
+    /// the run: `heap` has to reach the end of the last descriptor, not the end of its
+    /// slot.
     ///
     /// The slices do not overlap, so they can all be destinations of one
     /// `vkWriteResourceDescriptorsEXT` or `vkWriteSamplerDescriptorsEXT` call that fills
-    /// the whole run. `None` if `heap` is too short, `stride` is 0, or an offset does not
-    /// fit in `usize`.
+    /// the whole run. A run of 0 slots gives no slices. `None` if `stride` is 0, or if
+    /// the index of a slot does not fit in `u32`, its slice does not fit in `usize`, or
+    /// `heap` is too short to hold its slice.
     pub fn slices<'a>(
         &self,
         heap: &'a mut [u8],
     ) -> Option<impl Iterator<Item = &'a mut [u8]> + use<'a>> {
-        let stride = usize::try_from(self.stride)
-            .ok()
-            .filter(|&stride| stride != 0)?;
-        let descriptor_size = usize::try_from(self.descriptor_size).ok()?.min(stride);
-        let start = usize::try_from(self.first_index)
-            .ok()?
-            .checked_mul(stride)?;
-        let length = usize::try_from(self.count).ok()?.checked_mul(stride)?;
-        let run = heap.get_mut(start..start.checked_add(length)?)?;
-        Some(
-            run.chunks_exact_mut(stride)
-                .map(move |slot| slot.split_at_mut(descriptor_size).0),
-        )
+        if self.stride == 0 {
+            return None;
+        }
+        let size = self.descriptor_size.min(self.stride);
+        let slice = |slot: u32| -> Option<Range<usize>> {
+            let start = usize::try_from(self.offset(slot)?).ok()?;
+            Some(start..start.checked_add(usize::try_from(size).ok()?)?)
+        };
+        let run = match self.count.checked_sub(1) {
+            Some(last) => slice(0)?.start..slice(last)?.end,
+            None => 0..0,
+        };
+        let mut rest = heap.get_mut(run)?;
+        let gap = usize::try_from(self.stride - size).unwrap_or(usize::MAX);
+        let size = usize::try_from(size).unwrap_or(usize::MAX);
+        Some((0..self.count).map(move |_| {
+            let (descriptor, after) = core::mem::take(&mut rest).split_at_mut(size);
+            rest = after.get_mut(gap..).unwrap_or_default();
+            descriptor
+        }))
     }
 
     /// The byte offset just past the last slot, `(first_index + count) * stride`. It
@@ -1201,6 +1216,139 @@ mod tests {
         assert!(huge.slices(&mut heap).is_none());
         let empty = DescriptorSlots { count: 0, ..slots };
         assert_eq!(empty.slices(&mut heap).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn slices_accept_exactly_the_heaps_that_bytes_accepts_for_every_slot() {
+        let mut next = xorshift(0xd1b5_4a32_d192_ed03);
+        let mut buffer = vec![0u8; 1 << 16];
+        let one_byte_descriptor = DescriptorSlots {
+            first_index: 0,
+            count: 1,
+            stride: 8,
+            descriptor_size: 1,
+        };
+        assert!(
+            one_byte_descriptor.bytes(&mut buffer[..1], 0).is_some()
+                && one_byte_descriptor.slices(&mut buffer[..1]).is_some(),
+            "a heap that ends with the last descriptor holds the slices of the run"
+        );
+        let mut outcomes = [0; 3];
+        let mut zero_strides = 0;
+        let mut wide_near_the_limit = 0;
+        for case in 0..20_000_u64 {
+            let stride = match case % 8 {
+                0 => 1 + next() % 8,
+                1 => [8, 16, 24, 32, 48, 72, 96, 256][(next() % 8) as usize],
+                2 => 1 + next() % 4096,
+                3 => 1 << (next() % 64),
+                4 => u64::MAX - next() % 4,
+                5 => next() | 1,
+                6 => 0,
+                _ => 1,
+            };
+            let first_index = match next() % 6 {
+                0 => 0,
+                1 => 1,
+                2 => (next() % 64) as u32,
+                3 => (next() % 4096) as u32,
+                4 => u32::MAX - (next() % 4) as u32,
+                _ => next() as u32,
+            };
+            let count = (next() % 6) as u32;
+            let descriptor_size = match next() % 5 {
+                0 => 0,
+                1 => 1,
+                2 => stride,
+                3 => stride.saturating_sub(1),
+                _ => next() % stride.max(1),
+            }
+            .min(stride);
+            let slots = DescriptorSlots {
+                first_index,
+                count,
+                stride,
+                descriptor_size,
+            };
+            let last_end = (u128::from(first_index) + u128::from(count.saturating_sub(1)))
+                * u128::from(stride)
+                + u128::from(descriptor_size);
+            let heap_length = match next() % 5 {
+                0 => last_end,
+                1 => last_end.saturating_sub(1),
+                2 => last_end + 1,
+                3 => u128::from(slots.end()),
+                _ => u128::from(next() % (1 << 16)),
+            }
+            .min(1 << 16) as usize;
+            let heap = &mut buffer[..heap_length];
+            let context = format!("{slots:?} in a heap of {heap_length} bytes");
+
+            if stride == 0 {
+                zero_strides += 1;
+                assert!(
+                    slots.slices(heap).is_none(),
+                    "{context}: a stride of 0 gives no slices"
+                );
+                continue;
+            }
+            let expected: Option<Vec<(usize, usize)>> = (0..count)
+                .map(|slot| {
+                    slots
+                        .bytes(heap, slot)
+                        .map(|bytes| (bytes.as_ptr() as usize, bytes.len()))
+                })
+                .collect();
+            let actual = slots.slices(heap).map(|slices| {
+                slices
+                    .map(|bytes| (bytes.as_ptr() as usize, bytes.len()))
+                    .collect::<Vec<_>>()
+            });
+            outcomes[match (&actual, count) {
+                (None, _) => 0,
+                (Some(_), 0) => 1,
+                (Some(_), _) => 2,
+            }] += 1;
+            assert_eq!(
+                actual, expected,
+                "{context}: slices is Some exactly when bytes is Some for every slot, with the same slices"
+            );
+
+            if stride == u64::MAX {
+                continue;
+            }
+            let wide = DescriptorSlots {
+                descriptor_size: stride + 1 + next() % (u64::MAX - stride).min(64),
+                ..slots
+            };
+            assert!(wide.descriptor_size > stride, "{context}");
+            if stride > u64::MAX - 64 {
+                wide_near_the_limit += 1;
+            }
+            let cut = DescriptorSlots {
+                descriptor_size: stride,
+                ..slots
+            };
+            let slices = |slots: DescriptorSlots, heap: &mut [u8]| {
+                slots.slices(heap).map(|slices| {
+                    slices
+                        .map(|bytes| (bytes.as_ptr() as usize, bytes.len()))
+                        .collect::<Vec<_>>()
+                })
+            };
+            assert_eq!(
+                slices(wide, heap),
+                slices(cut, heap),
+                "{context}: a descriptor larger than the stride is cut to the stride"
+            );
+        }
+        assert!(
+            outcomes.iter().all(|&count| count > 500)
+                && zero_strides > 500
+                && wide_near_the_limit > 500,
+            "every outcome is exercised: {outcomes:?}, {zero_strides} strides of 0, \
+             {wide_near_the_limit} descriptors larger than a stride near u64::MAX"
+        );
     }
 
     #[test]
