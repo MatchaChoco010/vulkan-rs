@@ -1,0 +1,443 @@
+use std::collections::{HashMap, HashSet};
+use std::ffi::c_void;
+use std::ptr::NonNull;
+
+use vulkan::vk;
+
+use crate::allocation::{Allocation, AllocationResourceClass, AllocationScheme};
+use crate::error::AllocationError;
+use crate::report::{MemoryBlockSnapshot, MemoryRegionState, MemoryTypeSnapshot, MemoryTypeStats};
+use crate::suballocator::TlsfSuballocator;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum DedicatedResource {
+    None,
+    Buffer(vk::Buffer),
+    Image(vk::Image),
+}
+
+impl From<AllocationScheme> for DedicatedResource {
+    fn from(value: AllocationScheme) -> Self {
+        match value {
+            AllocationScheme::GpuAllocatorManaged => Self::None,
+            AllocationScheme::DedicatedBuffer(buffer) => Self::Buffer(buffer),
+            AllocationScheme::DedicatedImage(image) => Self::Image(image),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) struct BlockRequest {
+    pub(crate) dedicated: DedicatedResource,
+    pub(crate) memory_allocate_flags: vk::MemoryAllocateFlags,
+    pub(crate) export_handle_types: vk::ExternalMemoryHandleTypeFlags,
+}
+
+impl BlockRequest {
+    pub(crate) fn needs_own_block(self) -> bool {
+        self.dedicated != DedicatedResource::None || !self.export_handle_types.is_empty()
+    }
+}
+
+pub(crate) struct MemoryTypeAllocator {
+    pub(crate) memory_type_index: u32,
+    pub(crate) blocks: Vec<Option<MemoryBlock>>,
+}
+
+impl MemoryTypeAllocator {
+    pub(crate) fn stats(&self) -> MemoryTypeStats {
+        let mut stats = MemoryTypeStats {
+            memory_type_index: self.memory_type_index,
+            ..Default::default()
+        };
+        for block in self.blocks.iter().flatten() {
+            let block_stats = block.suballocator.stats();
+            stats.total_block_bytes += block.size;
+            stats.allocated_bytes += block_stats.allocated_bytes;
+            stats.free_bytes += block_stats.free_bytes;
+            stats.allocation_count += block_stats.allocation_count;
+            stats.block_count += 1;
+        }
+        stats
+    }
+
+    pub(crate) fn snapshot(
+        &self,
+        property_flags: vk::MemoryPropertyFlags,
+        stats: MemoryTypeStats,
+    ) -> MemoryTypeSnapshot {
+        MemoryTypeSnapshot {
+            memory_type_index: self.memory_type_index,
+            property_flags,
+            stats,
+            blocks: self
+                .blocks
+                .iter()
+                .enumerate()
+                .filter_map(|(index, block)| block.as_ref().map(|block| block.snapshot(index)))
+                .collect(),
+        }
+    }
+}
+
+pub(crate) struct MemoryBlock {
+    pub(crate) memory: vk::DeviceMemory,
+    pub(crate) size: u64,
+    pub(crate) resource_class: AllocationResourceClass,
+    pub(crate) dedicated: bool,
+    pub(crate) memory_allocate_flags: vk::MemoryAllocateFlags,
+    pub(crate) suballocator: TlsfSuballocator,
+    pub(crate) mapped_ptr: Option<NonNull<c_void>>,
+    pub(crate) map_count: usize,
+    pub(crate) mapped_allocations: HashMap<u64, usize>,
+    pub(crate) names: HashMap<u64, Box<str>>,
+    pub(crate) persistent: HashSet<u64>,
+}
+
+impl MemoryBlock {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.suballocator.is_wholly_free(self.size)
+    }
+
+    fn snapshot(&self, block_index: usize) -> MemoryBlockSnapshot {
+        let regions = self.suballocator.region_snapshots(&self.mapped_allocations);
+        let mut snapshot = MemoryBlockSnapshot {
+            block_index,
+            resource_class: self.resource_class,
+            dedicated: self.dedicated,
+            memory: self.memory,
+            size: self.size,
+            free_bytes: 0,
+            allocated_bytes: 0,
+            largest_free_region_bytes: 0,
+            free_region_count: 0,
+            allocated_region_count: 0,
+            regions,
+        };
+        for region in &snapshot.regions {
+            match region.state {
+                MemoryRegionState::Free => {
+                    snapshot.free_bytes += region.size;
+                    snapshot.free_region_count += 1;
+                    snapshot.largest_free_region_bytes =
+                        snapshot.largest_free_region_bytes.max(region.size);
+                }
+                MemoryRegionState::Allocated { .. } => {
+                    snapshot.allocated_bytes += region.size;
+                    snapshot.allocated_region_count += 1;
+                }
+            }
+        }
+        snapshot
+    }
+
+    pub(crate) fn is_allocation_mapped(&self, allocation_id: u64) -> bool {
+        self.mapped_allocations.contains_key(&allocation_id)
+    }
+
+    pub(crate) fn validate_allocation(
+        &self,
+        allocation: &Allocation,
+    ) -> Result<(), AllocationError> {
+        if self.resource_class != allocation.resource_class {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        if self
+            .suballocator
+            .allocation_offset(allocation.allocation_id)
+            != Some(allocation.offset)
+        {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        let block = self
+            .suballocator
+            .blocks
+            .get(&allocation.offset)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        if block.free || block.size != allocation.size {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        let end = allocation
+            .offset
+            .checked_add(allocation.size)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        if end > self.size {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn mark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
+        let count = self.mapped_allocations.entry(allocation_id).or_default();
+        *count = count.checked_add(1).ok_or(AllocationError::OutOfMemory)?;
+        Ok(())
+    }
+
+    pub(crate) fn unmark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
+        let count = self
+            .mapped_allocations
+            .get_mut(&allocation_id)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        *count -= 1;
+        if *count == 0 {
+            self.mapped_allocations.remove(&allocation_id);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::report::{MemoryRegionSnapshot, snapshot_from_memory_types};
+
+    #[test]
+    fn memory_block_tracks_mapped_allocations_individually() {
+        let mut block = MemoryBlock {
+            memory: vk::DeviceMemory(31),
+            size: 1024,
+            resource_class: AllocationResourceClass::Unknown,
+            dedicated: false,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            suballocator: TlsfSuballocator::new(1024),
+            mapped_ptr: None,
+            map_count: 0,
+            mapped_allocations: HashMap::new(),
+            names: HashMap::new(),
+            persistent: HashSet::new(),
+        };
+
+        block.mark_mapped(1).unwrap();
+        block.mark_mapped(1).unwrap();
+        block.mark_mapped(2).unwrap();
+        assert!(block.is_allocation_mapped(1));
+        assert!(block.is_allocation_mapped(2));
+
+        block.unmark_mapped(1).unwrap();
+        assert!(block.is_allocation_mapped(1));
+        block.unmark_mapped(1).unwrap();
+        assert!(!block.is_allocation_mapped(1));
+        assert!(block.is_allocation_mapped(2));
+        block.unmark_mapped(2).unwrap();
+        assert!(!block.is_allocation_mapped(2));
+        assert_eq!(
+            block.unmark_mapped(2),
+            Err(AllocationError::InvalidAllocation)
+        );
+    }
+
+    #[test]
+    fn memory_block_validates_allocation_identity() {
+        let mut block = MemoryBlock {
+            memory: vk::DeviceMemory(32),
+            size: 1024,
+            resource_class: AllocationResourceClass::Optimal,
+            dedicated: false,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            suballocator: TlsfSuballocator::new(1024),
+            mapped_ptr: None,
+            map_count: 0,
+            mapped_allocations: HashMap::new(),
+            names: HashMap::new(),
+            persistent: HashSet::new(),
+        };
+        let suballocation = block.suballocator.allocate(128, 64).unwrap();
+        let make_allocation = || Allocation {
+            memory_type_index: 0,
+            block_index: 0,
+            allocation_id: suballocation.id,
+            resource_class: AllocationResourceClass::Optimal,
+            memory: vk::DeviceMemory(32),
+            offset: suballocation.offset,
+            size: suballocation.size,
+        };
+        let allocation = make_allocation();
+        assert_eq!(block.validate_allocation(&allocation), Ok(()));
+
+        let mut wrong_id = make_allocation();
+        wrong_id.allocation_id += 1;
+        assert_eq!(
+            block.validate_allocation(&wrong_id),
+            Err(AllocationError::InvalidAllocation)
+        );
+
+        let mut wrong_offset = make_allocation();
+        wrong_offset.offset += 64;
+        assert_eq!(
+            block.validate_allocation(&wrong_offset),
+            Err(AllocationError::InvalidAllocation)
+        );
+
+        let mut wrong_size = make_allocation();
+        wrong_size.size += 64;
+        assert_eq!(
+            block.validate_allocation(&wrong_size),
+            Err(AllocationError::InvalidAllocation)
+        );
+
+        let mut wrong_class = make_allocation();
+        wrong_class.resource_class = AllocationResourceClass::Linear;
+        assert_eq!(
+            block.validate_allocation(&wrong_class),
+            Err(AllocationError::InvalidAllocation)
+        );
+    }
+
+    #[test]
+    fn memory_type_stats_aggregate_blocks() {
+        let memory_type = MemoryTypeAllocator {
+            memory_type_index: 7,
+            blocks: vec![
+                Some(MemoryBlock {
+                    memory: vk::DeviceMemory(11),
+                    size: 1024,
+                    resource_class: AllocationResourceClass::Unknown,
+                    dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                    suballocator: TlsfSuballocator::new(1024),
+                    mapped_ptr: None,
+                    map_count: 0,
+                    mapped_allocations: HashMap::new(),
+                    names: HashMap::new(),
+                    persistent: HashSet::new(),
+                }),
+                Some(MemoryBlock {
+                    memory: vk::DeviceMemory(12),
+                    size: 2048,
+                    resource_class: AllocationResourceClass::Unknown,
+                    dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                    suballocator: TlsfSuballocator::new(2048),
+                    mapped_ptr: None,
+                    map_count: 0,
+                    mapped_allocations: HashMap::new(),
+                    names: HashMap::new(),
+                    persistent: HashSet::new(),
+                }),
+            ],
+        };
+        let mut memory_type = memory_type;
+        let a = memory_type.blocks[0]
+            .as_mut()
+            .unwrap()
+            .suballocator
+            .allocate(128, 1)
+            .unwrap();
+        let b = memory_type.blocks[1]
+            .as_mut()
+            .unwrap()
+            .suballocator
+            .allocate(256, 1)
+            .unwrap();
+        let stats = memory_type.stats();
+        assert_eq!(stats.memory_type_index, 7);
+        assert_eq!(stats.block_count, 2);
+        assert_eq!(stats.total_block_bytes, 3072);
+        assert_eq!(stats.allocation_count, 2);
+        assert_eq!(stats.allocated_bytes, a.size + b.size);
+        assert_eq!(stats.allocated_bytes + stats.free_bytes, 3072);
+    }
+
+    #[test]
+    fn stats_and_snapshot_ignore_released_block_slots() {
+        let memory_type = MemoryTypeAllocator {
+            memory_type_index: 5,
+            blocks: vec![
+                None,
+                Some(MemoryBlock {
+                    memory: vk::DeviceMemory(51),
+                    size: 1024,
+                    resource_class: AllocationResourceClass::Linear,
+                    dedicated: false,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                    suballocator: TlsfSuballocator::new(1024),
+                    mapped_ptr: None,
+                    map_count: 0,
+                    mapped_allocations: HashMap::new(),
+                    names: HashMap::new(),
+                    persistent: HashSet::new(),
+                }),
+            ],
+        };
+        let mut properties = vk::PhysicalDeviceMemoryProperties {
+            memory_type_count: 6,
+            ..Default::default()
+        };
+        properties.memory_types[5].property_flags = vk::MemoryPropertyFlags::HOST_VISIBLE;
+
+        let stats = memory_type.stats();
+        assert_eq!(stats.block_count, 1);
+        assert_eq!(stats.total_block_bytes, 1024);
+
+        let snapshot = snapshot_from_memory_types(&[memory_type], &properties);
+        assert_eq!(snapshot.memory_types.len(), 1);
+        assert_eq!(snapshot.memory_types[0].blocks.len(), 1);
+        assert_eq!(snapshot.memory_types[0].blocks[0].block_index, 1);
+    }
+
+    #[test]
+    fn block_snapshot_reports_fragmented_regions() {
+        let mut block = MemoryBlock {
+            memory: vk::DeviceMemory(41),
+            size: 1024,
+            resource_class: AllocationResourceClass::Linear,
+            dedicated: false,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            suballocator: TlsfSuballocator::new(1024),
+            mapped_ptr: None,
+            map_count: 0,
+            mapped_allocations: HashMap::new(),
+            names: HashMap::new(),
+            persistent: HashSet::new(),
+        };
+        let a = block.suballocator.allocate(256, 1).unwrap();
+        let b = block.suballocator.allocate(256, 1).unwrap();
+        let c = block.suballocator.allocate(256, 1).unwrap();
+        let d = block.suballocator.allocate(256, 1).unwrap();
+        block.suballocator.free(b.id).unwrap();
+        block.suballocator.free(d.id).unwrap();
+        block.mark_mapped(c.id).unwrap();
+
+        let snapshot = block.snapshot(3);
+        assert_eq!(snapshot.block_index, 3);
+        assert_eq!(snapshot.resource_class, AllocationResourceClass::Linear);
+        assert_eq!(snapshot.memory, vk::DeviceMemory(41));
+        assert_eq!(snapshot.size, 1024);
+        assert_eq!(snapshot.free_bytes, 512);
+        assert_eq!(snapshot.allocated_bytes, 512);
+        assert_eq!(snapshot.largest_free_region_bytes, 256);
+        assert_eq!(snapshot.free_region_count, 2);
+        assert_eq!(snapshot.allocated_region_count, 2);
+        assert_eq!(
+            snapshot.regions,
+            vec![
+                MemoryRegionSnapshot {
+                    offset: 0,
+                    size: 256,
+                    state: MemoryRegionState::Allocated {
+                        allocation_id: a.id,
+                        mapped_count: 0,
+                    },
+                },
+                MemoryRegionSnapshot {
+                    offset: 256,
+                    size: 256,
+                    state: MemoryRegionState::Free,
+                },
+                MemoryRegionSnapshot {
+                    offset: 512,
+                    size: 256,
+                    state: MemoryRegionState::Allocated {
+                        allocation_id: c.id,
+                        mapped_count: 1,
+                    },
+                },
+                MemoryRegionSnapshot {
+                    offset: 768,
+                    size: 256,
+                    state: MemoryRegionState::Free,
+                },
+            ]
+        );
+    }
+}
