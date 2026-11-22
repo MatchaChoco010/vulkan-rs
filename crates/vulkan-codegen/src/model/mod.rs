@@ -5,6 +5,7 @@ mod derives;
 mod dispatch;
 mod platform;
 mod rust_types;
+mod void_arrays;
 
 pub(crate) use cfg::{BETA_PROTECT, Cfg};
 pub(crate) use ctype::{CType, null_ptr};
@@ -12,6 +13,7 @@ pub(crate) use depends::{Depends, named_version, parse_version};
 pub(crate) use dispatch::Dispatch;
 pub(crate) use platform::{is_opaque, is_platform_type};
 pub(crate) use rust_types::Scalar;
+pub(crate) use void_arrays::{TypedValues, VoidArrayLength, void_array_len, void_array_length};
 
 use crate::docs::{Links, Table, read_table};
 use crate::naming::enum_variant_name;

@@ -6,7 +6,8 @@ mod wrapper;
 use super::func_pointers::parameter_item;
 use super::{arrow, assert_distinct_names, header, parameter_names, w};
 use crate::docs::{Block, Doc};
-use crate::model::{CType, Cfg, Dispatch, Model};
+use crate::model::{CType, Cfg, Dispatch, Model, VoidArrayLength};
+use crate::model::{void_array_len, void_array_length};
 use crate::naming::{command_name, field_name, pointer_setter_name};
 use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
@@ -16,6 +17,9 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
     out.push_str("use alloc::vec::Vec;\nuse core::ffi::{c_char, c_void, CStr};\n\n");
     for dispatch in Dispatch::ALL {
         out.push_str(&dispatch_tables::table(model, dispatch));
+    }
+    for c in &model.ir.commands {
+        assert_void_arrays_are_counted_in_bytes(c);
     }
     for dispatch in Dispatch::ALL {
         let raw_methods = commands(model, dispatch).map(|c| {
@@ -51,6 +55,18 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         );
     }
     out
+}
+
+fn assert_void_arrays_are_counted_in_bytes(c: &Command) {
+    for p in c.params.iter().filter(|p| void_array_len(p).is_some()) {
+        assert_eq!(
+            void_array_length(&c.name, p),
+            VoidArrayLength::Bytes,
+            "{}: the wrappers pass the `void` array {} as bytes, and the specification counts it in values",
+            c.name,
+            p.name
+        );
+    }
 }
 
 fn commands<'a>(model: &'a Model<'_>, dispatch: Dispatch) -> impl Iterator<Item = &'a Command> {
@@ -711,6 +727,23 @@ mod tests {
             "pub unsafe fn get_query_pool_results(&self, data: &mut [u8], stride: DeviceSize) -> crate::vk::Result<VkResult> {"
         ));
         assert!(out.contains("data_size_len, data.as_mut_ptr().cast(), stride"));
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "vkGetBlobsNV::pData: the registry gives `blobCount` as the length of this `void` array, which is not the name of a size in bytes"
+    )]
+    fn void_arrays_whose_length_is_not_named_as_a_size_stop_the_generator() {
+        let mut ir = base();
+        ir.commands.push(device(command(
+            "vkGetBlobsNV",
+            vec![
+                field("device", "VkDevice"),
+                field("blobCount", "uint32_t"),
+                counted("pData", "void*", "blobCount"),
+            ],
+        )));
+        generate(&ir);
     }
 
     #[test]
