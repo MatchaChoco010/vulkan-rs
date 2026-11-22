@@ -1,0 +1,29 @@
+error[E0308]: mismatched types
+ --> tests/ui/fail/version_data_length.rs:5:77
+  |
+5 |     let _ = vk::AccelerationStructureVersionInfoKHR::default().version_data(&one_uuid);
+  |                                                                ------------ ^^^^^^^^^ expected an array with a size of 32, found one with a size of 16
+  |                                                                |
+  |                                                                arguments to this method are incorrect
+  |
+note: method defined here
+ --> src/vk/generated/structs.rs
+  |
+  |     pub fn version_data(mut self, value: &'a [u8; 2 * UUID_SIZE]) -> Self {
+  |            ^^^^^^^^^^^^
+
+error[E0308]: mismatched types
+ --> tests/ui/fail/version_data_length.rs:7:64
+  |
+7 |     let _ = vk::MicromapVersionInfoEXT::default().version_data(bytes);
+  |                                                   ------------ ^^^^^ expected `&[u8; 32]`, found `&[u8]`
+  |                                                   |
+  |                                                   arguments to this method are incorrect
+  |
+  = note: expected reference `&[u8; 32]`
+             found reference `&[u8]`
+note: method defined here
+ --> src/vk/generated/structs.rs
+  |
+  |     pub fn version_data(mut self, value: &'a [u8; 2 * UUID_SIZE]) -> Self {
+  |            ^^^^^^^^^^^^

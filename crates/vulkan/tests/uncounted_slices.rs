@@ -60,19 +60,6 @@ fn every_slice_setter_without_a_count_member_sets_null_for_an_empty_slice() {
             .p_sample_mask
     });
     check_setter(
-        "AccelerationStructureVersionInfoKHR::version_data",
-        |value| {
-            vk::AccelerationStructureVersionInfoKHR::default()
-                .version_data(value)
-                .p_version_data
-        },
-    );
-    check_setter("MicromapVersionInfoEXT::version_data", |value| {
-        vk::MicromapVersionInfoEXT::default()
-            .version_data(value)
-            .p_version_data
-    });
-    check_setter(
         "StdVideoH265HrdParameters::sub_layer_hrd_parameters_nal",
         |value| {
             vk::StdVideoH265HrdParameters::default()
