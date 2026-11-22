@@ -51,6 +51,7 @@ impl Inputs {
         params: &[Field],
         outputs: &[usize],
     ) -> Self {
+        assert_base_structures_are_passed_by_the_caller(model, c, params, outputs);
         let inner_lens = params
             .iter()
             .enumerate()
@@ -186,15 +187,6 @@ impl Planner<'_> {
         let p = &self.params[index];
         let ty = CType::of(p);
         let name = argument_name(p);
-        assert!(
-            !is_base_structure(self.model, &ty.base)
-                || (ty.depth() == 1 && !ty.is_array() && p.len.is_none()),
-            "{}: {} is a `{}`, and the wrappers take a `{}` only through a pointer to one structure",
-            self.c.name,
-            p.name,
-            p.full_ty,
-            ty.base
-        );
         if let Some(slices) = self.slices_of_count.get(&index).cloned() {
             return self.slice_len(p, &slices);
         }
@@ -515,6 +507,29 @@ fn is_base_structure(model: &Model<'_>, base: &str) -> bool {
     )
 }
 
+fn assert_base_structures_are_passed_by_the_caller(
+    model: &Model<'_>,
+    c: &Command,
+    params: &[Field],
+    outputs: &[usize],
+) {
+    for (index, p) in params.iter().enumerate() {
+        let ty = CType::of(p);
+        if !is_base_structure(model, &ty.base) {
+            continue;
+        }
+        let is_one_structure = ty.depth() == 1 && !ty.is_array() && p.len.is_none();
+        assert!(
+            is_one_structure && !outputs.contains(&index),
+            "{}: {} is a `{}`, and the wrappers take a `{}` only as one structure that the caller passes: not as an array, not through a pointer to a pointer, and not as memory that the wrapper would allocate and return",
+            c.name,
+            p.name,
+            p.full_ty,
+            ty.base
+        );
+    }
+}
+
 fn reference(model: &Model<'_>, p: &Field, ty: &CType) -> Input {
     reference_to(p, ty, &model.base_ty(&ty.base, "'_"), "")
 }
@@ -709,7 +724,27 @@ mod tests {
                     field("infoCount", "uint32_t"),
                     counted("pInfos", "const VkBaseInStructure*", "infoCount"),
                 ],
-                "vkGetWidgetPropertiesNV: pInfos is a `const VkBaseInStructure*`, and the wrappers take a `VkBaseInStructure` only through a pointer to one structure",
+                "vkGetWidgetPropertiesNV: pInfos is a `const VkBaseInStructure*`, and the wrappers take a `VkBaseInStructure` only as one structure that the caller passes: not as an array, not through a pointer to a pointer, and not as memory that the wrapper would allocate and return",
+            ),
+            (
+                vec![
+                    field("device", "VkDevice"),
+                    optional(field("pPropertyCount", "uint32_t*")),
+                    optional(counted(
+                        "pProperties",
+                        "VkBaseOutStructure*",
+                        "pPropertyCount",
+                    )),
+                ],
+                "vkGetWidgetPropertiesNV: pProperties is a `VkBaseOutStructure*`, and the wrappers take a `VkBaseOutStructure` only as one structure that the caller passes: not as an array, not through a pointer to a pointer, and not as memory that the wrapper would allocate and return",
+            ),
+            (
+                vec![
+                    field("device", "VkDevice"),
+                    field("index", "uint32_t"),
+                    field("ppProperties", "VkBaseOutStructure**"),
+                ],
+                "vkGetWidgetPropertiesNV: ppProperties is a `VkBaseOutStructure**`, and the wrappers take a `VkBaseOutStructure` only as one structure that the caller passes: not as an array, not through a pointer to a pointer, and not as memory that the wrapper would allocate and return",
             ),
             (
                 vec![
@@ -717,7 +752,7 @@ mod tests {
                     field("ppInfo", "const VkBaseInStructure* const*"),
                     field("flags", "uint32_t"),
                 ],
-                "vkGetWidgetPropertiesNV: ppInfo is a `const VkBaseInStructure* const*`, and the wrappers take a `VkBaseInStructure` only through a pointer to one structure",
+                "vkGetWidgetPropertiesNV: ppInfo is a `const VkBaseInStructure* const*`, and the wrappers take a `VkBaseInStructure` only as one structure that the caller passes: not as an array, not through a pointer to a pointer, and not as memory that the wrapper would allocate and return",
             ),
         ] {
             assert_eq!(

@@ -30,6 +30,11 @@ pub unsafe trait Extends<Root> {}
 /// `pNext` chain.
 ///
 /// `push_next` writes the `pNext` member of the struct it links in through this layout.
+/// It is also the bound of the wrappers of commands whose C parameter is a pointer to a
+/// `VkBaseOutStructure` or a `VkBaseInStructure`, such as
+/// [`Device::get_pipeline_properties_ext`](crate::Device::get_pipeline_properties_ext):
+/// they take any struct that implements it and pass its address, and the command reads
+/// the `sType` member to tell which struct it was given.
 ///
 /// ```
 /// use vulkan::vk::{self, TaggedStructure};
