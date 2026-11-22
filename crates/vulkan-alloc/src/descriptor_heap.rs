@@ -229,8 +229,8 @@ impl DescriptorSlots {
     ///
     /// The slice of slot `slot` starts at [`DescriptorSlots::offset`] and is
     /// `descriptor_size` bytes long, or `stride` bytes long if `descriptor_size` is
-    /// larger than `stride`. When `descriptor_size` is at most `stride`, as in every run
-    /// the plans make, each slice is the one [`DescriptorSlots::bytes`] returns for its
+    /// larger than `stride`. When `stride` is not 0 and `descriptor_size` is at most
+    /// `stride`, as in every run the plans make, each slice is the one [`DescriptorSlots::bytes`] returns for its
     /// slot, and the result is `Some` exactly when `bytes` is `Some` for every slot of
     /// the run: `heap` has to reach the end of the last descriptor, not the end of its
     /// slot.
@@ -1208,13 +1208,7 @@ mod tests {
 
     #[test]
     fn slices_accept_exactly_the_heaps_that_bytes_accepts_for_every_slot() {
-        let mut seed = 0xd1b5_4a32_d192_ed03_u64;
-        let mut next = move || {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            seed
-        };
+        let mut next = xorshift(0xd1b5_4a32_d192_ed03);
         let mut buffer = vec![0u8; 1 << 16];
         let one_byte_descriptor = DescriptorSlots {
             first_index: 0,
@@ -1228,14 +1222,17 @@ mod tests {
             "a heap that ends with the last descriptor holds the slices of the run"
         );
         let mut outcomes = [0; 3];
+        let mut zero_strides = 0;
+        let mut wide_near_the_limit = 0;
         for case in 0..20_000_u64 {
-            let stride = match case % 7 {
+            let stride = match case % 8 {
                 0 => 1 + next() % 8,
                 1 => [8, 16, 24, 32, 48, 72, 96, 256][(next() % 8) as usize],
                 2 => 1 + next() % 4096,
                 3 => 1 << (next() % 64),
                 4 => u64::MAX - next() % 4,
                 5 => next() | 1,
+                6 => 0,
                 _ => 1,
             };
             let first_index = match next() % 6 {
@@ -1251,9 +1248,10 @@ mod tests {
                 0 => 0,
                 1 => 1,
                 2 => stride,
-                3 => stride - 1,
-                _ => next() % stride,
-            };
+                3 => stride.saturating_sub(1),
+                _ => next() % stride.max(1),
+            }
+            .min(stride);
             let slots = DescriptorSlots {
                 first_index,
                 count,
@@ -1274,6 +1272,14 @@ mod tests {
             let heap = &mut buffer[..heap_length];
             let context = format!("{slots:?} in a heap of {heap_length} bytes");
 
+            if stride == 0 {
+                zero_strides += 1;
+                assert!(
+                    slots.slices(heap).is_none(),
+                    "{context}: a stride of 0 gives no slices"
+                );
+                continue;
+            }
             let expected: Option<Vec<(usize, usize)>> = (0..count)
                 .map(|slot| {
                     slots
@@ -1296,10 +1302,17 @@ mod tests {
                 "{context}: slices is Some exactly when bytes is Some for every slot, with the same slices"
             );
 
+            if stride == u64::MAX {
+                continue;
+            }
             let wide = DescriptorSlots {
-                descriptor_size: stride.saturating_add(1 + next() % 64),
+                descriptor_size: stride + 1 + next() % (u64::MAX - stride).min(64),
                 ..slots
             };
+            assert!(wide.descriptor_size > stride, "{context}");
+            if stride > u64::MAX - 64 {
+                wide_near_the_limit += 1;
+            }
             let cut = DescriptorSlots {
                 descriptor_size: stride,
                 ..slots
@@ -1318,8 +1331,11 @@ mod tests {
             );
         }
         assert!(
-            outcomes.iter().all(|&count| count > 500),
-            "every outcome is exercised: {outcomes:?}"
+            outcomes.iter().all(|&count| count > 500)
+                && zero_strides > 500
+                && wide_near_the_limit > 500,
+            "every outcome is exercised: {outcomes:?}, {zero_strides} strides of 0, \
+             {wide_near_the_limit} descriptors larger than a stride near u64::MAX"
         );
     }
 
