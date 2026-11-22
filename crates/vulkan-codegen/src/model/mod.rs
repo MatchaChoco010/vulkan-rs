@@ -190,3 +190,109 @@ impl<'a> Model<'a> {
 pub(crate) fn has_p_next(s: &Struct) -> bool {
     s.members.iter().any(|m| m.name == "pNext")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{catch_quietly, field, registry, structure, tagged};
+    use vulkan_registry::EnumField;
+
+    fn results() -> Registry {
+        let mut ir = registry();
+        let results = ir
+            .enums
+            .iter_mut()
+            .find(|e| e.name == "VkResult")
+            .expect("the registry of the tests has VkResult");
+        for (name, value, aliases) in [
+            ("VK_SUCCESS", "0", &[][..]),
+            ("VK_INCOMPLETE", "5", &[]),
+            (
+                "VK_PIPELINE_COMPILE_REQUIRED",
+                "1000297000",
+                &[
+                    "VK_PIPELINE_COMPILE_REQUIRED_EXT",
+                    "VK_ERROR_PIPELINE_COMPILE_REQUIRED_EXT",
+                ],
+            ),
+            ("VK_ERROR_NOT_A_NUMBER", "0x10", &[]),
+        ] {
+            results.fields.push(EnumField {
+                name: name.to_string(),
+                aliases: aliases.iter().map(|alias| alias.to_string()).collect(),
+                value: value.to_string(),
+                ..Default::default()
+            });
+        }
+        ir
+    }
+
+    #[test]
+    fn a_result_code_and_its_aliases_name_the_same_code_and_value() {
+        let ir = results();
+        let model = Model::new(&ir);
+        for (code, name, value) in [
+            ("VK_SUCCESS", "VK_SUCCESS", 0),
+            ("VK_INCOMPLETE", "VK_INCOMPLETE", 5),
+            (
+                "VK_PIPELINE_COMPILE_REQUIRED",
+                "VK_PIPELINE_COMPILE_REQUIRED",
+                1000297000,
+            ),
+            (
+                "VK_PIPELINE_COMPILE_REQUIRED_EXT",
+                "VK_PIPELINE_COMPILE_REQUIRED",
+                1000297000,
+            ),
+            (
+                "VK_ERROR_PIPELINE_COMPILE_REQUIRED_EXT",
+                "VK_PIPELINE_COMPILE_REQUIRED",
+                1000297000,
+            ),
+        ] {
+            assert_eq!(model.result_code(code), name);
+            assert_eq!(model.result_value(code), value, "{code}");
+        }
+        assert_eq!(model.result_code("VK_ERROR_UNLISTED"), "VK_ERROR_UNLISTED");
+    }
+
+    #[test]
+    fn the_value_of_an_unknown_or_malformed_result_code_aborts_generation_with_its_name() {
+        let ir = results();
+        let model = Model::new(&ir);
+        for (code, message) in [
+            ("VK_ERROR_UNLISTED", "unknown result code VK_ERROR_UNLISTED"),
+            (
+                "VK_ERROR_NOT_A_NUMBER",
+                "the result code VK_ERROR_NOT_A_NUMBER has the value 0x10, which is not an integer",
+            ),
+        ] {
+            assert_eq!(
+                catch_quietly(|| model.result_value(code)),
+                Err(message.to_string())
+            );
+        }
+        assert_eq!(
+            catch_quietly(|| model.get_enum("VkMissing").name.clone()),
+            Err("the registry has no enum VkMissing".to_string())
+        );
+    }
+
+    #[test]
+    fn only_a_structure_with_a_member_named_p_next_has_a_chain() {
+        assert!(has_p_next(&tagged(
+            "VkTagged",
+            "VK_STRUCTURE_TYPE_TAGGED",
+            vec![]
+        )));
+        assert!(has_p_next(&structure(
+            "VkUntagged",
+            vec![field("a", "uint32_t"), field("pNext", "void*")]
+        )));
+        assert!(!has_p_next(&structure("VkEmpty", vec![])));
+        assert!(!has_p_next(&structure(
+            "VkPlain",
+            vec![field("next", "void*"), field("pNextSibling", "void*")]
+        )));
+    }
+}
