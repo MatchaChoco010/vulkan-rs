@@ -236,8 +236,10 @@ pub struct DescriptorHeapLayout {
     /// Where the range reserved for the implementation starts. Do not write descriptors
     /// there.
     pub reserved_offset: u64,
-    /// The size of the reserved range: `minResourceHeapReservedRange` or
-    /// `minSamplerHeapReservedRange`.
+    /// The size of the reserved range: `minResourceHeapReservedRange`,
+    /// `minSamplerHeapReservedRange`, or for a plan made by
+    /// [`SamplerHeapPlan::with_embedded_samplers`] the larger of
+    /// `minSamplerHeapReservedRange` and `minSamplerHeapReservedRangeWithEmbedded`.
     pub reserved_size: u64,
 }
 
@@ -483,6 +485,9 @@ impl SamplerHeapPlan {
     /// Starts an empty plan from the device's descriptor heap properties: the sampler
     /// descriptor size and alignment, `samplerHeapAlignment`, `maxSamplerHeapSize` and
     /// `minSamplerHeapReservedRange`.
+    ///
+    /// This reserved range can be too small while a shader uses embedded samplers; plan
+    /// a heap bound for such shaders with [`SamplerHeapPlan::with_embedded_samplers`].
     pub fn new(properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>) -> Self {
         Self {
             plan: Plan {
@@ -495,6 +500,50 @@ impl SamplerHeapPlan {
             sampler_size: properties.sampler_descriptor_size,
             sampler_alignment: properties.sampler_descriptor_alignment,
         }
+    }
+
+    /// Starts an empty plan as [`SamplerHeapPlan::new`] does, for a heap that is bound
+    /// while a shader uses an embedded sampler through a descriptor mapping. The reserved
+    /// range is the larger of `minSamplerHeapReservedRange` and
+    /// `minSamplerHeapReservedRangeWithEmbedded`.
+    ///
+    /// The implementation stores the embedded sampler descriptors in the reserved range
+    /// of the bound sampler heap, so while any bound shader uses an embedded sampler
+    /// through a descriptor mapping, the specification requires the reserved range size
+    /// of the sampler heap to be at least `minSamplerHeapReservedRangeWithEmbedded`. It
+    /// must also be at least `minSamplerHeapReservedRange` whenever the heap is bound.
+    ///
+    /// ```
+    /// use vulkan::vk;
+    /// use vulkan_alloc::descriptor_heap::{HeapLayoutError, SamplerHeapPlan};
+    ///
+    /// # fn main() -> Result<(), HeapLayoutError> {
+    /// let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+    ///     .sampler_heap_alignment(64)
+    ///     .max_sampler_heap_size(1 << 20)
+    ///     .min_sampler_heap_reserved_range(96 * 32)
+    ///     .min_sampler_heap_reserved_range_with_embedded(2048 * 32)
+    ///     .sampler_descriptor_size(32)
+    ///     .sampler_descriptor_alignment(32);
+    ///
+    /// let mut plan = SamplerHeapPlan::with_embedded_samplers(&properties);
+    /// plan.samplers(16)?;
+    /// let layout = plan.finish()?;
+    /// assert_eq!(layout.reserved_offset, 16 * 32);
+    /// assert_eq!(layout.reserved_size, 2048 * 32);
+    /// assert_eq!(layout.size, 16 * 32 + 2048 * 32);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_embedded_samplers(
+        properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>,
+    ) -> Self {
+        let mut plan = Self::new(properties);
+        plan.plan.reserved_size = plan
+            .plan
+            .reserved_size
+            .max(properties.min_sampler_heap_reserved_range_with_embedded);
+        plan
     }
 
     /// Adds a run of `count` sampler descriptors, indexed in units of
@@ -765,6 +814,81 @@ mod tests {
         assert_eq!(layout.reserved_size, 96);
         assert_eq!(layout.size, 216);
         assert_eq!(layout.alignment, 64);
+    }
+
+    #[test]
+    fn embedded_samplers_reserve_the_larger_of_the_two_reserved_ranges() {
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut reserved = |choice: u64| match choice % 5 {
+            0 => 0,
+            1 => next() % 4096,
+            2 => next() % (1 << 20),
+            3 => next(),
+            _ => u64::MAX - next() % 4096,
+        };
+        let mut outcomes = [0; 3];
+        for case in 0..5000_u64 {
+            let without = reserved(case);
+            let with = reserved(case / 5);
+            let sampler_size = 1 << (case % 7);
+            let alignment = (sampler_size >> (case % 3)).max(1);
+            let count = (case * 7919 % 4001) as u32;
+            let max = match case % 3 {
+                0 => u64::MAX,
+                1 => 1 << 20,
+                _ => 1 << 16,
+            };
+            let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+                .sampler_heap_alignment(64)
+                .max_sampler_heap_size(max)
+                .min_sampler_heap_reserved_range(without)
+                .min_sampler_heap_reserved_range_with_embedded(with)
+                .sampler_descriptor_size(sampler_size)
+                .sampler_descriptor_alignment(alignment);
+            let context = format!(
+                "{count} samplers of {sampler_size} bytes, reserved {without} or {with} \
+                 with embedded samplers, at most {max} bytes"
+            );
+            let samplers_end = u128::from(count) * u128::from(sampler_size);
+            let expected = |reserved_size: u64| {
+                let size = samplers_end + u128::from(reserved_size);
+                match u64::try_from(size) {
+                    Err(_) => Err(HeapLayoutError::Overflow),
+                    Ok(size) if size > max => Err(HeapLayoutError::TooLarge { size, max }),
+                    Ok(size) => Ok((samplers_end as u64, reserved_size, size)),
+                }
+            };
+            let layout = |mut plan: SamplerHeapPlan| {
+                plan.samplers(count).unwrap();
+                plan.finish().map(|layout| {
+                    assert_eq!(layout.alignment, 64);
+                    (layout.reserved_offset, layout.reserved_size, layout.size)
+                })
+            };
+
+            let embedded = layout(SamplerHeapPlan::with_embedded_samplers(&properties));
+            outcomes[match embedded {
+                Ok(_) => 0,
+                Err(HeapLayoutError::TooLarge { .. }) => 1,
+                Err(_) => 2,
+            }] += 1;
+            assert_eq!(embedded, expected(without.max(with)), "{context}");
+            assert_eq!(
+                layout(SamplerHeapPlan::new(&properties)),
+                expected(without),
+                "{context}"
+            );
+        }
+        assert!(
+            outcomes.iter().all(|&count| count > 100),
+            "every outcome is exercised: {outcomes:?}"
+        );
     }
 
     #[test]
