@@ -33,12 +33,12 @@ impl<'a> MappedAllocation<'a> {
     }
 
     pub unsafe fn as_bytes(&self) -> &[u8] {
-        unsafe { core::slice::from_raw_parts(self.ptr.as_ptr(), self.allocation.size() as usize) }
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.allocation.size() as usize) }
     }
 
     pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe {
-            core::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.allocation.size() as usize)
+            std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.allocation.size() as usize)
         }
     }
 

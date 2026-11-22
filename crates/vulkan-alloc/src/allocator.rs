@@ -39,8 +39,6 @@ impl<'a> AllocatorCreateDesc<'a> {
     }
 }
 
-unsafe impl Send for Allocator {}
-
 pub struct Allocator {
     device: Device,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
@@ -49,6 +47,8 @@ pub struct Allocator {
     block_size: u64,
     memory_types: Vec<MemoryTypeAllocator>,
 }
+
+unsafe impl Send for Allocator {}
 
 impl Allocator {
     pub fn new(desc: AllocatorCreateDesc<'_>) -> Self {
@@ -292,7 +292,7 @@ impl Allocator {
             .ok_or(AllocationError::NoCompatibleMemoryType)?;
         requirements.alignment = effective_alignment(
             flags,
-            requirements.alignment.max(1),
+            requirements.alignment,
             self.non_coherent_atom_size,
             self.buffer_image_granularity,
             resource_class,
