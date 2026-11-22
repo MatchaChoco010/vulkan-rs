@@ -16,6 +16,7 @@ pub const USER_FACING_CRATES: &[&str] = &["crates/vulkan", "crates/vulkan-alloc"
 pub enum DocComments {
     Forbidden,
     OnPublicApi { module_is_public: bool },
+    InTestModule,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,7 +57,7 @@ pub struct Checked {
 
 pub fn check_source(source: &str, doc_comments: DocComments) -> syn::Result<Checked> {
     let comments = find_comments(source);
-    let module_is_public = match doc_comments {
+    let (module_is_public, module_is_test_only) = match doc_comments {
         DocComments::Forbidden => {
             return Ok(Checked {
                 violations: comments
@@ -74,9 +75,10 @@ pub fn check_source(source: &str, doc_comments: DocComments) -> syn::Result<Chec
                 child_modules: Vec::new(),
             });
         }
-        DocComments::OnPublicApi { module_is_public } => module_is_public,
+        DocComments::OnPublicApi { module_is_public } => (module_is_public, false),
+        DocComments::InTestModule => (false, true),
     };
-    let api = api::public_api(source, module_is_public)?;
+    let api = api::public_api(source, module_is_public, module_is_test_only)?;
     let violations = comments
         .into_iter()
         .filter_map(|comment| {
@@ -494,6 +496,7 @@ mod tests {
             inline_parents: inline_parents.iter().map(|s| s.to_string()).collect(),
             path_attribute: path.map(str::to_string),
             public,
+            test_only: false,
         };
         assert_eq!(
             check_source(source, PUBLIC_MODULE).unwrap().child_modules,
@@ -530,5 +533,165 @@ mod tests {
     #[test]
     fn hidden_and_alias_attributes_are_not_doc_comments() {
         assert_allowed("#[doc(hidden)]\nfn f() {\n    #[doc(alias = \"g\")]\n    struct S;\n}\n");
+    }
+
+    #[test]
+    fn doc_comments_on_public_items_of_a_test_module_violate() {
+        let source = "//! Crate.\n#[cfg(test)]\nmod tests {\n    /// Helper.\n    pub fn helper() {}\n    /// A test.\n    #[test]\n    pub fn a_test() {}\n}\n";
+        assert_every_line_violates(source, &[4, 6], Rule::NoDocCommentsOffThePublicApi);
+    }
+
+    const TEST_ONLY_CFGS: [&str; 8] = [
+        "#[cfg(test)]",
+        "#[r#cfg(r#test)]",
+        "#[cfg(all(test, feature = \"x\"))]",
+        "#[cfg(all(feature = \"x\", test))]",
+        "#[cfg(all(unix, all(not(windows), test)))]",
+        "#[cfg(any(test, all(test, unix)))]",
+        "#[cfg(test)] #[cfg(feature = \"x\")]",
+        "#[cfg(feature = \"x\")] #[cfg(all(test))]",
+    ];
+
+    const CFGS_THAT_DO_NOT_REQUIRE_TEST: [&str; 10] = [
+        "",
+        "#[cfg(any(test, feature = \"x\"))]",
+        "#[cfg(not(test))]",
+        "#[cfg(feature = \"test\")]",
+        "#[cfg(testing)]",
+        "#[cfg(any())]",
+        "#[cfg(all())]",
+        "#[cfg_attr(test, inline)]",
+        "#[cfg(any(unix, all(test, windows)))]",
+        "#[inline]",
+    ];
+
+    const ITEMS_WITH_A_CFG: [&str; 8] = [
+        concat!(
+            "/// Off.\n",
+            "CFG\n",
+            "pub mod tests {\n",
+            "    //! Off.\n",
+            "    /// Off.\n",
+            "    pub fn helper() {}\n",
+            "    /// Off.\n",
+            "    pub mod nested {\n",
+            "        /// Off.\n",
+            "        pub struct Deep {\n",
+            "            /// Off.\n",
+            "            pub a: u32,\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+            "/// On.\n",
+            "pub fn after() {}\n",
+        ),
+        concat!(
+            "/// On.\n",
+            "pub mod outer {\n",
+            "    CFG\n",
+            "    mod tests {\n",
+            "        /// Off.\n",
+            "        pub fn helper() {}\n",
+            "    }\n",
+            "    /// On.\n",
+            "    pub fn after() {}\n",
+            "}\n",
+        ),
+        concat!(
+            "/// Off.\n",
+            "CFG\n",
+            "pub struct S {\n",
+            "    /// Off.\n",
+            "    pub a: u32,\n",
+            "}\n",
+        ),
+        concat!("/// Off.\n", "CFG\n", "pub const C: u32 = 1;\n"),
+        concat!(
+            "/// On.\n",
+            "pub struct S;\n",
+            "impl S {\n",
+            "    /// Off.\n",
+            "    CFG\n",
+            "    pub fn helper(&self) {}\n",
+            "    /// On.\n",
+            "    pub fn method(&self) {}\n",
+            "}\n",
+        ),
+        concat!(
+            "CFG\n",
+            "impl S {\n",
+            "    /// Off.\n",
+            "    pub const C: u32 = 1;\n",
+            "    /// Off.\n",
+            "    pub fn helper(&self) {}\n",
+            "}\n",
+        ),
+        concat!(
+            "/// On.\n",
+            "pub enum E {\n",
+            "    /// Off.\n",
+            "    CFG\n",
+            "    V {\n",
+            "        /// Off.\n",
+            "        f: u32,\n",
+            "    },\n",
+            "    /// On.\n",
+            "    W,\n",
+            "}\n",
+        ),
+        concat!(
+            "/// Off.\n",
+            "CFG\n",
+            "pub trait T {\n",
+            "    /// Off.\n",
+            "    fn helper(&self);\n",
+            "}\n",
+        ),
+    ];
+
+    fn lines_containing(source: &str, text: &str) -> Vec<usize> {
+        source
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| line.contains(text))
+            .map(|(index, _)| index + 1)
+            .collect()
+    }
+
+    #[test]
+    fn doc_comments_inside_code_that_requires_cfg_test_violate() {
+        for item in ITEMS_WITH_A_CFG {
+            for cfg in TEST_ONLY_CFGS {
+                let source = item.replace("CFG", cfg);
+                assert_every_line_violates(
+                    &source,
+                    &lines_containing(&source, "Off."),
+                    Rule::NoDocCommentsOffThePublicApi,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn doc_comments_on_public_items_under_a_cfg_that_does_not_require_test_are_allowed() {
+        for item in ITEMS_WITH_A_CFG {
+            for cfg in CFGS_THAT_DO_NOT_REQUIRE_TEST {
+                assert_allowed(&item.replace("CFG", cfg));
+            }
+        }
+    }
+
+    #[test]
+    fn doc_comments_on_test_functions_violate_whatever_their_visibility() {
+        for test in ["#[test]", "#[r#test]"] {
+            for cfg in ["", "#[cfg(test)]", "#[cfg(any(test, unix))]"] {
+                for visibility in ["pub ", "", "pub(crate) "] {
+                    let source = format!(
+                        "/// A test.\n{cfg}\n{test}\n{visibility}fn a_test() {{}}\n/// A function.\npub fn f() {{}}\n"
+                    );
+                    assert_every_line_violates(&source, &[1], Rule::NoDocCommentsOffThePublicApi);
+                }
+            }
+        }
     }
 }

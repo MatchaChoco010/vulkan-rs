@@ -3,10 +3,12 @@ use std::ops::Range;
 
 use proc_macro2::Span;
 use ra_ap_rustc_lexer::strip_shebang;
+use syn::ext::IdentExt;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{
-    AttrStyle, Attribute, Expr, Fields, ForeignItem, ImplItem, Item, Lit, Meta, TraitItem,
-    Visibility,
+    AttrStyle, Attribute, Expr, Fields, ForeignItem, ImplItem, Item, Lit, Meta, Path, Token,
+    TraitItem, Visibility,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -15,6 +17,7 @@ pub struct ChildModule {
     pub inline_parents: Vec<String>,
     pub path_attribute: Option<String>,
     pub public: bool,
+    pub test_only: bool,
 }
 
 #[derive(Debug, Default)]
@@ -24,7 +27,11 @@ pub struct PublicApi {
     pub child_modules: Vec<ChildModule>,
 }
 
-pub fn public_api(source: &str, module_is_public: bool) -> syn::Result<PublicApi> {
+pub fn public_api(
+    source: &str,
+    module_is_public: bool,
+    module_is_test_only: bool,
+) -> syn::Result<PublicApi> {
     let without_bom = source.strip_prefix('\u{feff}').unwrap_or(source);
     let body = &without_bom[strip_shebang(without_bom).unwrap_or(0)..];
     let file = syn::parse_str::<syn::File>(body)?;
@@ -32,6 +39,7 @@ pub fn public_api(source: &str, module_is_public: bool) -> syn::Result<PublicApi
         api: PublicApi::default(),
         shift: source.len() - body.len(),
         inline_parents: Vec::new(),
+        inside_test_code: module_is_test_only || is_test_only(&file.attrs),
     };
     walker.document_if(module_is_public, &file.attrs);
     walker.items(&file.items, module_is_public);
@@ -42,10 +50,67 @@ struct Walker {
     api: PublicApi,
     shift: usize,
     inline_parents: Vec<String>,
+    inside_test_code: bool,
 }
 
 fn is_pub(visibility: &Visibility) -> bool {
     matches!(visibility, Visibility::Public(_))
+}
+
+fn is_named(path: &Path, name: &str) -> bool {
+    path.get_ident().is_some_and(|ident| ident.unraw() == name)
+}
+
+fn is_test_only(attributes: &[Attribute]) -> bool {
+    attributes.iter().any(|attribute| {
+        is_named(attribute.path(), "test")
+            || is_named(attribute.path(), "cfg")
+                && attribute
+                    .parse_args::<Meta>()
+                    .is_ok_and(|predicate| requires_test(&predicate))
+    })
+}
+
+fn requires_test(predicate: &Meta) -> bool {
+    match predicate {
+        Meta::Path(path) => is_named(path, "test"),
+        Meta::List(list) => {
+            let Ok(operands) =
+                list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
+            else {
+                return false;
+            };
+            if is_named(&list.path, "all") {
+                operands.iter().any(requires_test)
+            } else if is_named(&list.path, "any") {
+                !operands.is_empty() && operands.iter().all(requires_test)
+            } else {
+                false
+            }
+        }
+        Meta::NameValue(_) => false,
+    }
+}
+
+fn attributes(item: &Item) -> &[Attribute] {
+    match item {
+        Item::Const(item) => &item.attrs,
+        Item::Enum(item) => &item.attrs,
+        Item::ExternCrate(item) => &item.attrs,
+        Item::Fn(item) => &item.attrs,
+        Item::ForeignMod(item) => &item.attrs,
+        Item::Impl(item) => &item.attrs,
+        Item::Macro(item) => &item.attrs,
+        Item::Mod(item) => &item.attrs,
+        Item::Static(item) => &item.attrs,
+        Item::Struct(item) => &item.attrs,
+        Item::Trait(item) => &item.attrs,
+        Item::TraitAlias(item) => &item.attrs,
+        Item::Type(item) => &item.attrs,
+        Item::Union(item) => &item.attrs,
+        Item::Use(item) => &item.attrs,
+        _ => &[],
+    }
 }
 
 fn string_value(attribute: &Attribute, name: &str) -> Option<String> {
@@ -71,7 +136,7 @@ impl Walker {
     }
 
     fn document_if(&mut self, condition: bool, attributes: &[Attribute]) {
-        if !condition {
+        if !condition || self.inside_test_code || is_test_only(attributes) {
             return;
         }
         for attribute in attributes {
@@ -101,6 +166,13 @@ impl Walker {
     }
 
     fn item(&mut self, item: &Item, module_is_public: bool) {
+        let enclosing = self.inside_test_code;
+        self.inside_test_code = enclosing || is_test_only(attributes(item));
+        self.item_contents(item, module_is_public);
+        self.inside_test_code = enclosing;
+    }
+
+    fn item_contents(&mut self, item: &Item, module_is_public: bool) {
         match item {
             Item::Const(item) => {
                 self.document_if(is_pub(&item.vis), &item.attrs);
@@ -131,7 +203,11 @@ impl Walker {
                 self.document_if(public, &item.attrs);
                 for variant in &item.variants {
                     self.document_if(public, &variant.attrs);
-                    self.fields(&variant.fields, public, true);
+                    self.fields(
+                        &variant.fields,
+                        public && !is_test_only(&variant.attrs),
+                        true,
+                    );
                     if let Some((_, discriminant)) = &variant.discriminant {
                         self.code(discriminant.span());
                     }
@@ -201,7 +277,8 @@ impl Walker {
                             .attrs
                             .iter()
                             .find_map(|attribute| string_value(attribute, "path")),
-                        public,
+                        public: public && !self.inside_test_code,
+                        test_only: self.inside_test_code,
                     }),
                 }
             }
