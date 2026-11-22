@@ -604,7 +604,9 @@ impl Drop for Allocator {
         if live.is_empty() {
             return;
         }
-        let bytes = live.iter().map(|allocation| allocation.size).sum::<u64>();
+        let bytes = live.iter().fold(0u64, |bytes, allocation| {
+            bytes.saturating_add(allocation.size)
+        });
         log::error!(
             "vulkan_alloc::Allocator dropped with {} live allocation(s), {bytes} bytes; \
              their VkDeviceMemory is not freed",
