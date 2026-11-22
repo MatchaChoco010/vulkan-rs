@@ -1153,4 +1153,91 @@ mod tests {
             ..Default::default()
         })
     }
+
+    fn fault_reports(codes: &[&str]) -> Registry {
+        let mut ir = only(result_command(
+            "vkGetDeviceFaultReportsKHR",
+            codes,
+            vec![
+                field("device", "VkDevice"),
+                field("timeout", "uint64_t"),
+                field("pFaultCounts", "uint32_t*"),
+                optional(counted(
+                    "pFaultInfo",
+                    "VkDeviceFaultInfoKHR*",
+                    "pFaultCounts",
+                )),
+            ],
+        ));
+        ir.structs.push(tagged(
+            "VkDeviceFaultInfoKHR",
+            "VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_KHR",
+            vec![field("flags", "uint32_t")],
+        ));
+        ir
+    }
+
+    #[test]
+    fn enumerations_with_other_success_codes_leave_the_array_to_the_caller() {
+        for codes in [
+            &["VK_SUCCESS", "VK_INCOMPLETE", "VK_TIMEOUT"][..],
+            &["VK_SUCCESS", "VK_TIMEOUT"],
+            &["VK_SUCCESS", "VK_INCOMPLETE", "VK_NOT_READY"],
+        ] {
+            assert_generated_alike_under_other_names(
+                &fault_reports(codes),
+                &Docs::default(),
+                "vkGetDeviceFaultReportsKHR",
+                &["vkWaitForEventsNV"],
+                "pub unsafe fn get_device_fault_reports_khr(&self, timeout: u64, fault_counts: &mut u32, mut fault_info: Option<&mut [DeviceFaultInfoKHR<'_>]>) -> crate::vk::Result<VkResult> {",
+            );
+            assert!(!generate(&fault_reports(codes)).contains("loop {"));
+        }
+        assert!(
+            generate(&fault_reports(&["VK_SUCCESS", "VK_INCOMPLETE"])).contains(
+                "pub unsafe fn get_device_fault_reports_khr(&self, timeout: u64) -> crate::vk::Result<Vec<DeviceFaultInfoKHR<'static>>> { unsafe { loop {"
+            ),
+            "an enumeration that only reports completeness keeps the loop"
+        );
+    }
+
+    #[test]
+    fn the_enumerations_of_the_registry_loop_only_when_they_report_nothing_but_completeness() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut left_to_the_caller = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            let params = model.dispatch(c).explicit_params(c);
+            let enumerates = params
+                .last()
+                .is_some_and(|last| shape::is_enumeration(params, last));
+            if !enumerates {
+                continue;
+            }
+            let codes = c
+                .success_codes
+                .iter()
+                .map(|code| model.result_code(code))
+                .collect::<BTreeSet<_>>();
+            if codes
+                .iter()
+                .all(|code| ["VK_SUCCESS", "VK_INCOMPLETE"].contains(code))
+            {
+                continue;
+            }
+            assert!(
+                !out.contains("loop {") && !out.contains("-> crate::vk::Result<Vec<"),
+                "{} enumerates although it reports {codes:?}",
+                c.name
+            );
+            left_to_the_caller.insert(c.name.as_str());
+        }
+        assert_eq!(
+            left_to_the_caller,
+            BTreeSet::from(["vkGetDeviceFaultReportsKHR"])
+        );
+    }
 }

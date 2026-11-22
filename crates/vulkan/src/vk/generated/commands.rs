@@ -60934,10 +60934,11 @@ impl crate::Device {
     ///
     /// Calls the C command
     /// [`vkGetDeviceFaultReportsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDeviceFaultReportsKHR.html)
-    /// through [`Self::get_device_fault_reports_khr_raw`], which describes the parameters. Asks the
-    /// command for the number of elements and then for the elements, again for as long as it
-    /// reports `VK_INCOMPLETE`, and returns what it writes to `pFaultInfo`. The command is provided
-    /// by [`VK_KHR_device_fault`](KHR_DEVICE_FAULT_NAME).
+    /// through [`Self::get_device_fault_reports_khr_raw`], which describes the parameters. Returns
+    /// the result code of the command when it is not an error, which the registry lists as
+    /// [`VK_SUCCESS`](VkResult::SUCCESS), [`VK_INCOMPLETE`](VkResult::INCOMPLETE) or
+    /// [`VK_TIMEOUT`](VkResult::TIMEOUT). The command is provided by
+    /// [`VK_KHR_device_fault`](KHR_DEVICE_FAULT_NAME).
     ///
     /// # Errors
     ///
@@ -60958,23 +60959,19 @@ impl crate::Device {
     pub unsafe fn get_device_fault_reports_khr(
         &self,
         timeout: u64,
-    ) -> crate::vk::Result<Vec<DeviceFaultInfoKHR<'static>>> {
+        fault_counts: &mut u32,
+        mut fault_info: Option<&mut [DeviceFaultInfoKHR<'_>]>,
+    ) -> crate::vk::Result<VkResult> {
         unsafe {
-            loop {
-                let mut count: u32 = 0;
-                self.get_device_fault_reports_khr_raw(timeout, &mut count, core::ptr::null_mut())
-                    .into_result()?;
-                let mut values: Vec<DeviceFaultInfoKHR<'static>> =
-                    alloc::vec![Default::default(); count as usize];
-                let result =
-                    self.get_device_fault_reports_khr_raw(timeout, &mut count, values.as_mut_ptr());
-                if result == VkResult::INCOMPLETE {
-                    continue;
-                }
-                result.into_result()?;
-                values.truncate(count as usize);
-                return Ok(values);
-            }
+            let result = self.get_device_fault_reports_khr_raw(
+                timeout,
+                core::ptr::from_mut(&mut *fault_counts),
+                fault_info
+                    .as_mut()
+                    .map_or(core::ptr::null_mut(), |x| x.as_mut_ptr()),
+            );
+            result.into_result()?;
+            Ok(result)
         }
     }
     /// Query supported peer memory features of a device.
