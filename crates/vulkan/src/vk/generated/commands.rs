@@ -44639,20 +44639,25 @@ impl crate::Device {
     /// [`vkAcquireNextImage2KHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkAcquireNextImage2KHR.html)
     /// through [`Self::acquire_next_image2_khr_raw`], which describes the parameters. Returns what
     /// the command writes to `pImageIndex` and whether the command reported `VK_SUBOPTIMAL_KHR`, or
-    /// `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`. The command is provided by
-    /// [`VK_KHR_swapchain`](KHR_SWAPCHAIN_NAME) or [`VK_KHR_device_group`](KHR_DEVICE_GROUP_NAME).
+    /// `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`. Any other result is returned
+    /// as the error. The command is provided by [`VK_KHR_swapchain`](KHR_SWAPCHAIN_NAME) or
+    /// [`VK_KHR_device_group`](KHR_DEVICE_GROUP_NAME).
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
-    /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
+    /// Returns the result code of the command if it is any code other than
+    /// [`VK_SUCCESS`](VkResult::SUCCESS), [`VK_TIMEOUT`](VkResult::TIMEOUT),
+    /// [`VK_NOT_READY`](VkResult::NOT_READY) and [`VK_SUBOPTIMAL_KHR`](VkResult::SUBOPTIMAL_KHR),
+    /// the success codes that the registry lists for the command, whether the code is negative or
+    /// not. The registry lists [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST),
     /// [`VK_ERROR_OUT_OF_DATE_KHR`](VkResult::ERROR_OUT_OF_DATE_KHR),
     /// [`VK_ERROR_SURFACE_LOST_KHR`](VkResult::ERROR_SURFACE_LOST_KHR),
     /// [`VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT`](VkResult::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT),
-    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) and
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) as the error codes of the
+    /// command.
     ///
     /// # Safety
     ///
@@ -44683,20 +44688,24 @@ impl crate::Device {
     /// [`vkAcquireNextImageKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkAcquireNextImageKHR.html)
     /// through [`Self::acquire_next_image_khr_raw`], which describes the parameters. Returns what
     /// the command writes to `pImageIndex` and whether the command reported `VK_SUBOPTIMAL_KHR`, or
-    /// `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`. The command is provided by
-    /// [`VK_KHR_swapchain`](KHR_SWAPCHAIN_NAME).
+    /// `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`. Any other result is returned
+    /// as the error. The command is provided by [`VK_KHR_swapchain`](KHR_SWAPCHAIN_NAME).
     ///
     /// # Errors
     ///
-    /// Returns the result code of the command if it is an error. The registry lists
-    /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
+    /// Returns the result code of the command if it is any code other than
+    /// [`VK_SUCCESS`](VkResult::SUCCESS), [`VK_TIMEOUT`](VkResult::TIMEOUT),
+    /// [`VK_NOT_READY`](VkResult::NOT_READY) and [`VK_SUBOPTIMAL_KHR`](VkResult::SUBOPTIMAL_KHR),
+    /// the success codes that the registry lists for the command, whether the code is negative or
+    /// not. The registry lists [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
     /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
     /// [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST),
     /// [`VK_ERROR_OUT_OF_DATE_KHR`](VkResult::ERROR_OUT_OF_DATE_KHR),
     /// [`VK_ERROR_SURFACE_LOST_KHR`](VkResult::ERROR_SURFACE_LOST_KHR),
     /// [`VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT`](VkResult::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT),
-    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
-    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) and
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) as the error codes of the
+    /// command.
     ///
     /// # Safety
     ///

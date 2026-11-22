@@ -14,6 +14,12 @@ use core::fmt;
 /// negative, such as `VK_TIMEOUT` of `vkAcquireProfilingLockKHR`, which means that the
 /// lock was not acquired. The `# Errors` section of a wrapper names such codes.
 ///
+/// The wrappers that return `Result<Option<(T, bool)>>`, those of `vkAcquireNextImageKHR`
+/// and `vkAcquireNextImage2KHR`, are stricter: they return every code other than the
+/// success codes that the registry lists for their command as the error, whether it is
+/// negative or not. Which of those success codes the command returned tells whether it
+/// wrote the value, so the wrapper has no value to return for any other code.
+///
 /// `VkResult` implements `Display` (its name) and `core::error::Error`, so `?` converts
 /// it into other error types such as `Box<dyn Error>`.
 pub type Result<T> = core::result::Result<T, VkResult>;
