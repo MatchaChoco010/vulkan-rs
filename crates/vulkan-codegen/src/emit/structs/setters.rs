@@ -1,3 +1,4 @@
+use super::unmarked_arrays::{self, Length, length_that_no_member_stores};
 use super::{MethodNames, field_link, member_origin};
 use crate::docs::{Block, Doc};
 use crate::emit::Borrow;
@@ -101,7 +102,11 @@ impl<'s> CountedArrays<'s> {
 }
 
 fn count_member<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
-    let len = m.len.as_deref()?;
+    let len = match unmarked_arrays::length(s, m) {
+        Some(Length::InMember(count)) => count,
+        Some(Length::NotInTheStructure(_)) => return None,
+        None => m.len.as_deref()?,
+    };
     let count = match len.split_once(',') {
         Some((count, "1")) => count,
         Some(_) => return None,
@@ -300,7 +305,7 @@ fn pointer_setter(
             model.member_ty(m, "'a"),
             format!("self.{field} = value;"),
         )
-    } else if let Some(len) = m.len.as_deref() {
+    } else if let Some(length) = length_that_no_member_stores(s, m) {
         let null = if m.optional {
             "The registry marks the member as optional, and the specification describes what a null pointer means for it."
         } else {
@@ -308,7 +313,7 @@ fn pointer_setter(
         };
         (
             Doc::new().text(format!(
-                "Sets {} to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API expects `{len}` elements. {null}",
+                "Sets {} to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: {length}. {null}",
                 field_link(&m.name)
             )),
             borrow.reference("'a", &format!("[{pointee}]")),
@@ -691,7 +696,7 @@ mod tests {
                 let ty = CType::of(m);
                 let is_uncounted_slice = ty.depth() == 1
                     && !ty.is_array()
-                    && m.len.is_some()
+                    && length_that_no_member_stores(s, m).is_some()
                     && count_member(s, m).is_none()
                     && m.len.as_deref() != Some(SPIRV_WORD_COUNT)
                     && !(m.null_terminated && ty.base == "char")
@@ -712,9 +717,12 @@ mod tests {
         assert_eq!(
             uncounted,
             [
+                "StdVideoEncodeAV1PictureInfo::pBufferRemovalTimes",
                 "StdVideoH265HrdParameters::pSubLayerHrdParametersNal",
                 "StdVideoH265HrdParameters::pSubLayerHrdParametersVcl",
                 "VkAccelerationStructureVersionInfoKHR::pVersionData",
+                "VkDeviceFaultInfoEXT::pAddressInfos",
+                "VkDeviceFaultInfoEXT::pVendorInfos",
                 "VkMicromapVersionInfoEXT::pVersionData",
                 "VkPipelineMultisampleStateCreateInfo::pSampleMask",
             ]
