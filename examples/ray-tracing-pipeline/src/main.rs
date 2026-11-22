@@ -26,9 +26,10 @@ use vulkan::{Device, vk};
 use vulkan_alloc::MemoryLocation;
 use vulkan_alloc::descriptor_heap::{DescriptorSlots, ResourceHeapPlan};
 use vulkan_example_common::commands::submit_and_wait;
+use vulkan_example_common::device::Gpu;
 use vulkan_example_common::memory::{
-    Buffer, MappedBuffer, buffer_device_address, create_aligned_buffer, create_allocator,
-    create_mapped_buffer, read_buffer, write_buffer,
+    Buffer, MappedBuffer, buffer_device_address, create_aligned_buffer, create_mapped_buffer,
+    read_buffer, write_buffer,
 };
 use vulkan_example_common::output::{output_path, write_ppm};
 
@@ -74,13 +75,13 @@ unsafe fn run() -> Result<()> {
             );
             return Ok(());
         };
+        // Every object below is destroyed when it goes out of scope, in the reverse order
+        // of creation, also when a step fails and `?` returns early.
         let device = &gpu.device;
-        let mut allocator = create_allocator(&gpu);
 
-        let scene = acceleration::build_scene(&gpu, &mut allocator, properties.scratch_alignment)?;
+        let scene = acceleration::build_scene(&gpu, properties.scratch_alignment)?;
         let output = create_aligned_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "output",
             OUTPUT_BYTES,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -88,7 +89,7 @@ unsafe fn run() -> Result<()> {
             properties.storage_buffer_alignment,
         )?;
         // Cleared, so that a pixel that the shader did not write cannot pass the check.
-        write_buffer(&mut allocator, &output, &vec![0; OUTPUT_BYTES as usize])?;
+        write_buffer(&gpu, &output, &vec![0; OUTPUT_BYTES as usize])?;
 
         // The resource heap: one descriptor for the acceleration structure and one for
         // the output buffer, then the range the implementation reserves for itself.
@@ -109,22 +110,21 @@ unsafe fn run() -> Result<()> {
             );
         }
         let mut heap = create_mapped_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "resource heap",
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             layout.alignment,
         )?;
-        write_descriptors(device, &mut heap, &slots, &scene.top_level, &output)?;
+        write_descriptors(&gpu, &mut heap, &slots, &scene.top_level, &output)?;
 
-        let pipeline = pipeline::create_pipeline(device, &slots)?;
+        let pipeline = pipeline::create_pipeline(&gpu, &slots)?;
         let shader_binding_table =
-            ShaderBindingTable::new(device, &mut allocator, pipeline, &properties.ray_tracing)?;
+            ShaderBindingTable::new(&gpu, *pipeline, &properties.ray_tracing)?;
 
         let push_data = PushData {
-            vertex_address: buffer_device_address(device, scene.vertex_buffer.buffer),
-            index_address: buffer_device_address(device, scene.index_buffer.buffer),
+            vertex_address: buffer_device_address(&gpu, scene.vertex_buffer.buffer),
+            index_address: buffer_device_address(&gpu, scene.index_buffer.buffer),
             camera_origin: CAMERA_ORIGIN.to_array(),
             _pad0: 0.0,
             world_from_clip: world_from_clip().to_cols_array_2d(),
@@ -137,11 +137,11 @@ unsafe fn run() -> Result<()> {
             device.cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
-                pipeline,
+                *pipeline,
             );
             device.cmd_bind_resource_heap_ext(
                 command_buffer,
-                &layout.bind_info(buffer_device_address(device, heap.buffer))?,
+                &layout.bind_info(buffer_device_address(&gpu, heap.buffer))?,
             );
             device.cmd_push_data_ext(
                 command_buffer,
@@ -164,7 +164,7 @@ unsafe fn run() -> Result<()> {
             Ok(())
         })?;
 
-        let pixels = read_buffer(&mut allocator, &output)?
+        let pixels = read_buffer(&gpu, &output)?
             .chunks_exact(4)
             .map(|word| u32::from_ne_bytes([word[0], word[1], word[2], word[3]]))
             .collect::<Vec<_>>();
@@ -177,14 +177,6 @@ unsafe fn run() -> Result<()> {
             pixels.iter().map(|&pixel| rgb(pixel)),
         )?;
         println!("wrote {}", path.display());
-
-        shader_binding_table.destroy(device, &mut allocator)?;
-        device.destroy_pipeline(pipeline, None);
-        heap.destroy(device, &mut allocator)?;
-        output.destroy(device, &mut allocator)?;
-        scene.destroy(device, &mut allocator)?;
-        drop(allocator);
-        gpu.destroy();
         Ok(())
     }
 }
@@ -207,7 +199,7 @@ fn world_from_clip() -> Mat4 {
 /// Writes the descriptors of the top level and the output buffer into the heap, one
 /// per slot.
 unsafe fn write_descriptors(
-    device: &Device,
+    gpu: &Gpu,
     heap: &mut MappedBuffer,
     slots: &DescriptorSlots,
     top_level: &AccelerationStructure,
@@ -215,10 +207,10 @@ unsafe fn write_descriptors(
 ) -> Result<()> {
     unsafe {
         let top_level_range = vk::DeviceAddressRangeKHR::default()
-            .address(top_level.device_address(device))
+            .address(top_level.device_address(&gpu.device))
             .size(top_level.size);
         let output_range = vk::DeviceAddressRangeKHR::default()
-            .address(buffer_device_address(device, output.buffer))
+            .address(buffer_device_address(gpu, output.buffer))
             .size(output.size);
         let descriptors = [
             vk::ResourceDescriptorInfoEXT::default()
@@ -235,7 +227,8 @@ unsafe fn write_descriptors(
             .context("the resource heap is smaller than its layout")?
             .map(|bytes| vk::HostAddressRangeEXT::default().address(bytes))
             .collect::<Vec<_>>();
-        device.write_resource_descriptors_ext(&descriptors, &destinations)?;
+        gpu.device
+            .write_resource_descriptors_ext(&descriptors, &destinations)?;
         Ok(())
     }
 }

@@ -3,9 +3,9 @@
 use anyhow::{Result, bail};
 use std::os::fd::{FromRawFd, OwnedFd};
 use vulkan::{Device, vk};
-use vulkan_alloc::{AllocationCreateDesc, AllocationScheme, Allocator, MemoryLocation};
+use vulkan_alloc::{AllocationCreateDesc, AllocationScheme, MemoryLocation};
 use vulkan_example_common::commands::submit_and_wait;
-use vulkan_example_common::device::Gpu;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::image::{create_image_view, subresource_range};
 use vulkan_example_common::memory::Image;
 
@@ -13,13 +13,13 @@ use crate::{BACKGROUND, DMA_BUF, Dmabuf, FORMAT, HEIGHT, Plane, RECTANGLE, WIDTH
 
 /// Renders into a new image with a DRM format modifier and exports its memory. The image
 /// stays the client's: it must outlive every use of the dma-buf.
-pub unsafe fn render_and_export(gpu: &Gpu, allocator: &mut Allocator) -> Result<(Image, Dmabuf)> {
+pub unsafe fn render_and_export(gpu: &Gpu) -> Result<(Owned<Image>, Dmabuf)> {
     unsafe {
         let device = &gpu.device;
-        let image = create_exportable_image(gpu, allocator)?;
-        let view = create_image_view(device, image.image, FORMAT, vk::ImageAspectFlags::COLOR)?;
+        let image = create_exportable_image(gpu)?;
+        let view = create_image_view(gpu, image.image, FORMAT, vk::ImageAspectFlags::COLOR)?;
         submit_and_wait(gpu, |command_buffer| {
-            draw(device, command_buffer, image.image, view);
+            draw(device, command_buffer, image.image, *view);
 
             // Hand the image to whoever imports it: release ownership to the foreign
             // queue family. The importer acquires it with the mirror image of this.
@@ -38,7 +38,7 @@ pub unsafe fn render_and_export(gpu: &Gpu, allocator: &mut Allocator) -> Result<
             );
             Ok(())
         })?;
-        device.destroy_image_view(view, None);
+        drop(view);
 
         let dmabuf = describe(device, &image)?;
         Ok((image, dmabuf))
@@ -49,7 +49,7 @@ pub unsafe fn render_and_export(gpu: &Gpu, allocator: &mut Allocator) -> Result<
 /// what we need and that use one memory plane, in memory of its own that can be exported
 /// as a dma-buf. A real client would intersect the modifiers with the ones the
 /// compositor advertises.
-unsafe fn create_exportable_image(gpu: &Gpu, allocator: &mut Allocator) -> Result<Image> {
+unsafe fn create_exportable_image(gpu: &Gpu) -> Result<Owned<Image>> {
     unsafe {
         let device = &gpu.device;
         let needed =
@@ -82,21 +82,30 @@ unsafe fn create_exportable_image(gpu: &Gpu, allocator: &mut Allocator) -> Resul
             .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC)
             .push_next(&mut modifier_list)
             .push_next(&mut external);
-        let image = device.create_image(&image_info, None)?;
+        let image = gpu.own(device.create_image(&image_info, None)?);
 
         // vulkan-alloc gives exportable memory its own VkDeviceMemory, so the exported
         // fd refers to this image only.
-        let allocation = allocator.allocate(AllocationCreateDesc {
+        let allocation = gpu.allocator().allocate(AllocationCreateDesc {
             name: Some("exported image"),
-            requirements: device.get_image_memory_requirements(image),
+            requirements: device.get_image_memory_requirements(*image),
             location: MemoryLocation::GpuOnly,
             linear: false,
             memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
             export_handle_types: DMA_BUF.into(),
-            allocation_scheme: AllocationScheme::DedicatedImage(image),
+            allocation_scheme: AllocationScheme::DedicatedImage(*image),
         })?;
-        device.bind_image_memory(image, allocation.memory(), allocation.offset())?;
-        Ok(Image { image, allocation })
+        // From here the image and its memory go together.
+        let image = gpu.own(Image {
+            image: image.into_inner(),
+            allocation,
+        });
+        device.bind_image_memory(
+            image.image,
+            image.allocation.memory(),
+            image.allocation.offset(),
+        )?;
+        Ok(image)
     }
 }
 

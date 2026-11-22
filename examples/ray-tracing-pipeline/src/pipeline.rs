@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
-use vulkan::{Device, vk};
+use vulkan::vk;
 use vulkan_alloc::descriptor_heap::DescriptorSlots;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::pipeline::single_pipeline;
 use vulkan_example_common::shader::create_shader_module;
 
@@ -10,11 +11,11 @@ pub const GROUP_COUNT: u32 = 3;
 
 /// A ray tracing pipeline without a pipeline layout. `slots` is where, in the resource
 /// heap, the descriptors of bindings 0 and 1 are.
-pub unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Result<vk::Pipeline> {
+pub unsafe fn create_pipeline(gpu: &Gpu, slots: &DescriptorSlots) -> Result<Owned<vk::Pipeline>> {
     unsafe {
-        let raygen = create_shader_module(device, include_bytes!("shaders/raygen.spv"))?;
-        let miss = create_shader_module(device, include_bytes!("shaders/miss.spv"))?;
-        let closest_hit = create_shader_module(device, include_bytes!("shaders/closesthit.spv"))?;
+        let raygen = create_shader_module(gpu, include_bytes!("shaders/raygen.spv"))?;
+        let miss = create_shader_module(gpu, include_bytes!("shaders/miss.spv"))?;
+        let closest_hit = create_shader_module(gpu, include_bytes!("shaders/closesthit.spv"))?;
 
         // Only the ray generation shader uses resources. Each of its bindings is the
         // descriptor at a fixed byte offset of the resource heap.
@@ -47,16 +48,16 @@ pub unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Resul
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::RAYGEN_KHR)
-                .module(raygen)
+                .module(*raygen)
                 .name(c"raygenMain")
                 .push_next(&mut raygen_mappings),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::MISS_KHR)
-                .module(miss)
+                .module(*miss)
                 .name(c"missMain"),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::CLOSEST_HIT_KHR)
-                .module(closest_hit)
+                .module(*closest_hit)
                 .name(c"closestHitMain"),
         ];
 
@@ -95,15 +96,12 @@ pub unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Resul
             .groups(&groups)
             .max_pipeline_ray_recursion_depth(1)
             .push_next(&mut flags);
-        let result = device.create_ray_tracing_pipelines_khr(
+        let result = gpu.device.create_ray_tracing_pipelines_khr(
             vk::DeferredOperationKHR::null(),
             vk::PipelineCache::null(),
             &[info],
             None,
         );
-        for module in [closest_hit, miss, raygen] {
-            device.destroy_shader_module(module, None);
-        }
-        single_pipeline(device, result)
+        single_pipeline(gpu, result)
     }
 }

@@ -23,9 +23,7 @@ use anyhow::{Context, Result, bail};
 use vulkan::vk;
 use vulkan_alloc::descriptor_heap::ResourceHeapPlan;
 use vulkan_example_common::commands::submit_and_wait;
-use vulkan_example_common::memory::{
-    buffer_device_address, create_allocator, create_mapped_buffer,
-};
+use vulkan_example_common::memory::{buffer_device_address, create_mapped_buffer};
 use vulkan_example_common::output::{output_path, write_ppm};
 
 const ELEMENTS: usize = 64;
@@ -43,13 +41,13 @@ unsafe fn run() -> Result<()> {
             println!("skipped: no Vulkan 1.4 device with VK_EXT_descriptor_heap");
             return Ok(());
         };
+        // Every object below is destroyed when it goes out of scope, in the reverse order
+        // of creation, also when a step fails and `?` returns early.
         let device = &gpu.device;
-        let mut allocator = create_allocator(&gpu);
 
         // The data the shader works on.
         let mut values = create_mapped_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "values",
             BUFFER_BYTES,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -65,8 +63,7 @@ unsafe fn run() -> Result<()> {
         let slots = plan.buffers(1)?;
         let layout = plan.finish()?;
         let mut heap = create_mapped_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "resource heap",
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -75,7 +72,7 @@ unsafe fn run() -> Result<()> {
 
         // Vulkan writes the descriptor into host memory that we hand it as a slice.
         let range = vk::DeviceAddressRangeKHR::default()
-            .address(buffer_device_address(device, values.buffer))
+            .address(buffer_device_address(&gpu, values.buffer))
             .size(BUFFER_BYTES);
         let descriptor = vk::ResourceDescriptorInfoEXT::default()
             .ty(vk::DescriptorType::STORAGE_BUFFER)
@@ -89,7 +86,7 @@ unsafe fn run() -> Result<()> {
         )?;
 
         let heap_offset = slots.offset(0).context("slot 0 exists")?;
-        let pipeline = pipeline::create_pipeline(device, u32::try_from(heap_offset)?)?;
+        let pipeline = pipeline::create_pipeline(&gpu, u32::try_from(heap_offset)?)?;
 
         submit_and_wait(&gpu, |command_buffer| {
             // What the host wrote becomes visible to the shader: the heap as descriptors,
@@ -118,10 +115,10 @@ unsafe fn run() -> Result<()> {
                 &vk::DependencyInfo::default().buffer_memory_barriers(&host_to_shader),
             );
 
-            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline);
+            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::COMPUTE, *pipeline);
             device.cmd_bind_resource_heap_ext(
                 command_buffer,
-                &layout.bind_info(buffer_device_address(device, heap.buffer))?,
+                &layout.bind_info(buffer_device_address(&gpu, heap.buffer))?,
             );
             device.cmd_dispatch(command_buffer, 1, 1, 1);
 
@@ -153,12 +150,6 @@ unsafe fn run() -> Result<()> {
         let path = output_path("compute_buffer.ppm")?;
         write_image(&path, &results)?;
         println!("all {ELEMENTS} values match; wrote {}", path.display());
-
-        device.destroy_pipeline(pipeline, None);
-        heap.destroy(device, &mut allocator)?;
-        values.destroy(device, &mut allocator)?;
-        drop(allocator);
-        gpu.destroy();
         Ok(())
     }
 }

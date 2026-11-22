@@ -1,8 +1,8 @@
 use anyhow::{Result, anyhow};
-use vulkan::{Device, vk};
+use vulkan::vk;
 
 use super::swapchain::Swapchain;
-use crate::device::Gpu;
+use crate::device::{Gpu, Owned};
 
 /// What [`Frame::draw`] found out about the swapchain.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -15,28 +15,34 @@ pub enum SwapchainStatus {
 
 /// The command buffer and synchronization of the one frame in flight: each frame waits
 /// until the device has finished the one before.
+///
+/// The device must be done with the frame before it is dropped.
 pub struct Frame {
-    command_pool: vk::CommandPool,
+    /// Kept for the command buffer, which destroying the pool frees.
+    _command_pool: Owned<vk::CommandPool>,
     command_buffer: vk::CommandBuffer,
     /// Signaled by the acquire, waited on by the submission.
-    image_available: vk::Semaphore,
+    image_available: Owned<vk::Semaphore>,
     /// Signaled by the submission, waited on before the command buffer is recorded again.
-    in_flight: vk::Fence,
+    in_flight: Owned<vk::Fence>,
 }
 
 impl Frame {
-    pub unsafe fn new(device: &Device, queue_family: u32) -> Result<Self> {
+    pub unsafe fn new(gpu: &Gpu) -> Result<Self> {
         unsafe {
-            let command_pool = device.create_command_pool(
-                &vk::CommandPoolCreateInfo::default()
-                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                    .queue_family_index(queue_family),
-                None,
-            )?;
+            let device = &gpu.device;
+            let command_pool = gpu.own(
+                device.create_command_pool(
+                    &vk::CommandPoolCreateInfo::default()
+                        .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+                        .queue_family_index(gpu.queue_family),
+                    None,
+                )?,
+            );
             let command_buffer = device
                 .allocate_command_buffers(
                     &vk::CommandBufferAllocateInfo::default()
-                        .command_pool(command_pool)
+                        .command_pool(*command_pool)
                         .level(vk::CommandBufferLevel::PRIMARY)
                         .command_buffer_count(1),
                 )?
@@ -44,15 +50,15 @@ impl Frame {
                 .next()
                 .ok_or_else(|| anyhow!("vkAllocateCommandBuffers returned no command buffer"))?;
             let image_available =
-                device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?;
+                gpu.own(device.create_semaphore(&vk::SemaphoreCreateInfo::default(), None)?);
             // Signaled, so that the first frame does not wait for a submission that never
             // happened.
-            let in_flight = device.create_fence(
+            let in_flight = gpu.own(device.create_fence(
                 &vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED),
                 None,
-            )?;
+            )?);
             Ok(Self {
-                command_pool,
+                _command_pool: command_pool,
                 command_buffer,
                 image_available,
                 in_flight,
@@ -76,12 +82,12 @@ impl Frame {
     ) -> Result<SwapchainStatus> {
         unsafe {
             let device = &gpu.device;
-            device.wait_for_fences(&[self.in_flight], true, u64::MAX)?;
+            device.wait_for_fences(&[*self.in_flight], true, u64::MAX)?;
 
             let (image_index, acquired_suboptimal) = match device.acquire_next_image_khr(
                 swapchain.handle,
                 u64::MAX,
-                self.image_available,
+                *self.image_available,
                 vk::Fence::null(),
             ) {
                 Ok(Some(acquired)) => acquired,
@@ -91,10 +97,10 @@ impl Frame {
                 }
                 Err(err) => return Err(anyhow!("vkAcquireNextImageKHR failed: {err:?}")),
             };
-            let render_finished = swapchain.render_finished[image_index as usize];
+            let render_finished = *swapchain.render_finished[image_index as usize];
             // Reset only once an image was acquired: a frame that returns before the
             // submission leaves the fence signaled for the next one.
-            device.reset_fences(&[self.in_flight])?;
+            device.reset_fences(&[*self.in_flight])?;
 
             device
                 .reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::empty())?;
@@ -105,7 +111,7 @@ impl Frame {
             record(self.command_buffer, image_index as usize);
             device.end_command_buffer(self.command_buffer)?;
 
-            let wait_semaphores = [self.image_available];
+            let wait_semaphores = [*self.image_available];
             let wait_stages = [wait_stage];
             let command_buffers = [self.command_buffer];
             let signal_semaphores = [render_finished];
@@ -114,7 +120,7 @@ impl Frame {
                 .wait_dst_stage_mask(&wait_stages)
                 .command_buffers(&command_buffers)
                 .signal_semaphores(&signal_semaphores);
-            device.queue_submit(gpu.queue, &[submit], self.in_flight)?;
+            device.queue_submit(gpu.queue, &[submit], *self.in_flight)?;
 
             let swapchains = [swapchain.handle];
             let image_indices = [image_index];
@@ -132,16 +138,6 @@ impl Frame {
                 }
                 Err(err) => Err(anyhow!("vkQueuePresentKHR failed: {err:?}")),
             }
-        }
-    }
-
-    /// The device must be done with the frame.
-    pub unsafe fn destroy(self, device: &Device) {
-        unsafe {
-            device.destroy_semaphore(self.image_available, None);
-            device.destroy_fence(self.in_flight, None);
-            // Destroying the pool also frees the command buffer.
-            device.destroy_command_pool(self.command_pool, None);
         }
     }
 }

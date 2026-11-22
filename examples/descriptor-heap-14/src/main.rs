@@ -25,8 +25,7 @@ use vulkan::vk;
 use vulkan_alloc::MemoryLocation;
 use vulkan_example_common::commands::submit_and_wait;
 use vulkan_example_common::memory::{
-    buffer_device_address, create_allocator, create_buffer, read_buffer, upload_aligned_buffer,
-    upload_buffer,
+    buffer_device_address, create_buffer, read_buffer, upload_aligned_buffer, upload_buffer,
 };
 use vulkan_example_common::output::{output_path, write_rgba_ppm};
 
@@ -61,8 +60,9 @@ unsafe fn run() -> Result<()> {
             println!("skipped: no Vulkan 1.4 graphics device with VK_EXT_descriptor_heap");
             return Ok(());
         };
+        // Every object below is destroyed when it goes out of scope, in the reverse order
+        // of creation, also when a step fails and `?` returns early.
         let device = &gpu.device;
-        let mut allocator = create_allocator(&gpu);
 
         // Where each descriptor goes, and so the handle that the shader uses for it.
         let resource_layout =
@@ -72,21 +72,18 @@ unsafe fn run() -> Result<()> {
         let mesh = scene::sphere(24, 16);
         let vertex_buffer = upload_buffer(
             &gpu,
-            &mut allocator,
             "sphere vertices",
             vk::BufferUsageFlags::VERTEX_BUFFER,
             bytemuck::cast_slice(&mesh.vertices),
         )?;
         let index_buffer = upload_buffer(
             &gpu,
-            &mut allocator,
             "sphere indices",
             vk::BufferUsageFlags::INDEX_BUFFER,
             bytemuck::cast_slice(&mesh.indices),
         )?;
         let instance_buffer = upload_buffer(
             &gpu,
-            &mut allocator,
             "sphere instances",
             vk::BufferUsageFlags::VERTEX_BUFFER,
             bytemuck::cast_slice(&scene::INSTANCES),
@@ -95,7 +92,6 @@ unsafe fn run() -> Result<()> {
             scene::materials([resource_layout.texture(0)?, resource_layout.texture(1)?]);
         let material_buffer = upload_aligned_buffer(
             &gpu,
-            &mut allocator,
             "materials",
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             bytemuck::cast_slice(&materials),
@@ -106,7 +102,6 @@ unsafe fn run() -> Result<()> {
             .map(|checker| {
                 texture::create_texture(
                     &gpu,
-                    &mut allocator,
                     checker.name,
                     scene::TEXTURE_EXTENT,
                     &checker.texels(),
@@ -114,33 +109,26 @@ unsafe fn run() -> Result<()> {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        let mut resource_heap = heaps::create_heap(
-            device,
-            &mut allocator,
-            "resource heap",
-            &resource_layout.heap,
-        )?;
+        let mut resource_heap = heaps::create_heap(&gpu, "resource heap", &resource_layout.heap)?;
         heaps::write_resource_descriptors(
-            device,
+            &gpu,
             &mut resource_heap,
             &resource_layout,
             &material_buffer,
             &textures,
         )?;
-        let mut sampler_heap =
-            heaps::create_heap(device, &mut allocator, "sampler heap", &sampler_layout.heap)?;
+        let mut sampler_heap = heaps::create_heap(&gpu, "sampler heap", &sampler_layout.heap)?;
         heaps::write_sampler_descriptor(device, &mut sampler_heap, &sampler_layout)?;
 
-        let targets = targets::RenderTargets::new(device, &mut allocator)?;
+        let targets = targets::RenderTargets::new(&gpu)?;
         let readback = create_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "readback",
             IMAGE_BYTES,
             vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuToCpu,
         )?;
-        let pipeline = pipeline::create_pipeline(device)?;
+        let pipeline = pipeline::create_pipeline(&gpu)?;
 
         let push_data = PushData {
             clip_from_world: scene::clip_from_world().to_cols_array_2d(),
@@ -150,18 +138,18 @@ unsafe fn run() -> Result<()> {
         submit_and_wait(&gpu, |command_buffer| {
             heaps::make_host_writes_visible(device, command_buffer, &resource_heap, &sampler_heap);
             targets.begin_rendering(device, command_buffer);
-            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
+            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline);
             device.cmd_bind_resource_heap_ext(
                 command_buffer,
                 &resource_layout
                     .heap
-                    .bind_info(buffer_device_address(device, resource_heap.buffer))?,
+                    .bind_info(buffer_device_address(&gpu, resource_heap.buffer))?,
             );
             device.cmd_bind_sampler_heap_ext(
                 command_buffer,
                 &sampler_layout
                     .heap
-                    .bind_info(buffer_device_address(device, sampler_heap.buffer))?,
+                    .bind_info(buffer_device_address(&gpu, sampler_heap.buffer))?,
             );
             device.cmd_push_data_ext(
                 command_buffer,
@@ -194,30 +182,11 @@ unsafe fn run() -> Result<()> {
             Ok(())
         })?;
 
-        let rgba = read_buffer(&mut allocator, &readback)?;
+        let rgba = read_buffer(&gpu, &readback)?;
         verify(&rgba)?;
         let path = output_path("descriptor_heap_spheres.ppm")?;
         write_rgba_ppm(&path, EXTENT.width, EXTENT.height, &rgba)?;
         println!("wrote {}", path.display());
-
-        device.destroy_pipeline(pipeline, None);
-        readback.destroy(device, &mut allocator)?;
-        targets.destroy(device, &mut allocator)?;
-        sampler_heap.destroy(device, &mut allocator)?;
-        resource_heap.destroy(device, &mut allocator)?;
-        for texture in textures.into_iter().rev() {
-            texture.destroy(device, &mut allocator)?;
-        }
-        for buffer in [
-            material_buffer,
-            instance_buffer,
-            index_buffer,
-            vertex_buffer,
-        ] {
-            buffer.destroy(device, &mut allocator)?;
-        }
-        drop(allocator);
-        gpu.destroy();
         Ok(())
     }
 }

@@ -1,15 +1,45 @@
 use anyhow::Result;
 use std::ffi::{CStr, c_void};
+use std::ops::Deref;
+use std::rc::Rc;
 use vulkan::{Entry, Instance, vk};
 
 use crate::extensions::has_extension;
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
-/// The messenger that prints what the validation layer reports. Without the layer it
-/// holds no messenger.
-pub struct DebugMessenger {
-    handle: vk::DebugUtilsMessengerEXT,
+/// An instance and the messenger that prints what the validation layer reports, which
+/// is null without the layer. The clones share them, and the last one to go destroys the
+/// messenger and then the instance. Whatever is created from the instance keeps a clone,
+/// so the instance outlives it.
+#[derive(Clone)]
+pub struct VulkanInstance(Rc<InstanceOwner>);
+
+struct InstanceOwner {
+    instance: Instance,
+    messenger: vk::DebugUtilsMessengerEXT,
+}
+
+impl Deref for VulkanInstance {
+    type Target = Instance;
+
+    fn deref(&self) -> &Instance {
+        &self.0.instance
+    }
+}
+
+impl Drop for InstanceOwner {
+    fn drop(&mut self) {
+        // SAFETY: every object created from the instance holds a clone of the
+        // , so all of them are gone.
+        unsafe {
+            if !self.messenger.is_null() {
+                self.instance
+                    .destroy_debug_utils_messenger_ext(self.messenger, None);
+            }
+            self.instance.destroy_instance(None);
+        }
+    }
 }
 
 /// Creates an instance with `extensions` enabled.
@@ -22,7 +52,7 @@ pub unsafe fn create_instance(
     application_name: &CStr,
     api_version: u32,
     extensions: &[&CStr],
-) -> Result<(Instance, DebugMessenger)> {
+) -> Result<VulkanInstance> {
     unsafe {
         let has_validation = entry
             .enumerate_instance_layer_properties()?
@@ -46,16 +76,18 @@ pub unsafe fn create_instance(
         let application = vk::ApplicationInfo::default()
             .application_name(application_name)
             .api_version(api_version);
-        let instance = entry.create_instance(
-            &vk::InstanceCreateInfo::default()
-                .application_info(&application)
-                .enabled_layer_names(&layer_names)
-                .enabled_extension_names(&extension_names),
-            None,
-        )?;
-
-        let handle = if debug {
-            instance.create_debug_utils_messenger_ext(
+        let mut owner = InstanceOwner {
+            instance: entry.create_instance(
+                &vk::InstanceCreateInfo::default()
+                    .application_info(&application)
+                    .enabled_layer_names(&layer_names)
+                    .enabled_extension_names(&extension_names),
+                None,
+            )?,
+            messenger: vk::DebugUtilsMessengerEXT::null(),
+        };
+        if debug {
+            owner.messenger = owner.instance.create_debug_utils_messenger_ext(
                 &vk::DebugUtilsMessengerCreateInfoEXT::default()
                     .message_severity(
                         vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
@@ -68,22 +100,9 @@ pub unsafe fn create_instance(
                     )
                     .pfn_user_callback(Some(print_message)),
                 None,
-            )?
-        } else {
-            vk::DebugUtilsMessengerEXT::null()
-        };
-        Ok((instance, DebugMessenger { handle }))
-    }
-}
-
-/// Destroys the messenger, then the instance. Everything created from the instance must
-/// be destroyed already.
-pub unsafe fn destroy_instance(instance: Instance, messenger: DebugMessenger) {
-    unsafe {
-        if !messenger.handle.is_null() {
-            instance.destroy_debug_utils_messenger_ext(messenger.handle, None);
+            )?;
         }
-        instance.destroy_instance(None);
+        Ok(VulkanInstance(Rc::new(owner)))
     }
 }
 

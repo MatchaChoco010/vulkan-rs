@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::mem::{offset_of, size_of};
-use vulkan::{Device, vk};
+use vulkan::vk;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::pipeline::single_pipeline;
 use vulkan_example_common::shader::create_shader_module;
 
@@ -17,7 +18,7 @@ pub struct Vertex {
 
 /// One color attachment that is cleared, drawn to, and left in `TRANSFER_SRC_OPTIMAL`
 /// for the copy to the host.
-pub unsafe fn create_render_pass(device: &Device, format: vk::Format) -> Result<vk::RenderPass> {
+pub unsafe fn create_render_pass(gpu: &Gpu, format: vk::Format) -> Result<Owned<vk::RenderPass>> {
     let attachments = [vk::AttachmentDescription::default()
         .format(format)
         .samples(vk::SampleCountFlagBits::_1)
@@ -45,15 +46,15 @@ pub unsafe fn create_render_pass(device: &Device, format: vk::Format) -> Result<
         .attachments(&attachments)
         .subpasses(&subpasses)
         .dependencies(&dependencies);
-    Ok(unsafe { device.create_render_pass(&info, None) }?)
+    unsafe { Ok(gpu.own(gpu.device.create_render_pass(&info, None)?)) }
 }
 
 pub unsafe fn create_framebuffer(
-    device: &Device,
+    gpu: &Gpu,
     render_pass: vk::RenderPass,
     image_view: vk::ImageView,
     extent: vk::Extent2D,
-) -> Result<vk::Framebuffer> {
+) -> Result<Owned<vk::Framebuffer>> {
     let attachments = [image_view];
     let info = vk::FramebufferCreateInfo::default()
         .render_pass(render_pass)
@@ -61,28 +62,28 @@ pub unsafe fn create_framebuffer(
         .width(extent.width)
         .height(extent.height)
         .layers(1);
-    Ok(unsafe { device.create_framebuffer(&info, None) }?)
+    unsafe { Ok(gpu.own(gpu.device.create_framebuffer(&info, None)?)) }
 }
 
 /// A pipeline that reads [`Vertex`] from vertex buffer binding 0 and draws to the whole
 /// of an `extent`-sized framebuffer.
 pub unsafe fn create_pipeline(
-    device: &Device,
+    gpu: &Gpu,
     render_pass: vk::RenderPass,
     layout: vk::PipelineLayout,
     extent: vk::Extent2D,
-) -> Result<vk::Pipeline> {
+) -> Result<Owned<vk::Pipeline>> {
     unsafe {
-        let vertex = create_shader_module(device, VERTEX_SHADER)?;
-        let fragment = create_shader_module(device, FRAGMENT_SHADER)?;
+        let vertex = create_shader_module(gpu, VERTEX_SHADER)?;
+        let fragment = create_shader_module(gpu, FRAGMENT_SHADER)?;
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::VERTEX)
-                .module(vertex)
+                .module(*vertex)
                 .name(c"main"),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::FRAGMENT)
-                .module(fragment)
+                .module(*fragment)
                 .name(c"main"),
         ];
         let vertex_bindings = [vk::VertexInputBindingDescription::default()
@@ -140,9 +141,9 @@ pub unsafe fn create_pipeline(
             .color_blend_state(&color_blend)
             .layout(layout)
             .render_pass(render_pass);
-        let result = device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
-        device.destroy_shader_module(vertex, None);
-        device.destroy_shader_module(fragment, None);
-        single_pipeline(device, result)
+        let result = gpu
+            .device
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
+        single_pipeline(gpu, result)
     }
 }

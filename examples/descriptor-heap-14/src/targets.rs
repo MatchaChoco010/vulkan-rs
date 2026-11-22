@@ -1,6 +1,6 @@
 use anyhow::Result;
 use vulkan::{Device, vk};
-use vulkan_alloc::Allocator;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::image::{
     copy_image_to_buffer, create_image_view, image_info_2d, subresource_range,
 };
@@ -8,20 +8,20 @@ use vulkan_example_common::memory::{Buffer, Image, create_image};
 
 use crate::{COLOR_FORMAT, DEPTH_FORMAT, EXTENT};
 
-/// The color and depth images that the spheres are drawn into.
+/// The color and depth images that the spheres are drawn into. The fields drop in
+/// order, each view before its image.
 pub struct RenderTargets {
-    color: Image,
-    color_view: vk::ImageView,
-    depth: Image,
-    depth_view: vk::ImageView,
+    depth_view: Owned<vk::ImageView>,
+    depth: Owned<Image>,
+    color_view: Owned<vk::ImageView>,
+    color: Owned<Image>,
 }
 
 impl RenderTargets {
-    pub unsafe fn new(device: &Device, allocator: &mut Allocator) -> Result<Self> {
+    pub unsafe fn new(gpu: &Gpu) -> Result<Self> {
         unsafe {
             let color = create_image(
-                device,
-                allocator,
+                gpu,
                 "color target",
                 &image_info_2d(
                     COLOR_FORMAT,
@@ -29,15 +29,10 @@ impl RenderTargets {
                     vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
                 ),
             )?;
-            let color_view = create_image_view(
-                device,
-                color.image,
-                COLOR_FORMAT,
-                vk::ImageAspectFlags::COLOR,
-            )?;
+            let color_view =
+                create_image_view(gpu, color.image, COLOR_FORMAT, vk::ImageAspectFlags::COLOR)?;
             let depth = create_image(
-                device,
-                allocator,
+                gpu,
                 "depth target",
                 &image_info_2d(
                     DEPTH_FORMAT,
@@ -45,17 +40,13 @@ impl RenderTargets {
                     vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
                 ),
             )?;
-            let depth_view = create_image_view(
-                device,
-                depth.image,
-                DEPTH_FORMAT,
-                vk::ImageAspectFlags::DEPTH,
-            )?;
+            let depth_view =
+                create_image_view(gpu, depth.image, DEPTH_FORMAT, vk::ImageAspectFlags::DEPTH)?;
             Ok(Self {
-                color,
-                color_view,
-                depth,
                 depth_view,
+                depth,
+                color_view,
+                color,
             })
         }
     }
@@ -86,7 +77,7 @@ impl RenderTargets {
                 .subresource_range(subresource_range(vk::ImageAspectFlags::DEPTH)),
         ];
         let color_attachments = [vk::RenderingAttachmentInfo::default()
-            .image_view(self.color_view)
+            .image_view(*self.color_view)
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -94,7 +85,7 @@ impl RenderTargets {
                 0.02, 0.03, 0.05, 1.0,
             ])))];
         let depth_attachment = vk::RenderingAttachmentInfo::default()
-            .image_view(self.depth_view)
+            .image_view(*self.depth_view)
             .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -157,15 +148,6 @@ impl RenderTargets {
                 command_buffer,
                 &vk::DependencyInfo::default().buffer_memory_barriers(&to_host),
             );
-        }
-    }
-
-    pub unsafe fn destroy(self, device: &Device, allocator: &mut Allocator) -> Result<()> {
-        unsafe {
-            device.destroy_image_view(self.depth_view, None);
-            self.depth.destroy(device, allocator)?;
-            device.destroy_image_view(self.color_view, None);
-            self.color.destroy(device, allocator)
         }
     }
 }

@@ -3,7 +3,7 @@ use vulkan::{Entry, vk};
 use vulkan_example_common::device::{
     Gpu, find_queue_family, pick_physical_device, supports_extensions,
 };
-use vulkan_example_common::instance::{create_instance, destroy_instance};
+use vulkan_example_common::instance::create_instance;
 
 /// What the example needs to know about the device to lay out its buffers.
 pub struct Properties {
@@ -24,8 +24,7 @@ pub unsafe fn create_gpu() -> Result<Option<(Gpu, Properties)>> {
         let entry = Entry::load()?;
         // With Vulkan 1.4 in use, VK_EXT_descriptor_heap needs no other extension.
         let api_version = vk::API_VERSION_1_4;
-        let (instance, messenger) =
-            create_instance(&entry, c"ray-tracing-pipeline", api_version, &[])?;
+        let instance = create_instance(&entry, c"ray-tracing-pipeline", api_version, &[])?;
 
         // VK_KHR_acceleration_structure needs VK_KHR_deferred_host_operations even
         // though the example defers no operation.
@@ -64,7 +63,6 @@ pub unsafe fn create_gpu() -> Result<Option<(Gpu, Properties)>> {
             ))
         })?;
         let Some((physical_device, queue_family)) = selected else {
-            destroy_instance(instance, messenger);
             return Ok(None);
         };
         let properties = instance.get_physical_device_properties(physical_device);
@@ -100,8 +98,10 @@ pub unsafe fn create_gpu() -> Result<Option<(Gpu, Properties)>> {
         // Core since 1.2; a Vulkan 1.4 device has it.
         let mut vulkan12 =
             vk::PhysicalDeviceVulkan12Features::default().buffer_device_address(true);
-        let device = instance.create_device(
+        let gpu = Gpu::create(
+            instance,
             physical_device,
+            queue_family,
             &vk::DeviceCreateInfo::default()
                 .queue_create_infos(&queues)
                 .enabled_extension_names(&extension_names)
@@ -110,9 +110,7 @@ pub unsafe fn create_gpu() -> Result<Option<(Gpu, Properties)>> {
                 .push_next(&mut ray_tracing_features)
                 .push_next(&mut heap_features)
                 .push_next(&mut vulkan12),
-            None,
         )?;
-        let gpu = Gpu::new(instance, messenger, physical_device, device, queue_family);
         Ok(Some((
             gpu,
             Properties {

@@ -18,15 +18,16 @@ mod pipeline;
 use anyhow::{Context, Result, bail};
 use glam::{Mat4, Vec3};
 use vulkan::{Device, vk};
+use vulkan_alloc::MemoryLocation;
 use vulkan_alloc::descriptor_heap::ResourceHeapPlan;
-use vulkan_alloc::{Allocator, MemoryLocation};
 use vulkan_example_common::commands::submit_and_wait;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::image::{
     copy_image_to_buffer, create_image_view, image_info_2d, subresource_range,
 };
 use vulkan_example_common::memory::{
-    Buffer, MappedBuffer, buffer_device_address, create_allocator, create_buffer, create_image,
-    create_mapped_buffer, read_buffer,
+    Buffer, MappedBuffer, buffer_device_address, create_buffer, create_image, create_mapped_buffer,
+    read_buffer,
 };
 use vulkan_example_common::output::{output_path, write_rgba_ppm};
 
@@ -102,24 +103,18 @@ unsafe fn run() -> Result<()> {
             println!("skipped: no Vulkan 1.4 device with mesh shaders and descriptor heaps");
             return Ok(());
         };
+        // Every object below is destroyed when it goes out of scope, in the reverse order
+        // of creation, also when a step fails and `?` returns early.
         let device = &gpu.device;
-        let mut allocator = create_allocator(&gpu);
 
         let alignment = properties.storage_buffer_alignment;
         let geometry = [
-            create_storage_buffer(
-                device,
-                &mut allocator,
-                "vertices",
-                &MESH_VERTICES,
-                alignment,
-            )?,
-            create_storage_buffer(device, &mut allocator, "indices", &MESH_INDICES, alignment)?,
-            create_storage_buffer(device, &mut allocator, "draws", &MESH_DRAWS, alignment)?,
+            create_storage_buffer(&gpu, "vertices", &MESH_VERTICES, alignment)?,
+            create_storage_buffer(&gpu, "indices", &MESH_INDICES, alignment)?,
+            create_storage_buffer(&gpu, "draws", &MESH_DRAWS, alignment)?,
         ];
         let readback = create_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "readback",
             IMAGE_BYTES,
             vk::BufferUsageFlags::TRANSFER_DST,
@@ -132,8 +127,7 @@ unsafe fn run() -> Result<()> {
         let slots = plan.buffers(3)?;
         let layout = plan.finish()?;
         let mut heap = create_mapped_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "resource heap",
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -143,7 +137,7 @@ unsafe fn run() -> Result<()> {
         // One call writes all three descriptors, each into its own slot of the heap.
         let ranges = geometry.each_ref().map(|buffer| {
             vk::DeviceAddressRangeKHR::default()
-                .address(buffer_device_address(device, buffer.buffer))
+                .address(buffer_device_address(&gpu, buffer.buffer))
                 .size(buffer.size)
         });
         let descriptors = ranges.each_ref().map(|range| {
@@ -159,8 +153,7 @@ unsafe fn run() -> Result<()> {
         device.write_resource_descriptors_ext(&descriptors, &destinations)?;
 
         let image = create_image(
-            device,
-            &mut allocator,
+            &gpu,
             "color image",
             &image_info_2d(
                 FORMAT,
@@ -168,9 +161,8 @@ unsafe fn run() -> Result<()> {
                 vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
             ),
         )?;
-        let image_view =
-            create_image_view(device, image.image, FORMAT, vk::ImageAspectFlags::COLOR)?;
-        let pipeline = pipeline::create_pipeline(device, &slots)?;
+        let image_view = create_image_view(&gpu, image.image, FORMAT, vk::ImageAspectFlags::COLOR)?;
+        let pipeline = pipeline::create_pipeline(&gpu, &slots)?;
 
         // The matrix for the shader, and which descriptors the draw uses.
         let push_data = PushData {
@@ -185,7 +177,7 @@ unsafe fn run() -> Result<()> {
             prepare_color_attachment(device, command_buffer, image.image);
 
             let attachments = [vk::RenderingAttachmentInfo::default()
-                .image_view(image_view)
+                .image_view(*image_view)
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -199,10 +191,10 @@ unsafe fn run() -> Result<()> {
                     .layer_count(1)
                     .color_attachments(&attachments),
             );
-            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
+            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline);
             device.cmd_bind_resource_heap_ext(
                 command_buffer,
-                &layout.bind_info(buffer_device_address(device, heap.buffer))?,
+                &layout.bind_info(buffer_device_address(&gpu, heap.buffer))?,
             );
             device.cmd_push_data_ext(
                 command_buffer,
@@ -217,22 +209,11 @@ unsafe fn run() -> Result<()> {
             Ok(())
         })?;
 
-        let pixels = read_buffer(&mut allocator, &readback)?;
+        let pixels = read_buffer(&gpu, &readback)?;
         verify(&pixels)?;
         let path = output_path("mesh_shader.ppm")?;
         write_rgba_ppm(&path, EXTENT.width, EXTENT.height, &pixels)?;
         println!("wrote {}", path.display());
-
-        device.destroy_pipeline(pipeline, None);
-        device.destroy_image_view(image_view, None);
-        image.destroy(device, &mut allocator)?;
-        heap.destroy(device, &mut allocator)?;
-        readback.destroy(device, &mut allocator)?;
-        for buffer in geometry.into_iter().rev() {
-            buffer.destroy(device, &mut allocator)?;
-        }
-        drop(allocator);
-        gpu.destroy();
         Ok(())
     }
 }
@@ -250,17 +231,15 @@ fn clip_from_world() -> Mat4 {
 
 /// A storage buffer holding `values`, addressable by a descriptor in the heap.
 unsafe fn create_storage_buffer<T: bytemuck::Pod>(
-    device: &Device,
-    allocator: &mut Allocator,
+    gpu: &Gpu,
     name: &str,
     values: &[T],
     alignment: u64,
-) -> Result<MappedBuffer> {
+) -> Result<Owned<MappedBuffer>> {
     unsafe {
         let data: &[u8] = bytemuck::cast_slice(values);
         let mut buffer = create_mapped_buffer(
-            device,
-            allocator,
+            gpu,
             name,
             data.len() as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -277,7 +256,7 @@ unsafe fn make_host_writes_visible(
     device: &Device,
     command_buffer: vk::CommandBuffer,
     heap: &MappedBuffer,
-    geometry: &[MappedBuffer],
+    geometry: &[Owned<MappedBuffer>],
 ) {
     let host_write = |buffer: &MappedBuffer, access| {
         vk::BufferMemoryBarrier2::default()

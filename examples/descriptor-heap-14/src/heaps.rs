@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use vulkan::{Device, vk};
-use vulkan_alloc::Allocator;
 use vulkan_alloc::descriptor_heap::{
     DescriptorHeapLayout, DescriptorSlots, ResourceHeapPlan, SamplerHeapPlan,
 };
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::image::subresource_range;
 use vulkan_example_common::memory::{
     Buffer, Image, MappedBuffer, buffer_device_address, create_mapped_buffer,
@@ -91,15 +91,13 @@ impl SamplerHeapLayout {
 /// A heap is a buffer that the host writes descriptors into, here mapped for as long
 /// as it lives.
 pub unsafe fn create_heap(
-    device: &Device,
-    allocator: &mut Allocator,
+    gpu: &Gpu,
     name: &str,
     layout: &DescriptorHeapLayout,
-) -> Result<MappedBuffer> {
+) -> Result<Owned<MappedBuffer>> {
     unsafe {
         create_mapped_buffer(
-            device,
-            allocator,
+            gpu,
             name,
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -110,15 +108,15 @@ pub unsafe fn create_heap(
 
 /// Writes the material buffer and the textures into their slots of the resource heap.
 pub unsafe fn write_resource_descriptors(
-    device: &Device,
+    gpu: &Gpu,
     heap: &mut MappedBuffer,
     layout: &ResourceHeapLayout,
     materials: &Buffer,
-    textures: &[Image],
+    textures: &[Owned<Image>],
 ) -> Result<()> {
     unsafe {
         let material_range = vk::DeviceAddressRangeKHR::default()
-            .address(buffer_device_address(device, materials.buffer))
+            .address(buffer_device_address(gpu, materials.buffer))
             .size(materials.size);
         let buffer_descriptors = [vk::ResourceDescriptorInfoEXT::default()
             .ty(vk::DescriptorType::STORAGE_BUFFER)
@@ -165,7 +163,8 @@ pub unsafe fn write_resource_descriptors(
                 .context("the resource heap is smaller than its layout")?
                 .map(|bytes| vk::HostAddressRangeEXT::default().address(bytes))
                 .collect::<Vec<_>>();
-            device.write_resource_descriptors_ext(descriptors, &destinations)?;
+            gpu.device
+                .write_resource_descriptors_ext(descriptors, &destinations)?;
         }
         Ok(())
     }

@@ -14,7 +14,7 @@ use vulkan_alloc::MemoryLocation;
 use vulkan_example_common::commands::submit_and_wait;
 use vulkan_example_common::image::{copy_image_to_buffer, create_image_view, image_info_2d};
 use vulkan_example_common::memory::{
-    Buffer, create_allocator, create_buffer, create_image, read_buffer, upload_buffer,
+    Buffer, create_buffer, create_image, read_buffer, upload_buffer,
 };
 use vulkan_example_common::output::{output_path, write_rgba_ppm};
 
@@ -51,27 +51,25 @@ fn main() -> Result<()> {
 
 unsafe fn run() -> Result<()> {
     unsafe {
+        // Every object below is destroyed when it goes out of scope, in the reverse order
+        // of creation, also when a step fails and `?` returns early.
         let gpu = gpu::create_gpu()?;
         let device = &gpu.device;
-        let mut allocator = create_allocator(&gpu);
 
         let vertex_buffer = upload_buffer(
             &gpu,
-            &mut allocator,
             "triangle vertex buffer",
             vk::BufferUsageFlags::VERTEX_BUFFER,
             bytemuck::cast_slice(&VERTICES),
         )?;
         let index_buffer = upload_buffer(
             &gpu,
-            &mut allocator,
             "triangle index buffer",
             vk::BufferUsageFlags::INDEX_BUFFER,
             bytemuck::cast_slice(&INDICES),
         )?;
         let image = create_image(
-            device,
-            &mut allocator,
+            &gpu,
             "offscreen color image",
             &image_info_2d(
                 FORMAT,
@@ -79,22 +77,20 @@ unsafe fn run() -> Result<()> {
                 vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
             ),
         )?;
-        let image_view =
-            create_image_view(device, image.image, FORMAT, vk::ImageAspectFlags::COLOR)?;
+        let image_view = create_image_view(&gpu, image.image, FORMAT, vk::ImageAspectFlags::COLOR)?;
         let readback = create_buffer(
-            device,
-            &mut allocator,
+            &gpu,
             "readback buffer",
             READBACK_BYTES,
             vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuToCpu,
         )?;
 
-        let render_pass = pipeline::create_render_pass(device, FORMAT)?;
-        let framebuffer = pipeline::create_framebuffer(device, render_pass, image_view, EXTENT)?;
+        let render_pass = pipeline::create_render_pass(&gpu, FORMAT)?;
+        let framebuffer = pipeline::create_framebuffer(&gpu, *render_pass, *image_view, EXTENT)?;
         let pipeline_layout =
-            device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)?;
-        let pipeline = pipeline::create_pipeline(device, render_pass, pipeline_layout, EXTENT)?;
+            gpu.own(device.create_pipeline_layout(&vk::PipelineLayoutCreateInfo::default(), None)?);
+        let pipeline = pipeline::create_pipeline(&gpu, *render_pass, *pipeline_layout, EXTENT)?;
 
         submit_and_wait(&gpu, |command_buffer| {
             let clear_values = [vk::ClearValue::color(vk::ClearColorValue::float32([
@@ -103,13 +99,13 @@ unsafe fn run() -> Result<()> {
             device.cmd_begin_render_pass(
                 command_buffer,
                 &vk::RenderPassBeginInfo::default()
-                    .render_pass(render_pass)
-                    .framebuffer(framebuffer)
+                    .render_pass(*render_pass)
+                    .framebuffer(*framebuffer)
                     .render_area(vk::Rect2D::default().extent(EXTENT))
                     .clear_values(&clear_values),
                 vk::SubpassContents::INLINE,
             );
-            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
+            device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, *pipeline);
             device.cmd_bind_vertex_buffers(command_buffer, 0, &[vertex_buffer.buffer], &[0]);
             device.cmd_bind_index_buffer(
                 command_buffer,
@@ -131,25 +127,13 @@ unsafe fn run() -> Result<()> {
             &path,
             EXTENT.width,
             EXTENT.height,
-            &read_buffer(&mut allocator, &readback)?,
+            &read_buffer(&gpu, &readback)?,
         )?;
-        let stats = allocator.stats();
+        let stats = gpu.allocator().stats();
         eprintln!(
             "allocator: {} blocks, {} allocated bytes, {} free bytes",
             stats.block_count, stats.allocated_bytes, stats.free_bytes
         );
-
-        device.destroy_pipeline(pipeline, None);
-        device.destroy_pipeline_layout(pipeline_layout, None);
-        device.destroy_framebuffer(framebuffer, None);
-        device.destroy_render_pass(render_pass, None);
-        device.destroy_image_view(image_view, None);
-        for buffer in [readback, index_buffer, vertex_buffer] {
-            buffer.destroy(device, &mut allocator)?;
-        }
-        image.destroy(device, &mut allocator)?;
-        drop(allocator);
-        gpu.destroy();
 
         println!("wrote {}", path.display());
         Ok(())

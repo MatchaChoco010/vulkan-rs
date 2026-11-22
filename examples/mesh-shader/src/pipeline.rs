@@ -1,7 +1,8 @@
 use anyhow::Result;
 use std::mem::offset_of;
-use vulkan::{Device, vk};
+use vulkan::vk;
 use vulkan_alloc::descriptor_heap::DescriptorSlots;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::pipeline::single_pipeline;
 use vulkan_example_common::shader::create_shader_module;
 
@@ -9,11 +10,11 @@ use crate::{EXTENT, FORMAT, PushData};
 
 /// A graphics pipeline without a pipeline layout. The mappings connect the bindings of
 /// the shaders to the heap indices in [`PushData`].
-pub unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Result<vk::Pipeline> {
+pub unsafe fn create_pipeline(gpu: &Gpu, slots: &DescriptorSlots) -> Result<Owned<vk::Pipeline>> {
     unsafe {
-        let task = create_shader_module(device, include_bytes!("shaders/task.spv"))?;
-        let mesh = create_shader_module(device, include_bytes!("shaders/mesh.spv"))?;
-        let fragment = create_shader_module(device, include_bytes!("shaders/fragment.spv"))?;
+        let task = create_shader_module(gpu, include_bytes!("shaders/task.spv"))?;
+        let mesh = create_shader_module(gpu, include_bytes!("shaders/mesh.spv"))?;
+        let fragment = create_shader_module(gpu, include_bytes!("shaders/fragment.spv"))?;
 
         // Binding `b` of set 0 is the descriptor at `index * stride` in the resource
         // heap, where `index` is the u32 at `push_offset` of the push data. The stride
@@ -46,17 +47,17 @@ pub unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Resul
         let stages = [
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::TASK_EXT)
-                .module(task)
+                .module(*task)
                 .name(c"main")
                 .push_next(&mut task_mappings),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::MESH_EXT)
-                .module(mesh)
+                .module(*mesh)
                 .name(c"main")
                 .push_next(&mut mesh_mappings),
             vk::PipelineShaderStageCreateInfo::default()
                 .stage(vk::ShaderStageFlagBits::FRAGMENT)
-                .module(fragment)
+                .module(*fragment)
                 .name(c"main"),
         ];
 
@@ -100,10 +101,9 @@ pub unsafe fn create_pipeline(device: &Device, slots: &DescriptorSlots) -> Resul
             .color_blend_state(&color_blend_state)
             .push_next(&mut rendering)
             .push_next(&mut flags);
-        let result = device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
-        for module in [fragment, mesh, task] {
-            device.destroy_shader_module(module, None);
-        }
-        single_pipeline(device, result)
+        let result = gpu
+            .device
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None);
+        single_pipeline(gpu, result)
     }
 }

@@ -3,7 +3,7 @@ use vulkan::{Entry, vk};
 use vulkan_example_common::device::{
     Gpu, find_queue_family, pick_physical_device, supports_extensions,
 };
-use vulkan_example_common::instance::{create_instance, destroy_instance};
+use vulkan_example_common::instance::create_instance;
 
 pub type HeapProperties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'static>;
 
@@ -21,7 +21,7 @@ pub unsafe fn create_gpu() -> Result<Option<(Gpu, HeapProperties)>> {
             .context("VK_EXT_descriptor_heap is in the registry")?;
         debug_assert!(heap_extension.dependencies_met(api_version, |_| false));
 
-        let (instance, messenger) = create_instance(&entry, c"compute-buffer", api_version, &[])?;
+        let instance = create_instance(&entry, c"compute-buffer", api_version, &[])?;
         let selected = pick_physical_device(&instance, |physical_device, properties| {
             if properties.api_version < api_version
                 || !supports_extensions(
@@ -48,7 +48,6 @@ pub unsafe fn create_gpu() -> Result<Option<(Gpu, HeapProperties)>> {
             ))
         })?;
         let Some((physical_device, queue_family)) = selected else {
-            destroy_instance(instance, messenger);
             return Ok(None);
         };
         let properties = instance.get_physical_device_properties(physical_device);
@@ -74,17 +73,17 @@ pub unsafe fn create_gpu() -> Result<Option<(Gpu, HeapProperties)>> {
         let mut vulkan12 =
             vk::PhysicalDeviceVulkan12Features::default().buffer_device_address(true);
         let mut vulkan13 = vk::PhysicalDeviceVulkan13Features::default().synchronization2(true);
-        let device = instance.create_device(
+        let gpu = Gpu::create(
+            instance,
             physical_device,
+            queue_family,
             &vk::DeviceCreateInfo::default()
                 .queue_create_infos(&queues)
                 .enabled_extension_names(&extension_names)
                 .push_next(&mut heap_features)
                 .push_next(&mut vulkan12)
                 .push_next(&mut vulkan13),
-            None,
         )?;
-        let gpu = Gpu::new(instance, messenger, physical_device, device, queue_family);
         Ok(Some((gpu, heap_properties)))
     }
 }
