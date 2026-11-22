@@ -47078,8 +47078,9 @@ impl crate::Device {
     /// [`vkCmdBuildAccelerationStructuresIndirectKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBuildAccelerationStructuresIndirectKHR.html)
     /// through [`Self::cmd_build_acceleration_structures_indirect_khr_raw`], which describes the
     /// parameters. Each slice of slices is passed as an array of pointers to the inner slices, with
-    /// a null pointer for `None`. The command is provided by
-    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    /// a null pointer for `None`. `None` is valid only for an element for which the valid usage of
+    /// the command asks for a null pointer or allows one, which the wrapper does not check. The
+    /// command is provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
     /// # Safety
     ///
@@ -47153,8 +47154,9 @@ impl crate::Device {
     /// [`vkCmdBuildAccelerationStructuresKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBuildAccelerationStructuresKHR.html)
     /// through [`Self::cmd_build_acceleration_structures_khr_raw`], which describes the parameters.
     /// Each slice of slices is passed as an array of pointers to the inner slices, with a null
-    /// pointer for `None`. The command is provided by
-    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    /// pointer for `None`. `None` is valid only for an element for which the valid usage of the
+    /// command asks for a null pointer or allows one, which the wrapper does not check. The command
+    /// is provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
     /// # Safety
     ///

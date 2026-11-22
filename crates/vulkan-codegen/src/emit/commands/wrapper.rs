@@ -52,7 +52,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     };
     let note = if inputs.has_slices_of_slices {
         format!(
-            "Each slice of slices is passed as an array of pointers to the inner slices, with a null pointer for `None`. {note}"
+            "Each slice of slices is passed as an array of pointers to the inner slices, with a null pointer for `None`. `None` is valid only for an element for which the valid usage of the command asks for a null pointer or allows one, which the wrapper does not check. {note}"
         )
     } else {
         note
