@@ -17,9 +17,10 @@ const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
 
 /// The parameters of [`Allocator::new`].
 ///
-/// [`AllocatorCreateDesc::new`] fills every field from the physical device. The fields
-/// are public and can be changed afterwards, for example
-/// [`AllocatorCreateDesc::block_size`].
+/// [`AllocatorCreateDesc::new`] takes the memory properties and the
+/// `nonCoherentAtomSize` limit that are passed to it and sets
+/// [`AllocatorCreateDesc::block_size`] to 64 MiB. The fields are public and can be
+/// changed afterwards.
 pub struct AllocatorCreateDesc<'a> {
     /// The device to allocate from. The allocator keeps a clone of it.
     pub device: &'a Device,
@@ -164,7 +165,9 @@ impl Allocator {
     ///   [`AllocationCreateDesc::linear`] is `true` and a non-linear resource if it is
     ///   `false`. The allocator places allocations of the same kind next to each other
     ///   without the `bufferImageGranularity` padding that a resource of the other kind
-    ///   needs, so a misstated kind makes the resource alias its neighbours.
+    ///   needs, so a misstated kind makes the resource alias its neighbours. Memory
+    ///   bound to other objects, such as a video session or a data graph pipeline
+    ///   session, may come from an allocation of either kind.
     pub unsafe fn allocate(
         &mut self,
         desc: AllocationCreateDesc<'_>,
@@ -294,10 +297,11 @@ impl Allocator {
     /// - [`Allocation::memory`] must not be mapped or unmapped other than through this
     ///   allocator.
     /// - While the guard is alive, neither the device nor a pointer from
-    ///   [`Allocator::map_memory`] or [`Allocator::map_persistent`] may access the
-    ///   allocation's bytes in a way that conflicts with the slices the guard hands out,
-    ///   including through its safe methods: no writes while a shared slice is in use,
-    ///   and no access at all while a mutable slice is in use.
+    ///   [`Allocator::map_memory`], [`Allocator::map_persistent`] or
+    ///   [`MappedAllocation::as_ptr`] may access the allocation's bytes in a way that
+    ///   conflicts with the slices the guard hands out, including through its safe
+    ///   methods: no writes while a shared slice is in use, and no access at all while a
+    ///   mutable slice is in use.
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
