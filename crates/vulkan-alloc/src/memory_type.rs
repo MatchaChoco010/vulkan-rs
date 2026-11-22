@@ -1,7 +1,5 @@
 use vulkan::vk;
 
-use crate::allocation::AllocationResourceClass;
-
 /// The memory property flags an allocation's memory type must have and should have.
 ///
 /// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
@@ -130,17 +128,12 @@ pub(crate) fn effective_alignment(
     flags: vk::MemoryPropertyFlags,
     requested_alignment: u64,
     non_coherent_atom_size: u64,
-    buffer_image_granularity: u64,
-    resource_class: AllocationResourceClass,
 ) -> u64 {
     let mut alignment = requested_alignment.max(1);
     if flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
         && !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT)
     {
         alignment = alignment.max(non_coherent_atom_size.max(1));
-    }
-    if resource_class == AllocationResourceClass::Unknown {
-        alignment = alignment.max(buffer_image_granularity.max(1));
     }
     alignment
 }
@@ -408,31 +401,17 @@ pub(crate) mod tests {
     fn non_coherent_host_visible_allocations_use_atom_alignment() {
         let non_coherent =
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED;
-        assert_eq!(
-            effective_alignment(non_coherent, 16, 256, 1, AllocationResourceClass::Unknown),
-            256
-        );
+        assert_eq!(effective_alignment(non_coherent, 16, 256), 256);
 
         let coherent =
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
-        assert_eq!(
-            effective_alignment(coherent, 16, 256, 1, AllocationResourceClass::Unknown),
-            16
-        );
+        assert_eq!(effective_alignment(coherent, 16, 256), 16);
 
         let device_local = vk::MemoryPropertyFlags::DEVICE_LOCAL;
-        assert_eq!(
-            effective_alignment(device_local, 16, 256, 512, AllocationResourceClass::Optimal),
-            16
-        );
-        assert_eq!(
-            effective_alignment(device_local, 16, 256, 512, AllocationResourceClass::Unknown),
-            512
-        );
+        assert_eq!(effective_alignment(device_local, 16, 256), 16);
 
         let mut allocator = TlsfSuballocator::new(1024);
-        let alignment =
-            effective_alignment(non_coherent, 1, 256, 1, AllocationResourceClass::Unknown);
+        let alignment = effective_alignment(non_coherent, 1, 256);
         let a = allocator.allocate(64, alignment).unwrap();
         let b = allocator.allocate(64, alignment).unwrap();
         assert_eq!(a.offset, 0);

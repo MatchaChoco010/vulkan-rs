@@ -85,7 +85,6 @@ impl FakeDevice {
             device: &self.device,
             memory_properties: Self::memory_properties(),
             non_coherent_atom_size: NON_COHERENT_ATOM_SIZE,
-            buffer_image_granularity: 1,
             block_size: BLOCK_SIZE,
         })
     }
