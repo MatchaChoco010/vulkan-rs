@@ -812,11 +812,14 @@ struct Checker {
     described_parameters: usize,
     functions_with_arguments: usize,
     required_parameters: usize,
+    parameters_under_another_name: usize,
+    undescribed_arguments: Vec<String>,
 }
 
 struct Generated {
     reference_link: Regex,
     code_at_start: Regex,
+    described_under_another_name: Regex,
     value_of: Regex,
     bits_of: Regex,
     table_row: Regex,
@@ -834,6 +837,9 @@ impl Generated {
                 regex::escape(REFERENCE_PAGES)
             )),
             code_at_start: regex(r"^`(\w+)`"),
+            described_under_another_name: regex(
+                r"^`(\w+)`,\s+which\s+the\s+specification\s+describes\s+under\s+the\s+name\s+`(\w+)`:\s+",
+            ),
             value_of: regex(r"^`\w+`, a value of (?:\[`(\w+)`\]|`(\w+)`)"),
             bits_of: regex(r"constants of \[`(\w+)`\]"),
             table_row: regex(r"^`(\w+)` in (?:the table “(.+)”|a table) of the specification:$"),
@@ -1130,7 +1136,23 @@ impl Checker {
         };
         for parameter in &parameters {
             self.described_parameters += 1;
-            self.contained(spec, item, &page, parameter);
+            let Some(names) = generated.described_under_another_name.captures(parameter) else {
+                self.contained(spec, item, &page, parameter);
+                continue;
+            };
+            self.parameters_under_another_name += 1;
+            let (own, other) = (&names[1], &names[2]);
+            let description = &parameter[names[0].len()..];
+            if spec.describes(&page, "pname", own) {
+                self.fail(item, format!("the specification describes the parameter `{own}` on the page `{page}` under its own name, but the documentation takes the description of `{other}` for it"));
+            }
+            if !spec.describes(&page, "pname", other) {
+                self.fail(item, format!("the documentation takes the description of `{other}` for the parameter `{own}`, but the specification describes no `{other}` on the page `{page}`"));
+            }
+            if !description.starts_with(&format!("`{other}`")) {
+                self.fail(item, format!("the description that the documentation takes for the parameter `{own}` is not the one of `{other}`"));
+            }
+            self.contained(spec, item, &page, description);
         }
         if arguments.is_empty() {
             return;
@@ -1141,7 +1163,19 @@ impl Checker {
             .filter_map(|parameter| generated.code_at_start.captures(parameter))
             .map(|name| squeeze(&name[1]))
             .collect::<BTreeSet<_>>();
-        for name in spec.described(&page, "pname") {
+        let described = spec.described(&page, "pname");
+        if !described.is_empty() {
+            for argument in arguments {
+                let plain = argument.strip_prefix("r#").unwrap_or(argument);
+                let is_listed =
+                    listed.contains(&squeeze(plain)) || (plain == "ty" && listed.contains("type"));
+                if !is_listed {
+                    self.undescribed_arguments
+                        .push(format!("{item}: {argument}"));
+                }
+            }
+        }
+        for name in described {
             if !arguments
                 .iter()
                 .any(|argument| is_rust_name_of(argument, &name))
@@ -1230,7 +1264,7 @@ fn generated_documentation_matches_the_specification() {
     check_files(&spec, &generated, &mut checker, &files);
 
     eprintln!(
-        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described ({} by a table row) and {} undescribed values, {} parameters, the parameter lists of {} functions with {} parameters that the specification describes",
+        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described ({} by a table row) and {} undescribed values, {} parameters ({} under another name), the parameter lists of {} functions with {} parameters that the specification describes",
         checker.reference_links,
         checker.summaries,
         checker.described_members,
@@ -1239,8 +1273,14 @@ fn generated_documentation_matches_the_specification() {
         checker.tabulated_values,
         checker.undescribed_values,
         checker.described_parameters,
+        checker.parameters_under_another_name,
         checker.functions_with_arguments,
         checker.required_parameters,
+    );
+    assert_eq!(
+        checker.undescribed_arguments,
+        Vec::<String>::new(),
+        "the reference pages of these functions describe parameters, but the documentation describes none for these arguments"
     );
     assert!(
         checker.failures.is_empty(),
@@ -1758,7 +1798,7 @@ impl Device {
 }
 "#;
 
-fn fixture_failures(source: &str) -> Vec<String> {
+fn fixture_checker(source: &str) -> Checker {
     let source = source.replace("PAGES/", REFERENCE_PAGES);
     let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
     let mut checker = Checker::default();
@@ -1768,7 +1808,95 @@ fn fixture_failures(source: &str) -> Vec<String> {
         &mut checker,
         &[file],
     );
-    checker.failures
+    checker
+}
+
+fn fixture_failures(source: &str) -> Vec<String> {
+    fixture_checker(source).failures
+}
+
+const FIXTURE_ALLOCATOR_ITEM: &str = "    /// - `pAllocator` controls host memory allocation as described in the Memory Allocation chapter.\n";
+const FIXTURE_ALLOCATOR_ARGUMENT: &str = "        p_allocator: *const c_void,\n    ) {\n";
+
+fn fixture_with_the_allocator_as(item: &str) -> String {
+    for unique in [FIXTURE_ALLOCATOR_ITEM, FIXTURE_ALLOCATOR_ARGUMENT] {
+        assert_eq!(
+            FIXTURE_SOURCE.matches(unique).count(),
+            1,
+            "`{unique}` is not exactly once in the fixture"
+        );
+    }
+    FIXTURE_SOURCE
+        .replacen(FIXTURE_ALLOCATOR_ITEM, &format!("    /// - {item}\n"), 1)
+        .replacen(
+            FIXTURE_ALLOCATOR_ARGUMENT,
+            "        p_callbacks: *const c_void,\n    ) {\n",
+            1,
+        )
+}
+
+#[test]
+fn checker_accepts_a_parameter_that_takes_the_description_of_another_name() {
+    let checker = fixture_checker(&fixture_with_the_allocator_as(
+        "`pCallbacks`, which the specification describes under the name `pAllocator`: `pAllocator` controls host\n    ///   memory allocation as described in the Memory Allocation chapter.",
+    ));
+    assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
+    assert_eq!(checker.parameters_under_another_name, 1);
+    assert_eq!(
+        checker.undescribed_arguments,
+        ["Device::count_things_raw: flags"],
+        "`p_callbacks` is described, and `flags` is the argument that the page does not describe"
+    );
+}
+
+#[test]
+fn checker_reports_a_description_taken_from_another_name_that_does_not_fit() {
+    for (defect, item, report) in [
+        (
+            "a name that the page does not describe",
+            "`pCallbacks`, which the specification describes under the name `pNothing`: `pNothing` controls host memory allocation as described in the Memory Allocation chapter.",
+            "the documentation takes the description of `pNothing` for the parameter `pCallbacks`, but the specification describes no `pNothing` on the page `vkCountThings`",
+        ),
+        (
+            "a parameter that the page describes under its own name",
+            "`pThingCount`, which the specification describes under the name `pAllocator`: `pAllocator` controls host memory allocation as described in the Memory Allocation chapter.",
+            "the specification describes the parameter `pThingCount` on the page `vkCountThings` under its own name, but the documentation takes the description of `pAllocator` for it",
+        ),
+        (
+            "the description of a third parameter",
+            "`pCallbacks`, which the specification describes under the name `pAllocator`: `type` is the type of the things to count.",
+            "the description that the documentation takes for the parameter `pCallbacks` is not the one of `pAllocator`",
+        ),
+        (
+            "a description that the page does not have",
+            "`pCallbacks`, which the specification describes under the name `pAllocator`: `pAllocator` controls everything.",
+            "``pAllocator` controls everything. ` is not in the text that the specification has for `vkCountThings`",
+        ),
+    ] {
+        let failures = fixture_failures(&fixture_with_the_allocator_as(item));
+        assert!(
+            failures.iter().any(|failure| failure.contains(report)),
+            "{defect}: expected a failure containing `{report}`, got {failures:#?}"
+        );
+    }
+}
+
+#[test]
+fn checker_collects_the_arguments_that_a_page_with_parameters_does_not_describe() {
+    let checker = fixture_checker(FIXTURE_SOURCE);
+    assert_eq!(
+        checker.undescribed_arguments,
+        ["Device::count_things_raw: flags"],
+        "only valid usage mentions `flags`"
+    );
+    let without_the_allocator = FIXTURE_SOURCE.replacen(FIXTURE_ALLOCATOR_ITEM, "", 1);
+    assert_eq!(
+        fixture_checker(&without_the_allocator).undescribed_arguments,
+        [
+            "Device::count_things_raw: flags",
+            "Device::count_things_raw: p_allocator"
+        ]
+    );
 }
 
 fn assert_reported(defect: &str, replace: &str, with: &str, report: &str) {

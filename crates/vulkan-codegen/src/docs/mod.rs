@@ -1,9 +1,11 @@
 pub(crate) mod asciidoc;
 mod links;
+mod other_names;
 mod render;
 mod tables;
 
 pub(crate) use links::Links;
+pub(crate) use other_names::assert_every_other_name_is_in_use;
 pub(crate) use render::{Block, Doc};
 pub(crate) use tables::{Table, read as read_table};
 
@@ -143,11 +145,8 @@ impl<'a> Model<'a> {
 
     pub(crate) fn described(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
         let page = self.page(owner)?;
-        let text = &page
-            .items
-            .iter()
-            .find(|described| described.name == item)?
-            .text;
+        let described = other_names::described(page, item)?;
+        let text = &described.item.text;
         let mut lead = String::new();
         let mut nested = Vec::<(usize, String)>::new();
         for line in text.lines() {
@@ -161,7 +160,14 @@ impl<'a> Model<'a> {
                 lead.push('\n');
             }
         }
-        let mut blocks = vec![Block::Text(self.markdown(from, &page.name, item, &lead))];
+        let lead = self.markdown(from, &page.name, item, &lead);
+        let lead = match described.under_the_name {
+            Some(other) => format!(
+                "`{item}`, which the specification describes under the name `{other}`: {lead}"
+            ),
+            None => lead,
+        };
+        let mut blocks = vec![Block::Text(lead)];
         if !nested.is_empty() {
             let items = nested
                 .into_iter()
