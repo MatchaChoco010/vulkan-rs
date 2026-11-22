@@ -58,8 +58,10 @@ pub struct AllocationCreateDesc<'a> {
     ///
     /// The `deviceMask` of the chained structure is always 0, so
     /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] cannot be used: Vulkan requires a
-    /// `deviceMask` other than 0 when it is set. The allocator does not support device
-    /// groups (see the [crate documentation](crate#what-the-allocator-does-and-does-not-do)).
+    /// `deviceMask` other than 0 when it is set. Memory on chosen physical devices of a
+    /// logical device that represents more than one physical device is allocated with
+    /// `vkAllocateMemory` directly (see the
+    /// [crate documentation](crate#what-the-allocator-does-and-does-not-do)).
     ///
     /// Allocations with different flags never share a block. With
     /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`], the allocation gets a

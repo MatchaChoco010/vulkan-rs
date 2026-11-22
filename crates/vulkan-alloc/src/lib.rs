@@ -110,11 +110,13 @@
 //!   directly. Memory to be exported can come from the allocator.
 //! - allocate tile memory (`VK_QCOM_tile_memory_heap`), which has requirements of its
 //!   own and is also allocated with `vkAllocateMemory` directly;
-//! - support device groups, logical devices created from more than one physical device.
-//!   It cannot pass the `deviceMask` of `VkMemoryAllocateFlagsInfo`, so it cannot choose
-//!   the physical devices that memory is allocated on, and it does not track which
-//!   memory has an instance on each physical device. Memory with an instance per
-//!   physical device is allocated with `vkAllocateMemory` directly.
+//! - allocate memory on chosen physical devices of a logical device that represents more
+//!   than one physical device. The allocator cannot pass the `deviceMask` of
+//!   `VkMemoryAllocateFlagsInfo`, so [`vulkan::vk::MemoryAllocateFlags::DEVICE_MASK`]
+//!   cannot be used, and memory on chosen physical devices is allocated with
+//!   `vkAllocateMemory` directly. Other allocations on such a device are made as on any
+//!   device, but memory from a heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` cannot be
+//!   mapped (see [Mapping](#mapping)).
 //!
 //! # Mapping
 //!
@@ -132,10 +134,11 @@
 //! allocation; the block is unmapped when the last reference in it is released. Do not
 //! call `vkMapMemory` or `vkUnmapMemory` on [`Allocation::memory`] yourself.
 //!
-//! Vulkan does not allow memory allocated with more than one instance to be mapped. In a
-//! device group, memory from a heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` has an
-//! instance on every physical device, so the allocator, which does not support device
-//! groups, must not be asked to map it.
+//! On a logical device that represents more than one physical device, memory from a
+//! heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` has an instance on every physical
+//! device, and Vulkan does not allow memory with more than one instance to be mapped.
+//! Such allocations can be made and bound to resources, but must not be passed to any
+//! of the mapping functions. The allocator does not check this.
 //!
 //! Memory without `HOST_COHERENT` needs [`Allocator::flush_allocation`] after host
 //! writes and [`Allocator::invalidate_allocation`] before host reads (or
