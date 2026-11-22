@@ -5,7 +5,7 @@
 //! dispatchable handle on the 64-bit targets it is built for.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, c_char, c_void};
 use vulkan::{Entry, vk};
 
@@ -31,6 +31,9 @@ struct State {
     command_pools: HashMap<u64, u64>,
     /// The fence of each submission that was not waited for, and the objects it uses.
     pending: Vec<(u64, Vec<u64>)>,
+    signaled_fences: HashSet<u64>,
+    /// The semaphores with a pending signal.
+    signaled_semaphores: HashSet<u64>,
     calls: u32,
     fail_at: Option<u32>,
     failed: bool,
@@ -69,6 +72,15 @@ pub fn reset(fail_at: Option<u32>) {
             next_handle: 0x1000,
             ..State::default()
         }
+    });
+}
+
+/// Makes the `n`-th call from now that returns a `VkResult`, counted from 0, fail, or
+/// none for `None`.
+pub fn fail_from_now(n: Option<u32>) {
+    with(|state| {
+        state.fail_at = n.map(|n| state.calls + n);
+        state.failed = false;
     });
 }
 
@@ -252,6 +264,10 @@ unsafe extern "system" fn get_device_proc_addr(
         b"vkEndCommandBuffer" => fallible,
         b"vkQueueSubmit" => queue_submit,
         b"vkWaitForFences" => wait_for_fences,
+        b"vkResetFences" => reset_fences,
+        b"vkAcquireNextImageKHR" => acquire_next_image,
+        b"vkQueuePresentKHR" => queue_present,
+        b"vkResetCommandBuffer" => reset_command_buffer,
         b"vkCmdCopyBuffer" => cmd_copy_buffer,
         b"vkCmdPipelineBarrier" => cmd_pipeline_barrier,
     )
@@ -370,6 +386,12 @@ unsafe extern "system" fn create(
         parent
     };
     let created = create_object(kind, parent, target);
+    if kind == vk::StructureType::FENCE_CREATE_INFO
+        && unsafe { (*info.cast::<vk::FenceCreateInfo<'_>>()).flags }
+            .contains(vk::FenceCreateFlags::SIGNALED)
+    {
+        with(|state| state.signaled_fences.insert(created));
+    }
     if kind == vk::StructureType::SWAPCHAIN_CREATE_INFO_KHR {
         let images = (0..3).map(|index| 0x10_0000 * created + index).collect();
         with(|state| state.swapchain_images.insert(created, images));
@@ -621,7 +643,8 @@ unsafe extern "system" fn allocate_command_buffers(
 }
 
 /// Marks the pools of the submitted command buffers and the fence as in use, until the
-/// fence is waited for or the device is idle.
+/// fence is waited for or the device is idle. The waited semaphores must have a pending
+/// signal, which the submission consumes, and the fence must be unsignaled.
 unsafe extern "system" fn queue_submit(
     _queue: u64,
     count: u32,
@@ -631,14 +654,24 @@ unsafe extern "system" fn queue_submit(
     if fails() {
         return result(true);
     }
-    let submits = unsafe { std::slice::from_raw_parts(submits, count as usize) };
+    let submits = unsafe { slice(submits, count) };
     with(|state| {
         let mut in_use = vec![fence];
         for submit in submits {
-            let command_buffers = unsafe {
-                std::slice::from_raw_parts(
-                    submit.p_command_buffers.cast::<u64>(),
-                    submit.command_buffer_count as usize,
+            let (command_buffers, waits, signals) = unsafe {
+                (
+                    slice(
+                        submit.p_command_buffers.cast::<u64>(),
+                        submit.command_buffer_count,
+                    ),
+                    slice(
+                        submit.p_wait_semaphores.cast::<u64>(),
+                        submit.wait_semaphore_count,
+                    ),
+                    slice(
+                        submit.p_signal_semaphores.cast::<u64>(),
+                        submit.signal_semaphore_count,
+                    ),
                 )
             };
             in_use.extend(
@@ -646,13 +679,23 @@ unsafe extern "system" fn queue_submit(
                     .iter()
                     .filter_map(|command_buffer| state.command_pools.get(command_buffer)),
             );
+            state.wait_semaphores(waits, "a submission");
+            state.signal_semaphores(signals, "a submission");
         }
-        state.pending.push((fence, in_use));
+        if fence != 0 {
+            if state.signaled_fences.contains(&fence) {
+                state
+                    .misuse
+                    .push(format!("submitting with the signaled fence {fence:#x}"));
+            }
+            state.pending.push((fence, in_use));
+        }
     });
     vk::VkResult::SUCCESS
 }
 
-/// A failed wait leaves the work pending.
+/// A failed wait leaves the work pending. A wait for a fence that is neither signaled
+/// nor pending would never end; it is reported and fails as on a lost device.
 unsafe extern "system" fn wait_for_fences(
     _device: u64,
     count: u32,
@@ -666,8 +709,37 @@ unsafe extern "system" fn wait_for_fences(
     if with(|state| state.lost) {
         return vk::VkResult::ERROR_DEVICE_LOST;
     }
-    let fences = unsafe { std::slice::from_raw_parts(fences, count as usize) };
-    with(|state| state.pending.retain(|(fence, _)| !fences.contains(fence)));
+    let fences = unsafe { slice(fences, count) };
+    with(|state| {
+        for &fence in fences {
+            if state.pending.iter().any(|(pending, _)| *pending == fence) {
+                state.pending.retain(|(pending, _)| *pending != fence);
+                state.signaled_fences.insert(fence);
+            } else if !state.signaled_fences.contains(&fence) {
+                state.misuse.push(format!(
+                    "waiting for the fence {fence:#x}, which nothing will signal"
+                ));
+                return vk::VkResult::ERROR_DEVICE_LOST;
+            }
+        }
+        vk::VkResult::SUCCESS
+    })
+}
+
+unsafe extern "system" fn reset_fences(
+    _device: u64,
+    count: u32,
+    fences: *const u64,
+) -> vk::VkResult {
+    if fails() {
+        return result(true);
+    }
+    let fences = unsafe { slice(fences, count) };
+    with(|state| {
+        for fence in fences {
+            state.signaled_fences.remove(fence);
+        }
+    });
     vk::VkResult::SUCCESS
 }
 
@@ -675,11 +747,86 @@ unsafe extern "system" fn wait_for_fences(
 /// as it does after the device is lost, because the work is terminated.
 unsafe extern "system" fn device_wait_idle(_device: u64) -> vk::VkResult {
     with(|state| {
-        state.pending.clear();
+        let fences = state
+            .pending
+            .drain(..)
+            .map(|(fence, _)| fence)
+            .collect::<Vec<_>>();
+        state
+            .signaled_fences
+            .extend(fences.into_iter().filter(|&fence| fence != 0));
         if state.lost {
             vk::VkResult::ERROR_DEVICE_LOST
         } else {
             vk::VkResult::SUCCESS
         }
     })
+}
+
+/// Gives image 0 and signals `semaphore`, which must have no pending signal.
+unsafe extern "system" fn acquire_next_image(
+    _device: u64,
+    _swapchain: u64,
+    _timeout: u64,
+    semaphore: u64,
+    _fence: u64,
+    index: *mut u32,
+) -> vk::VkResult {
+    if fails() {
+        return result(true);
+    }
+    with(|state| state.signal_semaphores(&[semaphore], "an acquire"));
+    unsafe { *index = 0 };
+    vk::VkResult::SUCCESS
+}
+
+/// Consumes the signals of the semaphores that the present waits for, also when it
+/// fails, as a present that the presentation engine rejects still waits for them.
+unsafe extern "system" fn queue_present(
+    _queue: u64,
+    info: *const vk::PresentInfoKHR<'_>,
+) -> vk::VkResult {
+    let waits = unsafe {
+        slice(
+            (*info).p_wait_semaphores.cast::<u64>(),
+            (*info).wait_semaphore_count,
+        )
+    };
+    with(|state| state.wait_semaphores(waits, "a present"));
+    result(fails())
+}
+
+unsafe extern "system" fn reset_command_buffer(_command_buffer: u64, _flags: u32) -> vk::VkResult {
+    result(fails())
+}
+
+impl State {
+    fn wait_semaphores(&mut self, semaphores: &[u64], by: &str) {
+        for semaphore in semaphores {
+            if !self.signaled_semaphores.remove(semaphore) {
+                self.misuse.push(format!(
+                    "{by} waits for the semaphore {semaphore:#x}, which has no pending signal"
+                ));
+            }
+        }
+    }
+
+    fn signal_semaphores(&mut self, semaphores: &[u64], by: &str) {
+        for &semaphore in semaphores {
+            if !self.signaled_semaphores.insert(semaphore) {
+                self.misuse.push(format!(
+                    "{by} signals the semaphore {semaphore:#x}, which has a pending signal"
+                ));
+            }
+        }
+    }
+}
+
+/// The array of `count` values at `values`, which may be null when `count` is 0.
+unsafe fn slice<'a, T>(values: *const T, count: u32) -> &'a [T] {
+    if count == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(values, count as usize) }
+    }
 }

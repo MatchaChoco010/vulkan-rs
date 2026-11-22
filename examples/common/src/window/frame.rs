@@ -99,18 +99,30 @@ impl Frame {
                 Err(err) => return Err(anyhow!("vkAcquireNextImageKHR failed: {err:?}")),
             };
             let render_finished = *swapchain.render_finished[image_index as usize];
-            // Reset only once an image was acquired: a frame that returns before the
-            // submission leaves the fence signaled for the next one.
-            device.reset_fences(&[*self.in_flight])?;
 
-            device
-                .reset_command_buffer(self.command_buffer, vk::CommandBufferResetFlags::empty())?;
-            device.begin_command_buffer(
-                self.command_buffer,
-                &vk::CommandBufferBeginInfo::default(),
-            )?;
-            record(self.command_buffer, image_index as usize);
-            device.end_command_buffer(self.command_buffer)?;
+            let recorded = (|| -> Result<()> {
+                device.reset_command_buffer(
+                    self.command_buffer,
+                    vk::CommandBufferResetFlags::empty(),
+                )?;
+                device.begin_command_buffer(
+                    self.command_buffer,
+                    &vk::CommandBufferBeginInfo::default(),
+                )?;
+                record(self.command_buffer, image_index as usize);
+                device.end_command_buffer(self.command_buffer)?;
+                Ok(())
+            })();
+            if let Err(error) = recorded {
+                // The fence is still signaled for the next frame.
+                self.release(gpu, wait_stage, vk::Fence::null());
+                return Err(error);
+            }
+            // Reset only right before the submission that signals it again.
+            if let Err(error) = device.reset_fences(&[*self.in_flight]) {
+                self.release(gpu, wait_stage, vk::Fence::null());
+                return Err(error.into());
+            }
 
             let wait_semaphores = [*self.image_available];
             let wait_stages = [wait_stage];
@@ -121,7 +133,11 @@ impl Frame {
                 .wait_dst_stage_mask(&wait_stages)
                 .command_buffers(&command_buffers)
                 .signal_semaphores(&signal_semaphores);
-            device.queue_submit(gpu.queue, &[submit], *self.in_flight)?;
+            if let Err(error) = device.queue_submit(gpu.queue, &[submit], *self.in_flight) {
+                // The fence is unsignaled now, and nothing else would signal it.
+                self.release(gpu, wait_stage, *self.in_flight);
+                return Err(error.into());
+            }
 
             let swapchains = [swapchain.handle];
             let image_indices = [image_index];
@@ -140,5 +156,20 @@ impl Frame {
                 Err(err) => Err(anyhow!("vkQueuePresentKHR failed: {err:?}")),
             }
         }
+    }
+
+    /// After a failure between the acquire and the submission of a frame: consumes the
+    /// acquire's signal of `image_available`, which the next acquire signals again, and
+    /// signals `fence`, unless it is null, which the next frame waits for. The acquired
+    /// image stays acquired; the session stops at the first error anyway. A failure
+    /// here, as on a lost device, leaves nothing that could be done instead, and the
+    /// error of the frame is what the caller gets.
+    unsafe fn release(&self, gpu: &Gpu, wait_stage: vk::PipelineStageFlags, fence: vk::Fence) {
+        let wait_semaphores = [*self.image_available];
+        let wait_stages = [wait_stage];
+        let submit = vk::SubmitInfo::default()
+            .wait_semaphores(&wait_semaphores)
+            .wait_dst_stage_mask(&wait_stages);
+        let _ = unsafe { gpu.device.queue_submit(gpu.queue, &[submit], fence) };
     }
 }
