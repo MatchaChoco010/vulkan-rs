@@ -4,8 +4,10 @@ mod bit_fields;
 mod defaults;
 mod setters;
 mod unions;
+mod unmarked_arrays;
 
 pub(crate) use bit_fields::{Slot, slots};
+pub(crate) use unmarked_arrays::assert_listed_structures_exist;
 
 use super::{assert_distinct_names, header, type_aliases, w};
 use crate::docs::{Doc, join_and};
@@ -73,6 +75,7 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
     let mut out = header(&["derivable_impls"]);
     out.push_str("use core::ffi::{c_char, c_void, CStr};\nuse core::marker::PhantomData;\n\n");
     for s in &model.ir.structs {
+        unmarked_arrays::assert_listed_members_exist(s);
         out.push_str(&if s.union {
             unions::definition(model, s)
         } else {

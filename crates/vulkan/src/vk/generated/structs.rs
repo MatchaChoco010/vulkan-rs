@@ -3513,9 +3513,18 @@ impl<'a> StdVideoEncodeAV1PictureInfo<'a> {
         self.p_extension_header = core::ptr::from_ref(value);
         self
     }
-    /// Sets [`p_buffer_removal_times`](Self::p_buffer_removal_times) to point to `value`.
-    pub fn buffer_removal_times(mut self, value: &'a u32) -> Self {
-        self.p_buffer_removal_times = core::ptr::from_ref(value);
+    /// Sets [`p_buffer_removal_times`](Self::p_buffer_removal_times) to the start of a slice, or to
+    /// a null pointer if the slice is empty. No member stores the length: the C API reads one
+    /// element for each operating point of the active sequence header, whose number is the
+    /// [`VideoEncodeAV1SessionParametersCreateInfoKHR::std_operating_point_count`] that the video
+    /// session parameters were created with. The registry marks the member as optional, and the
+    /// specification describes what a null pointer means for it.
+    pub fn buffer_removal_times(mut self, value: &'a [u32]) -> Self {
+        self.p_buffer_removal_times = if value.is_empty() {
+            core::ptr::null()
+        } else {
+            value.as_ptr()
+        };
         self
     }
 }
@@ -21758,9 +21767,19 @@ impl<'a> CommandBufferInheritanceViewportScissorInfoNV<'a> {
         self.viewport_depth_count = value;
         self
     }
-    /// Sets [`p_viewport_depths`](Self::p_viewport_depths) to point to `value`.
-    pub fn viewport_depths(mut self, value: &'a Viewport) -> Self {
-        self.p_viewport_depths = core::ptr::from_ref(value);
+    /// Sets [`p_viewport_depths`](Self::p_viewport_depths) to the start of a slice of elements and
+    /// [`viewport_depth_count`](Self::viewport_depth_count) to its length.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the slice has more elements than `viewportDepthCount`, a `uint32_t`, can count.
+    pub fn viewport_depths(mut self, value: &'a [Viewport]) -> Self {
+        self.viewport_depth_count = len_as_count(
+            value.len(),
+            "VkCommandBufferInheritanceViewportScissorInfoNV::pViewportDepths",
+            "viewportDepthCount",
+        );
+        self.p_viewport_depths = value.as_ptr();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -32911,14 +32930,32 @@ impl<'a> DeviceFaultInfoEXT<'a> {
     ) -> core::result::Result<&CStr, core::ffi::FromBytesUntilNulError> {
         c_str_from_chars(&self.description)
     }
-    /// Sets [`p_address_infos`](Self::p_address_infos) to point to `value`.
-    pub fn address_infos(mut self, value: &'a mut DeviceFaultAddressInfoKHR) -> Self {
-        self.p_address_infos = core::ptr::from_mut(value);
+    /// Sets [`p_address_infos`](Self::p_address_infos) to the start of a slice, or to a null
+    /// pointer if the slice is empty. No member stores the length: the command that writes the
+    /// elements, [`get_device_fault_info_ext`](crate::Device::get_device_fault_info_ext), reads it
+    /// from [`DeviceFaultCountsEXT::address_info_count`], which the caller sets to the number of
+    /// elements of the slice. The registry marks the member as optional, and the specification
+    /// describes what a null pointer means for it.
+    pub fn address_infos(mut self, value: &'a mut [DeviceFaultAddressInfoKHR]) -> Self {
+        self.p_address_infos = if value.is_empty() {
+            core::ptr::null_mut()
+        } else {
+            value.as_mut_ptr()
+        };
         self
     }
-    /// Sets [`p_vendor_infos`](Self::p_vendor_infos) to point to `value`.
-    pub fn vendor_infos(mut self, value: &'a mut DeviceFaultVendorInfoKHR) -> Self {
-        self.p_vendor_infos = core::ptr::from_mut(value);
+    /// Sets [`p_vendor_infos`](Self::p_vendor_infos) to the start of a slice, or to a null pointer
+    /// if the slice is empty. No member stores the length: the command that writes the elements,
+    /// [`get_device_fault_info_ext`](crate::Device::get_device_fault_info_ext), reads it from
+    /// [`DeviceFaultCountsEXT::vendor_info_count`], which the caller sets to the number of elements
+    /// of the slice. The registry marks the member as optional, and the specification describes
+    /// what a null pointer means for it.
+    pub fn vendor_infos(mut self, value: &'a mut [DeviceFaultVendorInfoKHR]) -> Self {
+        self.p_vendor_infos = if value.is_empty() {
+            core::ptr::null_mut()
+        } else {
+            value.as_mut_ptr()
+        };
         self
     }
     /// Sets [`p_vendor_binary_data`](Self::p_vendor_binary_data).
@@ -57988,10 +58025,10 @@ impl<'a> PerformanceValueDataINTEL<'a> {
     pub fn value_bool(value: Bool32) -> Self {
         Self { value_bool: value }
     }
-    /// Creates the union with [`value_string`](Self::value_string) pointing to `value`.
-    pub fn value_string(value: &'a c_char) -> Self {
+    /// Creates the union with [`value_string`](Self::value_string) pointing to the NUL-terminated string `value`.
+    pub fn value_string(value: &'a CStr) -> Self {
         Self {
-            value_string: core::ptr::from_ref(value),
+            value_string: value.as_ptr(),
         }
     }
 }
