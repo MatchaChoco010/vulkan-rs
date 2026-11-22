@@ -339,7 +339,7 @@ impl MemoryBlock {
     }
 
     fn is_empty(&self) -> bool {
-        self.suballocator.is_wholly_free(self.size)
+        self.suballocator.is_empty()
     }
 
     pub(crate) fn set_name(&mut self, allocation_id: u64, name: &str) {
@@ -353,12 +353,19 @@ impl MemoryBlock {
     ) -> Result<NonNull<u8>, AllocationError> {
         let offset =
             usize::try_from(allocation.offset).map_err(|_| AllocationError::InvalidAllocation)?;
+        let was_mapped = self.mapped_ptr.is_some();
         let base = match self.mapped_ptr {
             Some(base) => base,
             None => unsafe { self.map_whole_block(device) }?,
         };
-        self.mark_mapped(allocation.allocation_id)?;
-        Ok(unsafe { base.cast::<u8>().add(offset) })
+        let mapped = pointer_at(base, offset)
+            .ok_or(AllocationError::InvalidAllocation)
+            .and_then(|ptr| self.mark_mapped(allocation.allocation_id).map(|()| ptr));
+        if mapped.is_err() && !was_mapped {
+            unsafe { device.unmap_memory(self.memory) };
+            self.mapped_ptr = None;
+        }
+        mapped
     }
 
     unsafe fn map_whole_block(
@@ -393,7 +400,7 @@ impl MemoryBlock {
             return None;
         }
         let offset = usize::try_from(allocation.offset).ok()?;
-        Some(unsafe { self.mapped_ptr?.cast::<u8>().add(offset) })
+        pointer_at(self.mapped_ptr?, offset)
     }
 
     pub(crate) unsafe fn unmap(
@@ -547,6 +554,10 @@ impl MemoryBlock {
                 MemoryRegionState::Free => None,
             })
     }
+}
+
+fn pointer_at(base: NonNull<c_void>, offset: usize) -> Option<NonNull<u8>> {
+    NonNull::new(base.as_ptr().cast::<u8>().wrapping_add(offset))
 }
 
 #[cfg(test)]

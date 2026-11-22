@@ -17,9 +17,10 @@ const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
 
 /// The parameters of [`Allocator::new`].
 ///
-/// [`AllocatorCreateDesc::new`] fills every field from the physical device. The fields
-/// are public and can be changed afterwards, for example
-/// [`AllocatorCreateDesc::block_size`].
+/// [`AllocatorCreateDesc::new`] takes the memory properties and the
+/// `nonCoherentAtomSize` limit that are passed to it and sets
+/// [`AllocatorCreateDesc::block_size`] to 64 MiB. The fields are public and can be
+/// changed afterwards.
 pub struct AllocatorCreateDesc<'a> {
     /// The device to allocate from. The allocator keeps a clone of it.
     pub device: &'a Device,
@@ -116,7 +117,12 @@ impl Allocator {
     /// `desc.requirements.memory_type_bits` that have every flag
     /// [`AllocationCreateDesc::location`] requires: the lowest-indexed one that also has
     /// every preferred flag, or else the one with the most preferred flags (the lowest
-    /// index on a tie). Only that memory type is tried.
+    /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
+    /// are left out unless the required or preferred flags of the location include one
+    /// of these two flags, and memory types with `PROTECTED` are left out unless those
+    /// flags include `PROTECTED`; memory types of a tile memory heap are always left out
+    /// (see [`MemoryLocation`](crate::MemoryLocation)). Only the chosen memory type is
+    /// tried.
     ///
     /// The allocation is placed in an existing shared block of that type when one has
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
@@ -128,7 +134,7 @@ impl Allocator {
     /// # Errors
     ///
     /// - [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
-    ///   required flags.
+    ///   required flags, not counting the types that are left out as described above.
     /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0.
     /// - [`AllocationError::Vulkan`] if `vkAllocateMemory` fails, for example with
     ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
@@ -142,7 +148,10 @@ impl Allocator {
     ///   device.
     /// - The `vkAllocateMemory` call made from `desc` must be valid. In particular:
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
-    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); non-empty
+    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
+    ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
+    ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
+    ///   `protectedMemory` feature; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
     ///   type; a block must not be larger than the memory heap of the chosen type; and
@@ -155,11 +164,17 @@ impl Allocator {
     ///   support dedicated allocations (Vulkan 1.1 or `VK_KHR_dedicated_allocation`).
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
+    /// - The resources bound to the returned allocation must be protected resources if
+    ///   its memory type has `PROTECTED`, and must not be if it does not
+    ///   ([`Allocator::allocation_memory_flags`] tells). A location that only prefers
+    ///   `PROTECTED` can be given either; require the flag for a protected resource.
     /// - Every resource bound to the returned allocation must be a linear resource if
     ///   [`AllocationCreateDesc::linear`] is `true` and a non-linear resource if it is
     ///   `false`. The allocator places allocations of the same kind next to each other
     ///   without the `bufferImageGranularity` padding that a resource of the other kind
-    ///   needs, so a misstated kind makes the resource alias its neighbours.
+    ///   needs, so a misstated kind makes the resource alias its neighbours. Memory
+    ///   bound to other objects, such as a video session or a data graph pipeline
+    ///   session, may come from an allocation of either kind.
     pub unsafe fn allocate(
         &mut self,
         desc: AllocationCreateDesc<'_>,
@@ -243,8 +258,9 @@ impl Allocator {
     /// # Errors
     ///
     /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation, if its memory type is not `HOST_VISIBLE`, or if `vkMapMemory`
-    ///   returns a null pointer.
+    ///   allocation, if its memory type is not `HOST_VISIBLE`, if `vkMapMemory` returns
+    ///   a null pointer, or if the address of the allocation (the address of the mapped
+    ///   block plus [`Allocation::offset`]) cannot be represented as a non-null pointer.
     /// - [`AllocationError::Vulkan`] if `vkMapMemory` fails.
     ///
     /// # Safety
@@ -288,10 +304,11 @@ impl Allocator {
     /// - [`Allocation::memory`] must not be mapped or unmapped other than through this
     ///   allocator.
     /// - While the guard is alive, neither the device nor a pointer from
-    ///   [`Allocator::map_memory`] or [`Allocator::map_persistent`] may access the
-    ///   allocation's bytes in a way that conflicts with the slices the guard hands out,
-    ///   including through its safe methods: no writes while a shared slice is in use,
-    ///   and no access at all while a mutable slice is in use.
+    ///   [`Allocator::map_memory`], [`Allocator::map_persistent`] or
+    ///   [`MappedAllocation::as_ptr`] may access the allocation's bytes in a way that
+    ///   conflicts with the slices the guard hands out, including through its safe
+    ///   methods: no writes while a shared slice is in use, and no access at all while a
+    ///   mutable slice is in use.
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
