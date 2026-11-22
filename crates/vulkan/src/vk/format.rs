@@ -48,9 +48,27 @@ pub struct FormatInfo {
     /// The compression scheme of a block-compressed format: `"BC"`, `"ETC2"`, `"EAC"`,
     /// `"ASTC LDR"`, `"ASTC HDR"` or `"PVRTC"`.
     pub compression: Option<&'static str>,
-    /// The components in the order the registry lists them, which for a `_PACKnn` format is
-    /// from the most significant bits of its word down, and for a `_mPACKnn` format the
-    /// order of the words.
+    /// The components in the order the registry lists them, which is the order of the format
+    /// name: for a `_PACKnn` format from the most significant bits of its word down, and for
+    /// a `_mPACKnn` format the order of the words.
+    ///
+    /// The order does not give the bit positions. A word can hold bits that are not listed
+    /// here, because they are no component: the padding that a format name writes as `X`
+    /// and the shared exponent that it writes as `E`. So the widths of the components before
+    /// a component do not always add up to the bit at which it starts.
+    /// `E5B9G9R9_UFLOAT_PACK32` lists `B`, `G` and `R` with 9 bits each, and its exponent
+    /// takes bits 27 to 31 of the word, above them: `B` is in bits 18 to 26, not in the 9
+    /// bits from bit 31 down. `X8_D24_UNORM_PACK32` lists only `D`, although its name starts
+    /// with 8 bits of padding.
+    ///
+    /// ```
+    /// use vulkan::vk;
+    ///
+    /// let shared_exponent = vk::Format::E5B9G9R9_UFLOAT_PACK32.info().unwrap();
+    /// let listed = shared_exponent.components.iter().filter_map(|component| component.bits);
+    /// assert_eq!(shared_exponent.packed, Some(32));
+    /// assert_eq!(listed.sum::<u32>(), 27);
+    /// ```
     pub components: &'static [FormatComponent],
     /// The memory planes of a multi-planar format. Empty for single-plane formats.
     pub planes: &'static [FormatPlane],
