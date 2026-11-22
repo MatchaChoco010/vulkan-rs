@@ -35,17 +35,26 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
 enum Successor<'a> {
     Version(u32, u32),
     Extension(&'a str),
+    Unnamed,
 }
 
 fn successor<'a>(model: &Model<'_>, ext: &Extension, field: &str, name: &'a str) -> Successor<'a> {
     let used_in = || format!("the `{field}` of `{}`", ext.name);
+    if name.is_empty() {
+        assert!(
+            field != "promotedto",
+            "{} is empty, but the registry allows an empty value only for `deprecatedby` and \
+             `obsoletedby`",
+            used_in()
+        );
+        return Successor::Unnamed;
+    }
     if let Some((major, minor)) = named_version(name, used_in) {
         return Successor::Version(major, minor);
     }
     assert!(
         is_registry_extension(model, name),
-        "{}: `{name}` in {} is not an extension of the registry",
-        ext.name,
+        "`{name}` in {} is not an extension of the registry",
         used_in()
     );
     Successor::Extension(name)
@@ -108,19 +117,14 @@ fn name_doc(model: &Model<'_>, cfg: &Cfg, ext: &Extension) -> Doc {
         ("Deprecated by", "deprecatedby", &ext.deprecated_by),
         ("Obsoleted by", "obsoletedby", &ext.obsoleted_by),
     ] {
-        let named = match by.as_deref() {
-            Some("") => {
-                facts.push(format!("{}.", verb.trim_end_matches(" by")));
-                continue;
-            }
-            Some(name) => successor(model, ext, field, name),
-            None => continue,
+        let Some(name) = by.as_deref() else {
+            continue;
         };
-        let named = match named {
-            Successor::Version(major, minor) => format!("Vulkan {major}.{minor}"),
-            Successor::Extension(name) => model.link(cfg, name),
-        };
-        facts.push(format!("{verb} {named}."));
+        facts.push(match successor(model, ext, field, name) {
+            Successor::Version(major, minor) => format!("{verb} Vulkan {major}.{minor}."),
+            Successor::Extension(name) => format!("{verb} {}.", model.link(cfg, name)),
+            Successor::Unnamed => format!("{}.", verb.trim_end_matches(" by")),
+        });
     }
     Doc::new()
         .text(format!(
@@ -186,7 +190,6 @@ fn lookup_table(model: &Model<'_>) -> String {
         let promoted_to = ext
             .promoted_to
             .as_deref()
-            .filter(|name| !name.is_empty())
             .map(|name| successor(model, ext, "promotedto", name));
         let (promoted_to_version, promoted_to_extension) = match promoted_to {
             Some(Successor::Version(major, minor)) => (
@@ -194,7 +197,7 @@ fn lookup_table(model: &Model<'_>) -> String {
                 None,
             ),
             Some(Successor::Extension(name)) => (None, Some(format!("c\"{name}\""))),
-            None => (None, None),
+            Some(Successor::Unnamed) | None => (None, None),
         };
         w!(
             out,
@@ -299,7 +302,52 @@ mod tests {
 
     #[test]
     #[should_panic(
-        expected = "VK_KHR_a: `VK_KHR_missing` in the `promotedto` of `VK_KHR_a` is not an extension of the registry"
+        expected = "the `promotedto` of `VK_KHR_a` is empty, but the registry allows an empty value only for `deprecatedby` and `obsoletedby`"
+    )]
+    fn an_empty_promotion_aborts_generation() {
+        emitted(vec![extension("VK_KHR_a", true, None, Some(""))]);
+    }
+
+    #[test]
+    fn an_empty_deprecation_or_obsoletion_names_no_successor() {
+        let mut ir = registry();
+        ir.extensions = vec![
+            Extension {
+                deprecated_by: Some(String::new()),
+                ..extension("VK_KHR_deprecated", true, None, None)
+            },
+            Extension {
+                obsoleted_by: Some(String::new()),
+                ..extension("VK_KHR_obsoleted", true, None, None)
+            },
+        ];
+        let out = emit(&Model::new(&ir));
+        let doc = |item: &str| {
+            let end = out.find(item).expect(item);
+            out[..end]
+                .lines()
+                .rev()
+                .take(6)
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        assert!(
+            doc("pub const KHR_DEPRECATED_NAME").contains("Deprecated."),
+            "{out}"
+        );
+        assert!(
+            doc("pub const KHR_OBSOLETED_NAME").contains("Obsoleted."),
+            "{out}"
+        );
+        let table = squash(&out);
+        assert!(table.contains(
+            "name: c\"VK_KHR_deprecated\", spec_version: 1, level: ExtensionLevel::Device, depends: None, promoted_to_version: None, promoted_to_extension: None,"
+        ));
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "`VK_KHR_missing` in the `promotedto` of `VK_KHR_a` is not an extension of the registry"
     )]
     fn a_promotion_to_an_extension_that_the_registry_does_not_have_aborts_generation() {
         emitted(vec![extension(
