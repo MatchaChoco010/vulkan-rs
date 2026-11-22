@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
 
 pub(crate) fn emit(model: &Model<'_>) -> String {
-    let mut out = header(&["too_many_arguments"]);
+    let mut out = header(&["too_many_arguments", "manual_div_ceil"]);
     out.push_str("use alloc::vec::Vec;\nuse core::ffi::{c_char, c_void, CStr};\n\n");
     for dispatch in Dispatch::ALL {
         out.push_str(&dispatch_tables::table(model, dispatch));
@@ -759,7 +759,7 @@ mod tests {
                     "const uint32_t*",
                     "(samples + 31) / 32",
                 )),
-                counted("pVersionData", "const uint8_t*", "2*VK_UUID_SIZE"),
+                counted("pVersionData", "const uint8_t*", "2*samples"),
                 field("wordCount", "uint32_t"),
                 optional(counted("pWords", "const uint32_t*", "wordCount")),
             ],
@@ -769,7 +769,7 @@ mod tests {
             &Docs::default(),
             "vkCmdSetSampleMaskEXT",
             &["vkCmdSetMasksNV"],
-            "self.cmd_set_sample_mask_ext_raw(command_buffer, samples, sample_mask.map_or(core::ptr::null(), |x| if x.is_empty() { core::ptr::null() } else { x.as_ptr() }), if version_data.is_empty() { core::ptr::null() } else { version_data.as_ptr() }, len_as_count(word_count_len, \"vkCmdSetSampleMaskEXT\", \"wordCount\"), words.map_or(core::ptr::null(), |x| x.as_ptr()))",
+            "if let Some(x) = sample_mask.as_ref() { assert!(x.is_empty() || (u128::from(samples) + 31) / 32 <= x.len() as u128, \"vkCmdSetSampleMaskEXT: `sample_mask` must be empty or have at least `(samples + 31) / 32` elements\"); } assert!(version_data.is_empty() || 2*u128::from(samples) <= version_data.len() as u128, \"vkCmdSetSampleMaskEXT: `version_data` must be empty or have at least `2*samples` elements\"); let word_count_len: usize = [words.as_ref().map(|x| x.len())].into_iter().flatten().next().unwrap_or(0); self.cmd_set_sample_mask_ext_raw(command_buffer, samples, sample_mask.map_or(core::ptr::null(), |x| if x.is_empty() { core::ptr::null() } else { x.as_ptr() }), if version_data.is_empty() { core::ptr::null() } else { version_data.as_ptr() }, len_as_count(word_count_len, \"vkCmdSetSampleMaskEXT\", \"wordCount\"), words.map_or(core::ptr::null(), |x| x.as_ptr()))",
         );
         let documented = emit(&Model::new(&ir))
             .split_whitespace()
@@ -777,10 +777,51 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
-            documented.contains("An empty `sample_mask` is passed as a null pointer, because no parameter passes its length. An empty `version_data` is passed as a null pointer, because no parameter passes its length."),
+            documented.contains("An empty `sample_mask` is passed as a null pointer. From a `sample_mask` that is not empty, the command reads `(samples + 31) / 32` elements, an expression of the registry in which each parameter stands for the number that the C API passes for it. An empty `version_data` is passed as a null pointer. From a `version_data` that is not empty, the command reads `2*samples` elements, an expression of the registry in which each parameter stands for the number that the C API passes for it."),
+            "{documented}"
+        );
+        assert!(
+            documented.contains("is not enabled. Also panics if `sample_mask` is not empty and has fewer than `(samples + 31) / 32` elements. Also panics if `version_data` is not empty and has fewer than `2*samples` elements. Also panics if `words` has more elements than `wordCount`, a `uint32_t`, can count."),
             "{documented}"
         );
         assert!(!documented.contains("An empty `words`"), "{documented}");
+    }
+
+    #[test]
+    fn a_length_that_the_wrappers_cannot_evaluate_stops_the_generator() {
+        for len in [
+            "2*VK_UUID_SIZE",
+            "samples - 1",
+            "samples % 32",
+            "(layers + 31) / 32",
+            "pLevels + 1",
+            "wordCount * 2",
+            "ratio * 2",
+            "latexmath:[\\lceil{samples \\over 32}\\rceil]",
+        ] {
+            let mut ir = base();
+            ir.commands.push(device(command(
+                "vkCmdSetSampleMaskEXT",
+                vec![
+                    field("commandBuffer", "VkCommandBuffer"),
+                    field("samples", "uint32_t"),
+                    field("ratio", "float"),
+                    field("pLevels", "const uint32_t*"),
+                    field("wordCount", "uint32_t"),
+                    counted("pWords", "const uint32_t*", "wordCount"),
+                    optional(counted("pSampleMask", "const uint32_t*", len)),
+                ],
+            )));
+            let message = crate::test_support::catch_quietly(|| generate(&ir))
+                .expect_err("the length cannot be evaluated");
+            assert_eq!(
+                message,
+                format!(
+                    "vkCmdSetSampleMaskEXT: the wrappers cannot evaluate `{len}`, the length that the registry gives for pSampleMask: they read integers, the names of parameters that are passed as numbers, `+`, `*`, `/` and parentheses"
+                ),
+                "{len}"
+            );
+        }
     }
 
     #[test]
@@ -800,6 +841,47 @@ mod tests {
             null_when_empty,
             BTreeSet::from(["vkCmdSetSampleMaskEXT"]),
             "crates/vulkan/tests/uncounted_slices.rs checks each of these wrappers"
+        );
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_check_every_length_that_is_an_expression_of_parameters() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut checked = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            for p in model.dispatch(c).explicit_params(c) {
+                let ty = CType::of(p);
+                let Some(len) = p.len.as_deref() else {
+                    continue;
+                };
+                let names_one_parameter_or_member =
+                    len.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        || struct_member_len(Some(len)).is_some();
+                if ty.depth() != 1 || ty.is_array() || names_one_parameter_or_member {
+                    continue;
+                }
+                let name = argument_name(p);
+                assert!(
+                    out.contains(&format!(
+                        "\"{}: `{name}` must be empty or have at least `{len}` elements\"",
+                        c.name
+                    )),
+                    "{}: the wrapper does not check that `{name}` has `{len}` elements: {out}",
+                    c.name
+                );
+                checked.insert(format!("{}::{} [{len}]", c.name, p.name));
+            }
+        }
+        assert_eq!(
+            checked,
+            BTreeSet::from(
+                ["vkCmdSetSampleMaskEXT::pSampleMask [(samples + 31) / 32]".to_string()]
+            ),
+            "crates/vulkan/tests/computed_lengths.rs calls each of these wrappers"
         );
     }
 

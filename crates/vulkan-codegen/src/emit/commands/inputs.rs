@@ -330,9 +330,7 @@ impl Planner<'_> {
             self.assert_pointed_count_len(p);
             let uncounted = !shares_a_count_param && !self.names_its_length(p);
             if uncounted {
-                self.notes.push(format!(
-                    "An empty `{name}` is passed as a null pointer, because no parameter passes its length."
-                ));
+                self.assert_computed_len(p);
             }
             return slice(self.model, p, ty, uncounted);
         }
@@ -463,6 +461,83 @@ impl Planner<'_> {
             argument_name(p)
         );
         self.assert_slice_len(p, &format!("{owner}.{member} as usize"), &message);
+    }
+
+    fn assert_computed_len(&mut self, p: &Field) {
+        let name = argument_name(p);
+        let len = p.len.as_deref().unwrap_or_default();
+        let needed = self.computed_len(len).unwrap_or_else(|| {
+            panic!(
+                "{}: the wrappers cannot evaluate `{len}`, the length that the registry gives for {}: they read integers, the names of parameters that are passed as numbers, `+`, `*`, `/` and parentheses",
+                self.c.name, p.name
+            )
+        });
+        let message = format!(
+            "{}: `{name}` must be empty or have at least `{len}` elements",
+            self.c.name
+        );
+        if p.optional {
+            w!(
+                self.checks,
+                "if let Some(x) = {name}.as_ref() {{ assert!(x.is_empty() || {needed} <= x.len() as u128, \"{message}\"); }}"
+            );
+        } else {
+            w!(
+                self.checks,
+                "assert!({name}.is_empty() || {needed} <= {name}.len() as u128, \"{message}\");"
+            );
+        }
+        self.notes.push(format!(
+            "An empty `{name}` is passed as a null pointer. From a `{name}` that is not empty, the command reads `{len}` elements, an expression of the registry in which each parameter stands for the number that the C API passes for it."
+        ));
+        self.narrowed_counts.push(format!(
+            "Also panics if `{name}` is not empty and has fewer than `{len}` elements."
+        ));
+    }
+
+    fn computed_len(&self, len: &str) -> Option<String> {
+        let mut needed = String::new();
+        let mut names_a_parameter = false;
+        let mut rest = len;
+        while let Some(c) = rest.chars().next() {
+            if c.is_ascii_alphabetic() || c == '_' {
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .unwrap_or(rest.len());
+                needed.push_str(&self.passed_number(&rest[..end])?);
+                names_a_parameter = true;
+                rest = &rest[end..];
+            } else if c.is_ascii_digit() || " +*/()".contains(c) {
+                needed.push(c);
+                rest = &rest[c.len_utf8()..];
+            } else {
+                return None;
+            }
+        }
+        names_a_parameter.then_some(needed)
+    }
+
+    fn passed_number(&self, c_name: &str) -> Option<String> {
+        let index = self.params.iter().position(|q| q.name == c_name)?;
+        let q = &self.params[index];
+        let ty = CType::of(q);
+        if ty.depth() != 0 || ty.is_array() || self.slices_of_count.contains_key(&index) {
+            return None;
+        }
+        let name = argument_name(q);
+        let canonical = self.model.canonical(&q.ty);
+        let is_flag_bits = self
+            .model
+            .ir
+            .bitmasks
+            .iter()
+            .any(|bitmask| bitmask.name == canonical);
+        match canonical {
+            "uint8_t" | "uint16_t" | "uint32_t" | "uint64_t" => Some(format!("u128::from({name})")),
+            "size_t" => Some(format!("({name} as u128)")),
+            _ if is_flag_bits => Some(format!("u128::from({name}.as_raw())")),
+            _ => None,
+        }
     }
 }
 

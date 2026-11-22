@@ -13295,15 +13295,10 @@ impl Default for AccelerationStructureVersionInfoKHR<'_> {
 }
 
 impl<'a> AccelerationStructureVersionInfoKHR<'a> {
-    /// Sets [`p_version_data`](Self::p_version_data) to the start of a slice, or to a null pointer
-    /// if the slice is empty. No member stores the length: the C API expects `2*VK_UUID_SIZE`
-    /// elements. The member is not optional: the C API needs the elements.
-    pub fn version_data(mut self, value: &'a [u8]) -> Self {
-        self.p_version_data = if value.is_empty() {
-            core::ptr::null()
-        } else {
-            value.as_ptr()
-        };
+    /// Sets [`p_version_data`](Self::p_version_data) to point to an array of `2*VK_UUID_SIZE`
+    /// elements, the length that the registry gives for the member.
+    pub fn version_data(mut self, value: &'a [u8; 2 * UUID_SIZE]) -> Self {
+        self.p_version_data = value.as_ptr();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -54896,15 +54891,10 @@ impl Default for MicromapVersionInfoEXT<'_> {
 }
 
 impl<'a> MicromapVersionInfoEXT<'a> {
-    /// Sets [`p_version_data`](Self::p_version_data) to the start of a slice, or to a null pointer
-    /// if the slice is empty. No member stores the length: the C API expects `2*VK_UUID_SIZE`
-    /// elements. The member is not optional: the C API needs the elements.
-    pub fn version_data(mut self, value: &'a [u8]) -> Self {
-        self.p_version_data = if value.is_empty() {
-            core::ptr::null()
-        } else {
-            value.as_ptr()
-        };
+    /// Sets [`p_version_data`](Self::p_version_data) to point to an array of `2*VK_UUID_SIZE`
+    /// elements, the length that the registry gives for the member.
+    pub fn version_data(mut self, value: &'a [u8; 2 * UUID_SIZE]) -> Self {
+        self.p_version_data = value.as_ptr();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.

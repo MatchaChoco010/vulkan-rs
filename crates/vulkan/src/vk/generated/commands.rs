@@ -3,6 +3,7 @@
 #![allow(non_upper_case_globals)]
 #![allow(unused_imports)]
 #![allow(clippy::too_many_arguments)]
+#![allow(clippy::manual_div_ceil)]
 
 use crate::vk::*;
 
@@ -53995,9 +53996,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdSetSampleMaskEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdSetSampleMaskEXT.html)
     /// through [`Self::cmd_set_sample_mask_ext_raw`], which describes the parameters. An empty
-    /// `sample_mask` is passed as a null pointer, because no parameter passes its length. The
-    /// command is provided by [`VK_EXT_extended_dynamic_state3`](EXT_EXTENDED_DYNAMIC_STATE_3_NAME)
-    /// or [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
+    /// `sample_mask` is passed as a null pointer. From a `sample_mask` that is not empty, the
+    /// command reads `(samples + 31) / 32` elements, an expression of the registry in which each
+    /// parameter stands for the number that the C API passes for it. The command is provided by
+    /// [`VK_EXT_extended_dynamic_state3`](EXT_EXTENDED_DYNAMIC_STATE_3_NAME) or
+    /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
     ///
     /// # Safety
     ///
@@ -54006,7 +54009,8 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkCmdSetSampleMaskEXT` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Also panics if
+    /// `sample_mask` is not empty and has fewer than `(samples + 31) / 32` elements.
     #[doc(alias = "vkCmdSetSampleMaskEXT")]
     pub unsafe fn cmd_set_sample_mask_ext(
         &self,
@@ -54015,6 +54019,12 @@ impl crate::Device {
         sample_mask: Option<&[SampleMask]>,
     ) {
         unsafe {
+            if let Some(x) = sample_mask.as_ref() {
+                assert!(
+                    x.is_empty() || (u128::from(samples.as_raw()) + 31) / 32 <= x.len() as u128,
+                    "vkCmdSetSampleMaskEXT: `sample_mask` must be empty or have at least `(samples + 31) / 32` elements"
+                );
+            }
             self.cmd_set_sample_mask_ext_raw(
                 command_buffer,
                 samples,

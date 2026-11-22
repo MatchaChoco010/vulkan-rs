@@ -159,6 +159,47 @@ fn count_member<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
         .find(|c| c.name == count && CType::of(c).depth() == 0 && !CType::of(c).is_array())
 }
 
+fn constant_len(model: &Model<'_>, s: &Struct, m: &Field) -> Option<String> {
+    let len = m.len.as_deref()?;
+    let usize_constants = model.array_len_constants();
+    let mut array_len = String::new();
+    let mut rest = len;
+    while let Some(c) = rest.chars().next() {
+        if c.is_ascii_alphabetic() || c == '_' {
+            let end = rest
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(rest.len());
+            let name = &rest[..end];
+            if !model.ir.constants.iter().any(|c| c.name == name) {
+                return None;
+            }
+            assert!(
+                usize_constants.contains(name),
+                "{}::{}: the length `{len}` names the constant {name}, which the bindings do not declare as a `usize` because no array has it as its length",
+                s.name,
+                m.name
+            );
+            array_len.push_str(&crate::naming::const_name(name));
+            rest = &rest[end..];
+            continue;
+        }
+        match c {
+            '0'..='9' | '(' | ')' => array_len.push(c),
+            '+' | '-' | '*' | '/' => {
+                array_len.push(' ');
+                array_len.push(c);
+                array_len.push(' ');
+            }
+            ' ' => {}
+            _ => return None,
+        }
+        rest = &rest[c.len_utf8()..];
+    }
+    array_len
+        .contains(|c: char| c.is_ascii_alphanumeric())
+        .then_some(array_len)
+}
+
 struct Setter {
     doc: Doc,
     name: String,
@@ -340,6 +381,23 @@ fn pointer_setter(
             sets(m, " to a NUL-terminated string"),
             "&'a CStr".to_string(),
             format!("self.{field} = value.as_ptr();"),
+        )
+    } else if let Some(array_len) = constant_len(model, s, m) {
+        assert!(
+            !is_opaque(&ty.base),
+            "{}::{}: an array of a constant length whose elements are `{}`",
+            s.name,
+            m.name,
+            ty.base
+        );
+        (
+            Doc::new().text(format!(
+                "Sets {} to point to an array of `{}` elements, the length that the registry gives for the member.",
+                field_link(&m.name),
+                m.len.as_deref().unwrap_or_default()
+            )),
+            borrow.reference("'a", &format!("[{pointee}; {array_len}]")),
+            format!("self.{field} = value.{as_ptr}();"),
         )
     } else if is_opaque(&ty.base) {
         (
@@ -743,7 +801,8 @@ mod tests {
                     && count_member(s, m).is_none()
                     && m.len.as_deref() != Some(SPIRV_WORD_COUNT)
                     && !(m.null_terminated && ty.base == "char")
-                    && !is_opaque(&ty.base);
+                    && !is_opaque(&ty.base)
+                    && constant_len(&model, s, m).is_none();
                 let field = field_name(&m.name);
                 let sets_null_when_empty =
                     out.contains(&format!("self.{field} = if value.is_empty() {{"));
@@ -763,16 +822,153 @@ mod tests {
                 "StdVideoEncodeAV1PictureInfo::pBufferRemovalTimes",
                 "StdVideoH265HrdParameters::pSubLayerHrdParametersNal",
                 "StdVideoH265HrdParameters::pSubLayerHrdParametersVcl",
-                "VkAccelerationStructureVersionInfoKHR::pVersionData",
                 "VkDeviceFaultInfoEXT::pAddressInfos",
                 "VkDeviceFaultInfoEXT::pVendorInfos",
-                "VkMicromapVersionInfoEXT::pVersionData",
                 "VkPipelineMultisampleStateCreateInfo::pSampleMask",
             ]
             .into_iter()
             .map(String::from)
             .collect::<BTreeSet<_>>(),
             "crates/vulkan/tests/uncounted_slices.rs checks each of these setters"
+        );
+    }
+
+    fn with_constants(ir: &mut Registry, constants: &[&str]) {
+        for name in constants {
+            ir.constants.push(vulkan_registry::Constant {
+                name: name.to_string(),
+                ty: "uint32_t".to_string(),
+                value: "16".to_string(),
+                video_std_header: None,
+            });
+        }
+        let mut uuid = field("pipelineCacheUUID", "uint8_t");
+        uuid.fixed_size_array = vec!["VK_UUID_SIZE".to_string()];
+        let mut name = field("deviceName", "char");
+        name.fixed_size_array = vec!["VK_MAX_NAME_SIZE".to_string()];
+        ir.structs
+            .push(structure("VkArrayLengthsNV", vec![uuid, name]));
+    }
+
+    #[test]
+    fn a_pointer_whose_length_is_a_constant_expression_takes_a_reference_to_an_array() {
+        let mut ir = registry();
+        with_constants(&mut ir, &["VK_UUID_SIZE", "VK_MAX_NAME_SIZE"]);
+        ir.structs.push(structure(
+            "VkVersionInfoNV",
+            vec![
+                counted("pVersionData", "const uint8_t*", "2*VK_UUID_SIZE"),
+                optional(counted("pName", "uint32_t*", "VK_MAX_NAME_SIZE")),
+                counted(
+                    "pBoth",
+                    "const float*",
+                    "(VK_UUID_SIZE + 2) * VK_MAX_NAME_SIZE / 4 - 1",
+                ),
+                counted("pFour", "const uint16_t*", "4"),
+                field("samples", "uint32_t"),
+                counted("pMask", "const uint32_t*", "(samples + 31) / 32"),
+            ],
+        ));
+        let model = Model::new(&ir);
+        let out = definition(&model, &ir.structs[1]);
+        let squashed = squash(&out);
+        for (setter, value, pointer) in [
+            (
+                "version_data",
+                "&'a [u8; 2 * UUID_SIZE]",
+                "self.p_version_data = value.as_ptr();",
+            ),
+            (
+                "name",
+                "&'a mut [u32; MAX_NAME_SIZE]",
+                "self.p_name = value.as_mut_ptr();",
+            ),
+            (
+                "both",
+                "&'a [f32; (UUID_SIZE + 2) * MAX_NAME_SIZE / 4 - 1]",
+                "self.p_both = value.as_ptr();",
+            ),
+            ("four", "&'a [u16; 4]", "self.p_four = value.as_ptr();"),
+        ] {
+            assert!(
+                squashed.contains(&format!(
+                    "pub fn {setter}(mut self, value: {value}) -> Self {{ {pointer} self }}"
+                )),
+                "{setter}: {squashed}"
+            );
+        }
+        assert!(
+            squashed.contains(
+                "pub fn mask(mut self, value: &'a [u32]) -> Self { self.p_mask = if value.is_empty() {"
+            ),
+            "a length that depends on a member stays a slice: {squashed}"
+        );
+        assert_eq!(
+            doc_of(&out, "pub fn version_data("),
+            [
+                "Sets [`p_version_data`](Self::p_version_data) to point to an array of `2*VK_UUID_SIZE` elements, the length that the registry gives for the member."
+            ]
+        );
+    }
+
+    #[test]
+    fn a_constant_that_is_not_a_usize_stops_the_generator() {
+        let mut ir = registry();
+        with_constants(
+            &mut ir,
+            &["VK_UUID_SIZE", "VK_MAX_NAME_SIZE", "VK_LOD_COUNT"],
+        );
+        ir.structs.push(structure(
+            "VkVersionInfoNV",
+            vec![counted("pLods", "const float*", "VK_LOD_COUNT")],
+        ));
+        let model = Model::new(&ir);
+        let message = crate::test_support::catch_quietly(|| definition(&model, &ir.structs[1]))
+            .expect_err("VK_LOD_COUNT is the length of no array");
+        assert_eq!(
+            message,
+            "VkVersionInfoNV::pLods: the length `VK_LOD_COUNT` names the constant VK_LOD_COUNT, which the bindings do not declare as a `usize` because no array has it as its length"
+        );
+    }
+
+    #[test]
+    fn the_registry_members_with_a_constant_length_take_arrays_of_that_length() {
+        let model = Model::new(Registry::get());
+        let mut fixed = BTreeSet::new();
+        for s in &model.ir.structs {
+            if s.union {
+                continue;
+            }
+            let out = squash(&definition(&model, s));
+            for m in &s.members {
+                let ty = CType::of(m);
+                if ty.depth() != 1 || ty.is_array() {
+                    continue;
+                }
+                let Some(array_len) = constant_len(&model, s, m) else {
+                    continue;
+                };
+                assert!(
+                    out.contains(&format!(
+                        "; {array_len}]) -> Self {{ self.{} = value.as_",
+                        field_name(&m.name)
+                    )),
+                    "{}::{} does not take an array of `{array_len}` elements: {out}",
+                    s.name,
+                    m.name
+                );
+                fixed.insert(format!("{}::{} [{array_len}]", s.name, m.name));
+            }
+        }
+        assert_eq!(
+            fixed,
+            [
+                "VkAccelerationStructureVersionInfoKHR::pVersionData [2 * UUID_SIZE]",
+                "VkMicromapVersionInfoEXT::pVersionData [2 * UUID_SIZE]",
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect::<BTreeSet<_>>()
         );
     }
 }
