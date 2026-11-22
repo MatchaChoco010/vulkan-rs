@@ -117,6 +117,33 @@ mod tests {
     }
 
     #[test]
+    fn a_command_whose_first_parameter_is_not_a_handle_by_value_is_loaded_without_a_handle() {
+        let mut ir = registry();
+        ir.handles.push(Handle {
+            name: "VkInstance".to_string(),
+            dispatchable: true,
+            ..Default::default()
+        });
+        let model = Model::new(&ir);
+        for params in [
+            vec![],
+            vec![field("index", "uint32_t")],
+            vec![field("pInstance", "VkInstance*")],
+            vec![
+                field("pCreateInfo", "const VkInstanceCreateInfo*"),
+                field("instance", "VkInstance"),
+            ],
+        ] {
+            let mut c = command("vkCommand", params);
+            c.instance = true;
+            assert_eq!(model.dispatch(&c), Dispatch::Entry, "{:?}", c.params);
+        }
+        let mut by_value = command("vkCommand", vec![field("instance", "VkInstance")]);
+        by_value.instance = true;
+        assert_eq!(model.dispatch(&by_value), Dispatch::Instance);
+    }
+
+    #[test]
     fn commands_that_return_command_pointers_are_loaded_one_level_up_whatever_their_name() {
         let mut ir = registry();
         for name in ["VkInstance", "VkDevice"] {

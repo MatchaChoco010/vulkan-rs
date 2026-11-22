@@ -801,6 +801,106 @@ mod tests {
     }
 
     #[test]
+    fn a_computed_length_reads_sizes_and_flag_bits_as_numbers() {
+        let mut ir = base();
+        ir.bitmasks.push(vulkan_registry::Bitmask {
+            name: "VkSampleCountFlagBits".to_string(),
+            flags_name: "VkSampleCountFlags".to_string(),
+            bit_width: 32,
+            ..Default::default()
+        });
+        ir.commands.push(device(command(
+            "vkCmdSetSampleMaskEXT",
+            vec![
+                field("commandBuffer", "VkCommandBuffer"),
+                field("byteCount", "size_t"),
+                field("samples", "VkSampleCountFlagBits"),
+                counted("pBytes", "const uint8_t*", "2*byteCount"),
+                counted("pSampleMask", "const uint32_t*", "(samples + 31) / 32"),
+            ],
+        )));
+        let out = generate(&ir);
+        for check in [
+            "assert!(bytes.is_empty() || 2*(byte_count as u128) <= bytes.len() as u128,",
+            "assert!(sample_mask.is_empty() || (u128::from(samples.as_raw()) + 31) / 32 <= sample_mask.len() as u128,",
+        ] {
+            assert!(out.contains(check), "no `{check}` in {out}");
+        }
+    }
+
+    #[test]
+    fn a_count_that_a_pointer_parameter_points_to_is_cast_unless_it_is_a_size() {
+        for (count_ty, read) in [
+            ("uint32_t*", "*fault_counts as usize"),
+            ("size_t*", "*fault_counts"),
+        ] {
+            let mut ir = fault_reports(&["VK_SUCCESS", "VK_TIMEOUT"]);
+            let c = ir.commands.last_mut().expect("the command");
+            let count = c
+                .params
+                .iter_mut()
+                .find(|p| p.name == "pFaultCounts")
+                .expect("the count");
+            *count = field("pFaultCounts", count_ty);
+            let out = generate(&ir);
+            let check = format!(
+                "assert_eq!(x.len(), {read}, \"vkGetDeviceFaultReportsKHR: `fault_info` must have `*fault_counts` elements\");"
+            );
+            assert!(out.contains(&check), "no `{check}` in {out}");
+        }
+    }
+
+    #[test]
+    fn only_the_handles_that_a_deferrable_command_creates_are_documented_as_its_outputs() {
+        let ir = only(result_command(
+            "vkCreatePipelinesFromBuffersNV",
+            &[
+                "VK_SUCCESS",
+                "VK_OPERATION_DEFERRED_KHR",
+                "VK_OPERATION_NOT_DEFERRED_KHR",
+            ],
+            vec![
+                field("device", "VkDevice"),
+                optional(field("deferredOperation", "VkDeferredOperationKHR")),
+                field("createInfoCount", "uint32_t"),
+                counted("pSources", "const VkBuffer*", "createInfoCount"),
+                counted("pPipelines", "VkPipeline*", "createInfoCount"),
+            ],
+        ));
+        let model = Model::new(&ir);
+        let c = ir.commands.last().expect("the command");
+        let wrapper = wrapper::wrapper(&model, c, Dispatch::Device).replace("///", "");
+        let wrapper = wrapper.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            wrapper.contains("What `pipelines` holds depends on the result"),
+            "{wrapper}"
+        );
+    }
+
+    #[test]
+    fn only_a_const_pointer_to_characters_that_end_with_nul_is_taken_as_a_c_string() {
+        let mut name = field("pName", "const char*");
+        name.null_terminated = true;
+        let mut list = field("pList", "const uint32_t*");
+        list.null_terminated = true;
+        let ir = only(command(
+            "vkSetNamesNV",
+            vec![
+                field("device", "VkDevice"),
+                name,
+                field("pLetter", "const char*"),
+                list,
+                field("pValue", "uint32_t"),
+            ],
+        ));
+        let out = generate(&ir);
+        assert!(
+            out.contains("pub unsafe fn set_names_nv(&self, name: &CStr, letter: &c_char, list: &u32, p_value: u32)"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn a_length_that_the_wrappers_cannot_evaluate_stops_the_generator() {
         for len in [
             "2*VK_UUID_SIZE",
@@ -813,6 +913,12 @@ mod tests {
             "latexmath:[\\lceil{samples \\over 32}\\rceil]",
         ] {
             let mut ir = base();
+            ir.bitmasks.push(vulkan_registry::Bitmask {
+                name: "VkSampleCountFlagBits".to_string(),
+                flags_name: "VkSampleCountFlags".to_string(),
+                bit_width: 32,
+                ..Default::default()
+            });
             ir.commands.push(device(command(
                 "vkCmdSetSampleMaskEXT",
                 vec![
