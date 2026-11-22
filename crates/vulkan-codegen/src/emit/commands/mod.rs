@@ -4,7 +4,7 @@ mod shape;
 mod wrapper;
 
 use super::func_pointers::parameter_item;
-use super::{arrow, header, w};
+use super::{arrow, assert_distinct_names, header, parameter_names, w};
 use crate::docs::{Block, Doc};
 use crate::model::{CType, Cfg, Dispatch, Model};
 use crate::naming::{command_name, field_name, pointer_setter_name};
@@ -18,6 +18,21 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         out.push_str(&dispatch_tables::table(model, dispatch));
     }
     for dispatch in Dispatch::ALL {
+        let raw_methods = commands(model, dispatch).map(|c| {
+            (
+                format!("the raw method of the C command `{}`", c.name),
+                raw_name(c),
+            )
+        });
+        let wrapper_methods = commands(model, dispatch)
+            .filter(|c| !creates_a_dispatching_handle(c))
+            .map(|c| {
+                (
+                    format!("the wrapper of the C command `{}`", c.name),
+                    command_name(&c.name),
+                )
+            });
+        assert_distinct_names(&dispatch.wrapper(), raw_methods.chain(wrapper_methods));
         let raw_commands = commands(model, dispatch)
             .map(|c| raw_command(model, c, dispatch))
             .collect::<String>();
@@ -112,16 +127,18 @@ fn with_deferred_safety(model: &Model<'_>, c: &Command, safety: String) -> Strin
 
 fn raw_command(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
     let params = dispatch.explicit_params(c);
+    let names = parameter_names(&c.name, params.iter().map(|p| p.name.as_str()), field_name);
     let signature = params
         .iter()
-        .map(|p| format!(", {}: {}", field_name(&p.name), model.param_ty(p, "'_")))
+        .zip(&names)
+        .map(|(p, name)| format!(", {name}: {}", model.param_ty(p, "'_")))
         .collect::<String>();
     let self_handle = dispatch
         .passes_self_handle(c)
         .then(|| "self.handle()".to_string());
     let arguments = self_handle
         .into_iter()
-        .chain(params.iter().map(|p| field_name(&p.name)))
+        .chain(names)
         .collect::<Vec<_>>()
         .join(", ");
     let cfg = model.cfg(c.protect.as_deref());
@@ -254,6 +271,42 @@ mod tests {
     };
     use std::collections::BTreeMap;
     use vulkan_registry::{DocItem, DocPage, Docs, EnumField, Handle, Registry};
+
+    #[derive(Default)]
+    struct Bindings(Vec<String>);
+
+    impl<'ast> syn::visit::Visit<'ast> for Bindings {
+        fn visit_pat_ident(&mut self, pattern: &'ast syn::PatIdent) {
+            self.0.push(pattern.ident.to_string());
+            syn::visit::visit_pat_ident(self, pattern);
+        }
+    }
+
+    #[test]
+    fn every_name_that_a_wrapper_of_the_registry_binds_is_checked_against_its_parameters() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut wrappers = 0;
+        for dispatch in Dispatch::ALL {
+            for c in commands(&model, dispatch).filter(|c| !creates_a_dispatching_handle(c)) {
+                let source = wrapper::wrapper(&model, c, dispatch);
+                let function = syn::parse_str::<syn::ImplItemFn>(&source)
+                    .unwrap_or_else(|error| panic!("{}: {error}", c.name));
+                let mut bindings = Bindings::default();
+                syn::visit::Visit::visit_block(&mut bindings, &function.block);
+                let checked = wrapper::checked_names(&model, c, dispatch);
+                for binding in bindings.0 {
+                    assert!(
+                        checked.contains(binding.trim_start_matches("r#")),
+                        "{}: the wrapper binds `{binding}`, which the generator does not check \
+                         against the parameters",
+                        c.name
+                    );
+                }
+                wrappers += 1;
+            }
+        }
+        assert!(wrappers > 500, "only {wrappers} wrappers were checked");
+    }
 
     fn base() -> Registry {
         let mut ir = registry();

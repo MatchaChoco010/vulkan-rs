@@ -36,6 +36,7 @@ impl Input {
 
 pub(super) struct Inputs {
     by_param: Vec<Option<Input>>,
+    pub(super) names: Vec<(String, String)>,
     pub(super) checks: String,
     pub(super) notes: Vec<String>,
     pub(super) narrowed_counts: Vec<String>,
@@ -65,12 +66,31 @@ impl Inputs {
             checks: String::new(),
             notes: Vec::new(),
             narrowed_counts: Vec::new(),
+            locals: Vec::new(),
         };
         let by_param = (0..params.len())
             .map(|index| (!outputs.contains(&index)).then(|| planner.input(index)))
-            .collect();
+            .collect::<Vec<_>>();
+        let mut names = by_param
+            .iter()
+            .zip(params)
+            .filter_map(|(input, p)| match input.as_ref()? {
+                Input::Argument { name, .. } => {
+                    Some((format!("the C parameter `{}`", p.name), name.clone()))
+                }
+                Input::SliceLen { local, .. } => Some((
+                    format!(
+                        "the slice length that replaces the C parameter `{}`",
+                        p.name
+                    ),
+                    local.clone(),
+                )),
+            })
+            .collect::<Vec<_>>();
+        names.append(&mut planner.locals);
         Self {
             by_param,
+            names,
             checks: planner.checks,
             notes: planner.notes,
             narrowed_counts: planner.narrowed_counts,
@@ -143,6 +163,7 @@ struct Planner<'a> {
     checks: String,
     notes: Vec<String>,
     narrowed_counts: Vec<String>,
+    locals: Vec<(String, String)>,
 }
 
 impl Planner<'_> {
@@ -252,6 +273,13 @@ impl Planner<'_> {
             let {name}_pointers = {name}.iter().map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr())).collect::<Vec<_>>();",
             self.c.name
         );
+        self.locals.push((
+            format!(
+                "the pointers to the inner slices of the C parameter `{}`",
+                p.name
+            ),
+            format!("{name}_pointers"),
+        ));
         Input::argument(
             &name,
             format!("&[Option<&[{element}]>]"),

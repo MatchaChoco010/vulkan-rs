@@ -1,5 +1,8 @@
-use super::{MARKER_DOC, MethodNames, field_link, member_doc, thread_safety_impls, type_doc};
-use crate::emit::{Borrow, w};
+use super::{
+    MARKER_DOC, MethodNames, field_link, marker_field, member_doc, member_origin,
+    thread_safety_impls, type_doc,
+};
+use crate::emit::{Borrow, assert_distinct_names, w};
 use crate::model::{CType, Model, is_opaque};
 use crate::naming::{field_name, pointer_setter_name, type_name};
 use vulkan_registry::{Field, Struct};
@@ -13,6 +16,13 @@ pub(super) fn definition(model: &Model<'_>, s: &Struct) -> String {
     let mut fields = String::new();
     let mut constructors = String::new();
     let mut names = MethodNames::new(&s.name);
+    assert_distinct_names(
+        &s.name,
+        s.members
+            .iter()
+            .map(|m| (format!("the C member `{}`", m.name), field_name(&m.name)))
+            .chain(marker_field(borrows)),
+    );
     for m in &s.members {
         assert!(
             m.bit_field_width.is_none(),
@@ -67,9 +77,9 @@ fn constructor(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Str
     let field = field_name(&m.name);
     let short_name = pointer_setter_name(&m.name);
     let name = if names.is_taken(&short_name) {
-        names.claim(&field)
+        names.claim(&field, &member_origin(m))
     } else {
-        names.claim(&short_name)
+        names.claim(&short_name, &member_origin(m))
     };
     let borrows_one_value = ty.depth() == 1 && !ty.is_array() && !is_opaque(&ty.base);
     let (value_ty, value) = if borrows_one_value {

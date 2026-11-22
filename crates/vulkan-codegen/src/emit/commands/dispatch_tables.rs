@@ -1,5 +1,5 @@
 use super::commands;
-use crate::emit::w;
+use crate::emit::{assert_distinct_names, w};
 use crate::model::{Dispatch, Model};
 use crate::naming::command_name;
 
@@ -47,6 +47,11 @@ pub(super) fn table(model: &Model<'_>, dispatch: Dispatch) -> String {
     } = loader(dispatch);
     let mut fields = String::new();
     let mut loads = String::new();
+    assert_distinct_names(
+        &dispatch.wrapper(),
+        commands(model, dispatch)
+            .map(|c| (format!("the C command `{}`", c.name), command_name(&c.name))),
+    );
     for c in commands(model, dispatch) {
         let field = command_name(&c.name);
         let cfg = model.cfg(c.protect.as_deref());

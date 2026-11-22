@@ -1,4 +1,4 @@
-use super::{arrow, header, w};
+use super::{arrow, header, parameter_names, w};
 use crate::docs::{Block, Doc};
 use crate::model::{CType, Cfg, Model};
 use crate::naming::{field_name, func_pointer_name};
@@ -7,13 +7,15 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
     let mut out = header(&[]);
     out.push_str("use core::ffi::{c_char, c_void};\n\n");
     for fp in &model.ir.func_pointers {
-        let params = fp
-            .params
-            .iter()
-            .map(|p| {
-                let ty = model.pointer_ty(&CType::parse(&p.full_ty, &[]), "'_");
-                (field_name(&p.name), ty)
-            })
+        let names = parameter_names(
+            &fp.name,
+            fp.params.iter().map(|p| p.name.as_str()),
+            field_name,
+        );
+        let params = names
+            .into_iter()
+            .zip(&fp.params)
+            .map(|(name, p)| (name, model.pointer_ty(&CType::parse(&p.full_ty, &[]), "'_")))
             .collect::<Vec<_>>();
         let cfg = model.cfg(fp.protect.as_deref());
         let described = fp
@@ -35,10 +37,15 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         ));
     }
     for c in &model.ir.commands {
-        let params = c
-            .params
-            .iter()
-            .map(|p| (field_name(&p.name), model.param_ty(p, "'_")))
+        let names = parameter_names(
+            &c.name,
+            c.params.iter().map(|p| p.name.as_str()),
+            field_name,
+        );
+        let params = names
+            .into_iter()
+            .zip(&c.params)
+            .map(|(name, p)| (name, model.param_ty(p, "'_")))
             .collect::<Vec<_>>();
         let cfg = model.cfg(c.protect.as_deref());
         let doc = Doc::new().text(format!(

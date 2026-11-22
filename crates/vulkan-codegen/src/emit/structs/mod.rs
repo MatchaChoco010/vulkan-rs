@@ -5,11 +5,11 @@ mod unions;
 
 pub(crate) use bit_fields::{Slot, slots};
 
-use super::{header, type_aliases, w};
+use super::{assert_distinct_names, header, type_aliases, w};
 use crate::docs::{Doc, join_and};
 use crate::model::{Cfg, Model, has_p_next};
 use crate::naming::{field_name, type_name};
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use vulkan_registry::{Field, Struct};
 
 const MARKER_DOC: &str =
@@ -94,29 +94,40 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
 
 struct MethodNames<'s> {
     owner: &'s str,
-    taken: BTreeSet<String>,
+    taken: BTreeMap<String, String>,
+}
+
+fn member_origin(m: &Field) -> String {
+    format!("the C member `{}`", m.name)
 }
 
 impl<'s> MethodNames<'s> {
     fn new(owner: &'s str) -> Self {
         Self {
             owner,
-            taken: BTreeSet::new(),
+            taken: BTreeMap::new(),
         }
     }
 
     fn is_taken(&self, name: &str) -> bool {
-        self.taken.contains(name)
+        self.taken.contains_key(name.trim_start_matches("r#"))
     }
 
-    fn claim(&mut self, name: &str) -> String {
-        assert!(
-            self.taken.insert(name.to_string()),
-            "{}: duplicate method `{name}`",
-            self.owner
-        );
+    fn claim(&mut self, name: &str, origin: &str) -> String {
+        let key = name.trim_start_matches("r#").to_string();
+        if let Some(earlier) = self.taken.get(&key) {
+            panic!(
+                "{}: the methods of {earlier} and of {origin} are both named `{name}`",
+                self.owner
+            );
+        }
+        self.taken.insert(key, origin.to_string());
         name.to_string()
     }
+}
+
+fn marker_field(borrows: bool) -> Option<(String, String)> {
+    borrows.then(|| ("the lifetime marker".to_string(), "_marker".to_string()))
 }
 
 fn thread_safety_impls(cfg: &Cfg, name: &str, borrows: bool) -> String {
@@ -147,7 +158,24 @@ fn definition(model: &Model<'_>, s: &Struct) -> String {
     let mut methods = String::new();
     let mut names = MethodNames::new(&s.name);
     let counted = setters::CountedArrays::new(s);
-    for slot in slots(model, s) {
+    let slots = slots(model, s);
+    assert_distinct_names(
+        &s.name,
+        slots
+            .iter()
+            .map(|slot| match slot {
+                Slot::Plain(m) => (format!("the C member `{}`", m.name), field_name(&m.name)),
+                Slot::Bits { storage, bits } => (
+                    format!(
+                        "the storage unit of the C bit-field `{}`",
+                        bits[0].member.name
+                    ),
+                    storage.clone(),
+                ),
+            })
+            .chain(marker_field(borrows)),
+    );
+    for slot in slots {
         match slot {
             Slot::Plain(m) => {
                 let field = field_name(&m.name);
@@ -188,6 +216,7 @@ fn definition(model: &Model<'_>, s: &Struct) -> String {
         w!(defaults, "_marker: PhantomData,");
     }
     if let Some(p_next) = s.members.iter().find(|m| m.name == "pNext") {
+        names.claim("push_next", "the `pNext` chain");
         methods.push_str(&setters::push_next(p_next));
     }
 

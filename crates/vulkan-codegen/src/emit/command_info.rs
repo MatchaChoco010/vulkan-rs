@@ -1,5 +1,5 @@
 use super::extensions::api_version_expr;
-use super::{header, w};
+use super::{assert_distinct_names, header, w};
 use crate::model::Model;
 use crate::naming::command_const_name;
 use vulkan_registry::Command;
@@ -7,6 +7,12 @@ use vulkan_registry::Command;
 pub(crate) fn emit(model: &Model<'_>) -> String {
     let mut commands = model.ir.commands.iter().collect::<Vec<_>>();
     commands.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
+    assert_distinct_names(
+        "the CommandInfo constants",
+        commands
+            .iter()
+            .map(|c| (format!("the C command `{}`", c.name), const_name(c))),
+    );
 
     let mut out = header(&[]);
     w!(

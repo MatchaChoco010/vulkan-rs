@@ -4,8 +4,8 @@ use super::{
     argument_name, called, can_defer, not_loaded, provided, raw_name, with_deferred_safety,
 };
 use crate::docs::{Doc, join_and, join_or};
-use crate::emit::arrow;
 use crate::emit::command_info::result_code;
+use crate::emit::{arrow, assert_distinct_names};
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
 use crate::naming::command_name;
 use std::collections::BTreeSet;
@@ -16,6 +16,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     let params = dispatch.explicit_params(c);
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
+    assert_distinct_names(&c.name, bound_names(c, params, &shape, &inputs));
     let call = Call {
         model,
         c,
@@ -81,6 +82,71 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         arrow = arrow(&ty),
         checks = inputs.checks,
     )
+}
+
+const FIXED_BINDINGS: &[&str] = &["x", "element", "entry", "error"];
+
+fn bound_names(
+    c: &Command,
+    params: &[Field],
+    shape: &Shape,
+    inputs: &Inputs,
+) -> Vec<(String, String)> {
+    let result = (c.return_ty == "VkResult").then(|| {
+        (
+            "the local `result` that holds the result code of the command".to_string(),
+            "result".to_string(),
+        )
+    });
+    let fixed = FIXED_BINDINGS.iter().map(|name| {
+        (
+            format!("the name `{name}` that the wrapper binds in its checks and conversions"),
+            name.to_string(),
+        )
+    });
+    inputs
+        .names
+        .iter()
+        .cloned()
+        .chain(shape_locals(shape, params))
+        .chain(result)
+        .chain(fixed)
+        .collect()
+}
+
+#[cfg(test)]
+pub(super) fn checked_names(
+    model: &Model<'_>,
+    c: &Command,
+    dispatch: Dispatch,
+) -> BTreeSet<String> {
+    let params = dispatch.explicit_params(c);
+    let shape = Shape::detect(model, c, params);
+    let inputs = Inputs::plan(model, c, params, &shape.outputs());
+    bound_names(c, params, &shape, &inputs)
+        .into_iter()
+        .map(|(_, name)| name.trim_start_matches("r#").to_string())
+        .collect()
+}
+
+fn shape_locals(shape: &Shape, params: &[Field]) -> Vec<(String, String)> {
+    let local = |name: &str, out: usize| {
+        (
+            format!(
+                "the local `{name}` that receives the C parameter `{}`",
+                params[out].name
+            ),
+            name.to_string(),
+        )
+    };
+    match shape {
+        Shape::PassThrough => Vec::new(),
+        Shape::ReturnsValue { out } => vec![local("value", *out)],
+        Shape::Enumerates { count, data } => vec![local("count", *count), local("values", *data)],
+        Shape::FillsOnePerInput { out, .. } | Shape::FillsStructMemberCount { out, .. } => {
+            vec![local("values", *out)]
+        }
+    }
 }
 
 fn doc(

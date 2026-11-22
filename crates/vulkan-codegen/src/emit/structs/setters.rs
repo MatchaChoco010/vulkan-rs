@@ -1,4 +1,4 @@
-use super::{MethodNames, field_link};
+use super::{MethodNames, field_link, member_origin};
 use crate::docs::Doc;
 use crate::emit::Borrow;
 use crate::model::{CType, Model, is_opaque, null_ptr};
@@ -144,7 +144,7 @@ pub(super) fn member_methods(
     let setter = match ty.depth() {
         0 if model.canonical(&m.ty) == "VkBool32" => Setter {
             doc: sets(m, " to `VK_TRUE` or `VK_FALSE`"),
-            name: names.claim(&field),
+            name: names.claim(&field, &member_origin(m)),
             value_ty: "bool".to_string(),
             assignments: format!("self.{field} = value as Bool32;"),
         },
@@ -160,7 +160,7 @@ fn value_setter(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Se
     let field = field_name(&m.name);
     Setter {
         doc: sets(m, ""),
-        name: names.claim(&field),
+        name: names.claim(&field, &member_origin(m)),
         value_ty: model.member_ty(m, "'a"),
         assignments: format!("self.{field} = value;"),
     }
@@ -179,7 +179,7 @@ fn fixed_array_reader(
     let field = field_name(&m.name);
     let plain = field.trim_start_matches("r#");
     if ty.base == "char" {
-        let reader = names.claim(&format!("{plain}_as_c_str"));
+        let reader = names.claim(&format!("{plain}_as_c_str"), &member_origin(m));
         let doc = Doc::new()
             .text(format!(
                 "Reads {} as a C string that ends at its first NUL.",
@@ -194,7 +194,7 @@ fn fixed_array_reader(
     let Some(count) = count_member(s, m) else {
         return String::new();
     };
-    let reader = names.claim(&format!("{plain}_as_slice"));
+    let reader = names.claim(&format!("{plain}_as_slice"), &member_origin(m));
     let doc = Doc::new()
         .text(format!(
             "The first {} elements of {}, or all of them if the count is larger than the array.",
@@ -212,9 +212,9 @@ fn fixed_array_reader(
 fn pointer_setter_method_name(m: &Field, names: &mut MethodNames<'_>) -> String {
     let name = pointer_setter_name(&m.name);
     if names.is_taken(&name) {
-        names.claim(&format!("{name}_ptrs"))
+        names.claim(&format!("{name}_ptrs"), &member_origin(m))
     } else {
-        names.claim(&name)
+        names.claim(&name, &member_origin(m))
     }
 }
 
