@@ -936,3 +936,279 @@ fn check_item(
         _ => {}
     }
 }
+
+fn fixture_specification() -> Specification {
+    let mut specification = Specification {
+        pages: BTreeMap::new(),
+        extensions: BTreeSet::new(),
+        attributes: BTreeMap::new(),
+        titles: BTreeMap::new(),
+        markup: Markup::new(),
+    };
+    let pages = [
+        (
+            "VkThing",
+            "Structure specifying a thing",
+            "* pname:count is the number of things.\n* pname:flags is reserved for future use.",
+        ),
+        (
+            "VkColor",
+            "Colors of a thing",
+            "* ename:VK_COLOR_RED specifies red.\n* ename:VK_COLOR_GREEN specifies green.",
+        ),
+        (
+            "vkCountThings",
+            "Count the things",
+            "* pname:device is the logical device.\n* pname:pThingCount is a pointer to the number of things.\n* pname:pAllocator controls host memory allocation.",
+        ),
+        (
+            "PFN_vkThingCallback",
+            "Application-defined thing callback",
+            "* pname:pUserData is the user data.\n* pname:thing is the thing.",
+        ),
+    ];
+    for (name, description, body) in pages {
+        let page = Page {
+            description: description.to_string(),
+            body: body.to_string(),
+            body_words: specification.words(body),
+        };
+        specification.pages.insert(name.to_string(), page);
+    }
+    specification
+}
+
+const FIXTURE_SOURCE: &str = r#"
+/// Structure specifying a thing.
+///
+/// C structure [`VkThing`](PAGES/VkThing.html).
+#[doc(alias = "VkThing")]
+pub struct Thing {
+    /// `count` is the number of things.
+    pub count: u32,
+    /// `flags` is reserved for future use.
+    pub flags: u32,
+    /// The C member `uint32_t padding`.
+    pub padding: u32,
+}
+
+/// Alias of [`Thing`].
+pub type ThingKHR = Thing;
+
+/// Colors of a thing.
+///
+/// C enumeration [`VkColor`](PAGES/VkColor.html).
+#[doc(alias = "VkColor")]
+pub struct Color(pub i32);
+
+impl Color {
+    /// `VK_COLOR_RED` specifies red.
+    #[doc(alias = "VK_COLOR_RED")]
+    pub const RED: Self = Self(0);
+    /// `VK_COLOR_BLUE`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_BLUE")]
+    pub const BLUE: Self = Self(2);
+}
+
+/// Application-defined thing callback.
+///
+/// C function pointer type [`PFN_vkThingCallback`](PAGES/PFN_vkThingCallback.html).
+///
+/// # Parameters
+///
+/// - `pUserData` is the user data.
+/// - `thing` is the thing.
+#[doc(alias = "PFN_vkThingCallback")]
+pub type PFN_vkThingCallback = Option<unsafe extern "system" fn(p_user_data: *mut c_void, thing: u32)>;
+
+impl Device {
+    /// Count the things.
+    ///
+    /// Calls the C command [`vkCountThings`](PAGES/vkCountThings.html) with the arguments as they are.
+    ///
+    /// # Parameters
+    ///
+    /// - `pThingCount` is a pointer to the number of things.
+    /// - `pAllocator` controls host memory allocation.
+    pub unsafe fn count_things_raw(&self, p_thing_count: *mut u32, p_allocator: *const c_void) {}
+
+    /// Count the things.
+    ///
+    /// Calls the C command [`vkCountThings`](PAGES/vkCountThings.html) through [`Self::count_things_raw`], which describes the parameters.
+    #[doc(alias = "vkCountThings")]
+    pub unsafe fn count_things(&self, allocator: Option<&c_void>) -> u32 {
+        0
+    }
+}
+"#;
+
+fn fixture_failures(source: &str) -> Vec<String> {
+    let source = source.replace("PAGES/", REFERENCE_PAGES);
+    let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
+    let mut checker = Checker::default();
+    check_files(
+        &fixture_specification(),
+        &Generated::new(),
+        &mut checker,
+        &[file],
+    );
+    checker.failures
+}
+
+fn assert_reported(defect: &str, replace: &str, with: &str, report: &str) {
+    assert_eq!(
+        FIXTURE_SOURCE.matches(replace).count(),
+        1,
+        "{defect}: `{replace}` is not exactly once in the fixture"
+    );
+    let failures = fixture_failures(&FIXTURE_SOURCE.replacen(replace, with, 1));
+    assert!(
+        failures.iter().any(|failure| failure.contains(report)),
+        "{defect}: expected a failure containing `{report}`, got {failures:#?}"
+    );
+}
+
+#[test]
+fn checker_accepts_documentation_that_matches_the_specification() {
+    let failures = fixture_failures(FIXTURE_SOURCE);
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+#[test]
+fn checker_reports_a_member_fallback_when_the_specification_describes_the_member() {
+    assert_reported(
+        "a member documented with its C declaration",
+        "/// `count` is the number of things.",
+        "/// The C member `uint32_t count`.",
+        "Thing::count: the specification describes `count` on the page `VkThing`, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_value_fallback_when_the_specification_describes_the_value() {
+    assert_reported(
+        "a value documented only by its type",
+        "/// `VK_COLOR_RED` specifies red.",
+        "/// `VK_COLOR_RED`, a value of [`VkColor`](PAGES/VkColor.html).",
+        "Color::RED: the specification describes `VK_COLOR_RED` on the page `VkColor`, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_parameter_left_out_of_the_parameters_of_a_command() {
+    assert_reported(
+        "a command without one of its parameters",
+        "    /// - `pAllocator` controls host memory allocation.\n",
+        "",
+        "Device::count_things_raw: the specification describes the parameter `pAllocator` on the page `vkCountThings`, but the documentation does not list it",
+    );
+    assert_reported(
+        "a command without its parameters section",
+        "    ///\n    /// # Parameters\n    ///\n    /// - `pThingCount` is a pointer to the number of things.\n    /// - `pAllocator` controls host memory allocation.\n",
+        "",
+        "Device::count_things_raw: the specification describes the parameter `pThingCount` on the page `vkCountThings`, but the documentation does not list it",
+    );
+}
+
+#[test]
+fn checker_reports_a_parameter_left_out_of_the_parameters_of_a_function_pointer() {
+    assert_reported(
+        "a function pointer type without one of its parameters",
+        "/// - `thing` is the thing.\n",
+        "",
+        "PFN_vkThingCallback: the specification describes the parameter `thing` on the page `PFN_vkThingCallback`, but the documentation does not list it",
+    );
+}
+
+#[test]
+fn checker_reports_each_other_kind_of_defect() {
+    let cases = [
+        (
+            "a parameter description that the specification does not have",
+            "is a pointer to the number of things.",
+            "is a pointer to the number of widgets.",
+            "Device::count_things_raw: ``pThingCount` is a pointer to the number of widgets.` is not in the text that the specification has for `vkCountThings`",
+        ),
+        (
+            "parameters without a reference page",
+            "/// C function pointer type [`PFN_vkThingCallback`](PAGES/PFN_vkThingCallback.html).",
+            "/// C function pointer type `PFN_vkThingCallback`.",
+            "PFN_vkThingCallback: lists parameters although it has no reference page",
+        ),
+        (
+            "a link to a reference page that does not exist",
+            "[`VkThing`](PAGES/VkThing.html)",
+            "[`VkThingy`](PAGES/VkThingy.html)",
+            "Thing: links to the reference page `VkThingy`, which the specification does not have",
+        ),
+        (
+            "a member of a type whose reference page does not exist",
+            "[`VkThing`](PAGES/VkThing.html)",
+            "[`VkThingy`](PAGES/VkThingy.html)",
+            "Thing::count: is described, but the specification has no page `VkThingy`",
+        ),
+        (
+            "a docs.vulkan.org link that is not a reference page",
+            "/// Alias of [`Thing`].",
+            "/// Alias of [`Thing`]. See https://docs.vulkan.org/spec/latest/index.html.",
+            "ThingKHR: has a docs.vulkan.org link of an unexpected form",
+        ),
+        (
+            "a summary that differs from the specification",
+            "/// Structure specifying a thing.",
+            "/// Structure specifying a widget.",
+            "Thing: starts with `Structure specifying a widget.`, but the specification describes `VkThing` as `Structure specifying a thing`",
+        ),
+        (
+            "a described member of a type without a reference page",
+            "/// C structure [`VkThing`](PAGES/VkThing.html).",
+            "/// C structure `VkThing`.",
+            "Thing::count: is described although its type has no reference page",
+        ),
+        (
+            "a member description that does not start with the member",
+            "/// `count` is the number of things.",
+            "/// The number of things.",
+            "Thing::count: does not start with the name of the member",
+        ),
+        (
+            "a member with the description of another member",
+            "/// `count` is the number of things.",
+            "/// `flags` is reserved for future use.",
+            "Thing::count: is documented with the description of `flags`",
+        ),
+        (
+            "a member description that the specification does not have",
+            "/// `count` is the number of things.",
+            "/// `count` is the number of widgets.",
+            "Thing::count: ``count` is the number of widgets.` is not in the text that the specification has for `VkThing`",
+        ),
+        (
+            "a value description that does not start with the C name",
+            "/// `VK_COLOR_RED` specifies red.",
+            "/// Red.",
+            "Color::RED: does not start with its C name `VK_COLOR_RED`",
+        ),
+        (
+            "a described value of a type without a reference page",
+            "/// C enumeration [`VkColor`](PAGES/VkColor.html).",
+            "/// C enumeration `VkColor`.",
+            "Color::RED: is described although its type has no reference page",
+        ),
+        (
+            "a value description that the specification does not have",
+            "/// `VK_COLOR_RED` specifies red.",
+            "/// `VK_COLOR_RED` specifies crimson.",
+            "Color::RED: ``VK_COLOR_RED` specifies crimson.` is not in the text that the specification has for `VkColor`",
+        ),
+        (
+            "an alias documented as the alias of another type",
+            "pub type ThingKHR = Thing;",
+            "pub type ThingKHR = Color;",
+            "ThingKHR: is documented as an alias of `Thing`",
+        ),
+    ];
+    for (defect, replace, with, report) in cases {
+        assert_reported(defect, replace, with, report);
+    }
+}
