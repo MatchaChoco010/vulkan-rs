@@ -2,7 +2,8 @@ use super::{bitmasks, commands, constants, doc_of, enums, extensions, handles, s
 use crate::model::Model;
 use crate::test_support::{counted, field, registry, result_command, tagged};
 use vulkan_registry::{
-    Bitmask, Constant, DocItem, DocPage, Docs, Enum, EnumField, Extension, Flags, Handle, Registry,
+    Bitmask, Constant, DocItem, DocPage, DocTable, Docs, Enum, EnumField, Extension, Flags, Handle,
+    Registry,
 };
 
 fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
@@ -11,6 +12,7 @@ fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
         kind: String::new(),
         desc: desc.to_string(),
         aliases: Vec::new(),
+        file: "chapters/queues.adoc".to_string(),
         items: items
             .iter()
             .map(|(name, text)| DocItem {
@@ -62,6 +64,7 @@ fn ir() -> Registry {
             vec![
                 value("VK_COLOR_RED", "0", &["VK_COLOR_CRIMSON"]),
                 value("VK_COLOR_BLUE", "1", &[]),
+                value("VK_COLOR_GREEN", "2", &[]),
             ],
         ),
     ];
@@ -189,6 +192,28 @@ fn docs() -> Docs {
                 ],
             ),
         ],
+        tables: vec![
+            DocTable {
+                file: "chapters/queues.adoc".to_string(),
+                page: Some("VkColor".to_string()),
+                text: [
+                    ".Wavelengths",
+                    "[options=\"header\"]",
+                    "|====",
+                    "|elink:VkColor |Wavelength",
+                    "|ename:VK_COLOR_RED |long",
+                    "|ename:VK_COLOR_GREEN |medium, between ename:VK_COLOR_RED and ename:VK_COLOR_BLUE",
+                    "|====",
+                ]
+                .join("\n"),
+            },
+            DocTable {
+                file: "chapters/queues.adoc".to_string(),
+                page: None,
+                text: "[options=\"header\"]\n|====\n|Object type |Handle\n|ename:VK_OBJECT_TYPE_QUEUE |slink:VkQueue\n|===="
+                    .to_string(),
+            },
+        ],
         ..Default::default()
     }
 }
@@ -301,6 +326,31 @@ fn enumerants_are_described_aliased_or_named() {
             "`VK_OBJECT_TYPE_QUEUE`, the object type of [`VkDevice`](Device).".to_string(),
             alias("VK_OBJECT_TYPE_QUEUE"),
         ]
+    );
+}
+
+#[test]
+fn values_without_a_described_list_item_take_the_cells_of_their_table_row() {
+    let (ir, docs) = (ir(), docs());
+    let out = enums::emit(&Model::with_docs(&ir, &docs));
+    assert_eq!(
+        doc_of(&out, "pub const GREEN:"),
+        [
+            "`VK_COLOR_GREEN` in the table “Wavelengths” of the specification:".to_string(),
+            "- Wavelength: medium, between [`VK_COLOR_RED`](Color::RED) and [`VK_COLOR_BLUE`](Color::BLUE)"
+                .to_string(),
+            alias("VK_COLOR_GREEN"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const RED:")[0],
+        "`VK_COLOR_RED` specifies red, not [`VK_COLOR_BLUE`](Color::BLUE).",
+        "a described list item comes before a table row"
+    );
+    assert_eq!(
+        doc_of(&out, "pub const QUEUE: Self = Self(4)")[0],
+        "`VK_OBJECT_TYPE_QUEUE`, the object type of [`VkDevice`](Device).",
+        "the object type that the registry gives comes before a table row"
     );
 }
 

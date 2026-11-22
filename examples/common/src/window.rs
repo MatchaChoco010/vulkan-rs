@@ -15,6 +15,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+use crate::env::{parsed_var, positive_count};
 use frame::SwapchainStatus;
 
 const WINDOW_SIZE: LogicalSize<u32> = LogicalSize {
@@ -33,12 +34,20 @@ pub struct WaylandWindow {
 /// What an example draws to its window with. [`run`] creates it once the window exists
 /// and destroys it before the window.
 pub trait Renderer: Sized {
+    /// What the example reads before the window opens, such as its environment
+    /// variables, and hands to [`Renderer::new`].
+    type Settings;
+
     /// `window_extent` is the size of the window in pixels.
     ///
     /// # Safety
     ///
     /// `window` stays valid until [`Renderer::destroy`] returns.
-    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D) -> Result<Self>;
+    unsafe fn new(
+        window: WaylandWindow,
+        window_extent: vk::Extent2D,
+        settings: &Self::Settings,
+    ) -> Result<Self>;
 
     /// Draws a frame and presents it.
     unsafe fn draw(&mut self) -> Result<SwapchainStatus>;
@@ -52,22 +61,23 @@ pub trait Renderer: Sized {
     unsafe fn destroy(self) -> Result<()>;
 }
 
-/// Opens a window titled `title` and draws to it until the window is closed or an error
-/// occurs. When `VULKAN_EXAMPLE_FRAMES` is set, it stops after that many frames.
+/// Opens a window titled `title` and draws to it, with a renderer made from `settings`,
+/// until the window is closed or an error occurs. When `VULKAN_EXAMPLE_FRAMES` is set,
+/// it stops after that many frames, which must be at least 1; it is read before the
+/// window opens.
 ///
 /// # Errors
 ///
-/// The first error of creating the window or the renderer, of drawing, of recreating
-/// the swapchain, of the event loop, or of destroying the renderer.
-pub fn run<R: Renderer>(title: &str) -> Result<()> {
+/// A `VULKAN_EXAMPLE_FRAMES` that is not a whole number of at least 1, or the first error
+/// of creating the window or the renderer, of drawing, of recreating the swapchain, of
+/// the event loop, or of destroying the renderer.
+pub fn run<R: Renderer>(title: &str, settings: R::Settings) -> Result<()> {
+    let max_frames = parsed_var("VULKAN_EXAMPLE_FRAMES", positive_count)?;
     let event_loop = EventLoop::new()?;
     let mut runner = Runner::<R> {
         title,
-        session: Session::new(
-            std::env::var("VULKAN_EXAMPLE_FRAMES")
-                .ok()
-                .and_then(|value| value.parse::<u32>().ok()),
-        ),
+        settings,
+        session: Session::new(max_frames),
         window: None,
     };
     let event_loop_result = event_loop.run_app(&mut runner).map_err(anyhow::Error::from);
@@ -79,6 +89,7 @@ pub fn run<R: Renderer>(title: &str) -> Result<()> {
 /// surface it was created from.
 struct Runner<'a, R: Renderer> {
     title: &'a str,
+    settings: R::Settings,
     session: Session<R>,
     window: Option<Window>,
 }
@@ -103,9 +114,11 @@ impl<R: Renderer> ApplicationHandler for Runner<'_, R> {
             let wayland = wayland_window(&window)?;
             // SAFETY: the window is kept until the session has destroyed the renderer,
             // which the order of the fields of `Runner` ensures.
-            unsafe { R::new(wayland, extent) }
+            unsafe { R::new(wayland, extent, &self.settings) }
         });
-        if self.session.is_running() {
+        // A renderer exists only if it was just made from this window, which has to
+        // outlive it: with a window kept, `resumed` returns above.
+        if self.session.has_renderer() {
             self.window = Some(window);
         }
         flow.apply(event_loop);
@@ -172,13 +185,25 @@ impl<R: Renderer> Session<R> {
         }
     }
 
+    /// Whether there is a renderer, also after a failure: its window has to be kept until
+    /// the session has destroyed it.
+    fn has_renderer(&self) -> bool {
+        self.renderer.is_some()
+    }
+
     /// Whether there is a renderer and nothing has failed. After a failure the renderer
     /// may be half torn down, so the session only destroys it.
     fn is_running(&self) -> bool {
         self.renderer.is_some() && self.error.is_none()
     }
 
+    /// Creates the renderer with `create`, unless a step has failed or there is a
+    /// renderer already: a second `Resumed` must not replace the renderer whose window
+    /// is kept, nor start over after a failure.
     fn start(&mut self, create: impl FnOnce() -> Result<R>) -> Flow {
+        if self.error.is_some() || self.renderer.is_some() {
+            return Flow::Exit;
+        }
         match create() {
             Ok(renderer) => {
                 self.renderer = Some(renderer);
@@ -363,7 +388,13 @@ mod tests {
     }
 
     impl Renderer for Fake {
-        unsafe fn new(_window: WaylandWindow, _window_extent: vk::Extent2D) -> Result<Self> {
+        type Settings = ();
+
+        unsafe fn new(
+            _window: WaylandWindow,
+            _window_extent: vk::Extent2D,
+            _settings: &(),
+        ) -> Result<Self> {
             bail!("the tests create the renderer with Session::start")
         }
 
@@ -491,6 +522,35 @@ mod tests {
             assert_eq!(session.redraw(EXTENT), Flow::Exit, "frame {max_frames}");
             assert!(session.finish(Ok(())).is_ok());
         }
+    }
+
+    #[test]
+    fn a_second_start_creates_nothing_after_a_failure_or_a_renderer() {
+        let script = Script {
+            failing: None,
+            outdated: false,
+            max_frames: None,
+        };
+        let created = Cell::new(0);
+        let create = || {
+            created.set(created.get() + 1);
+            Fake::new(script, Rc::default(), Rc::default())
+        };
+
+        let mut failed = Session::<Fake>::new(None);
+        assert_eq!(
+            failed.fail(anyhow!("the window could not be created")),
+            Flow::Exit
+        );
+        assert_eq!(failed.start(create), Flow::Exit);
+        assert_eq!(created.get(), 0, "a renderer was created after a failure");
+        assert!(!failed.has_renderer());
+
+        let mut running = Session::<Fake>::new(None);
+        assert_eq!(running.start(create), Flow::Continue);
+        assert_eq!(running.start(create), Flow::Exit);
+        assert_eq!(created.get(), 1, "a second renderer was created");
+        assert!(running.has_renderer());
     }
 
     #[test]

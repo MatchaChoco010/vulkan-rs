@@ -3770,80 +3770,152 @@ impl BlendFactor {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_BLEND_FACTOR_ZERO`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ZERO` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>): (0,0,0)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 0
     #[doc(alias = "VK_BLEND_FACTOR_ZERO")]
     pub const ZERO: Self = Self(0);
-    /// `VK_BLEND_FACTOR_ONE`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>): (1,1,1)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1
     #[doc(alias = "VK_BLEND_FACTOR_ONE")]
     pub const ONE: Self = Self(1);
-    /// `VK_BLEND_FACTOR_SRC_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_SRC_COLOR` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (R<sub>s0</sub>,G<sub>s0</sub>,B<sub>s0</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>s0</sub>
     #[doc(alias = "VK_BLEND_FACTOR_SRC_COLOR")]
     pub const SRC_COLOR: Self = Self(2);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-R<sub>s0</sub>,1-G<sub>s0</sub>,1-B<sub>s0</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>s0</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR")]
     pub const ONE_MINUS_SRC_COLOR: Self = Self(3);
-    /// `VK_BLEND_FACTOR_DST_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_DST_COLOR` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>): (R<sub>d</sub>,G<sub>d</sub>,B<sub>d</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>d</sub>
     #[doc(alias = "VK_BLEND_FACTOR_DST_COLOR")]
     pub const DST_COLOR: Self = Self(4);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-R<sub>d</sub>,1-G<sub>d</sub>,1-B<sub>d</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>d</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR")]
     pub const ONE_MINUS_DST_COLOR: Self = Self(5);
-    /// `VK_BLEND_FACTOR_SRC_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_SRC_ALPHA` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (A<sub>s0</sub>,A<sub>s0</sub>,A<sub>s0</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>s0</sub>
     #[doc(alias = "VK_BLEND_FACTOR_SRC_ALPHA")]
     pub const SRC_ALPHA: Self = Self(6);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-A<sub>s0</sub>,1-A<sub>s0</sub>,1-A<sub>s0</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>s0</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA")]
     pub const ONE_MINUS_SRC_ALPHA: Self = Self(7);
-    /// `VK_BLEND_FACTOR_DST_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_DST_ALPHA` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>): (A<sub>d</sub>,A<sub>d</sub>,A<sub>d</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>d</sub>
     #[doc(alias = "VK_BLEND_FACTOR_DST_ALPHA")]
     pub const DST_ALPHA: Self = Self(8);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-A<sub>d</sub>,1-A<sub>d</sub>,1-A<sub>d</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>d</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA")]
     pub const ONE_MINUS_DST_ALPHA: Self = Self(9);
-    /// `VK_BLEND_FACTOR_CONSTANT_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_CONSTANT_COLOR` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>): (R<sub>c</sub>,G<sub>c</sub>,B<sub>c</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>c</sub>
     #[doc(alias = "VK_BLEND_FACTOR_CONSTANT_COLOR")]
     pub const CONSTANT_COLOR: Self = Self(10);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR` in the table “Blend Factors” of the
+    /// specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-R<sub>c</sub>,1-G<sub>c</sub>,1-B<sub>c</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>c</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR")]
     pub const ONE_MINUS_CONSTANT_COLOR: Self = Self(11);
-    /// `VK_BLEND_FACTOR_CONSTANT_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_CONSTANT_ALPHA` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>): (A<sub>c</sub>,A<sub>c</sub>,A<sub>c</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>c</sub>
     #[doc(alias = "VK_BLEND_FACTOR_CONSTANT_ALPHA")]
     pub const CONSTANT_ALPHA: Self = Self(12);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA` in the table “Blend Factors” of the
+    /// specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-A<sub>c</sub>,1-A<sub>c</sub>,1-A<sub>c</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>c</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA")]
     pub const ONE_MINUS_CONSTANT_ALPHA: Self = Self(13);
-    /// `VK_BLEND_FACTOR_SRC_ALPHA_SATURATE`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_SRC_ALPHA_SATURATE` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>): (f,f,f); f =
+    ///   min(A<sub>s0</sub>,1-A<sub>d</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1
     #[doc(alias = "VK_BLEND_FACTOR_SRC_ALPHA_SATURATE")]
     pub const SRC_ALPHA_SATURATE: Self = Self(14);
-    /// `VK_BLEND_FACTOR_SRC1_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_SRC1_COLOR` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (R<sub>s1</sub>,G<sub>s1</sub>,B<sub>s1</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>s1</sub>
     #[doc(alias = "VK_BLEND_FACTOR_SRC1_COLOR")]
     pub const SRC1_COLOR: Self = Self(15);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-R<sub>s1</sub>,1-G<sub>s1</sub>,1-B<sub>s1</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>s1</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_SRC1_COLOR")]
     pub const ONE_MINUS_SRC1_COLOR: Self = Self(16);
-    /// `VK_BLEND_FACTOR_SRC1_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_SRC1_ALPHA` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (A<sub>s1</sub>,A<sub>s1</sub>,A<sub>s1</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): A<sub>s1</sub>
     #[doc(alias = "VK_BLEND_FACTOR_SRC1_ALPHA")]
     pub const SRC1_ALPHA: Self = Self(17);
-    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA`, a value of
-    /// [`VkBlendFactor`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendFactor.html).
+    /// `VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA` in the table “Blend Factors” of the specification:
+    ///
+    /// - RGB Blend Factors (S<sub>r</sub>,S<sub>g</sub>,S<sub>b</sub>) or
+    ///   (D<sub>r</sub>,D<sub>g</sub>,D<sub>b</sub>):
+    ///   (1-A<sub>s1</sub>,1-A<sub>s1</sub>,1-A<sub>s1</sub>)
+    /// - Alpha Blend Factor (S<sub>a</sub> or D<sub>a</sub>): 1-A<sub>s1</sub>
     #[doc(alias = "VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA")]
     pub const ONE_MINUS_SRC1_ALPHA: Self = Self(18);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -3915,208 +3987,360 @@ impl BlendOp {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_BLEND_OP_ADD`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_ADD` in the table “Basic Blend Operations” of the specification:
+    ///
+    /// - RGB Components:
+    ///   - R = R<sub>s0</sub> × S<sub>r</sub> + R<sub>d</sub> × D<sub>r</sub>
+    ///   - G = G<sub>s0</sub> × S<sub>g</sub> + G<sub>d</sub> × D<sub>g</sub>
+    ///   - B = B<sub>s0</sub> × S<sub>b</sub> + B<sub>d</sub> × D<sub>b</sub>
+    /// - Alpha Component: A = A<sub>s0</sub> × S<sub>a</sub> + A<sub>d</sub> × D<sub>a</sub>
     #[doc(alias = "VK_BLEND_OP_ADD")]
     pub const ADD: Self = Self(0);
-    /// `VK_BLEND_OP_SUBTRACT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SUBTRACT` in the table “Basic Blend Operations” of the specification:
+    ///
+    /// - RGB Components:
+    ///   - R = R<sub>s0</sub> × S<sub>r</sub> - R<sub>d</sub> × D<sub>r</sub>
+    ///   - G = G<sub>s0</sub> × S<sub>g</sub> - G<sub>d</sub> × D<sub>g</sub>
+    ///   - B = B<sub>s0</sub> × S<sub>b</sub> - B<sub>d</sub> × D<sub>b</sub>
+    /// - Alpha Component: A = A<sub>s0</sub> × S<sub>a</sub> - A<sub>d</sub> × D<sub>a</sub>
     #[doc(alias = "VK_BLEND_OP_SUBTRACT")]
     pub const SUBTRACT: Self = Self(1);
-    /// `VK_BLEND_OP_REVERSE_SUBTRACT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_REVERSE_SUBTRACT` in the table “Basic Blend Operations” of the specification:
+    ///
+    /// - RGB Components:
+    ///   - R = R<sub>d</sub> × D<sub>r</sub> - R<sub>s0</sub> × S<sub>r</sub>
+    ///   - G = G<sub>d</sub> × D<sub>g</sub> - G<sub>s0</sub> × S<sub>g</sub>
+    ///   - B = B<sub>d</sub> × D<sub>b</sub> - B<sub>s0</sub> × S<sub>b</sub>
+    /// - Alpha Component: A = A<sub>d</sub> × D<sub>a</sub> - A<sub>s0</sub> × S<sub>a</sub>
     #[doc(alias = "VK_BLEND_OP_REVERSE_SUBTRACT")]
     pub const REVERSE_SUBTRACT: Self = Self(2);
-    /// `VK_BLEND_OP_MIN`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_MIN` in the table “Basic Blend Operations” of the specification:
+    ///
+    /// - RGB Components:
+    ///   - R = min(R<sub>s0</sub>,R<sub>d</sub>)
+    ///   - G = min(G<sub>s0</sub>,G<sub>d</sub>)
+    ///   - B = min(B<sub>s0</sub>,B<sub>d</sub>)
+    /// - Alpha Component: A = min(A<sub>s0</sub>,A<sub>d</sub>)
     #[doc(alias = "VK_BLEND_OP_MIN")]
     pub const MIN: Self = Self(3);
-    /// `VK_BLEND_OP_MAX`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_MAX` in the table “Basic Blend Operations” of the specification:
+    ///
+    /// - RGB Components:
+    ///   - R = max(R<sub>s0</sub>,R<sub>d</sub>)
+    ///   - G = max(G<sub>s0</sub>,G<sub>d</sub>)
+    ///   - B = max(B<sub>s0</sub>,B<sub>d</sub>)
+    /// - Alpha Component: A = max(A<sub>s0</sub>,A<sub>d</sub>)
     #[doc(alias = "VK_BLEND_OP_MAX")]
     pub const MAX: Self = Self(4);
-    /// `VK_BLEND_OP_ZERO_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_ZERO_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (0,0,0) \\ f(C_s,C_d) & = 0 \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_ZERO_EXT")]
     pub const ZERO_EXT: Self = Self(1000148000);
-    /// `VK_BLEND_OP_SRC_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SRC_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,0) \\ f(C_s,C_d) & = C_s \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SRC_EXT")]
     pub const SRC_EXT: Self = Self(1000148001);
-    /// `VK_BLEND_OP_DST_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_DST_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,0,1) \\ f(C_s,C_d) & = C_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_DST_EXT")]
     pub const DST_EXT: Self = Self(1000148002);
-    /// `VK_BLEND_OP_SRC_OVER_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SRC_OVER_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = C_s \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SRC_OVER_EXT")]
     pub const SRC_OVER_EXT: Self = Self(1000148003);
-    /// `VK_BLEND_OP_DST_OVER_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_DST_OVER_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = C_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_DST_OVER_EXT")]
     pub const DST_OVER_EXT: Self = Self(1000148004);
-    /// `VK_BLEND_OP_SRC_IN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SRC_IN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,0,0) \\ f(C_s,C_d) & = C_s \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SRC_IN_EXT")]
     pub const SRC_IN_EXT: Self = Self(1000148005);
-    /// `VK_BLEND_OP_DST_IN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_DST_IN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,0,0) \\ f(C_s,C_d) & = C_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_DST_IN_EXT")]
     pub const DST_IN_EXT: Self = Self(1000148006);
-    /// `VK_BLEND_OP_SRC_OUT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SRC_OUT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (0,1,0) \\ f(C_s,C_d) & = 0 \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SRC_OUT_EXT")]
     pub const SRC_OUT_EXT: Self = Self(1000148007);
-    /// `VK_BLEND_OP_DST_OUT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_DST_OUT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (0,0,1) \\ f(C_s,C_d) & = 0 \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_DST_OUT_EXT")]
     pub const DST_OUT_EXT: Self = Self(1000148008);
-    /// `VK_BLEND_OP_SRC_ATOP_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SRC_ATOP_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,0,1) \\ f(C_s,C_d) & = C_s \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SRC_ATOP_EXT")]
     pub const SRC_ATOP_EXT: Self = Self(1000148009);
-    /// `VK_BLEND_OP_DST_ATOP_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_DST_ATOP_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,0) \\ f(C_s,C_d) & = C_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_DST_ATOP_EXT")]
     pub const DST_ATOP_EXT: Self = Self(1000148010);
-    /// `VK_BLEND_OP_XOR_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_XOR_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (0,1,1) \\ f(C_s,C_d) & = 0 \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_XOR_EXT")]
     pub const XOR_EXT: Self = Self(1000148011);
-    /// `VK_BLEND_OP_MULTIPLY_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_MULTIPLY_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = C_sC_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_MULTIPLY_EXT")]
     pub const MULTIPLY_EXT: Self = Self(1000148012);
-    /// `VK_BLEND_OP_SCREEN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SCREEN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = C_s+C_d-C_sC_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SCREEN_EXT")]
     pub const SCREEN_EXT: Self = Self(1000148013);
-    /// `VK_BLEND_OP_OVERLAY_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_OVERLAY_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 2 C_sC_d & C_d \leq 0.5 \\ 1-2 (1-C_s)(1-C_d) & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_OVERLAY_EXT")]
     pub const OVERLAY_EXT: Self = Self(1000148014);
-    /// `VK_BLEND_OP_DARKEN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_DARKEN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = min(C_s,C_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_DARKEN_EXT")]
     pub const DARKEN_EXT: Self = Self(1000148015);
-    /// `VK_BLEND_OP_LIGHTEN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_LIGHTEN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = max(C_s,C_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_LIGHTEN_EXT")]
     pub const LIGHTEN_EXT: Self = Self(1000148016);
-    /// `VK_BLEND_OP_COLORDODGE_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_COLORDODGE_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0 & C_d \leq 0 \\ min(1,\frac{C_d}{1-C_s}) & C_d \gt 0 \text{ and } C_s \lt 1 \\ 1 & C_d \gt 0 \text{ and } C_s \geq 1 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_COLORDODGE_EXT")]
     pub const COLORDODGE_EXT: Self = Self(1000148017);
-    /// `VK_BLEND_OP_COLORBURN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_COLORBURN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1 & C_d \geq 1 \\ 1 - min(1,\frac{1-C_d}{C_s}) & C_d \lt 1 \text{ and } C_s \gt 0 \\ 0 & C_d \lt 1 \text{ and } C_s \leq 0 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_COLORBURN_EXT")]
     pub const COLORBURN_EXT: Self = Self(1000148018);
-    /// `VK_BLEND_OP_HARDLIGHT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_HARDLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 2 C_sC_d & C_s \leq 0.5 \\ 1-2 (1-C_s)(1-C_d) & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HARDLIGHT_EXT")]
     pub const HARDLIGHT_EXT: Self = Self(1000148019);
-    /// `VK_BLEND_OP_SOFTLIGHT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_SOFTLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_d-(1-2 C_s)C_d(1-C_d) & C_s \leq 0.5 \\ C_d+(2 C_s-1)C_d((16 C_d-12)C_d+3) & C_s \gt 0.5 \text{ and } C_d \leq 0.25 \\ C_d+(2 C_s-1)(\sqrt{C_d}-C_d) & C_s \gt 0.5 \text{ and } C_d \gt 0.25 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_SOFTLIGHT_EXT")]
     pub const SOFTLIGHT_EXT: Self = Self(1000148020);
-    /// `VK_BLEND_OP_DIFFERENCE_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_DIFFERENCE_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \lvert C_d-C_s \rvert \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_DIFFERENCE_EXT")]
     pub const DIFFERENCE_EXT: Self = Self(1000148021);
-    /// `VK_BLEND_OP_EXCLUSION_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_EXCLUSION_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = C_s+C_d-2C_sC_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_EXCLUSION_EXT")]
     pub const EXCLUSION_EXT: Self = Self(1000148022);
-    /// `VK_BLEND_OP_INVERT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_INVERT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,0,1) \\ f(C_s,C_d) & = 1-C_d \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_INVERT_EXT")]
     pub const INVERT_EXT: Self = Self(1000148023);
-    /// `VK_BLEND_OP_INVERT_RGB_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_INVERT_RGB_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,0,1) \\ f(C_s,C_d) & = C_s(1-C_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_INVERT_RGB_EXT")]
     pub const INVERT_RGB_EXT: Self = Self(1000148024);
-    /// `VK_BLEND_OP_LINEARDODGE_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_LINEARDODGE_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_s+C_d & C_s+C_d \leq 1 \\ 1 & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_LINEARDODGE_EXT")]
     pub const LINEARDODGE_EXT: Self = Self(1000148025);
-    /// `VK_BLEND_OP_LINEARBURN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_LINEARBURN_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} C_s+C_d-1 & C_s+C_d \gt 1 \\ 0 & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_LINEARBURN_EXT")]
     pub const LINEARBURN_EXT: Self = Self(1000148026);
-    /// `VK_BLEND_OP_VIVIDLIGHT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_VIVIDLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1-min(1,\frac{1-C_d}{2C_s}) & 0 \lt C_s \lt 0.5 \\ 0 & C_s \leq 0 \\ min(1,\frac{C_d}{2(1-C_s)}) & 0.5 \leq C_s \lt 1 \\ 1 & C_s \geq 1 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_VIVIDLIGHT_EXT")]
     pub const VIVIDLIGHT_EXT: Self = Self(1000148027);
-    /// `VK_BLEND_OP_LINEARLIGHT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_LINEARLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 1 & 2C_s+C_d \gt 2 \\ 2C_s+C_d-1 & 1 \lt 2C_s+C_d \leq 2 \\ 0 & 2C_s+C_d \leq 1 \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_LINEARLIGHT_EXT")]
     pub const LINEARLIGHT_EXT: Self = Self(1000148028);
-    /// `VK_BLEND_OP_PINLIGHT_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_PINLIGHT_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0 & 2C_s-1 \gt C_d \text{ and } C_s \lt 0.5 \\ 2C_s-1 & 2C_s-1 \gt C_d \text{ and } C_s \geq 0.5 \\ 2C_s & 2C_s-1 \leq C_d \text{ and } C_s \lt 0.5C_d \\ C_d & 2C_s-1 \leq C_d \text{ and } C_s \geq 0.5C_d \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_PINLIGHT_EXT")]
     pub const PINLIGHT_EXT: Self = Self(1000148029);
-    /// `VK_BLEND_OP_HARDMIX_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_HARDMIX_EXT` in the table “f/X/Y/Z Advanced Blend Operations” of the
+    /// specification:
+    ///
+    /// - Blend Coefficients:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = \begin{cases} 0 & C_s+C_d \lt 1 \\ 1 & \text{otherwise} \end{cases} \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HARDMIX_EXT")]
     pub const HARDMIX_EXT: Self = Self(1000148030);
-    /// `VK_BLEND_OP_HSL_HUE_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_HSL_HUE_EXT` in the table “Hue-Saturation-Luminosity Advanced Blend Operations”
+    /// of the specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = SetLumSat(C_s,C_d,C_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HSL_HUE_EXT")]
     pub const HSL_HUE_EXT: Self = Self(1000148031);
-    /// `VK_BLEND_OP_HSL_SATURATION_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_HSL_SATURATION_EXT` in the table “Hue-Saturation-Luminosity Advanced Blend
+    /// Operations” of the specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = SetLumSat(C_d,C_s,C_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HSL_SATURATION_EXT")]
     pub const HSL_SATURATION_EXT: Self = Self(1000148032);
-    /// `VK_BLEND_OP_HSL_COLOR_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_HSL_COLOR_EXT` in the table “Hue-Saturation-Luminosity Advanced Blend
+    /// Operations” of the specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = SetLum(C_s,C_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HSL_COLOR_EXT")]
     pub const HSL_COLOR_EXT: Self = Self(1000148033);
-    /// `VK_BLEND_OP_HSL_LUMINOSITY_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_HSL_LUMINOSITY_EXT` in the table “Hue-Saturation-Luminosity Advanced Blend
+    /// Operations” of the specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (X,Y,Z) & = (1,1,1) \\ f(C_s,C_d) & = SetLum(C_d,C_s) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_HSL_LUMINOSITY_EXT")]
     pub const HSL_LUMINOSITY_EXT: Self = Self(1000148034);
-    /// `VK_BLEND_OP_PLUS_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_PLUS_EXT` in the table “Additional RGB Blend Operations” of the specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & R_s'+R_d', \\ & G_s'+G_d', \\ & B_s'+B_d', \\ & A_s+A_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_PLUS_EXT")]
     pub const PLUS_EXT: Self = Self(1000148035);
-    /// `VK_BLEND_OP_PLUS_CLAMPED_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_PLUS_CLAMPED_EXT` in the table “Additional RGB Blend Operations” of the
+    /// specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & min(1,R_s'+R_d'), \\ & min(1,G_s'+G_d'), \\ & min(1,B_s'+B_d'), \\ & min(1,A_s+A_d)) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_PLUS_CLAMPED_EXT")]
     pub const PLUS_CLAMPED_EXT: Self = Self(1000148036);
-    /// `VK_BLEND_OP_PLUS_CLAMPED_ALPHA_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_PLUS_CLAMPED_ALPHA_EXT` in the table “Additional RGB Blend Operations” of the
+    /// specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & min(min(1,A_s+A_d),R_s'+R_d'), \\ & min(min(1,A_s+A_d),G_s'+G_d'), \\ & min(min(1,A_s+A_d),B_s'+B_d'), \\ & min(1,A_s+A_d)) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_PLUS_CLAMPED_ALPHA_EXT")]
     pub const PLUS_CLAMPED_ALPHA_EXT: Self = Self(1000148037);
-    /// `VK_BLEND_OP_PLUS_DARKER_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_PLUS_DARKER_EXT` in the table “Additional RGB Blend Operations” of the
+    /// specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & max(0,min(1,A_s+A_d)-((A_s-R_s')+(A_d-R_d'))), \\ & max(0,min(1,A_s+A_d)-((A_s-G_s')+(A_d-G_d'))), \\ & max(0,min(1,A_s+A_d)-((A_s-B_s')+(A_d-B_d'))), \\ & min(1,A_s+A_d)) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_PLUS_DARKER_EXT")]
     pub const PLUS_DARKER_EXT: Self = Self(1000148038);
-    /// `VK_BLEND_OP_MINUS_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_MINUS_EXT` in the table “Additional RGB Blend Operations” of the specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & R_d'-R_s', \\ & G_d'-G_s', \\ & B_d'-B_s', \\ & A_d-A_s) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_MINUS_EXT")]
     pub const MINUS_EXT: Self = Self(1000148039);
-    /// `VK_BLEND_OP_MINUS_CLAMPED_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_MINUS_CLAMPED_EXT` in the table “Additional RGB Blend Operations” of the
+    /// specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & max(0,R_d'-R_s'), \\ & max(0,G_d'-G_s'), \\ & max(0,B_d'-B_s'), \\ & max(0,A_d-A_s)) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_MINUS_CLAMPED_EXT")]
     pub const MINUS_CLAMPED_EXT: Self = Self(1000148040);
-    /// `VK_BLEND_OP_CONTRAST_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_CONTRAST_EXT` in the table “Additional RGB Blend Operations” of the
+    /// specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & \frac{A_d}{2} + 2(R_d'-\frac{A_d}{2})(R_s'-\frac{A_s}{2}), \\ & \frac{A_d}{2} + 2(G_d'-\frac{A_d}{2})(G_s'-\frac{A_s}{2}), \\ & \frac{A_d}{2} + 2(B_d'-\frac{A_d}{2})(B_s'-\frac{A_s}{2}), \\ & A_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_CONTRAST_EXT")]
     pub const CONTRAST_EXT: Self = Self(1000148041);
-    /// `VK_BLEND_OP_INVERT_OVG_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_INVERT_OVG_EXT` in the table “Additional RGB Blend Operations” of the
+    /// specification:
+    ///
+    /// - Result:
+    ///   `\begin{aligned} (R,G,B,A) = ( & A_s(1-R_d') + (1-A_s)R_d', \\ & A_s(1-G_d') + (1-A_s)G_d', \\ & A_s(1-B_d') + (1-A_s)B_d', \\ & A_s+A_d-A_sA_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_INVERT_OVG_EXT")]
     pub const INVERT_OVG_EXT: Self = Self(1000148042);
-    /// `VK_BLEND_OP_RED_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_RED_EXT` in the table “Additional RGB Blend Operations” of the specification:
+    ///
+    /// - Result: `\begin{aligned} (R,G,B,A) & = (R_s', G_d', B_d', A_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_RED_EXT")]
     pub const RED_EXT: Self = Self(1000148043);
-    /// `VK_BLEND_OP_GREEN_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_GREEN_EXT` in the table “Additional RGB Blend Operations” of the specification:
+    ///
+    /// - Result: `\begin{aligned} (R,G,B,A) & = (R_d', G_s', B_d', A_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_GREEN_EXT")]
     pub const GREEN_EXT: Self = Self(1000148044);
-    /// `VK_BLEND_OP_BLUE_EXT`, a value of
-    /// [`VkBlendOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBlendOp.html).
+    /// `VK_BLEND_OP_BLUE_EXT` in the table “Additional RGB Blend Operations” of the specification:
+    ///
+    /// - Result: `\begin{aligned} (R,G,B,A) & = (R_d', G_d', B_s', A_d) \end{aligned}`
     #[doc(alias = "VK_BLEND_OP_BLUE_EXT")]
     pub const BLUE_EXT: Self = Self(1000148045);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -6572,128 +6796,190 @@ impl DebugReportObjectTypeEXT {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: Unknown/Undefined Handle
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT")]
     pub const UNKNOWN: Self = Self(0);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkInstance`](Instance)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT")]
     pub const INSTANCE: Self = Self(1);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkPhysicalDevice`](PhysicalDevice)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT")]
     pub const PHYSICAL_DEVICE: Self = Self(2);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDevice`](Device)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT")]
     pub const DEVICE: Self = Self(3);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkQueue`](Queue)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT")]
     pub const QUEUE: Self = Self(4);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkSemaphore`](Semaphore)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT")]
     pub const SEMAPHORE: Self = Self(5);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkCommandBuffer`](CommandBuffer)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT")]
     pub const COMMAND_BUFFER: Self = Self(6);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkFence`](Fence)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT")]
     pub const FENCE: Self = Self(7);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDeviceMemory`](DeviceMemory)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT")]
     pub const DEVICE_MEMORY: Self = Self(8);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkBuffer`](Buffer)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT")]
     pub const BUFFER: Self = Self(9);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkImage`](Image)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT")]
     pub const IMAGE: Self = Self(10);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkEvent`](Event)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT")]
     pub const EVENT: Self = Self(11);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkQueryPool`](QueryPool)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT")]
     pub const QUERY_POOL: Self = Self(12);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkBufferView`](BufferView)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT")]
     pub const BUFFER_VIEW: Self = Self(13);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkImageView`](ImageView)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT")]
     pub const IMAGE_VIEW: Self = Self(14);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkShaderModule`](ShaderModule)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT")]
     pub const SHADER_MODULE: Self = Self(15);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkPipelineCache`](PipelineCache)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT")]
     pub const PIPELINE_CACHE: Self = Self(16);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkPipelineLayout`](PipelineLayout)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT")]
     pub const PIPELINE_LAYOUT: Self = Self(17);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkRenderPass`](RenderPass)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT")]
     pub const RENDER_PASS: Self = Self(18);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkPipeline`](Pipeline)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT")]
     pub const PIPELINE: Self = Self(19);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT` in the table
+    /// “`VkDebugReportObjectTypeEXT` and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDescriptorSetLayout`](DescriptorSetLayout)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT")]
     pub const DESCRIPTOR_SET_LAYOUT: Self = Self(20);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkSampler`](Sampler)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT")]
     pub const SAMPLER: Self = Self(21);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDescriptorPool`](DescriptorPool)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT")]
     pub const DESCRIPTOR_POOL: Self = Self(22);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDescriptorSet`](DescriptorSet)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT")]
     pub const DESCRIPTOR_SET: Self = Self(23);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkFramebuffer`](Framebuffer)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT")]
     pub const FRAMEBUFFER: Self = Self(24);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkCommandPool`](CommandPool)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT")]
     pub const COMMAND_POOL: Self = Self(25);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkSurfaceKHR`](SurfaceKHR)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT")]
     pub const SURFACE_KHR: Self = Self(26);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT` in the table “`VkDebugReportObjectTypeEXT`
+    /// and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkSwapchainKHR`](SwapchainKHR)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT")]
     pub const SWAPCHAIN_KHR: Self = Self(27);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT` in the table
+    /// “`VkDebugReportObjectTypeEXT` and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDebugReportCallbackEXT`](DebugReportCallbackEXT)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT")]
     pub const DEBUG_REPORT_CALLBACK_EXT: Self = Self(28);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT` in the table “`VkDebugReportObjectTypeEXT` and
+    /// Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDisplayKHR`](DisplayKHR)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT")]
     pub const DISPLAY_KHR: Self = Self(29);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT` in the table
+    /// “`VkDebugReportObjectTypeEXT` and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDisplayModeKHR`](DisplayModeKHR)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT")]
     pub const DISPLAY_MODE_KHR: Self = Self(30);
     /// `VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT`, a value of
@@ -6708,8 +6994,10 @@ impl DebugReportObjectTypeEXT {
     /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_CU_FUNCTION_NVX_EXT")]
     pub const CU_FUNCTION_NVX: Self = Self(1000029001);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_EXT`, a value of
-    /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_EXT` in the table
+    /// “`VkDebugReportObjectTypeEXT` and Vulkan Handle Relationship” of the specification:
+    ///
+    /// - Vulkan Handle Type: [`VkDescriptorUpdateTemplate`](DescriptorUpdateTemplate)
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_EXT")]
     pub const DESCRIPTOR_UPDATE_TEMPLATE: Self = Self(1000085000);
     /// `VK_DEBUG_REPORT_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR_EXT`, a value of
@@ -13379,72 +13667,114 @@ impl IndirectCommandsTokenTypeEXT {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: `u32[]` array of indices into the indirect execution set
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_EXECUTION_SET_EXT")]
     pub const EXECUTION_SET: Self = Self(0);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: `u32[]` raw data
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_EXT")]
     pub const PUSH_CONSTANT: Self = Self(1);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT` in the table “Supported Indirect
+    /// Command Tokens” of the specification:
+    ///
+    /// - Command Data: `u32` placeholder data (not accessed by shader)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_SEQUENCE_INDEX_EXT")]
     pub const SEQUENCE_INDEX: Self = Self(2);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: [`VkBindIndexBufferIndirectCommandEXT`](BindIndexBufferIndirectCommandEXT)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_EXT")]
     pub const INDEX_BUFFER: Self = Self(3);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: [`VkBindVertexBufferIndirectCommandEXT`](BindVertexBufferIndirectCommandEXT)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_EXT")]
     pub const VERTEX_BUFFER: Self = Self(4);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: [`VkDrawIndexedIndirectCommand`](DrawIndexedIndirectCommand)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_EXT")]
     pub const DRAW_INDEXED: Self = Self(5);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT` in the table “Supported Indirect Command Tokens”
+    /// of the specification:
+    ///
+    /// - Command Data: [`VkDrawIndirectCommand`](DrawIndirectCommand)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_EXT")]
     pub const DRAW: Self = Self(6);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT` in the table “Supported Indirect
+    /// Command Tokens” of the specification:
+    ///
+    /// - Command Data:
+    ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
+    ///   VkDrawIndexedIndirectCommand
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_COUNT_EXT")]
     pub const DRAW_INDEXED_COUNT: Self = Self(7);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data:
+    ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
+    ///   VkDrawIndirectCommand
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_COUNT_EXT")]
     pub const DRAW_COUNT: Self = Self(8);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: [`VkDispatchIndirectCommand`](DispatchIndirectCommand)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_EXT")]
     pub const DISPATCH: Self = Self(9);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: `u8[]` raw data
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_EXT")]
     pub const PUSH_DATA: Self = Self(1000135000);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_SEQUENCE_INDEX_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_SEQUENCE_INDEX_EXT` in the table “Supported
+    /// Indirect Command Tokens” of the specification:
+    ///
+    /// - Command Data: `u32` placeholder data (not accessed by shader)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_SEQUENCE_INDEX_EXT")]
     pub const PUSH_DATA_SEQUENCE_INDEX: Self = Self(1000135001);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT` in the table “Supported Indirect
+    /// Command Tokens” of the specification:
+    ///
+    /// - Command Data: [`VkDrawMeshTasksIndirectCommandNV`](DrawMeshTasksIndirectCommandNV)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV_EXT")]
     pub const DRAW_MESH_TASKS_NV: Self = Self(1000202002);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT` in the table “Supported
+    /// Indirect Command Tokens” of the specification:
+    ///
+    /// - Command Data:
+    ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
+    ///   VkDrawMeshTasksIndirectCommandNV
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_NV_EXT")]
     pub const DRAW_MESH_TASKS_COUNT_NV: Self = Self(1000202003);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT` in the table “Supported Indirect
+    /// Command Tokens” of the specification:
+    ///
+    /// - Command Data: [`VkDrawMeshTasksIndirectCommandEXT`](DrawMeshTasksIndirectCommandEXT)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_EXT")]
     pub const DRAW_MESH_TASKS: Self = Self(1000328000);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT` in the table “Supported Indirect
+    /// Command Tokens” of the specification:
+    ///
+    /// - Command Data:
+    ///   [`VkDrawIndirectCountIndirectCommandEXT`](DrawIndirectCountIndirectCommandEXT) with
+    ///   VkDrawMeshTasksIndirectCommandEXT
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_COUNT_EXT")]
     pub const DRAW_MESH_TASKS_COUNT: Self = Self(1000328001);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT`, a value of
-    /// [`VkIndirectCommandsTokenTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeEXT.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Command Data: [`VkTraceRaysIndirectCommand2KHR`](TraceRaysIndirectCommand2KHR)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_TRACE_RAYS2_EXT")]
     pub const TRACE_RAYS2: Self = Self(1000386004);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -13514,52 +13844,79 @@ impl IndirectCommandsTokenTypeNV {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command:
+    ///   [`vkCmdBindPipelineShaderGroupNV`](crate::Device::cmd_bind_pipeline_shader_group_nv)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_SHADER_GROUP_NV")]
     pub const SHADER_GROUP: Self = Self(0);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: -
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_STATE_FLAGS_NV")]
     pub const STATE_FLAGS: Self = Self(1);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdBindIndexBuffer`](crate::Device::cmd_bind_index_buffer)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_INDEX_BUFFER_NV")]
     pub const INDEX_BUFFER: Self = Self(2);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdBindVertexBuffers`](crate::Device::cmd_bind_vertex_buffers)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_VERTEX_BUFFER_NV")]
     pub const VERTEX_BUFFER: Self = Self(3);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdPushConstants`](crate::Device::cmd_push_constants)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_CONSTANT_NV")]
     pub const PUSH_CONSTANT: Self = Self(4);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdDrawIndexedIndirect`](crate::Device::cmd_draw_indexed_indirect)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_INDEXED_NV")]
     pub const DRAW_INDEXED: Self = Self(5);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV` in the table “Supported Indirect Command Tokens”
+    /// of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdDrawIndirect`](crate::Device::cmd_draw_indirect)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_NV")]
     pub const DRAW: Self = Self(6);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_TASKS_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_TASKS_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command:
+    ///   [`vkCmdDrawMeshTasksIndirectNV`](crate::Device::cmd_draw_mesh_tasks_indirect_nv)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_TASKS_NV")]
     pub const DRAW_TASKS: Self = Self(7);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdPushDataEXT`](crate::Device::cmd_push_data_ext)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PUSH_DATA_NV")]
     pub const PUSH_DATA: Self = Self(1000135000);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV` in the table “Supported Indirect
+    /// Command Tokens” of the specification:
+    ///
+    /// - Equivalent command:
+    ///   [`vkCmdDrawMeshTasksIndirectEXT`](crate::Device::cmd_draw_mesh_tasks_indirect_ext)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DRAW_MESH_TASKS_NV")]
     pub const DRAW_MESH_TASKS: Self = Self(1000328000);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdBindPipeline`](crate::Device::cmd_bind_pipeline)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_PIPELINE_NV")]
     pub const PIPELINE: Self = Self(1000428003);
-    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV`, a value of
-    /// [`VkIndirectCommandsTokenTypeNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkIndirectCommandsTokenTypeNV.html).
+    /// `VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV` in the table “Supported Indirect Command
+    /// Tokens” of the specification:
+    ///
+    /// - Equivalent command: [`vkCmdDispatchIndirect`](crate::Device::cmd_dispatch_indirect)
     #[doc(alias = "VK_INDIRECT_COMMANDS_TOKEN_TYPE_DISPATCH_NV")]
     pub const DISPATCH: Self = Self(1000428004);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -14117,68 +14474,84 @@ impl LogicOp {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_LOGIC_OP_CLEAR`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_CLEAR` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: 0
     #[doc(alias = "VK_LOGIC_OP_CLEAR")]
     pub const CLEAR: Self = Self(0);
-    /// `VK_LOGIC_OP_AND`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_AND` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: s ∧ d
     #[doc(alias = "VK_LOGIC_OP_AND")]
     pub const AND: Self = Self(1);
-    /// `VK_LOGIC_OP_AND_REVERSE`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_AND_REVERSE` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: s ∧ ¬ d
     #[doc(alias = "VK_LOGIC_OP_AND_REVERSE")]
     pub const AND_REVERSE: Self = Self(2);
-    /// `VK_LOGIC_OP_COPY`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_COPY` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: s
     #[doc(alias = "VK_LOGIC_OP_COPY")]
     pub const COPY: Self = Self(3);
-    /// `VK_LOGIC_OP_AND_INVERTED`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_AND_INVERTED` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: ¬ s ∧ d
     #[doc(alias = "VK_LOGIC_OP_AND_INVERTED")]
     pub const AND_INVERTED: Self = Self(4);
-    /// `VK_LOGIC_OP_NO_OP`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_NO_OP` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: d
     #[doc(alias = "VK_LOGIC_OP_NO_OP")]
     pub const NO_OP: Self = Self(5);
-    /// `VK_LOGIC_OP_XOR`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_XOR` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: s ⊕ d
     #[doc(alias = "VK_LOGIC_OP_XOR")]
     pub const XOR: Self = Self(6);
-    /// `VK_LOGIC_OP_OR`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_OR` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: s ∨ d
     #[doc(alias = "VK_LOGIC_OP_OR")]
     pub const OR: Self = Self(7);
-    /// `VK_LOGIC_OP_NOR`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_NOR` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: ¬ (s ∨ d)
     #[doc(alias = "VK_LOGIC_OP_NOR")]
     pub const NOR: Self = Self(8);
-    /// `VK_LOGIC_OP_EQUIVALENT`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_EQUIVALENT` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: ¬ (s ⊕ d)
     #[doc(alias = "VK_LOGIC_OP_EQUIVALENT")]
     pub const EQUIVALENT: Self = Self(9);
-    /// `VK_LOGIC_OP_INVERT`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_INVERT` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: ¬ d
     #[doc(alias = "VK_LOGIC_OP_INVERT")]
     pub const INVERT: Self = Self(10);
-    /// `VK_LOGIC_OP_OR_REVERSE`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_OR_REVERSE` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: s ∨ ¬ d
     #[doc(alias = "VK_LOGIC_OP_OR_REVERSE")]
     pub const OR_REVERSE: Self = Self(11);
-    /// `VK_LOGIC_OP_COPY_INVERTED`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_COPY_INVERTED` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: ¬ s
     #[doc(alias = "VK_LOGIC_OP_COPY_INVERTED")]
     pub const COPY_INVERTED: Self = Self(12);
-    /// `VK_LOGIC_OP_OR_INVERTED`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_OR_INVERTED` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: ¬ s ∨ d
     #[doc(alias = "VK_LOGIC_OP_OR_INVERTED")]
     pub const OR_INVERTED: Self = Self(13);
-    /// `VK_LOGIC_OP_NAND`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_NAND` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: ¬ (s ∧ d)
     #[doc(alias = "VK_LOGIC_OP_NAND")]
     pub const NAND: Self = Self(14);
-    /// `VK_LOGIC_OP_SET`, a value of
-    /// [`VkLogicOp`](https://docs.vulkan.org/refpages/latest/refpages/source/VkLogicOp.html).
+    /// `VK_LOGIC_OP_SET` in the table “Logical Operations” of the specification:
+    ///
+    /// - Operation: all 1s
     #[doc(alias = "VK_LOGIC_OP_SET")]
     pub const SET: Self = Self(15);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -14442,8 +14815,10 @@ impl ObjectType {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_OBJECT_TYPE_UNKNOWN`, a value of
-    /// [`VkObjectType`](https://docs.vulkan.org/refpages/latest/refpages/source/VkObjectType.html).
+    /// `VK_OBJECT_TYPE_UNKNOWN` in the table “`VkObjectType` and Vulkan Handle Relationship” of the
+    /// specification:
+    ///
+    /// - Vulkan Handle Type: Unknown/Undefined Handle
     #[doc(alias = "VK_OBJECT_TYPE_UNKNOWN")]
     pub const UNKNOWN: Self = Self(0);
     /// `VK_OBJECT_TYPE_INSTANCE`, the object type of [`VkInstance`](Instance).
@@ -18918,52 +19293,94 @@ impl ShadingRatePaletteEntryNV {
     pub const fn as_raw(self) -> i32 {
         self.0
     }
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_NO_INVOCATIONS_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_NO_INVOCATIONS_NV` in a table of the specification:
+    ///
+    /// - Width: 0
+    /// - Height: 0
+    /// - Invocations: 0
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_NO_INVOCATIONS_NV")]
     pub const NO_INVOCATIONS: Self = Self(0);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_16_INVOCATIONS_PER_PIXEL_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_16_INVOCATIONS_PER_PIXEL_NV` in a table of the specification:
+    ///
+    /// - Width: 1
+    /// - Height: 1
+    /// - Invocations: 16
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_16_INVOCATIONS_PER_PIXEL_NV")]
     pub const _16_INVOCATIONS_PER_PIXEL: Self = Self(1);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_8_INVOCATIONS_PER_PIXEL_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_8_INVOCATIONS_PER_PIXEL_NV` in a table of the specification:
+    ///
+    /// - Width: 1
+    /// - Height: 1
+    /// - Invocations: 8
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_8_INVOCATIONS_PER_PIXEL_NV")]
     pub const _8_INVOCATIONS_PER_PIXEL: Self = Self(2);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_4_INVOCATIONS_PER_PIXEL_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_4_INVOCATIONS_PER_PIXEL_NV` in a table of the specification:
+    ///
+    /// - Width: 1
+    /// - Height: 1
+    /// - Invocations: 4
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_4_INVOCATIONS_PER_PIXEL_NV")]
     pub const _4_INVOCATIONS_PER_PIXEL: Self = Self(3);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_2_INVOCATIONS_PER_PIXEL_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_2_INVOCATIONS_PER_PIXEL_NV` in a table of the specification:
+    ///
+    /// - Width: 1
+    /// - Height: 1
+    /// - Invocations: 2
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_2_INVOCATIONS_PER_PIXEL_NV")]
     pub const _2_INVOCATIONS_PER_PIXEL: Self = Self(4);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_PIXEL_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_PIXEL_NV` in a table of the specification:
+    ///
+    /// - Width: 1
+    /// - Height: 1
+    /// - Invocations: 1
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_PIXEL_NV")]
     pub const _1_INVOCATION_PER_PIXEL: Self = Self(5);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X1_PIXELS_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X1_PIXELS_NV` in a table of the
+    /// specification:
+    ///
+    /// - Width: 2
+    /// - Height: 1
+    /// - Invocations: 1
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X1_PIXELS_NV")]
     pub const _1_INVOCATION_PER_2X1_PIXELS: Self = Self(6);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_1X2_PIXELS_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_1X2_PIXELS_NV` in a table of the
+    /// specification:
+    ///
+    /// - Width: 1
+    /// - Height: 2
+    /// - Invocations: 1
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_1X2_PIXELS_NV")]
     pub const _1_INVOCATION_PER_1X2_PIXELS: Self = Self(7);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X2_PIXELS_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X2_PIXELS_NV` in a table of the
+    /// specification:
+    ///
+    /// - Width: 2
+    /// - Height: 2
+    /// - Invocations: 1
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X2_PIXELS_NV")]
     pub const _1_INVOCATION_PER_2X2_PIXELS: Self = Self(8);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X2_PIXELS_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X2_PIXELS_NV` in a table of the
+    /// specification:
+    ///
+    /// - Width: 4
+    /// - Height: 2
+    /// - Invocations: 1
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X2_PIXELS_NV")]
     pub const _1_INVOCATION_PER_4X2_PIXELS: Self = Self(9);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X4_PIXELS_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X4_PIXELS_NV` in a table of the
+    /// specification:
+    ///
+    /// - Width: 2
+    /// - Height: 4
+    /// - Invocations: 1
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_2X4_PIXELS_NV")]
     pub const _1_INVOCATION_PER_2X4_PIXELS: Self = Self(10);
-    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X4_PIXELS_NV`, a value of
-    /// [`VkShadingRatePaletteEntryNV`](https://docs.vulkan.org/refpages/latest/refpages/source/VkShadingRatePaletteEntryNV.html).
+    /// `VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X4_PIXELS_NV` in a table of the
+    /// specification:
+    ///
+    /// - Width: 4
+    /// - Height: 4
+    /// - Invocations: 1
     #[doc(alias = "VK_SHADING_RATE_PALETTE_ENTRY_1_INVOCATION_PER_4X4_PIXELS_NV")]
     pub const _1_INVOCATION_PER_4X4_PIXELS: Self = Self(11);
     /// The values of this type that have a constant, each with the name of its constant,
