@@ -4,7 +4,7 @@ mod shape;
 mod wrapper;
 
 use super::func_pointers::parameter_item;
-use super::{arrow, header, w};
+use super::{arrow, header, parameter_names, w};
 use crate::docs::{Block, Doc};
 use crate::model::{CType, Cfg, Dispatch, Model};
 use crate::naming::{command_name, field_name, pointer_setter_name};
@@ -112,16 +112,18 @@ fn with_deferred_safety(model: &Model<'_>, c: &Command, safety: String) -> Strin
 
 fn raw_command(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
     let params = dispatch.explicit_params(c);
+    let names = parameter_names(&c.name, params.iter().map(|p| p.name.as_str()), field_name);
     let signature = params
         .iter()
-        .map(|p| format!(", {}: {}", field_name(&p.name), model.param_ty(p, "'_")))
+        .zip(&names)
+        .map(|(p, name)| format!(", {name}: {}", model.param_ty(p, "'_")))
         .collect::<String>();
     let self_handle = dispatch
         .passes_self_handle(c)
         .then(|| "self.handle()".to_string());
     let arguments = self_handle
         .into_iter()
-        .chain(params.iter().map(|p| field_name(&p.name)))
+        .chain(names)
         .collect::<Vec<_>>()
         .join(", ");
     let cfg = model.cfg(c.protect.as_deref());

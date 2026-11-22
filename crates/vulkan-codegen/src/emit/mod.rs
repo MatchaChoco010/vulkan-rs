@@ -11,6 +11,8 @@ pub(crate) mod func_pointers;
 pub(crate) mod handles;
 mod indentation;
 pub(crate) mod layout;
+#[cfg(test)]
+mod name_collisions;
 pub(crate) mod structs;
 mod variants;
 pub(crate) mod version;
@@ -20,6 +22,7 @@ pub(crate) use indentation::indent_by_nesting;
 use crate::docs::alias_doc;
 use crate::model::Cfg;
 use crate::naming::type_name;
+use std::collections::BTreeMap;
 
 macro_rules! w {
     ($out:expr, $($arg:tt)*) => {{
@@ -52,6 +55,38 @@ pub(crate) fn arrow(return_ty: &str) -> String {
     } else {
         format!(" -> {return_ty}")
     }
+}
+
+pub(crate) fn assert_distinct_names(
+    owner: &str,
+    names: impl IntoIterator<Item = (String, String)>,
+) {
+    let mut seen = BTreeMap::<String, String>::new();
+    for (origin, rust_name) in names {
+        let key = rust_name.trim_start_matches("r#").to_string();
+        if let Some(earlier) = seen.get(&key) {
+            panic!("{owner}: {earlier} and {origin} both become the Rust name `{rust_name}`");
+        }
+        seen.insert(key, origin);
+    }
+}
+
+pub(crate) fn parameter_names<'p>(
+    owner: &str,
+    params: impl IntoIterator<Item = &'p str>,
+    rust_name: impl Fn(&str) -> String,
+) -> Vec<String> {
+    let named = params
+        .into_iter()
+        .map(|c_name| (c_name, rust_name(c_name)))
+        .collect::<Vec<_>>();
+    assert_distinct_names(
+        owner,
+        named
+            .iter()
+            .map(|(c_name, name)| (format!("the C parameter `{c_name}`"), name.clone())),
+    );
+    named.into_iter().map(|(_, name)| name).collect()
 }
 
 pub(crate) fn type_aliases(cfg: &Cfg, aliases: &[String], target: &str, generics: &str) -> String {

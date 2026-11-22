@@ -5,7 +5,7 @@ mod unions;
 
 pub(crate) use bit_fields::{Slot, slots};
 
-use super::{header, type_aliases, w};
+use super::{assert_distinct_names, header, type_aliases, w};
 use crate::docs::{Doc, join_and};
 use crate::model::{Cfg, Model, has_p_next};
 use crate::naming::{field_name, type_name};
@@ -119,6 +119,10 @@ impl<'s> MethodNames<'s> {
     }
 }
 
+fn marker_field(borrows: bool) -> Option<(String, String)> {
+    borrows.then(|| ("the lifetime marker".to_string(), "_marker".to_string()))
+}
+
 fn thread_safety_impls(cfg: &Cfg, name: &str, borrows: bool) -> String {
     if !borrows {
         return String::new();
@@ -147,7 +151,24 @@ fn definition(model: &Model<'_>, s: &Struct) -> String {
     let mut methods = String::new();
     let mut names = MethodNames::new(&s.name);
     let counted = setters::CountedArrays::new(s);
-    for slot in slots(model, s) {
+    let slots = slots(model, s);
+    assert_distinct_names(
+        &s.name,
+        slots
+            .iter()
+            .map(|slot| match slot {
+                Slot::Plain(m) => (format!("the C member `{}`", m.name), field_name(&m.name)),
+                Slot::Bits { storage, bits } => (
+                    format!(
+                        "the storage unit of the C bit-field `{}`",
+                        bits[0].member.name
+                    ),
+                    storage.clone(),
+                ),
+            })
+            .chain(marker_field(borrows)),
+    );
+    for slot in slots {
         match slot {
             Slot::Plain(m) => {
                 let field = field_name(&m.name);

@@ -1,6 +1,6 @@
 use super::{argument_name, can_defer, inner_len, struct_member_len, value_count_param};
 use crate::docs::join_and;
-use crate::emit::{Borrow, w};
+use crate::emit::{Borrow, assert_distinct_names, w};
 use crate::model::{CType, Model, is_opaque, null_ptr};
 use crate::naming::field_name;
 use std::collections::BTreeMap;
@@ -68,7 +68,25 @@ impl Inputs {
         };
         let by_param = (0..params.len())
             .map(|index| (!outputs.contains(&index)).then(|| planner.input(index)))
-            .collect();
+            .collect::<Vec<_>>();
+        assert_distinct_names(
+            &c.name,
+            by_param
+                .iter()
+                .zip(params)
+                .filter_map(|(input, p)| match input.as_ref()? {
+                    Input::Argument { name, .. } => {
+                        Some((format!("the C parameter `{}`", p.name), name.clone()))
+                    }
+                    Input::SliceLen { local, .. } => Some((
+                        format!(
+                            "the slice length that replaces the C parameter `{}`",
+                            p.name
+                        ),
+                        local.clone(),
+                    )),
+                }),
+        );
         Self {
             by_param,
             checks: planner.checks,

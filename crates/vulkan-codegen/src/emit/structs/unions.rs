@@ -1,5 +1,7 @@
-use super::{MARKER_DOC, MethodNames, field_link, member_doc, thread_safety_impls, type_doc};
-use crate::emit::{Borrow, w};
+use super::{
+    MARKER_DOC, MethodNames, field_link, marker_field, member_doc, thread_safety_impls, type_doc,
+};
+use crate::emit::{Borrow, assert_distinct_names, w};
 use crate::model::{CType, Model, is_opaque};
 use crate::naming::{field_name, pointer_setter_name, type_name};
 use vulkan_registry::{Field, Struct};
@@ -13,6 +15,13 @@ pub(super) fn definition(model: &Model<'_>, s: &Struct) -> String {
     let mut fields = String::new();
     let mut constructors = String::new();
     let mut names = MethodNames::new(&s.name);
+    assert_distinct_names(
+        &s.name,
+        s.members
+            .iter()
+            .map(|m| (format!("the C member `{}`", m.name), field_name(&m.name)))
+            .chain(marker_field(borrows)),
+    );
     for m in &s.members {
         assert!(
             m.bit_field_width.is_none(),
