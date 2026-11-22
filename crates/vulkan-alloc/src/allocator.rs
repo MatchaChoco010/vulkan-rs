@@ -7,7 +7,7 @@ use crate::allocation::{Allocation, AllocationCreateDesc, AllocationResourceClas
 use crate::block::{BlockRequest, MemoryBlock, MemoryTypeAllocator};
 use crate::error::AllocationError;
 use crate::mapping::MappedAllocation;
-use crate::memory_type::{effective_alignment, find_memory_type_index};
+use crate::memory_type::{effective_alignment, find_memory_type_index, memory_type_flags};
 use crate::report::{
     AllocatorSnapshot, AllocatorStats, LiveAllocation, snapshot_from_memory_types,
     stats_from_memory_types,
@@ -145,10 +145,7 @@ impl Allocator {
     }
 
     pub fn memory_type_flags(&self, memory_type_index: u32) -> Option<vk::MemoryPropertyFlags> {
-        if memory_type_index >= self.memory_properties.memory_type_count {
-            return None;
-        }
-        Some(self.memory_properties.memory_types[memory_type_index as usize].property_flags)
+        memory_type_flags(&self.memory_properties, memory_type_index)
     }
 
     pub fn allocation_memory_flags(

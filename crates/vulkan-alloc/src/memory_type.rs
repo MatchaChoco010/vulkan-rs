@@ -46,6 +46,19 @@ impl MemoryLocation {
     }
 }
 
+pub(crate) fn memory_type_flags(
+    properties: &vk::PhysicalDeviceMemoryProperties,
+    memory_type_index: u32,
+) -> Option<vk::MemoryPropertyFlags> {
+    if memory_type_index >= properties.memory_type_count {
+        return None;
+    }
+    properties
+        .memory_types
+        .get(memory_type_index as usize)
+        .map(|memory_type| memory_type.property_flags)
+}
+
 pub(crate) fn find_memory_type_index(
     properties: &vk::PhysicalDeviceMemoryProperties,
     memory_type_bits: u32,
@@ -111,6 +124,30 @@ pub(crate) mod tests {
             properties.memory_types[index].property_flags = flags;
         }
         properties
+    }
+
+    #[test]
+    fn memory_type_flags_rejects_indices_outside_the_reported_types() {
+        let properties = memory_properties(&[
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE,
+        ]);
+        assert_eq!(
+            memory_type_flags(&properties, 1),
+            Some(vk::MemoryPropertyFlags::HOST_VISIBLE)
+        );
+        assert_eq!(memory_type_flags(&properties, 2), None);
+
+        let overreported = vk::PhysicalDeviceMemoryProperties {
+            memory_type_count: 40,
+            ..properties
+        };
+        assert_eq!(
+            memory_type_flags(&overreported, 31),
+            Some(vk::MemoryPropertyFlags::empty())
+        );
+        assert_eq!(memory_type_flags(&overreported, 32), None);
+        assert_eq!(memory_type_flags(&overreported, 39), None);
     }
 
     #[test]
