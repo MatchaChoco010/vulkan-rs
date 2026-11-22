@@ -277,7 +277,10 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// The same as [`Allocator::map_memory`].
+    /// The same as [`Allocator::map_memory`], and
+    /// [`AllocationError::InvalidAllocation`] if the allocation is larger than
+    /// [`isize::MAX`] bytes, which no slice can cover. Nothing is mapped in that case;
+    /// [`Allocator::map_memory`] has no such limit.
     ///
     /// # Safety
     ///
@@ -293,8 +296,12 @@ impl Allocator {
         &'b mut self,
         allocation: &'b Allocation,
     ) -> Result<MappedAllocation<'b>, AllocationError> {
+        let len = usize::try_from(allocation.size)
+            .ok()
+            .filter(|&len| isize::try_from(len).is_ok())
+            .ok_or(AllocationError::InvalidAllocation)?;
         let ptr = unsafe { self.map_host_visible(allocation) }?;
-        Ok(MappedAllocation::new(self, allocation, ptr))
+        Ok(MappedAllocation::new(self, allocation, ptr, len))
     }
 
     /// Maps the allocation until it is freed and returns a pointer to its first byte. The
