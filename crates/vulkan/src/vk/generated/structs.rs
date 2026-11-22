@@ -114369,6 +114369,10 @@ impl<'a> ShaderCreateInfoEXT<'a> {
     }
     /// Sets [`p_code`](Self::p_code) to the start of a slice of bytes and
     /// [`code_size`](Self::code_size) to its length.
+    ///
+    /// The C API requires the bytes to start at an address that is a multiple of 16 for binary
+    /// shader code and a multiple of 4 for SPIR-V. A `&[u8]` guarantees neither, so the caller has
+    /// to borrow the bytes from memory with that alignment.
     pub fn code(mut self, value: &'a [u8]) -> Self {
         self.code_size = value.len() as _;
         self.p_code = value.as_ptr().cast();

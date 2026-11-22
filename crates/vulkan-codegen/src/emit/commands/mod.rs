@@ -1558,10 +1558,23 @@ mod tests {
     #[test]
     fn the_embedded_registry_generates_the_same_commands_under_other_command_names() {
         let (ir, docs) = (Registry::get(), Docs::get());
+        let model = Model::with_docs(ir, docs);
+        let listed_by_name = |c: &Command| !model.aligned_outputs(c).is_empty();
+        assert_eq!(
+            ir.commands
+                .iter()
+                .filter(|c| listed_by_name(c))
+                .map(|c| c.name.as_str())
+                .collect::<Vec<_>>(),
+            ["vkGetShaderBinaryDataEXT"],
+            "the commands that keep their names here, because the generator lists a requirement \
+             of the specification under the name of the command"
+        );
         let renamed = ir
             .commands
             .iter()
             .enumerate()
+            .filter(|(_, c)| !listed_by_name(c))
             .map(|(index, c)| (c.name.clone(), format!("vkRenamedCommand{index}")))
             .collect::<BTreeMap<_, _>>();
         let rename = |name: &mut String| {
