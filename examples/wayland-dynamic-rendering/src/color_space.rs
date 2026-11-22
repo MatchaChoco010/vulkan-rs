@@ -1,6 +1,31 @@
 use anyhow::Result;
 use vulkan::{Device, vk};
 use vulkan_example_common::device::Gpu;
+use vulkan_example_common::env::{one_of, parsed_var};
+
+/// What `VULKAN_EXAMPLE_COLOR_SPACE` asks for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ColorSpace {
+    Srgb,
+    Hdr10,
+    Scrgb,
+}
+
+/// The values of `VULKAN_EXAMPLE_COLOR_SPACE`.
+const COLOR_SPACES: [(&str, ColorSpace); 3] = [
+    ("srgb", ColorSpace::Srgb),
+    ("hdr10", ColorSpace::Hdr10),
+    ("scrgb", ColorSpace::Scrgb),
+];
+
+/// The color space that `VULKAN_EXAMPLE_COLOR_SPACE` asks for, sRGB when it is not set.
+/// An error for a value that is not one of [`COLOR_SPACES`].
+fn requested_color_space() -> Result<ColorSpace> {
+    let requested = parsed_var("VULKAN_EXAMPLE_COLOR_SPACE", |value| {
+        one_of(value, &COLOR_SPACES)
+    })?;
+    Ok(requested.unwrap_or(ColorSpace::Srgb))
+}
 
 /// The format and color space for the swapchain, following `VULKAN_EXAMPLE_COLOR_SPACE`.
 /// Falls back to 8-bit sRGB when the surface does not offer the requested one.
@@ -12,7 +37,7 @@ pub unsafe fn choose_surface_format(
         gpu.instance
             .get_physical_device_surface_formats_khr(gpu.physical_device, surface)
     }?;
-    let wanted = std::env::var("VULKAN_EXAMPLE_COLOR_SPACE").unwrap_or_default();
+    let wanted = requested_color_space()?;
     let find = |color_space: vk::ColorSpaceKHR, candidates: &[vk::Format]| {
         candidates.iter().find_map(|&format| {
             formats
@@ -21,9 +46,9 @@ pub unsafe fn choose_surface_format(
                 .find(|f| f.format == format && f.color_space == color_space)
         })
     };
-    let chosen = match wanted.as_str() {
+    let chosen = match wanted {
         // BT.2020 primaries with the PQ transfer function; needs 10 bits or more.
-        "hdr10" => find(
+        ColorSpace::Hdr10 => find(
             vk::ColorSpaceKHR::HDR10_ST2084_EXT,
             &[
                 vk::Format::A2B10G10R10_UNORM_PACK32,
@@ -32,14 +57,14 @@ pub unsafe fn choose_surface_format(
             ],
         ),
         // sRGB primaries, linear, values outside [0, 1] allowed.
-        "scrgb" => find(
+        ColorSpace::Scrgb => find(
             vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
             &[vk::Format::R16G16B16A16_SFLOAT],
         ),
-        _ => None,
+        ColorSpace::Srgb => None,
     };
-    if chosen.is_none() && !matches!(wanted.as_str(), "" | "srgb") {
-        println!("color space `{wanted}` is not offered by the surface; using sRGB");
+    if chosen.is_none() && wanted != ColorSpace::Srgb {
+        println!("color space {wanted:?} is not offered by the surface; using sRGB");
     }
     Ok(chosen
         .or_else(|| {
@@ -74,4 +99,28 @@ pub unsafe fn set_hdr_metadata(
         .max_frame_average_light_level(400.0);
     unsafe { device.set_hdr_metadata_ext(&[swapchain], &[metadata]) };
     println!("set HDR10 metadata");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_color_space_is_named_once_and_other_values_are_errors() {
+        for (index, (name, color_space)) in COLOR_SPACES.iter().enumerate() {
+            assert_eq!(one_of(name, &COLOR_SPACES).unwrap(), *color_space, "{name}");
+            assert!(
+                COLOR_SPACES[index + 1..]
+                    .iter()
+                    .all(|(other_name, other)| other_name != name && other != color_space),
+                "{name} is listed twice"
+            );
+        }
+        for value in ["", "sRGB", "HDR10", "hdr", "pq", "scRGB", "linear"] {
+            assert!(
+                one_of(value, &COLOR_SPACES).is_err(),
+                "{value:?} was accepted"
+            );
+        }
+    }
 }

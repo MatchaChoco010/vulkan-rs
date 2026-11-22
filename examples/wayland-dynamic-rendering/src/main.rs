@@ -5,13 +5,14 @@
 //! `COLOR_ATTACHMENT_OPTIMAL` and back to `PRESENT_SRC_KHR` with barriers of its own.
 //!
 //! The swapchain parameters a compositor or an HDR-aware client cares about can be
-//! chosen from the environment. The surface's support for each is printed at startup.
+//! chosen from the environment; any other value is an error. The surface's support for
+//! each is printed at startup.
 //!
 //! - `VULKAN_EXAMPLE_PRESENT_MODE`: `fifo` (default), `fifo_relaxed`, `immediate`
 //!   (tearing) or `mailbox`.
 //! - `VULKAN_EXAMPLE_COLOR_SPACE`: `srgb` (default), `hdr10` (BT.2020 PQ, with
 //!   `VK_EXT_hdr_metadata` when available) or `scrgb` (extended linear sRGB).
-//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames.
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1.
 //!
 //! The shader always writes the same values, so the triangle is only colorimetrically
 //! right in `srgb`. The point of the other modes is the swapchain setup.

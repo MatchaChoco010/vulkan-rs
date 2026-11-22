@@ -6,7 +6,7 @@
 //! needs no barrier of its own. The render pass, the framebuffers and the pipeline,
 //! whose viewport is fixed, depend on the swapchain and are recreated with it.
 //!
-//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames.
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1.
 //!
 //! `examples/wayland-dynamic-rendering` draws the same triangle without a render pass.
 

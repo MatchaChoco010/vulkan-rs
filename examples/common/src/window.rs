@@ -15,6 +15,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+use crate::env::{parsed_var, positive_count};
 use frame::SwapchainStatus;
 
 const WINDOW_SIZE: LogicalSize<u32> = LogicalSize {
@@ -53,21 +54,20 @@ pub trait Renderer: Sized {
 }
 
 /// Opens a window titled `title` and draws to it until the window is closed or an error
-/// occurs. When `VULKAN_EXAMPLE_FRAMES` is set, it stops after that many frames.
+/// occurs. When `VULKAN_EXAMPLE_FRAMES` is set, it stops after that many frames, which
+/// must be at least 1.
 ///
 /// # Errors
 ///
-/// The first error of creating the window or the renderer, of drawing, of recreating
-/// the swapchain, of the event loop, or of destroying the renderer.
+/// A `VULKAN_EXAMPLE_FRAMES` that is not a whole number of at least 1, or the first error
+/// of creating the window or the renderer, of drawing, of recreating the swapchain, of
+/// the event loop, or of destroying the renderer.
 pub fn run<R: Renderer>(title: &str) -> Result<()> {
+    let max_frames = parsed_var("VULKAN_EXAMPLE_FRAMES", positive_count)?;
     let event_loop = EventLoop::new()?;
     let mut runner = Runner::<R> {
         title,
-        session: Session::new(
-            std::env::var("VULKAN_EXAMPLE_FRAMES")
-                .ok()
-                .and_then(|value| value.parse::<u32>().ok()),
-        ),
+        session: Session::new(max_frames),
         window: None,
     };
     let event_loop_result = event_loop.run_app(&mut runner).map_err(anyhow::Error::from);
