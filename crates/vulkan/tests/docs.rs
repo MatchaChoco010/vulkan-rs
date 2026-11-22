@@ -33,16 +33,23 @@ fn words(text: &str) -> String {
 
 struct Page {
     name: String,
+    file: String,
     description: String,
     body: String,
     body_words: String,
 }
 
+struct Cell {
+    style: Option<char>,
+    text: String,
+}
+
 struct Table {
+    file: String,
     page: Option<String>,
     title: Option<String>,
     header: Vec<String>,
-    rows: Vec<Vec<String>>,
+    rows: Vec<Vec<Cell>>,
 }
 
 struct TableSyntax {
@@ -52,6 +59,7 @@ struct TableSyntax {
     columns: Regex,
     header_option: Regex,
     no_header_option: Regex,
+    footer_option: Regex,
 }
 
 impl TableSyntax {
@@ -59,15 +67,18 @@ impl TableSyntax {
         Self {
             delimiter: regex(r"^\|={3,}\s*$"),
             block_header: regex(r"^(?:\[.*\]|\.[^\s.].*)\s*$"),
-            cell_specifier: regex(r"^((?:\d+(?:\.\d+)?|\.\d+)[+*])?[<^>]?(?:\.[<^>])?[adehlmsv]?$"),
+            cell_specifier: regex(
+                r"^((?:\d+(?:\.\d+)?|\.\d+)[+*])?[<^>]?(?:\.[<^>])?([adehlmsv])?$",
+            ),
             columns: regex(r#"\bcols="([^"]*)""#),
             header_option: regex(r#"\b(?:options|opts)="[^"]*\bheader\b|%header\b"#),
             no_header_option: regex(r"\bnoheader\b"),
+            footer_option: regex(r#"\b(?:options|opts)="[^"]*\bfooter\b|%footer\b"#),
         }
     }
 
-    fn cells(&self, content: &[String]) -> Option<Vec<(usize, String)>> {
-        let mut cells = Vec::<(usize, String)>::new();
+    fn cells(&self, content: &[String]) -> Option<Vec<(usize, Cell)>> {
+        let mut cells = Vec::<(usize, Cell)>::new();
         for (number, line) in content.iter().enumerate() {
             let mut rest = line.as_str();
             loop {
@@ -78,8 +89,8 @@ impl TableSyntax {
                 let Some(at) = bar else {
                     match cells.last_mut() {
                         Some((_, cell)) => {
-                            cell.push_str(rest);
-                            cell.push('\n');
+                            cell.text.push_str(rest);
+                            cell.text.push('\n');
                         }
                         None if !rest.trim().is_empty() => return None,
                         None => {}
@@ -90,29 +101,44 @@ impl TableSyntax {
                 let token_start = before
                     .rfind(char::is_whitespace)
                     .map_or(0, |space| space + 1);
-                let text = match self.cell_specifier.captures(&before[token_start..]) {
+                let (text, style) = match self.cell_specifier.captures(&before[token_start..]) {
                     Some(specifier) if specifier.get(1).is_some() => return None,
-                    Some(_) => &before[..token_start],
-                    None => before,
+                    Some(specifier) => (
+                        &before[..token_start],
+                        specifier
+                            .get(2)
+                            .and_then(|style| style.as_str().chars().next()),
+                    ),
+                    None => (before, None),
                 };
                 match cells.last_mut() {
-                    Some((_, cell)) => cell.push_str(text),
+                    Some((_, cell)) => cell.text.push_str(text),
                     None if !text.trim().is_empty() => return None,
                     None => {}
                 }
-                cells.push((number, String::new()));
+                cells.push((
+                    number,
+                    Cell {
+                        style,
+                        text: String::new(),
+                    },
+                ));
                 rest = &rest[at + 1..];
             }
         }
-        Some(
-            cells
-                .into_iter()
-                .map(|(number, cell)| (number, cell.replace("\\|", "|")))
-                .collect(),
-        )
+        for (_, cell) in &mut cells {
+            cell.text = cell.text.replace("\\|", "|").trim().to_string();
+        }
+        Some(cells)
     }
 
-    fn read(&self, page: Option<String>, above: &[String], content: &[String]) -> Option<Table> {
+    fn read(
+        &self,
+        file: &str,
+        page: Option<String>,
+        above: &[String],
+        content: &[String],
+    ) -> Option<Table> {
         let title = above
             .iter()
             .find_map(|line| line.strip_prefix('.'))
@@ -123,6 +149,9 @@ impl TableSyntax {
             .cloned()
             .collect::<Vec<_>>()
             .join(",");
+        if self.footer_option.is_match(&attributes) {
+            return None;
+        }
         let content = content
             .iter()
             .filter(|line| !line.starts_with("//"))
@@ -131,6 +160,7 @@ impl TableSyntax {
         let cells = self.cells(&content)?;
         let first_line = cells.first()?.0;
         let columns = match self.columns.captures(&attributes) {
+            Some(cols) if cols[1].contains(|c: char| c.is_ascii_alphabetic()) => return None,
             Some(cols) => cols[1]
                 .split(',')
                 .map(|column| {
@@ -153,16 +183,16 @@ impl TableSyntax {
         if !has_header {
             return None;
         }
-        let mut rows = cells
-            .chunks(columns)
-            .map(|row| {
-                row.iter()
-                    .map(|(_, cell)| cell.trim().to_string())
-                    .collect()
-            })
-            .collect::<Vec<Vec<String>>>();
-        let header = rows.remove(0);
+        let mut cells = cells.into_iter().map(|(_, cell)| cell);
+        let header = cells.by_ref().take(columns).map(|cell| cell.text).collect();
+        let cells = cells.collect::<Vec<_>>();
+        let mut rows = Vec::new();
+        let mut cells = cells.into_iter().peekable();
+        while cells.peek().is_some() {
+            rows.push(cells.by_ref().take(columns).collect());
+        }
         Some(Table {
+            file: file.to_string(),
             page,
             title,
             header,
@@ -187,6 +217,11 @@ struct Markup {
     labelled_url: Regex,
     role: Regex,
     macro_prefix: Regex,
+    normative: Regex,
+    hard_break: Regex,
+    math_block: Regex,
+    asciidoc_block: Regex,
+    unsupported_macro: Regex,
 }
 
 impl Markup {
@@ -200,6 +235,15 @@ impl Markup {
             macro_prefix: regex(
                 r"\b(?:pname|ptext|sname|stext|slink|fname|ftext|flink|ename|etext|elink|dname|dlink|tname|tlink|basetype|code|apiext|reflink|tag|attr|latexmath):",
             ),
+            normative: regex(
+                r"\b(can|cannot|may|must|optional|optionally|required|should|undefined):",
+            ),
+            hard_break: regex(r"[ \t]\+[ \t]*(?:\n|$)"),
+            math_block: regex(r"(?s)\[latexmath\]\s*\n\s*\+\+\+\+\s*\n(.*?)\n\s*\+\+\+\+"),
+            asciidoc_block: regex(
+                r"(?m)^\s*(?:[*.!-]|\d+\.|\[[^\[].*\]\s*$|include::|image::|={4,}|-{4,}|\+{4,})",
+            ),
+            unsupported_macro: regex(r"\b(?:footnote|image|xref|stem|anchor|pass):\S"),
         }
     }
 }
@@ -379,6 +423,11 @@ impl Specification {
                 }
             }
 
+            let relative = file
+                .strip_prefix(root)
+                .expect("a source of the specification")
+                .display()
+                .to_string();
             let mut lines = Vec::new();
             sources.lines(&file, None, &mut BTreeMap::new(), &mut lines);
             let mut blocks = Vec::<(usize, usize, String)>::new();
@@ -412,6 +461,7 @@ impl Specification {
                 for name in names {
                     pages.entry(name.to_string()).or_insert_with(|| Page {
                         name: attributes["refpage"].clone(),
+                        file: relative.clone(),
                         description: description.clone(),
                         body: body.clone(),
                         body_words: String::new(),
@@ -438,9 +488,12 @@ impl Specification {
                     .iter()
                     .find(|(first, last, _)| *first < index && index < *last)
                     .map(|(_, _, name)| name.clone());
-                if let Some(table) =
-                    table_syntax.read(page, &lines[start..index], &lines[index + 1..close])
-                {
+                if let Some(table) = table_syntax.read(
+                    &relative,
+                    page,
+                    &lines[start..index],
+                    &lines[index + 1..close],
+                ) {
                     tables.push(table);
                 }
                 index = close + 1;
@@ -483,6 +536,54 @@ impl Specification {
     }
 
     fn words(&self, text: &str) -> String {
+        words(&self.plain(text))
+    }
+
+    fn visible(&self, text: &str) -> String {
+        let text = self.markup.hard_break.replace_all(text, "\n");
+        let text = self.plain(&text);
+        let text = self.markup.normative.replace_all(&text, "$1");
+        marks_removed(&text)
+    }
+
+    fn cell_is_readable(&self, cell: &Cell) -> bool {
+        let text = match cell.style {
+            None | Some('d') => cell.text.clone(),
+            Some('a') => {
+                let text = self.markup.math_block.replace_all(&cell.text, "math");
+                if self.markup.asciidoc_block.is_match(&text) {
+                    return false;
+                }
+                text.into_owned()
+            }
+            Some(_) => return false,
+        };
+        let known_attributes = self
+            .markup
+            .attribute_reference
+            .captures_iter(&text)
+            .all(|reference| self.attributes.contains_key(&reference[1]));
+        let one_paragraph = !text.lines().any(|line| {
+            let line = line.trim();
+            line.is_empty() || line == "+"
+        });
+        known_attributes && one_paragraph && !self.markup.unsupported_macro.is_match(&text)
+    }
+
+    fn cell_matches(&self, generated: &Generated, cell: &str, value: &str) -> bool {
+        let Some(math) = self.markup.math_block.captures(cell) else {
+            return self.visible(cell) == generated.visible(value);
+        };
+        let rest = self.markup.math_block.replace(cell, "");
+        let squeezed = |text: &str| text.split_whitespace().collect::<String>();
+        rest.trim().is_empty()
+            && generated
+                .code_span
+                .captures(value.trim())
+                .is_some_and(|code| squeezed(&code[1]) == squeezed(&math[1]))
+    }
+
+    fn plain(&self, text: &str) -> String {
         let markup = &self.markup;
         let text = markup.anchor.replace_all(text, "");
         let text = markup
@@ -512,25 +613,47 @@ impl Specification {
             }
         });
         let text = markup.role.replace_all(&text, "");
-        let text = markup.macro_prefix.replace_all(&text, "");
-        words(&text)
+        markup.macro_prefix.replace_all(&text, "").into_owned()
     }
 
-    fn table_rows(&self, page: Option<&str>, value: &str) -> Vec<(&Table, &[String])> {
-        let cell = format!("ename:{value}");
-        let rows_in = |page: Option<&str>| {
+    fn table_rows(
+        &self,
+        page: Option<&str>,
+        values: &BTreeSet<String>,
+        value: &str,
+    ) -> Vec<(&Table, &[Cell])> {
+        let Some(page) = page.and_then(|page| self.pages.get(page)) else {
+            return Vec::new();
+        };
+        let names = |row: &[Cell], value: &str| row[0].text.strip_prefix("ename:") == Some(value);
+        let about_the_type = |table: &Table| {
+            table.title.is_some()
+                && table.rows.iter().all(|row| {
+                    row[0]
+                        .text
+                        .strip_prefix("ename:")
+                        .is_some_and(|name| values.contains(name))
+                })
+        };
+        let rows_in = |outside: bool| {
             self.tables
                 .iter()
-                .filter(|table| table.page.as_deref() == page)
+                .filter(|table| match &table.page {
+                    Some(table_page) => !outside && *table_page == page.name,
+                    None => outside && table.file == page.file && about_the_type(table),
+                })
                 .flat_map(|table| table.rows.iter().map(move |row| (table, row.as_slice())))
-                .filter(|(_, row)| row[0] == cell)
+                .filter(|(_, row)| names(row, value))
                 .collect::<Vec<_>>()
         };
-        let mut rows = page.map(|page| rows_in(Some(page))).unwrap_or_default();
+        let mut rows = rows_in(false);
         if rows.is_empty() {
-            rows = rows_in(None);
+            rows = rows_in(true);
         }
-        rows.retain(|(_, row)| row[1..].iter().any(|cell| !cell.is_empty()));
+        rows.retain(|(_, row)| {
+            row[1..].iter().any(|cell| !cell.text.is_empty())
+                && row.iter().all(|cell| self.cell_is_readable(cell))
+        });
         rows
     }
 
@@ -635,6 +758,12 @@ fn labelled_cells(items: &[(usize, String)]) -> Option<Vec<(String, Vec<String>)
     Some(cells)
 }
 
+fn marks_removed(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_whitespace() && !"#~^*`\"'“”‘’".contains(*c))
+        .collect()
+}
+
 fn flat(doc: &str) -> String {
     doc.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -682,6 +811,10 @@ struct Generated {
     value_of: Regex,
     bits_of: Regex,
     table_row: Regex,
+    link: Regex,
+    html_tag: Regex,
+    escape: Regex,
+    code_span: Regex,
 }
 
 impl Generated {
@@ -695,7 +828,18 @@ impl Generated {
             value_of: regex(r"^`\w+`, a value of (?:\[`(\w+)`\]|`(\w+)`)"),
             bits_of: regex(r"constants of \[`(\w+)`\]"),
             table_row: regex(r"^`(\w+)` in (?:the table “(.+)”|a table) of the specification:$"),
+            link: regex(r"\[([^\]]*)\]\([^)\s]*\)"),
+            html_tag: regex(r"</?(?:sub|sup)>"),
+            escape: regex(r"\\(.)"),
+            code_span: regex(r"^`([^`]+)`$"),
         }
+    }
+
+    fn visible(&self, markdown: &str) -> String {
+        let text = self.link.replace_all(markdown, "$1");
+        let text = self.html_tag.replace_all(&text, "");
+        let text = self.escape.replace_all(&text, "$1");
+        marks_removed(&text)
     }
 
     fn page_of(&self, doc: &str) -> Option<String> {
@@ -827,6 +971,7 @@ impl Checker {
         spec: &Specification,
         generated: &Generated,
         owner_page: Option<&str>,
+        values: &BTreeSet<String>,
         item: &str,
         doc: &str,
         aliases: &[String],
@@ -856,8 +1001,7 @@ impl Checker {
             if spec.describes(page, "ename", c_name) {
                 self.fail(item, format!("the specification describes `{c_name}` on the page `{page}`, but the documentation does not use it"));
             }
-            let page = spec.pages.get(page).map(|page| page.name.as_str());
-            if !spec.table_rows(page, c_name).is_empty() {
+            if !spec.table_rows(Some(page), values, c_name).is_empty() {
                 self.fail(item, format!("the specification describes `{c_name}` in a table row, but the documentation does not use it"));
             }
             return;
@@ -866,7 +1010,7 @@ impl Checker {
         if rest.starts_with(" in the table “")
             || rest.starts_with(" in a table of the specification:")
         {
-            self.tabulated(spec, generated, owner_page, item, c_name, raw);
+            self.tabulated(spec, generated, owner_page, values, item, c_name, raw);
             return;
         }
         match owner_page {
@@ -877,26 +1021,28 @@ impl Checker {
         }
     }
 
-    fn row_is_rendered(spec: &Specification, table: &Table, row: &[String], list: &str) -> bool {
+    fn row_is_rendered(
+        spec: &Specification,
+        generated: &Generated,
+        table: &Table,
+        row: &[Cell],
+        list: &str,
+    ) -> bool {
         let Some(cells) = labelled_cells(&list_items(list)) else {
             return false;
         };
-        let filled = row[1..].iter().filter(|cell| !cell.is_empty()).count();
+        let filled = row[1..].iter().filter(|cell| !cell.text.is_empty()).count();
         cells.len() == filled
             && cells.iter().all(|(text, lines)| {
                 (1..row.len()).any(|column| {
-                    let label = spec.words(&table.header[column]);
-                    let cell = spec.words(&row[column]);
-                    let math = row[column].contains("[latexmath]");
-                    let matches = |value: &str| {
-                        let value = generated_words(value);
-                        cell == value || (math && cell.contains(&value))
-                    };
+                    let label = spec.visible(&table.header[column]);
+                    let matches =
+                        |value: &str| spec.cell_matches(generated, &row[column].text, value);
                     if !lines.is_empty() {
-                        return generated_words(text) == label && matches(&lines.join(" "));
+                        return generated.visible(text) == label && matches(&lines.join(" "));
                     }
                     text.match_indices(": ").any(|(at, _)| {
-                        generated_words(&text[..at]) == label && matches(&text[at + 2..])
+                        generated.visible(&text[..at]) == label && matches(&text[at + 2..])
                     })
                 })
             })
@@ -907,11 +1053,12 @@ impl Checker {
         spec: &Specification,
         generated: &Generated,
         owner_page: Option<&str>,
+        values: &BTreeSet<String>,
         item: &str,
         c_name: &str,
         doc: &str,
     ) {
-        let rows = spec.table_rows(owner_page, c_name);
+        let rows = spec.table_rows(owner_page, values, c_name);
         let paragraphs = doc.trim().split("\n\n").collect::<Vec<_>>();
         if paragraphs.len() % 2 != 0 {
             self.fail(item, "has a table row without its cells");
@@ -930,14 +1077,16 @@ impl Checker {
                 );
                 return;
             }
-            let title = captures.get(2).map(|title| generated_words(title.as_str()));
+            let title = captures
+                .get(2)
+                .map(|title| generated.visible(title.as_str()));
             let found = rows.iter().any(|(table, row)| {
                 let same_title = match (&title, &table.title) {
-                    (Some(generated), Some(source)) => *generated == spec.words(source),
+                    (Some(generated), Some(source)) => *generated == spec.visible(source),
                     (None, None) => true,
                     _ => false,
                 };
-                same_title && Self::row_is_rendered(spec, table, row, pair[1])
+                same_title && Self::row_is_rendered(spec, generated, table, row, pair[1])
             });
             if !found {
                 self.fail(
@@ -1117,6 +1266,17 @@ fn check_files(
     files: &[syn::File],
 ) {
     let mut value_pages = BTreeMap::<String, String>::new();
+    let mut type_values = BTreeMap::<String, BTreeSet<String>>::new();
+    for item in files.iter().flat_map(|file| &file.items) {
+        if let Item::Impl(item) = item {
+            let values = type_values.entry(type_name(&item.self_ty)).or_default();
+            for member in &item.items {
+                if let ImplItem::Const(constant) = member {
+                    values.extend(doc_attributes(&constant.attrs).1);
+                }
+            }
+        }
+    }
     let mut c_names = BTreeMap::<String, String>::new();
     for item in files.iter().flat_map(|file| &file.items) {
         let (name, attributes) = match item {
@@ -1144,7 +1304,7 @@ fn check_files(
     }
 
     for item in files.iter().flat_map(|file| &file.items) {
-        check_item(spec, generated, checker, &value_pages, item);
+        check_item(spec, generated, checker, &value_pages, &type_values, item);
     }
 }
 
@@ -1153,6 +1313,7 @@ fn check_item(
     generated: &Generated,
     checker: &mut Checker,
     value_pages: &BTreeMap<String, String>,
+    type_values: &BTreeMap<String, BTreeSet<String>>,
     item: &Item,
 ) {
     match item {
@@ -1222,7 +1383,7 @@ fn check_item(
         }
         Item::Mod(item) => {
             for nested in item.content.iter().flat_map(|(_, items)| items) {
-                check_item(spec, generated, checker, value_pages, nested);
+                check_item(spec, generated, checker, value_pages, type_values, nested);
             }
         }
         Item::Impl(item) if item.trait_.is_none() => {
@@ -1237,6 +1398,7 @@ fn check_item(
                             spec,
                             generated,
                             value_pages.get(&owner).map(String::as_str),
+                            type_values.get(&owner).unwrap_or(&BTreeSet::new()),
                             &format!("{owner}::{name}"),
                             doc.trim(),
                             &aliases,
@@ -1262,32 +1424,137 @@ fn check_item(
     }
 }
 
-fn fixture_specification() -> Specification {
+fn fixture_table(
+    file: &str,
+    page: Option<&str>,
+    above: &[&str],
+    content: &[&str],
+) -> Option<Table> {
     let lines = |lines: &[&str]| {
         lines
             .iter()
             .map(|line| line.to_string())
             .collect::<Vec<_>>()
     };
-    let wavelengths = TableSyntax::new()
-        .read(
-            Some("VkColor".to_string()),
-            &lines(&[".Color Wavelengths", "[options=\"header\",cols=\"2,1\"]"]),
-            &lines(&[
+    TableSyntax::new().read(
+        file,
+        page.map(str::to_string),
+        &lines(above),
+        &lines(content),
+    )
+}
+
+const FIXTURE_FILE: &str = "chapters/things.adoc";
+
+fn fixture_tables() -> Vec<Table> {
+    let header = ["[options=\"header\"]"];
+    [
+        fixture_table(
+            FIXTURE_FILE,
+            Some("VkColor"),
+            &[".Color Wavelengths", "[options=\"header\",cols=\"2,1\"]"],
+            &[
                 "|elink:VkColor |Wavelength",
                 "|ename:VK_COLOR_RED |long",
                 "|ename:VK_COLOR_BLUE",
                 "|short +",
                 "or very short",
                 "|ename:VK_COLOR_BLACK |",
-            ]),
-        )
-        .expect("the fixture table");
+                "|ename:VK_COLOR_INDIGO |{times} 2",
+            ],
+        ),
+        fixture_table(
+            FIXTURE_FILE,
+            Some("VkColor"),
+            &[".Cyan Shades", "[options=\"header\",cols=\"1,1a\"]"],
+            &[
+                "|Color |Formula",
+                "|ename:VK_COLOR_CYAN |",
+                "[latexmath]",
+                "++++",
+                "c = 1",
+                "++++",
+            ],
+        ),
+        fixture_table(
+            FIXTURE_FILE,
+            Some("VkColor"),
+            &[".Magenta Shades", "[options=\"header,footer\"]"],
+            &[
+                "|Color |Count",
+                "|ename:VK_COLOR_MAGENTA |one",
+                "|Total |one",
+            ],
+        ),
+        fixture_table(
+            FIXTURE_FILE,
+            Some("VkColor"),
+            &[".Mixed Shades", "[options=\"header\",cols=\"1,1\"]"],
+            &[
+                "|Color |Steps",
+                "|ename:VK_COLOR_YELLOW a|",
+                "1. mix",
+                "2. stir",
+                "|ename:VK_COLOR_ORANGE a|",
+                "!===",
+                "!red !yellow",
+                "!===",
+            ],
+        ),
+        fixture_table(
+            FIXTURE_FILE,
+            Some("VkColor"),
+            &[".Advanced Colors", "[options=\"header\"]"],
+            &[
+                "|Color |Formula",
+                "|ename:VK_COLOR_VIOLET a|",
+                "[latexmath]",
+                "++++",
+                "    v = r   +   b \\\\",
+                "      w = 0",
+                "++++",
+            ],
+        ),
+        fixture_table(
+            FIXTURE_FILE,
+            None,
+            &header,
+            &["|Color |Use", "|ename:VK_COLOR_WHITE |snow"],
+        ),
+        fixture_table(
+            "chapters/other.adoc",
+            None,
+            &[".Grey Shades", header[0]],
+            &["|Color |Use", "|ename:VK_COLOR_GREY |ash"],
+        ),
+        fixture_table(
+            FIXTURE_FILE,
+            None,
+            &[".Pink Things", header[0]],
+            &[
+                "|Value |Vertex",
+                "|ename:VK_COLOR_PINK |i",
+                "|ename:VK_THING_OTHER |i + 1",
+            ],
+        ),
+        fixture_table(
+            FIXTURE_FILE,
+            None,
+            &[".Teal Shades", header[0]],
+            &["|Color |Use", "|ename:VK_COLOR_TEAL |sea"],
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+fn fixture_specification() -> Specification {
     let mut specification = Specification {
         pages: BTreeMap::new(),
-        tables: vec![wavelengths],
+        tables: fixture_tables(),
         extensions: BTreeSet::new(),
-        attributes: BTreeMap::new(),
+        attributes: BTreeMap::from([("times".to_string(), "×".to_string())]),
         titles: BTreeMap::new(),
         markup: Markup::new(),
     };
@@ -1339,13 +1606,18 @@ fn fixture_specification() -> Specification {
         ),
     ];
     for (name, description, body) in pages {
-        let page = Page {
+        let body_words = specification.words(body);
+        let page = || Page {
             name: name.to_string(),
+            file: FIXTURE_FILE.to_string(),
             description: description.to_string(),
             body: body.to_string(),
-            body_words: specification.words(body),
+            body_words: body_words.clone(),
         };
-        specification.pages.insert(name.to_string(), page);
+        if name == "VkColor" {
+            specification.pages.insert("VkColorKHR".to_string(), page());
+        }
+        specification.pages.insert(name.to_string(), page());
     }
     specification
 }
@@ -1389,6 +1661,42 @@ impl Color {
     /// `VK_COLOR_BLACK`, a value of [`VkColor`](PAGES/VkColor.html).
     #[doc(alias = "VK_COLOR_BLACK")]
     pub const BLACK: Self = Self(3);
+    /// `VK_COLOR_INDIGO` in the table “Color Wavelengths” of the specification:
+    ///
+    /// - Wavelength: × 2
+    #[doc(alias = "VK_COLOR_INDIGO")]
+    pub const INDIGO: Self = Self(4);
+    /// `VK_COLOR_VIOLET` in the table “Advanced Colors” of the specification:
+    ///
+    /// - Formula: `v = r + b \\ w = 0`
+    #[doc(alias = "VK_COLOR_VIOLET")]
+    pub const VIOLET: Self = Self(5);
+    /// `VK_COLOR_TEAL` in the table “Teal Shades” of the specification:
+    ///
+    /// - Use: sea
+    #[doc(alias = "VK_COLOR_TEAL")]
+    pub const TEAL: Self = Self(6);
+    /// `VK_COLOR_CYAN`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_CYAN")]
+    pub const CYAN: Self = Self(7);
+    /// `VK_COLOR_MAGENTA`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_MAGENTA")]
+    pub const MAGENTA: Self = Self(8);
+    /// `VK_COLOR_YELLOW`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_YELLOW")]
+    pub const YELLOW: Self = Self(9);
+    /// `VK_COLOR_ORANGE`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_ORANGE")]
+    pub const ORANGE: Self = Self(10);
+    /// `VK_COLOR_WHITE`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_WHITE")]
+    pub const WHITE: Self = Self(11);
+    /// `VK_COLOR_GREY`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_GREY")]
+    pub const GREY: Self = Self(12);
+    /// `VK_COLOR_PINK`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_PINK")]
+    pub const PINK: Self = Self(13);
 }
 
 /// Application-defined thing callback.
@@ -1510,8 +1818,8 @@ fn checker_reports_a_table_row_that_the_specification_does_not_have() {
         ),
         (
             "a cell under another header",
-            "/// - Wavelength:",
-            "/// - Frequency:",
+            "/// - Wavelength:\n",
+            "/// - Frequency:\n",
             "Color Wavelengths",
         ),
         (
@@ -1522,8 +1830,8 @@ fn checker_reports_a_table_row_that_the_specification_does_not_have() {
         ),
         (
             "a table with another title",
-            "“Color Wavelengths”",
-            "“Color Names”",
+            "/// `VK_COLOR_BLUE` in the table “Color Wavelengths”",
+            "/// `VK_COLOR_BLUE` in the table “Color Names”",
             "Color Names",
         ),
     ] {
@@ -1542,23 +1850,151 @@ fn checker_reports_a_table_row_that_the_specification_does_not_have() {
     );
 }
 
+fn color_values() -> BTreeSet<String> {
+    [
+        "RED", "BLUE", "BLACK", "INDIGO", "VIOLET", "TEAL", "CYAN", "MAGENTA", "YELLOW", "ORANGE",
+        "WHITE", "GREY", "PINK",
+    ]
+    .iter()
+    .map(|color| format!("VK_COLOR_{color}"))
+    .collect()
+}
+
 #[test]
 fn table_rows_name_their_value_in_the_first_cell_and_keep_cells_over_several_lines() {
     let specification = fixture_specification();
-    let rows = specification.table_rows(Some("VkColor"), "VK_COLOR_BLUE");
+    let values = color_values();
+    let rows = specification.table_rows(Some("VkColor"), &values, "VK_COLOR_BLUE");
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].1, ["ename:VK_COLOR_BLUE", "short +\nor very short"]);
+    assert_eq!(
+        rows[0]
+            .1
+            .iter()
+            .map(|cell| cell.text.as_str())
+            .collect::<Vec<_>>(),
+        ["ename:VK_COLOR_BLUE", "short +\nor very short"]
+    );
+    assert_eq!(
+        specification
+            .table_rows(Some("VkColorKHR"), &values, "VK_COLOR_BLUE")
+            .len(),
+        1,
+        "the page of an alias is the page of the type"
+    );
     assert!(
         specification
-            .table_rows(Some("VkColor"), "VK_COLOR_BLACK")
+            .table_rows(Some("VkColor"), &values, "VK_COLOR_BLACK")
             .is_empty(),
         "a row with only empty cells describes nothing"
     );
     assert!(
         specification
-            .table_rows(Some("VkThing"), "VK_COLOR_RED")
+            .table_rows(Some("VkThing"), &values, "VK_COLOR_RED")
             .is_empty(),
         "a table on the page of another type does not describe the value"
+    );
+    assert_eq!(
+        specification
+            .table_rows(Some("VkColor"), &values, "VK_COLOR_TEAL")
+            .len(),
+        1,
+        "a titled table outside any page, in the file of the page, whose rows are all values of the type"
+    );
+}
+
+#[test]
+fn tables_that_could_be_misread_or_misattributed_describe_no_value() {
+    let specification = fixture_specification();
+    let values = color_values();
+    for (value, shape) in [
+        ("VK_COLOR_CYAN", "a column with a style in `cols`"),
+        ("VK_COLOR_MAGENTA", "a table with a footer"),
+        ("VK_COLOR_YELLOW", "an AsciiDoc cell with an ordered list"),
+        ("VK_COLOR_ORANGE", "an AsciiDoc cell with a nested table"),
+        ("VK_COLOR_WHITE", "an untitled table outside any page"),
+        ("VK_COLOR_GREY", "a table outside any page in another file"),
+        (
+            "VK_COLOR_PINK",
+            "a table outside any page with a row of another type",
+        ),
+    ] {
+        assert!(
+            specification
+                .table_rows(Some("VkColor"), &values, value)
+                .is_empty(),
+            "{shape} must not be used for `{value}`"
+        );
+        let constant = value.trim_start_matches("VK_COLOR_");
+        assert_reported(
+            shape,
+            &format!("/// `{value}`, a value of [`VkColor`](PAGES/VkColor.html).\n"),
+            &format!(
+                "/// `{value}` in the table “Shades” of the specification:\n    ///\n    /// - Use: x\n"
+            ),
+            &format!(
+                "Color::{constant}: ``{value}` in the table “Shades” of the specification: - Use: x` is not a row that the specification has for `{value}`"
+            ),
+        );
+    }
+}
+
+#[test]
+fn checker_compares_operators_and_whole_formulas_in_table_cells() {
+    for (defect, replace, with) in [
+        (
+            "an operator changed",
+            "/// - Wavelength: × 2",
+            "/// - Wavelength: + 2",
+        ),
+        (
+            "a formula cut short",
+            "`v = r + b \\\\ w = 0`",
+            "`v = r + b`",
+        ),
+        ("a formula left empty", "`v = r + b \\\\ w = 0`", "` `"),
+        (
+            "a formula without its code span",
+            "`v = r + b \\\\ w = 0`",
+            "v = r + b \\\\ w = 0",
+        ),
+    ] {
+        assert_reported(
+            defect,
+            replace,
+            with,
+            "is not a row that the specification has for `VK_COLOR_",
+        );
+    }
+}
+
+#[test]
+fn checker_finds_the_table_rows_of_a_type_linked_through_an_alias_page() {
+    let failures = fixture_failures(&FIXTURE_SOURCE.replacen(
+        "/// C enumeration [`VkColor`](PAGES/VkColor.html).",
+        "/// C enumeration [`VkColorKHR`](PAGES/VkColorKHR.html).",
+        1,
+    ));
+    assert!(
+        !failures
+            .iter()
+            .any(|failure| failure.contains("is not a row that")),
+        "{failures:#?}"
+    );
+}
+
+#[test]
+fn checker_reports_a_table_lead_without_cells_or_without_a_table() {
+    assert_reported(
+        "a table lead without its cells",
+        "    ///\n    /// - Use: sea\n",
+        "",
+        "Color::TEAL: has a table row without its cells",
+    );
+    assert_reported(
+        "a table lead that does not name a table",
+        "/// `VK_COLOR_TEAL` in the table “Teal Shades” of the specification:",
+        "/// `VK_COLOR_TEAL` in the table “Teal Shades” of a document:",
+        "Color::TEAL: ``VK_COLOR_TEAL` in the table “Teal Shades” of a document:` does not name a table row",
     );
 }
 
