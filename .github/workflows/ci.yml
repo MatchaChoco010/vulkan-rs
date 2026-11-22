@@ -58,7 +58,12 @@ jobs:
       # public API of the user-facing crates. This also runs as part of the workspace
       # tests; it is a step of its own so that it fails early.
       - name: Comment rules under crates/
-        run: cargo test -p source-lint
+        run: cargo test -p source-lint --test crates_follow_the_comment_rules
+
+      # The versions and SDK tags named in the Markdown files (the version example in
+      # README.md) match the workspace version in Cargo.toml.
+      - name: Versions in the Markdown files
+        run: cargo test -p source-lint --test markdown_names_the_workspace_version
 
       - name: Generated files are up to date
         run: ./tools/generate-vulkan --check
