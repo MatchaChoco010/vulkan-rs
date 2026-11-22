@@ -51,7 +51,8 @@ const VERTICES: [Vertex; 3] = [
 ];
 
 fn main() -> Result<()> {
-    window::run::<App>("vulkan wayland dynamic rendering")
+    // A failure to destroy something on the way out also fails the run.
+    vulkan_example_common::device::finish(window::run::<App>("vulkan wayland dynamic rendering"))
 }
 
 /// The fields drop in order: what depends on the swapchain, then the frame, the buffer

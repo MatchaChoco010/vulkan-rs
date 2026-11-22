@@ -50,8 +50,9 @@ struct PushData {
 
 fn main() -> Result<()> {
     // SAFETY: the example upholds the valid usage rules of the commands it calls; the
-    // validation layer, when installed, reports any violation.
-    unsafe { run() }
+    // validation layer, when installed, reports any violation. A failure to destroy
+    // something on the way out also fails the run.
+    vulkan_example_common::device::finish(unsafe { run() })
 }
 
 unsafe fn run() -> Result<()> {

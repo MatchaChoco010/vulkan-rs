@@ -16,15 +16,16 @@ pub enum SwapchainStatus {
 /// The command buffer and synchronization of the one frame in flight: each frame waits
 /// until the device has finished the one before.
 ///
-/// The device must be done with the frame before it is dropped.
+/// The device must be done with the frame before it is dropped. The fields drop in
+/// order, the reverse of creation.
 pub struct Frame {
-    /// Kept for the command buffer, which destroying the pool frees.
-    _command_pool: Owned<vk::CommandPool>,
-    command_buffer: vk::CommandBuffer,
-    /// Signaled by the acquire, waited on by the submission.
-    image_available: Owned<vk::Semaphore>,
     /// Signaled by the submission, waited on before the command buffer is recorded again.
     in_flight: Owned<vk::Fence>,
+    /// Signaled by the acquire, waited on by the submission.
+    image_available: Owned<vk::Semaphore>,
+    command_buffer: vk::CommandBuffer,
+    /// Kept for the command buffer, which destroying the pool frees.
+    _command_pool: Owned<vk::CommandPool>,
 }
 
 impl Frame {
@@ -58,10 +59,10 @@ impl Frame {
                 None,
             )?);
             Ok(Self {
-                _command_pool: command_pool,
-                command_buffer,
-                image_available,
                 in_flight,
+                image_available,
+                command_buffer,
+                _command_pool: command_pool,
             })
         }
     }

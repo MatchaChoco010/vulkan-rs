@@ -109,7 +109,7 @@ pub unsafe fn create_heap(
 /// Writes the material buffer and the textures into their slots of the resource heap.
 pub unsafe fn write_resource_descriptors(
     gpu: &Gpu,
-    heap: &mut MappedBuffer,
+    heap: &mut Owned<MappedBuffer>,
     layout: &ResourceHeapLayout,
     materials: &Buffer,
     textures: &[Owned<Image>],
@@ -174,7 +174,7 @@ pub unsafe fn write_resource_descriptors(
 /// in a heap is written from its create info; there is no VkSampler.
 pub unsafe fn write_sampler_descriptor(
     device: &Device,
-    heap: &mut MappedBuffer,
+    heap: &mut Owned<MappedBuffer>,
     layout: &SamplerHeapLayout,
 ) -> Result<()> {
     unsafe {

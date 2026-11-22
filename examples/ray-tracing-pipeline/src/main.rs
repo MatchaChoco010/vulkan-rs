@@ -26,7 +26,7 @@ use vulkan::{Device, vk};
 use vulkan_alloc::MemoryLocation;
 use vulkan_alloc::descriptor_heap::{DescriptorSlots, ResourceHeapPlan};
 use vulkan_example_common::commands::submit_and_wait;
-use vulkan_example_common::device::Gpu;
+use vulkan_example_common::device::{Gpu, Owned};
 use vulkan_example_common::memory::{
     Buffer, MappedBuffer, buffer_device_address, create_aligned_buffer, create_mapped_buffer,
     read_buffer, write_buffer,
@@ -63,8 +63,9 @@ struct PushData {
 
 fn main() -> Result<()> {
     // SAFETY: the example upholds the valid usage rules of the commands it calls; the
-    // validation layer, when installed, reports any violation.
-    unsafe { run() }
+    // validation layer, when installed, reports any violation. A failure to destroy
+    // something on the way out also fails the run.
+    vulkan_example_common::device::finish(unsafe { run() })
 }
 
 unsafe fn run() -> Result<()> {
@@ -200,7 +201,7 @@ fn world_from_clip() -> Mat4 {
 /// per slot.
 unsafe fn write_descriptors(
     gpu: &Gpu,
-    heap: &mut MappedBuffer,
+    heap: &mut Owned<MappedBuffer>,
     slots: &DescriptorSlots,
     top_level: &AccelerationStructure,
     output: &Buffer,

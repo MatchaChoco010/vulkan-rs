@@ -31,7 +31,7 @@ impl Deref for VulkanInstance {
 impl Drop for InstanceOwner {
     fn drop(&mut self) {
         // SAFETY: every object created from the instance holds a clone of the
-        // , so all of them are gone.
+        // `VulkanInstance`, so all of them are gone.
         unsafe {
             if !self.messenger.is_null() {
                 self.instance

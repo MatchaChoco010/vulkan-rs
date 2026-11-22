@@ -17,15 +17,8 @@ impl Destroy for Buffer {
     unsafe fn destroy(self, gpu: &GpuOwner) {
         unsafe {
             gpu.device.destroy_buffer(self.buffer, None);
-            free(gpu, self.allocation);
+            gpu.free(self.allocation);
         }
-    }
-}
-
-/// Frees `allocation`. Destruction cannot return an error, so a failure is printed.
-unsafe fn free(gpu: &GpuOwner, allocation: Allocation) {
-    if let Err(error) = unsafe { gpu.allocator().free(allocation) } {
-        eprintln!("freeing memory: {}", error.error);
     }
 }
 
@@ -65,14 +58,16 @@ pub unsafe fn create_aligned_buffer(
         } else {
             vk::MemoryAllocateFlags::empty()
         };
-        let allocation = gpu.allocator().allocate(AllocationCreateDesc {
-            name: Some(name),
-            requirements,
-            location,
-            linear: true,
-            memory_allocate_flags,
-            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        let allocation = gpu.with_allocator(|allocator| {
+            allocator.allocate(AllocationCreateDesc {
+                name: Some(name),
+                requirements,
+                location,
+                linear: true,
+                memory_allocate_flags,
+                export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            })
         })?;
         // From here the buffer and its memory go together.
         let buffer = gpu.own(Buffer {
@@ -98,8 +93,7 @@ pub unsafe fn buffer_device_address(gpu: &Gpu, buffer: vk::Buffer) -> vk::Device
 
 /// Copies `bytes` to the start of a host-visible buffer.
 pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<()> {
-    unsafe {
-        let mut allocator = gpu.allocator();
+    gpu.with_allocator(|allocator| unsafe {
         let coherent = allocator
             .allocation_memory_flags(&buffer.allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
@@ -112,14 +106,13 @@ pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<(
             mapped.flush()?;
         }
         Ok(())
-    }
+    })
 }
 
 /// The contents of a host-visible buffer that the device has written. The writes must
 /// have been made visible to the host, with a barrier to `HOST` and a wait.
 pub unsafe fn read_buffer(gpu: &Gpu, buffer: &Buffer) -> Result<Vec<u8>> {
-    unsafe {
-        let mut allocator = gpu.allocator();
+    gpu.with_allocator(|allocator| unsafe {
         let coherent = allocator
             .allocation_memory_flags(&buffer.allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
@@ -131,7 +124,7 @@ pub unsafe fn read_buffer(gpu: &Gpu, buffer: &Buffer) -> Result<Vec<u8>> {
             .byte_range(0, buffer.size as usize)
             .context("the buffer is larger than its allocation")?
             .to_vec())
-    }
+    })
 }
 
 /// A device-local buffer that holds `data`, copied there through a staging buffer.
@@ -209,12 +202,17 @@ pub struct MappedBuffer {
     bytes: NonNull<u8>,
 }
 
-impl MappedBuffer {
+impl Owned<MappedBuffer> {
+    /// The mapped bytes of the buffer.
+    ///
     /// # Safety
     ///
     /// The device must not be accessing the memory.
     pub unsafe fn bytes(&mut self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.bytes.as_ptr(), self.size as usize) }
+        let buffer: &MappedBuffer = self;
+        // SAFETY: the mapping lives as long as the buffer, which `self` owns, and the
+        // exclusive borrow of `self` is the only way to these bytes.
+        unsafe { std::slice::from_raw_parts_mut(buffer.bytes.as_ptr(), buffer.size as usize) }
     }
 }
 
@@ -223,7 +221,7 @@ impl Destroy for MappedBuffer {
         unsafe {
             gpu.device.destroy_buffer(self.buffer, None);
             // Freeing a persistently mapped allocation also ends its mapping.
-            free(gpu, self.allocation);
+            gpu.free(self.allocation);
         }
     }
 }
@@ -261,8 +259,7 @@ pub unsafe fn create_mapped_buffer(
 }
 
 unsafe fn map_coherent(gpu: &Gpu, allocation: &Allocation) -> Result<NonNull<u8>> {
-    unsafe {
-        let mut allocator = gpu.allocator();
+    gpu.with_allocator(|allocator| unsafe {
         if !allocator
             .allocation_memory_flags(allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT)
@@ -270,7 +267,7 @@ unsafe fn map_coherent(gpu: &Gpu, allocation: &Allocation) -> Result<NonNull<u8>
             bail!("the memory is not host-coherent");
         }
         Ok(allocator.map_persistent(allocation)?)
-    }
+    })
 }
 
 /// An image bound to device-local memory from the allocator of a [`Gpu`].
@@ -283,7 +280,7 @@ impl Destroy for Image {
     unsafe fn destroy(self, gpu: &GpuOwner) {
         unsafe {
             gpu.device.destroy_image(self.image, None);
-            free(gpu, self.allocation);
+            gpu.free(self.allocation);
         }
     }
 }
@@ -296,14 +293,17 @@ pub unsafe fn create_image(
     unsafe {
         let device = &gpu.device;
         let image = gpu.own(device.create_image(info, None)?);
-        let allocation = gpu.allocator().allocate(AllocationCreateDesc {
-            name: Some(name),
-            requirements: device.get_image_memory_requirements(*image),
-            location: MemoryLocation::GpuOnly,
-            linear: info.tiling == vk::ImageTiling::LINEAR,
-            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        let requirements = device.get_image_memory_requirements(*image);
+        let allocation = gpu.with_allocator(|allocator| {
+            allocator.allocate(AllocationCreateDesc {
+                name: Some(name),
+                requirements,
+                location: MemoryLocation::GpuOnly,
+                linear: info.tiling == vk::ImageTiling::LINEAR,
+                memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            })
         })?;
         // From here the image and its memory go together.
         let image = gpu.own(Image {

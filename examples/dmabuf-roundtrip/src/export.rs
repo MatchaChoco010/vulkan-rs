@@ -86,14 +86,17 @@ unsafe fn create_exportable_image(gpu: &Gpu) -> Result<Owned<Image>> {
 
         // vulkan-alloc gives exportable memory its own VkDeviceMemory, so the exported
         // fd refers to this image only.
-        let allocation = gpu.allocator().allocate(AllocationCreateDesc {
-            name: Some("exported image"),
-            requirements: device.get_image_memory_requirements(*image),
-            location: MemoryLocation::GpuOnly,
-            linear: false,
-            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-            export_handle_types: DMA_BUF.into(),
-            allocation_scheme: AllocationScheme::DedicatedImage(*image),
+        let requirements = device.get_image_memory_requirements(*image);
+        let allocation = gpu.with_allocator(|allocator| {
+            allocator.allocate(AllocationCreateDesc {
+                name: Some("exported image"),
+                requirements,
+                location: MemoryLocation::GpuOnly,
+                linear: false,
+                memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                export_handle_types: DMA_BUF.into(),
+                allocation_scheme: AllocationScheme::DedicatedImage(*image),
+            })
         })?;
         // From here the image and its memory go together.
         let image = gpu.own(Image {

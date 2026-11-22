@@ -1,11 +1,12 @@
-use anyhow::Result;
-use std::cell::{RefCell, RefMut};
+use anyhow::{Result, bail};
+use std::cell::RefCell;
 use std::ffi::CStr;
-use std::mem::ManuallyDrop;
-use std::ops::{Deref, DerefMut};
+use std::fmt::Display;
+use std::ops::Deref;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use vulkan::{Device, Instance, vk};
-use vulkan_alloc::{Allocator, AllocatorCreateDesc};
+use vulkan_alloc::{Allocation, Allocator, AllocatorCreateDesc};
 
 use crate::extensions::has_extension;
 use crate::instance::VulkanInstance;
@@ -60,9 +61,9 @@ unsafe fn enables_shader_draw_parameters(info: &vk::DeviceCreateInfo<'_>) -> boo
 ///
 /// The clones share all of it. Every object that the examples create from the device
 /// is wrapped in an [`Owned`], which holds a clone, so the device outlives everything
-/// created from it. When the last clone goes, it waits until the device is idle, drops
-/// the allocator, which needs the device to free its memory, and destroys the device.
-/// The instance goes once nothing else holds it.
+/// created from it. When the last clone goes, it waits until the device is idle, frees
+/// whatever memory the allocator still holds, and destroys the device. The instance
+/// goes once nothing else holds it.
 #[derive(Clone)]
 pub struct Gpu(Rc<GpuOwner>);
 
@@ -73,7 +74,9 @@ pub struct GpuOwner {
     pub device: Device,
     pub queue_family: u32,
     pub queue: vk::Queue,
-    allocator: ManuallyDrop<RefCell<Allocator>>,
+    /// Dropped after the device is destroyed, which is harmless: dropping an allocator
+    /// makes no Vulkan call.
+    allocator: RefCell<Allocator>,
 }
 
 impl Deref for Gpu {
@@ -107,7 +110,7 @@ impl Gpu {
                 device,
                 queue_family,
                 queue,
-                allocator: ManuallyDrop::new(RefCell::new(allocator)),
+                allocator: RefCell::new(allocator),
             })))
         }
     }
@@ -117,21 +120,35 @@ impl Gpu {
     /// # Safety
     ///
     /// `value` must have been created from this device (or its allocator), and nothing
-    /// else may destroy it.
+    /// else may destroy it. When the result is dropped, the device must be done with the
+    /// object: work that used it was waited for.
     pub unsafe fn own<T: Destroy>(&self, value: T) -> Owned<T> {
         Owned {
-            value: ManuallyDrop::new(value),
+            value: Some(value),
             gpu: self.clone(),
         }
     }
 }
 
 impl GpuOwner {
-    /// The allocator for the memory of buffers and images. Hold it only as long as one
-    /// call needs it: the [`Owned`] buffers and images borrow it again to free their
-    /// memory.
-    pub fn allocator(&self) -> RefMut<'_, Allocator> {
-        self.allocator.borrow_mut()
+    /// Calls `f` with the allocator for the memory of buffers and images. The allocator
+    /// is borrowed only for the call, since the [`Owned`] buffers and images borrow it
+    /// again to free their memory.
+    pub fn with_allocator<T>(&self, f: impl FnOnce(&mut Allocator) -> T) -> T {
+        f(&mut self.allocator.borrow_mut())
+    }
+
+    /// Frees `allocation`, as the [`Destroy`] of a buffer or image does. A failure is
+    /// printed: destruction has no caller to return it to. The memory of an allocation
+    /// that could not be freed goes with the device.
+    pub(crate) unsafe fn free(&self, allocation: Allocation) {
+        let Ok(mut allocator) = self.allocator.try_borrow_mut() else {
+            cleanup_failed("an object was dropped while the allocator was in use");
+            return;
+        };
+        if let Err(error) = unsafe { allocator.free(allocation) } {
+            cleanup_failed(format_args!("freeing memory: {}", error.error));
+        }
     }
 }
 
@@ -141,10 +158,36 @@ impl Drop for GpuOwner {
         // all of them are gone; waiting makes sure that no submitted work is left.
         unsafe {
             let _ = self.device.device_wait_idle();
-            ManuallyDrop::drop(&mut self.allocator);
+            // Each buffer and image freed its memory when it was destroyed, which
+            // released the blocks; this frees what a failed free left behind.
+            let live = self.allocator.get_mut().free_all();
+            if live != 0 {
+                cleanup_failed(format_args!(
+                    "{live} allocation(s) were still live when the device was destroyed"
+                ));
+            }
             self.device.destroy_device(None);
         }
     }
+}
+
+static CLEANUP_FAILED: AtomicBool = AtomicBool::new(false);
+
+/// Prints a failure to destroy or free something, which has no caller to return an
+/// error to, and remembers it for [`finish`].
+pub fn cleanup_failed(message: impl Display) {
+    eprintln!("{message}");
+    CLEANUP_FAILED.store(true, Ordering::Relaxed);
+}
+
+/// The result of an example's run: `result`, or an error when destroying an object
+/// failed on the way, so that the process exits with a failing status either way.
+pub fn finish(result: Result<()>) -> Result<()> {
+    result?;
+    if CLEANUP_FAILED.load(Ordering::Relaxed) {
+        bail!("destroying objects failed, as printed above");
+    }
+    Ok(())
 }
 
 /// An object that a [`Gpu`] can destroy: a handle created from its device, or a buffer or
@@ -155,27 +198,25 @@ pub trait Destroy {
 }
 
 /// A `T` that is destroyed when this is dropped. It dereferences to `T`, so a handle is
-/// used as `*owned` and the fields of a buffer as `owned.buffer`.
+/// used as `*owned` and the fields of a buffer as `owned.buffer`. It gives no `&mut T`,
+/// so that the owned object cannot be replaced by another one.
 ///
 /// Locals are dropped in the reverse order of their declaration, and the fields of a
 /// struct in the order of their declaration. An example that creates its objects in the
 /// order they depend on each other therefore destroys them in the reverse order, on the
 /// way out of a successful run as on an early return with `?`.
 pub struct Owned<T: Destroy> {
-    value: ManuallyDrop<T>,
+    /// `None` only once [`Owned::into_inner`] took it.
+    value: Option<T>,
     gpu: Gpu,
 }
 
 impl<T: Destroy> Owned<T> {
     /// Gives up the ownership: `value` is no longer destroyed by this.
-    pub fn into_inner(self) -> T {
-        let mut this = ManuallyDrop::new(self);
-        // SAFETY: `this` is never dropped, so `value` is taken once, and the `Gpu` is
-        // dropped here instead.
-        unsafe {
-            std::ptr::drop_in_place(&mut this.gpu);
-            ManuallyDrop::take(&mut this.value)
-        }
+    pub fn into_inner(mut self) -> T {
+        self.value
+            .take()
+            .expect("an Owned holds its value until it is dropped")
     }
 }
 
@@ -183,21 +224,19 @@ impl<T: Destroy> Deref for Owned<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        &self.value
-    }
-}
-
-impl<T: Destroy> DerefMut for Owned<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.value
+        self.value
+            .as_ref()
+            .expect("an Owned holds its value until it is dropped")
     }
 }
 
 impl<T: Destroy> Drop for Owned<T> {
     fn drop(&mut self) {
-        // SAFETY: `Gpu::own` requires that the value came from this device and that
-        // nothing else destroys it; `value` is not used after this.
-        unsafe { ManuallyDrop::take(&mut self.value).destroy(&self.gpu) };
+        if let Some(value) = self.value.take() {
+            // SAFETY: `Gpu::own` requires that the value came from this device, that
+            // nothing else destroys it, and that the device is done with it.
+            unsafe { value.destroy(&self.gpu) };
+        }
     }
 }
 
@@ -225,7 +264,6 @@ destroy_handles! {
     vk::Pipeline => destroy_pipeline,
     vk::PipelineLayout => destroy_pipeline_layout,
     vk::RenderPass => destroy_render_pass,
-    vk::Sampler => destroy_sampler,
     vk::Semaphore => destroy_semaphore,
     vk::ShaderModule => destroy_shader_module,
 }
