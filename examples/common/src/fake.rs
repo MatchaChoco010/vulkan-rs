@@ -53,6 +53,9 @@ struct State {
     /// What a present that fails returns, instead of the result of other failing calls,
     /// and whether its queue operations were enqueued all the same.
     present_failure: Option<(vk::VkResult, bool)>,
+    /// What a submission that fails returns, instead of the result of other failing
+    /// calls, and whether it was enqueued all the same.
+    submit_failure: Option<(vk::VkResult, bool)>,
     /// A `vkResetFences` that fails has reset its fences all the same.
     failed_reset_unsignals: bool,
     /// No fence can be created.
@@ -119,6 +122,14 @@ pub fn fail_all_from_now(n: u32) {
 /// a request. Without, it leaves both as they were, as when it fails for lack of memory.
 pub fn fail_presents_with(error: vk::VkResult, enqueued: bool) {
     with(|state| state.present_failure = Some((error, enqueued)));
+}
+
+/// From now on, a `vkQueueSubmit` that fails returns `error`. With `enqueued`, the
+/// submission was enqueued all the same: it has consumed the signals of the semaphores
+/// that it waits for, signals its semaphores and its fence. Without, it leaves all of
+/// them as they were, as when it fails for lack of memory.
+pub fn fail_submits_with(error: vk::VkResult, enqueued: bool) {
+    with(|state| state.submit_failure = Some((error, enqueued)));
 }
 
 /// From now on, a `vkResetFences` that fails returns `VK_ERROR_UNKNOWN` and has reset
@@ -711,8 +722,12 @@ unsafe extern "system" fn queue_submit(
     submits: *const vk::SubmitInfo<'_>,
     fence: u64,
 ) -> vk::VkResult {
-    if fails() {
-        return result(true);
+    let failure = fails().then(|| {
+        with(|state| state.submit_failure)
+            .unwrap_or((vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY, false))
+    });
+    if let Some((error, false)) = failure {
+        return error;
     }
     let submits = unsafe { slice(submits, count) };
     with(|state| {
@@ -757,7 +772,7 @@ unsafe extern "system" fn queue_submit(
             state.pending.push((fence, in_use));
         }
     });
-    vk::VkResult::SUCCESS
+    failure.map_or(vk::VkResult::SUCCESS, |(error, _)| error)
 }
 
 /// A failed wait leaves the work pending. A wait for a fence that is neither signaled
