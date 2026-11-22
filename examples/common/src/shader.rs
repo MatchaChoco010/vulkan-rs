@@ -104,7 +104,9 @@ mod tests {
                         instructions.push(instruction(OP_CAPABILITY, &[capability]));
                     }
                     1 => {
-                        let operands = (0..next(5)).map(|_| OP_CAPABILITY).collect::<Vec<_>>();
+                        let operands = (0..next(3))
+                            .flat_map(|_| [(2 << 16) | OP_CAPABILITY, next(6000)])
+                            .collect::<Vec<_>>();
                         instructions.push(instruction(OP_SOURCE_EXTENSION, &operands));
                     }
                     _ => instructions.push(instruction(OP_NOP, &[])),
@@ -138,12 +140,12 @@ mod tests {
             spirv_capabilities(&well_formed[..well_formed.len() - 1]).is_err(),
             "size not a multiple of four"
         );
-        let truncated = module(&[vec![(3 << 16) | OP_CAPABILITY, CAPABILITY_SHADER]]);
+        let truncated = module(&[vec![(3 << 16) | OP_SOURCE_EXTENSION, 0]]);
         assert!(
             spirv_capabilities(&truncated).is_err(),
             "instruction past the end"
         );
-        let empty = module(&[vec![OP_CAPABILITY]]);
+        let empty = module(&[vec![OP_NOP]]);
         assert!(spirv_capabilities(&empty).is_err(), "zero word count");
         let long = module(&[instruction(OP_CAPABILITY, &[CAPABILITY_SHADER, 0])]);
         assert!(
