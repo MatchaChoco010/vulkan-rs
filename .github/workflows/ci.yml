@@ -134,7 +134,8 @@ jobs:
 
   # The device tests and the headless examples on the lavapipe of a recent Mesa, which
   # has Vulkan 1.4 and the extensions that the lavapipe of Ubuntu 24.04 lacks
-  # (VK_EXT_descriptor_heap among them). Here an example that skips itself fails.
+  # (VK_EXT_descriptor_heap among them). Here a device test or an example that skips
+  # itself fails, except for the skips listed in the device test step.
   recent-lavapipe:
     runs-on: ubuntu-24.04
     container:
@@ -172,8 +173,12 @@ jobs:
           vulkaninfo --summary | tee "$RUNNER_TEMP/vulkaninfo.txt"
           grep -q VK_LAYER_KHRONOS_validation "$RUNNER_TEMP/vulkaninfo.txt"
 
-      # The version, profile and components come from rust-toolchain.toml.
+      # The version, profile and components come from rust-toolchain.toml. The container
+      # runs as root with HOME set to another directory, which rustup-init otherwise
+      # reports as a possible sudo.
       - name: Install Rust
+        env:
+          RUSTUP_INIT_SKIP_SUDO_CHECK: "yes"
         run: |
           rustup-init -y --no-modify-path --profile minimal --default-toolchain none
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
@@ -184,9 +189,15 @@ jobs:
 
       # A device test skips itself when the driver lacks the extension it exercises.
       # cargo hides the output of passing tests, so list the skips where they can be seen.
+      # A skip fails the step unless it is in allowed_skips, which names what lavapipe
+      # does not implement.
       - name: Device tests
         run: |
           log="$RUNNER_TEMP/device-tests.log"
+          allowed_skips="$RUNNER_TEMP/allowed-device-test-skips.txt"
+          printf '%s\n' \
+            "skipping: VK_KHR_display is not supported" \
+            > "$allowed_skips"
           cargo test -p vulkan -p vulkan-alloc --all-features --test device -- --nocapture --test-threads=1 2>&1 \
             | tee "$log"
           {
@@ -196,6 +207,10 @@ jobs:
               | sed -E 's/^test [a-z_0-9:]+ \.\.\. //' | sort | uniq -c
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+          if grep -E "skipping" "$log" | grep -v -F -f "$allowed_skips"; then
+            echo "::error::a device test skipped itself"
+            exit 1
+          fi
 
       # The examples print what the validation layer reports and carry on, so a message
       # has to fail the step here, and so does an example that skipped itself.
