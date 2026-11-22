@@ -192,10 +192,15 @@ fn a_lost_device_still_destroys_everything_and_nothing_in_use() {
 }
 
 /// Draws a frame whose `fail_at`-th call that can fail, counted from the start of the
-/// draw, fails, then draws another one without failures. Returns whether the first draw
-/// reached the failing call, and how both draws went.
+/// draw, fails, and with `and_later` every call after it too, then draws two more frames
+/// without failures. Returns whether the first draw reached the failing call, and how
+/// the draws went.
 #[cfg(feature = "window")]
-unsafe fn draw_twice(entry: &Entry, fail_at: u32) -> Result<(bool, Result<()>, Result<()>)> {
+unsafe fn draw_after_failure(
+    entry: &Entry,
+    fail_at: u32,
+    and_later: bool,
+) -> Result<(bool, Result<()>, Vec<Result<()>>)> {
     unsafe {
         let instance = create_instance(entry, c"frame test", vk::API_VERSION_1_3, &[])?;
         let surface = crate::window::surface::create_wayland_surface(
@@ -244,24 +249,28 @@ unsafe fn draw_twice(entry: &Entry, fail_at: u32) -> Result<(bool, Result<()>, R
                 )
                 .map(|_| ())
         };
-        fake::fail_from_now(Some(fail_at));
+        if and_later {
+            fake::fail_all_from_now(fail_at);
+        } else {
+            fake::fail_from_now(Some(fail_at));
+        }
         let first = draw();
         let failed = fake::report().failed;
         fake::fail_from_now(None);
-        let second = draw();
+        let later = vec![draw(), draw()];
         gpu.device.device_wait_idle()?;
-        Ok((failed, first, second))
+        Ok((failed, first, later))
     }
 }
 
 #[cfg(feature = "window")]
 #[test]
-fn a_frame_that_fails_at_any_call_leaves_the_next_frame_able_to_run() {
+fn a_frame_that_fails_at_any_call_leaves_the_next_frames_able_to_run() {
     let entry = fake::entry();
     let mut failing_runs = 0;
     for fail_at in 0.. {
         fake::reset(None);
-        let (failed, first, second) = unsafe { draw_twice(&entry, fail_at) }.unwrap();
+        let (failed, first, later) = unsafe { draw_after_failure(&entry, fail_at, false) }.unwrap();
         let report = fake::report();
         assert!(
             report.misuse.is_empty(),
@@ -277,14 +286,45 @@ fn a_frame_that_fails_at_any_call_leaves_the_next_frame_able_to_run() {
             first.is_err(),
             "failing call {fail_at} did not fail the frame"
         );
-        assert!(
-            second.is_ok(),
-            "after failing call {fail_at}, the next frame fails: {second:?}"
-        );
+        for (index, result) in later.iter().enumerate() {
+            assert!(
+                result.is_ok(),
+                "after failing call {fail_at}, frame {} fails: {result:?}",
+                index + 1
+            );
+        }
         failing_runs += 1;
     }
     assert!(
         failing_runs >= 7,
         "only {failing_runs} calls of a frame can fail"
     );
+}
+
+#[cfg(feature = "window")]
+#[test]
+fn a_frame_whose_recovery_fails_too_reports_its_first_error_and_never_hangs() {
+    let entry = fake::entry();
+    for fail_at in 0.. {
+        fake::reset(None);
+        let (failed, alone, _) = unsafe { draw_after_failure(&entry, fail_at, false) }.unwrap();
+        if !failed {
+            break;
+        }
+        fake::reset(None);
+        let (_, first, later) = unsafe { draw_after_failure(&entry, fail_at, true) }.unwrap();
+        let report = fake::report();
+        assert!(
+            report.misuse.is_empty(),
+            "failing calls from {fail_at} on: {:?}",
+            report.misuse
+        );
+        assert!(report.leaked.is_empty(), "leaked {:?}", report.leaked);
+        assert_eq!(
+            first.map_err(|error| error.to_string()),
+            alone.map_err(|error| error.to_string()),
+            "failing calls from {fail_at} on: not the error of the first failure"
+        );
+        drop(later);
+    }
 }

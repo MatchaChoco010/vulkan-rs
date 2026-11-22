@@ -34,8 +34,19 @@ struct State {
     signaled_fences: HashSet<u64>,
     /// The semaphores with a pending signal.
     signaled_semaphores: HashSet<u64>,
+    /// How many submissions there were, which numbers them.
+    submissions: u64,
+    /// The submission that each fence was last given to.
+    fence_submissions: HashMap<u64, u64>,
+    /// The semaphores that a submission waits for, until the submission is known to be
+    /// complete.
+    pending_waits: Vec<(u64, u64)>,
+    /// The acquired images of each swapchain.
+    acquired_images: HashMap<u64, HashSet<u32>>,
     calls: u32,
     fail_at: Option<u32>,
+    /// Every call from this one on fails.
+    fail_from: Option<u32>,
     failed: bool,
     /// Every wait fails, as after the device was lost.
     lost: bool,
@@ -80,6 +91,17 @@ pub fn reset(fail_at: Option<u32>) {
 pub fn fail_from_now(n: Option<u32>) {
     with(|state| {
         state.fail_at = n.map(|n| state.calls + n);
+        state.fail_from = None;
+        state.failed = false;
+    });
+}
+
+/// Makes the `n`-th call from now that returns a `VkResult`, counted from 0, and every
+/// one after it fail.
+pub fn fail_all_from_now(n: u32) {
+    with(|state| {
+        state.fail_at = None;
+        state.fail_from = Some(state.calls + n);
         state.failed = false;
     });
 }
@@ -115,7 +137,7 @@ fn fails() -> bool {
     with(|state| {
         let call = state.calls;
         state.calls += 1;
-        if state.fail_at == Some(call) {
+        if state.fail_at == Some(call) || state.fail_from.is_some_and(|from| call >= from) {
             state.failed = true;
             true
         } else {
@@ -268,6 +290,7 @@ unsafe extern "system" fn get_device_proc_addr(
         b"vkAcquireNextImageKHR" => acquire_next_image,
         b"vkQueuePresentKHR" => queue_present,
         b"vkResetCommandBuffer" => reset_command_buffer,
+        b"vkQueueWaitIdle" => queue_wait_idle,
         b"vkCmdCopyBuffer" => cmd_copy_buffer,
         b"vkCmdPipelineBarrier" => cmd_pipeline_barrier,
     )
@@ -644,7 +667,9 @@ unsafe extern "system" fn allocate_command_buffers(
 
 /// Marks the pools of the submitted command buffers and the fence as in use, until the
 /// fence is waited for or the device is idle. The waited semaphores must have a pending
-/// signal, which the submission consumes, and the fence must be unsignaled.
+/// signal, which the submission consumes; their waits stay pending until something
+/// shows that the submission completed: a wait for its fence or a later one, or an idle
+/// queue or device. The fence must be unsignaled.
 unsafe extern "system" fn queue_submit(
     _queue: u64,
     count: u32,
@@ -656,6 +681,8 @@ unsafe extern "system" fn queue_submit(
     }
     let submits = unsafe { slice(submits, count) };
     with(|state| {
+        state.submissions += 1;
+        let submission = state.submissions;
         let mut in_use = vec![fence];
         for submit in submits {
             let (command_buffers, waits, signals) = unsafe {
@@ -680,6 +707,9 @@ unsafe extern "system" fn queue_submit(
                     .filter_map(|command_buffer| state.command_pools.get(command_buffer)),
             );
             state.wait_semaphores(waits, "a submission");
+            state
+                .pending_waits
+                .extend(waits.iter().map(|&semaphore| (submission, semaphore)));
             state.signal_semaphores(signals, "a submission");
         }
         if fence != 0 {
@@ -688,6 +718,7 @@ unsafe extern "system" fn queue_submit(
                     .misuse
                     .push(format!("submitting with the signaled fence {fence:#x}"));
             }
+            state.fence_submissions.insert(fence, submission);
             state.pending.push((fence, in_use));
         }
     });
@@ -715,6 +746,9 @@ unsafe extern "system" fn wait_for_fences(
             if state.pending.iter().any(|(pending, _)| *pending == fence) {
                 state.pending.retain(|(pending, _)| *pending != fence);
                 state.signaled_fences.insert(fence);
+                if let Some(&submission) = state.fence_submissions.get(&fence) {
+                    state.complete(submission);
+                }
             } else if !state.signaled_fences.contains(&fence) {
                 state.misuse.push(format!(
                     "waiting for the fence {fence:#x}, which nothing will signal"
@@ -747,14 +781,7 @@ unsafe extern "system" fn reset_fences(
 /// as it does after the device is lost, because the work is terminated.
 unsafe extern "system" fn device_wait_idle(_device: u64) -> vk::VkResult {
     with(|state| {
-        let fences = state
-            .pending
-            .drain(..)
-            .map(|(fence, _)| fence)
-            .collect::<Vec<_>>();
-        state
-            .signaled_fences
-            .extend(fences.into_iter().filter(|&fence| fence != 0));
+        state.idle();
         if state.lost {
             vk::VkResult::ERROR_DEVICE_LOST
         } else {
@@ -763,10 +790,21 @@ unsafe extern "system" fn device_wait_idle(_device: u64) -> vk::VkResult {
     })
 }
 
-/// Gives image 0 and signals `semaphore`, which must have no pending signal.
+/// The one queue of the fake: the same as the device.
+unsafe extern "system" fn queue_wait_idle(_queue: u64) -> vk::VkResult {
+    if fails() {
+        return result(true);
+    }
+    with(|state| state.idle());
+    vk::VkResult::SUCCESS
+}
+
+/// Gives the first image that is not acquired and signals `semaphore`, which must have
+/// no pending signal and no pending wait. With every image acquired, the acquire would
+/// wait for ever; that is reported and it gives none.
 unsafe extern "system" fn acquire_next_image(
     _device: u64,
-    _swapchain: u64,
+    swapchain: u64,
     _timeout: u64,
     semaphore: u64,
     _fence: u64,
@@ -775,25 +813,62 @@ unsafe extern "system" fn acquire_next_image(
     if fails() {
         return result(true);
     }
-    with(|state| state.signal_semaphores(&[semaphore], "an acquire"));
-    unsafe { *index = 0 };
-    vk::VkResult::SUCCESS
+    with(|state| {
+        if state
+            .pending_waits
+            .iter()
+            .any(|&(_, waited)| waited == semaphore)
+        {
+            state.misuse.push(format!(
+                "an acquire signals the semaphore {semaphore:#x}, which a submission may \
+                 still wait for"
+            ));
+        }
+        let count = state.swapchain_images.get(&swapchain).map_or(0, Vec::len) as u32;
+        let acquired = state.acquired_images.entry(swapchain).or_default();
+        let Some(free) = (0..count).find(|image| !acquired.contains(image)) else {
+            state.misuse.push(format!(
+                "an acquire waits for ever: every image of {swapchain:#x} is acquired"
+            ));
+            return vk::VkResult::NOT_READY;
+        };
+        acquired.insert(free);
+        state.signal_semaphores(&[semaphore], "an acquire");
+        unsafe { *index = free };
+        vk::VkResult::SUCCESS
+    })
 }
 
-/// Consumes the signals of the semaphores that the present waits for, also when it
-/// fails, as a present that the presentation engine rejects still waits for them.
+/// Consumes the signals of the semaphores that the present waits for and gives the
+/// images back. A present that fails as this one does, for lack of memory, leaves both
+/// as they were.
 unsafe extern "system" fn queue_present(
     _queue: u64,
     info: *const vk::PresentInfoKHR<'_>,
 ) -> vk::VkResult {
-    let waits = unsafe {
-        slice(
-            (*info).p_wait_semaphores.cast::<u64>(),
-            (*info).wait_semaphore_count,
+    if fails() {
+        return result(true);
+    }
+    let (waits, swapchains, images) = unsafe {
+        let info = &*info;
+        (
+            slice(
+                info.p_wait_semaphores.cast::<u64>(),
+                info.wait_semaphore_count,
+            ),
+            slice(info.p_swapchains.cast::<u64>(), info.swapchain_count),
+            slice(info.p_image_indices, info.swapchain_count),
         )
     };
-    with(|state| state.wait_semaphores(waits, "a present"));
-    result(fails())
+    with(|state| {
+        state.wait_semaphores(waits, "a present");
+        for (swapchain, image) in swapchains.iter().zip(images) {
+            if let Some(acquired) = state.acquired_images.get_mut(swapchain) {
+                acquired.remove(image);
+            }
+        }
+    });
+    vk::VkResult::SUCCESS
 }
 
 unsafe extern "system" fn reset_command_buffer(_command_buffer: u64, _flags: u32) -> vk::VkResult {
@@ -819,6 +894,23 @@ impl State {
                 ));
             }
         }
+    }
+
+    /// The submissions up to `submission` are complete, on the one queue.
+    fn complete(&mut self, submission: u64) {
+        self.pending_waits
+            .retain(|&(waiting, _)| waiting > submission);
+    }
+
+    fn idle(&mut self) {
+        let fences = self
+            .pending
+            .drain(..)
+            .map(|(fence, _)| fence)
+            .collect::<Vec<_>>();
+        self.signaled_fences
+            .extend(fences.into_iter().filter(|&fence| fence != 0));
+        self.pending_waits.clear();
     }
 }
 
