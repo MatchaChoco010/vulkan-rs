@@ -51,23 +51,6 @@ impl SizeClass {
         }
     }
 
-    fn whose_sizes_are_all_at_least(size: u64) -> Self {
-        let class = Self::containing(size);
-        if class.smallest_size() == size {
-            class
-        } else {
-            class.next()
-        }
-    }
-
-    fn smallest_size(self) -> u64 {
-        if self.first == 0 {
-            return u64::from(self.second);
-        }
-        let top = self.first + SECOND_LEVEL_BITS - 1;
-        (1 << top) | (u64::from(self.second) << (top - SECOND_LEVEL_BITS))
-    }
-
     fn next(self) -> Self {
         if self.second + 1 < SECOND_LEVEL_COUNT {
             Self {
@@ -81,6 +64,12 @@ impl SizeClass {
             }
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum ListSearch {
+    Heads,
+    Whole,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -104,7 +93,6 @@ pub(crate) struct TlsfSuballocator {
     size: u64,
     regions: Vec<Region>,
     vacant: Vec<u32>,
-    first_region: u32,
     first_level: u64,
     second_levels: Vec<u32>,
     free_lists: Vec<u32>,
@@ -123,7 +111,6 @@ impl TlsfSuballocator {
             size,
             regions: Vec::new(),
             vacant: Vec::new(),
-            first_region: NO_REGION,
             first_level: 0,
             second_levels: vec![0; first_levels],
             free_lists: vec![NO_REGION; first_levels * SECOND_LEVEL_COUNT as usize],
@@ -138,7 +125,6 @@ impl TlsfSuballocator {
                 next: NO_REGION,
                 state: RegionState::Vacant,
             });
-            this.first_region = 0;
             this.insert_free(0);
         }
         this
@@ -194,15 +180,16 @@ impl TlsfSuballocator {
     }
 
     fn find_free_region(&self, size: u64, alignment: u64) -> Option<(u32, u64)> {
-        if let Some(any_placement) = size.checked_add(alignment - 1)
-            && let Some(class) =
-                self.first_free_list_from(SizeClass::whose_sizes_are_all_at_least(any_placement))
-        {
-            let index = self.free_lists[Self::list_index(class)];
-            if let Some(offset) = self.placement(index, size, alignment) {
-                return Some((index, offset));
-            }
-        }
+        self.find_in_free_lists(size, alignment, ListSearch::Heads)
+            .or_else(|| self.find_in_free_lists(size, alignment, ListSearch::Whole))
+    }
+
+    fn find_in_free_lists(
+        &self,
+        size: u64,
+        alignment: u64,
+        search: ListSearch,
+    ) -> Option<(u32, u64)> {
         let mut class = self.first_free_list_from(SizeClass::containing(size));
         while let Some(current) = class {
             let mut index = self.free_lists[Self::list_index(current)];
@@ -210,8 +197,8 @@ impl TlsfSuballocator {
                 if let Some(offset) = self.placement(index, size, alignment) {
                     return Some((index, offset));
                 }
-                index = match self.regions[index as usize].state {
-                    RegionState::Free { next, .. } => next,
+                index = match (search, self.regions[index as usize].state) {
+                    (ListSearch::Whole, RegionState::Free { next, .. }) => next,
                     _ => NO_REGION,
                 };
             }
@@ -282,13 +269,9 @@ impl TlsfSuballocator {
         index
     }
 
-    fn remove_region(&mut self, index: u32) {
+    fn remove_region_merged_into_its_predecessor(&mut self, index: u32) {
         let Region { previous, next, .. } = self.regions[index as usize];
-        if previous != NO_REGION {
-            self.regions[previous as usize].next = next;
-        } else {
-            self.first_region = next;
-        }
+        self.regions[previous as usize].next = next;
         if next != NO_REGION {
             self.regions[next as usize].previous = previous;
         }
@@ -362,13 +345,13 @@ impl TlsfSuballocator {
         if self.is_free(next) {
             self.remove_free(next);
             self.regions[index as usize].size += self.regions[next as usize].size;
-            self.remove_region(next);
+            self.remove_region_merged_into_its_predecessor(next);
         }
         let previous = self.regions[index as usize].previous;
         if self.is_free(previous) {
             self.remove_free(previous);
             self.regions[previous as usize].size += self.regions[index as usize].size;
-            self.remove_region(index);
+            self.remove_region_merged_into_its_predecessor(index);
             index = previous;
         }
         self.insert_free(index);
@@ -387,12 +370,20 @@ impl TlsfSuballocator {
         self.allocations.is_empty()
     }
 
+    fn first_region(&self) -> u32 {
+        if self.regions.is_empty() {
+            NO_REGION
+        } else {
+            0
+        }
+    }
+
     pub(crate) fn region_snapshots(
         &self,
         mapped_allocations: &HashMap<u64, usize>,
     ) -> Vec<MemoryRegionSnapshot> {
         let mut snapshots = Vec::new();
-        let mut index = self.first_region;
+        let mut index = self.first_region();
         while index != NO_REGION {
             let region = &self.regions[index as usize];
             let state = match region.state {
@@ -417,6 +408,16 @@ impl TlsfSuballocator {
 pub(crate) mod tests {
     use super::*;
 
+    impl SizeClass {
+        fn smallest_size(self) -> u64 {
+            if self.first == 0 {
+                return u64::from(self.second);
+            }
+            let top = self.first + SECOND_LEVEL_BITS - 1;
+            (1 << top) | (u64::from(self.second) << (top - SECOND_LEVEL_BITS))
+        }
+    }
+
     fn layout(allocator: &TlsfSuballocator) -> Vec<MemoryRegionSnapshot> {
         allocator.region_snapshots(&HashMap::new())
     }
@@ -433,7 +434,7 @@ pub(crate) mod tests {
         let mut end = 0;
         let mut previous = NO_REGION;
         let mut previous_free = false;
-        let mut index = allocator.first_region;
+        let mut index = allocator.first_region();
         let mut linked = 0;
         let mut allocated_bytes = 0;
         let mut allocated = 0;
@@ -461,6 +462,10 @@ pub(crate) mod tests {
             previous = index;
             index = region.next;
             linked += 1;
+            assert!(
+                linked <= allocator.regions.len(),
+                "the regions form a cycle"
+            );
         }
         assert_eq!(end, allocator.size);
         assert_eq!(allocated, allocator.allocations.len());
@@ -469,6 +474,14 @@ pub(crate) mod tests {
         for &index in &allocator.vacant {
             assert_eq!(allocator.regions[index as usize].state, RegionState::Vacant);
         }
+        let mut vacant = allocator.vacant.clone();
+        vacant.sort_unstable();
+        vacant.dedup();
+        assert_eq!(
+            vacant.len(),
+            allocator.vacant.len(),
+            "a vacant slot is listed twice"
+        );
 
         let mut listed = Vec::new();
         for (list, &head) in allocator.free_lists.iter().enumerate() {
@@ -492,6 +505,10 @@ pub(crate) mod tests {
                 };
                 assert_eq!(link, previous);
                 listed.push(index);
+                assert!(
+                    listed.len() <= allocator.regions.len(),
+                    "a free list forms a cycle"
+                );
                 previous = index;
                 index = next;
             }
@@ -537,9 +554,6 @@ pub(crate) mod tests {
                 let next = SizeClass::containing(size + 1);
                 assert!(next == class || next == class.next(), "size {size}");
             }
-            let at_least = SizeClass::whose_sizes_are_all_at_least(size);
-            assert!(at_least == class || at_least == class.next(), "size {size}");
-            assert_eq!(at_least == class, class.smallest_size() == size);
             previous = class;
         }
         assert_eq!(
@@ -591,7 +605,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_region_of_a_class_that_always_fits_is_taken_without_scanning_smaller_ones() {
+    fn a_request_takes_the_first_list_whose_head_fits() {
         let mut allocator = TlsfSuballocator::new(1 << 20);
         let mut small = Vec::new();
         for _ in 0..64 {
@@ -704,20 +718,25 @@ pub(crate) mod tests {
         allocator.free(c.id).unwrap();
         allocator.free(b.id).unwrap();
         assert_eq!(free_regions(&allocator), [(0, 1024)]);
-        assert_eq!(
-            allocator,
-            TlsfSuballocator::new(1024).with_vacant_regions_of(&allocator)
-        );
+        assert!(allocator.is_empty());
+        assert_eq!(allocator.stats().free_bytes, 1024);
         check_invariants(&allocator);
     }
 
-    impl TlsfSuballocator {
-        fn with_vacant_regions_of(mut self, other: &Self) -> Self {
-            self.regions.clone_from(&other.regions);
-            self.vacant.clone_from(&other.vacant);
-            self.first_region = other.first_region;
-            self.free_lists.clone_from(&other.free_lists);
-            self
+    #[test]
+    fn a_freed_range_is_reused_by_the_next_request_of_its_size() {
+        for (size, alignment) in [(300, 1), (1 << 20, 4096), (4096, 4096), (77, 16)] {
+            let mut allocator = TlsfSuballocator::new(64 << 20);
+            let _before = allocator.allocate(size, alignment).unwrap();
+            let middle = allocator.allocate(size, alignment).unwrap();
+            let _after = allocator.allocate(size, alignment).unwrap();
+            allocator.free(middle.id).unwrap();
+            let again = allocator.allocate(size, alignment).unwrap();
+            assert_eq!(
+                again.offset, middle.offset,
+                "{size} bytes aligned to {alignment}"
+            );
+            check_invariants(&allocator);
         }
     }
 
@@ -843,12 +862,27 @@ pub(crate) mod tests {
                         2 => 1 + next() % 300,
                         _ => 1 << (next() % 20),
                     };
-                    let fits = free_regions(&allocator)
-                        .into_iter()
-                        .any(|(offset, length)| {
-                            let aligned = offset.next_multiple_of(alignment);
-                            aligned - offset + size <= length
-                        });
+                    let mut taken = live
+                        .iter()
+                        .map(|allocation| (allocation.offset, allocation.size))
+                        .collect::<Vec<_>>();
+                    taken.sort_unstable();
+                    let mut free_ranges = Vec::new();
+                    let mut end = 0;
+                    for (offset, length) in taken {
+                        if offset > end {
+                            free_ranges.push((end, offset - end));
+                        }
+                        end = offset + length;
+                    }
+                    if block_size > end {
+                        free_ranges.push((end, block_size - end));
+                    }
+                    assert_eq!(free_regions(&allocator), free_ranges, "step {step}");
+                    let fits = free_ranges.iter().any(|&(offset, length)| {
+                        let aligned = offset.next_multiple_of(alignment);
+                        aligned - offset + size <= length
+                    });
                     let before = allocator.clone();
                     match allocator.allocate(size, alignment) {
                         Some(allocation) => {
@@ -856,11 +890,10 @@ pub(crate) mod tests {
                             assert_eq!(allocation.offset % alignment, 0);
                             assert!(allocation.size >= size);
                             assert!(allocation.size - size < MIN_SPLIT_SIZE);
-                            let was_free =
-                                free_regions(&before).into_iter().any(|(offset, length)| {
-                                    offset <= allocation.offset
-                                        && allocation.offset + allocation.size <= offset + length
-                                });
+                            let was_free = free_ranges.iter().any(|&(offset, length)| {
+                                offset <= allocation.offset
+                                    && allocation.offset + allocation.size <= offset + length
+                            });
                             assert!(was_free, "step {step}: the range was not free");
                             assert_eq!(allocator.allocation(allocation.id), Some(allocation));
                             live.push(allocation);
@@ -878,6 +911,9 @@ pub(crate) mod tests {
                     assert_eq!(allocator.allocation(allocation.id), None);
                 }
                 check_invariants(&allocator);
+                for allocation in &live {
+                    assert_eq!(allocator.allocation(allocation.id), Some(*allocation));
+                }
                 let stats = allocator.stats();
                 assert_eq!(stats.allocated_bytes + stats.free_bytes, block_size);
                 assert_eq!(stats.allocation_count, live.len());
