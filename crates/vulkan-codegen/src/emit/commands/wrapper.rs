@@ -1,6 +1,6 @@
 use super::inputs::Inputs;
 use super::shape::Shape;
-use super::{argument_name, called, not_loaded, provided, raw_name, special};
+use super::{argument_name, called, not_loaded, provided, raw_name};
 use crate::docs::{Doc, join_or};
 use crate::emit::arrow;
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
@@ -10,17 +10,6 @@ use vulkan_registry::{Command, Field};
 
 pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
     let cfg = model.cfg(c.protect.as_deref());
-    if let Some(wrapper) = special::wrapper(c) {
-        let doc = doc(
-            model,
-            &cfg,
-            c,
-            "Each slice of slices is passed as an array of pointers to the inner slices.",
-            c.return_ty == "VkResult",
-            true,
-        );
-        return format!("{}{cfg}{wrapper}", doc.render());
-    }
     let params = dispatch.explicit_params(c);
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
@@ -52,11 +41,18 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
             call.fills_vector(*out, &format!("{owner}.{member} as usize"))
         }
     };
+    let note = if inputs.has_slices_of_slices {
+        format!(
+            "Each slice of slices is passed as an array of pointers to the inner slices. {note}"
+        )
+    } else {
+        note
+    };
     let doc = doc(
         model,
         &cfg,
         c,
-        &note,
+        note.trim_end(),
         ty.contains("Result<"),
         inputs.checks.contains("assert_eq!"),
     );

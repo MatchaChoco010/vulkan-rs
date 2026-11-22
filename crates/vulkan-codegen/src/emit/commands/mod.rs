@@ -1,14 +1,14 @@
 mod dispatch_tables;
 mod inputs;
 mod shape;
-mod special;
 mod wrapper;
 
 use super::func_pointers::parameter_item;
 use super::{arrow, header, w};
 use crate::docs::{Block, Doc};
-use crate::model::{CType, Cfg, Dispatch, Model};
+use crate::model::{CType, Cfg, Dispatch, Model, Scalar};
 use crate::naming::{command_name, field_name, pointer_setter_name};
+use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
 
 const HAND_WRITTEN_WRAPPERS: &[&str] = &["vkCreateInstance", "vkCreateDevice"];
@@ -147,6 +147,53 @@ fn value_count_param(params: &[Field], p: &Field) -> Option<usize> {
         .position(|c| c.name == len && CType::of(c).depth() == 0 && !CType::of(c).is_array())
 }
 
+fn inner_len(
+    model: &Model<'_>,
+    c: &Command,
+    params: &[Field],
+    p: &Field,
+) -> Option<(usize, String)> {
+    let ty = CType::of(p);
+    if ty.pointers != [true, true] || ty.is_array() || p.optional {
+        return None;
+    }
+    let count = value_count_param(params, p)?;
+    let description = &model
+        .page(&c.name)?
+        .items
+        .iter()
+        .find(|item| item.name == p.name)?
+        .text;
+    let mut lens = description
+        .split("pname:")
+        .zip(description.split("pname:").skip(1))
+        .filter_map(|(before, member)| {
+            let owner = before.strip_suffix("[i].")?;
+            let member = member.split(|c: char| !c.is_ascii_alphanumeric()).next()?;
+            let index = params.iter().position(|q| q.name == owner)?;
+            let owner = &params[index];
+            let owner_ty = CType::of(owner);
+            let counted_alike = owner_ty.depth() == 1
+                && !owner.optional
+                && value_count_param(params, owner) == Some(count);
+            let element = model.get_struct(&owner_ty.base)?;
+            let counts = element.members.iter().any(|m| {
+                let m_ty = CType::of(m);
+                m.name == member
+                    && m_ty.depth() == 0
+                    && !m_ty.is_array()
+                    && model.scalar(model.canonical(&m.ty)) == Some(Scalar::Integer)
+            });
+            (counted_alike && counts).then(|| (index, member.to_string()))
+        })
+        .collect::<BTreeSet<_>>();
+    if lens.len() == 1 {
+        lens.pop_first()
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,7 +201,7 @@ mod tests {
     use crate::test_support::{
         command, counted, field, optional, registry, result_command, structure, tagged,
     };
-    use vulkan_registry::{Docs, EnumField, Handle, Registry};
+    use vulkan_registry::{DocItem, DocPage, Docs, EnumField, Handle, Registry};
 
     fn base() -> Registry {
         let mut ir = registry();
@@ -698,5 +745,143 @@ mod tests {
         assert!(generate(&without_the_code).contains(
             "pub unsafe fn create_compute_pipelines(&self, sources: &[Buffer]) -> crate::vk::Result<Vec<Pipeline>> {"
         ));
+    }
+
+    fn widgets() -> (Registry, Docs) {
+        let mut ir = base();
+        ir.structs.push(structure(
+            "VkWidgetBatchNV",
+            vec![field("flags", "uint32_t"), field("partCount", "uint32_t")],
+        ));
+        ir.structs.push(structure(
+            "VkWidgetPartNV",
+            vec![field("first", "uint32_t")],
+        ));
+        let batches = || counted("pBatches", "const VkWidgetBatchNV*", "batchCount");
+        let parts = || counted("ppParts", "const VkWidgetPartNV* const*", "batchCount");
+        ir.commands.push(device(command(
+            "vkCmdAssembleWidgetsNV",
+            vec![
+                field("commandBuffer", "VkCommandBuffer"),
+                field("batchCount", "uint32_t"),
+                batches(),
+                counted("pFirstIndices", "const uint32_t*", "batchCount"),
+                parts(),
+                counted("ppLimits", "const uint32_t* const*", "batchCount"),
+            ],
+        )));
+        ir.commands.push(device(result_command(
+            "vkJoinWidgetsNV",
+            &[
+                "VK_SUCCESS",
+                "VK_OPERATION_DEFERRED_KHR",
+                "VK_OPERATION_NOT_DEFERRED_KHR",
+            ],
+            vec![
+                field("device", "VkDevice"),
+                optional(field("deferredOperation", "VkDeferredOperationKHR")),
+                field("batchCount", "uint32_t"),
+                batches(),
+                parts(),
+            ],
+        )));
+        let item = |name: &str, text: &str| DocItem {
+            name: name.to_string(),
+            text: text.to_string(),
+        };
+        let parts_text = "pname:ppParts is a pointer to an array of pname:batchCount\npointers to arrays of slink:VkWidgetPartNV structures.\nEach pname:ppParts[i] is a pointer to an array of\npname:pBatches[i].pname:partCount\nslink:VkWidgetPartNV structures, used with pname:pFirstIndices[i].";
+        let limits_text = "pname:ppLimits is a pointer to an array of pname:batchCount\npointers to arrays of pname:pBatches[i].pname:partCount values.";
+        let page = |name: &str, items: Vec<DocItem>| DocPage {
+            name: name.to_string(),
+            kind: "protos".to_string(),
+            desc: String::new(),
+            aliases: Vec::new(),
+            items,
+        };
+        let docs = Docs {
+            pages: vec![
+                page(
+                    "vkCmdAssembleWidgetsNV",
+                    vec![item("ppParts", parts_text), item("ppLimits", limits_text)],
+                ),
+                page("vkJoinWidgetsNV", vec![item("ppParts", parts_text)]),
+            ],
+            ..Default::default()
+        };
+        (ir, docs)
+    }
+
+    #[test]
+    fn arrays_of_arrays_whose_inner_length_the_specification_describes_are_slices_of_slices() {
+        let (ir, docs) = widgets();
+        let out = generate_with_docs(&ir, &docs);
+        assert!(out.contains(
+            "pub unsafe fn cmd_assemble_widgets_nv(&self, command_buffer: CommandBuffer, batches: &[WidgetBatchNV], first_indices: &[u32], parts: &[&[WidgetPartNV]], limits: &[&[u32]]) {"
+        ));
+        assert!(out.contains("let batch_count_len: usize = batches.len();"));
+        assert!(out.contains("assert_eq!(parts.len(), batch_count_len,"));
+        assert!(out.contains("assert_eq!(limits.len(), batch_count_len,"));
+        assert!(out.contains(
+            "for (element, entry) in batches.iter().zip(parts.iter()) { assert_eq!(entry.len(), element.part_count as usize, \"vkCmdAssembleWidgetsNV: each `parts` entry must have `part_count` elements\"); }"
+        ));
+        assert!(out.contains(
+            "let parts_pointers = parts.iter().map(|entry| entry.as_ptr()).collect::<Vec<_>>();"
+        ));
+        assert!(out.contains(
+            "self.cmd_assemble_widgets_nv_raw(command_buffer, batch_count_len as u32, batches.as_ptr(), first_indices.as_ptr(), parts_pointers.as_ptr(), limits_pointers.as_ptr())"
+        ));
+        assert!(out.contains(
+            "pub unsafe fn join_widgets_nv(&self, deferred_operation: DeferredOperationKHR, batches: &[WidgetBatchNV], parts: &[&[WidgetPartNV]]) -> crate::vk::Result<VkResult> {"
+        ));
+        assert!(out.contains(
+            "let result = self.join_widgets_nv_raw(deferred_operation, batch_count_len as u32, batches.as_ptr(), parts_pointers.as_ptr()); result.into_result()?; Ok(result)"
+        ));
+        assert_generated_alike_under_other_names(
+            &ir,
+            &docs,
+            "vkCmdAssembleWidgetsNV",
+            &[
+                "vkCmdBuildAccelerationStructuresKHR",
+                "vkCmdBuildAccelerationStructuresIndirectKHR",
+            ],
+            "parts: &[&[WidgetPartNV]]",
+        );
+        assert_generated_alike_under_other_names(
+            &ir,
+            &docs,
+            "vkJoinWidgetsNV",
+            &["vkBuildAccelerationStructuresKHR"],
+            "parts: &[&[WidgetPartNV]]",
+        );
+    }
+
+    #[test]
+    fn arrays_of_arrays_without_a_described_inner_length_stay_pointers() {
+        let (ir, _) = widgets();
+        let out = generate(&ir);
+        assert!(out.contains(
+            "pub unsafe fn cmd_assemble_widgets_nv(&self, command_buffer: CommandBuffer, batches: &[WidgetBatchNV], first_indices: &[u32], parts: *const *const WidgetPartNV, limits: *const *const u32) {"
+        ));
+    }
+
+    #[test]
+    fn every_array_of_arrays_parameter_of_the_registry_has_an_inner_length() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut found = 0;
+        for c in &model.ir.commands {
+            let params = model.dispatch(c).explicit_params(c);
+            for p in params {
+                if p.len.is_some() && CType::of(p).depth() == 2 {
+                    found += 1;
+                    assert!(
+                        inner_len(&model, c, params, p).is_some(),
+                        "{}: the inner length of {} is not found",
+                        c.name,
+                        p.name
+                    );
+                }
+            }
+        }
+        assert!(found > 0, "the registry has arrays of arrays");
     }
 }

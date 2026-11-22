@@ -45256,7 +45256,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkBuildAccelerationStructuresKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkBuildAccelerationStructuresKHR.html)
     /// through [`Self::build_acceleration_structures_khr_raw`], which describes the parameters.
-    /// Each slice of slices is passed as an array of pointers to the inner slices. The command is
+    /// Each slice of slices is passed as an array of pointers to the inner slices. Returns the
+    /// result code of the command when it is not an error, which the registry lists as
+    /// [`VK_SUCCESS`](VkResult::SUCCESS),
+    /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR) or
+    /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
     /// # Errors
@@ -45285,32 +45289,33 @@ impl crate::Device {
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
         build_range_infos: &[&[AccelerationStructureBuildRangeInfoKHR]],
     ) -> crate::vk::Result<VkResult> {
-        assert_eq!(
-            infos.len(),
-            build_range_infos.len(),
-            "vkBuildAccelerationStructuresKHR: `build_range_infos` must have one entry per info"
-        );
-        for (info, entry) in infos.iter().zip(build_range_infos.iter()) {
+        unsafe {
+            let info_count_len: usize = infos.len();
             assert_eq!(
-                entry.len(),
-                info.geometry_count as usize,
-                "vkBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
+                build_range_infos.len(),
+                info_count_len,
+                "vkBuildAccelerationStructuresKHR: `build_range_infos` must have the same length as the other arrays sharing `infoCount`"
             );
-        }
-        let pointers = build_range_infos
-            .iter()
-            .map(|entry| entry.as_ptr())
-            .collect::<Vec<_>>();
-        let result = unsafe {
-            self.build_acceleration_structures_khr_raw(
+            for (element, entry) in infos.iter().zip(build_range_infos.iter()) {
+                assert_eq!(
+                    entry.len(),
+                    element.geometry_count as usize,
+                    "vkBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
+                );
+            }
+            let build_range_infos_pointers = build_range_infos
+                .iter()
+                .map(|entry| entry.as_ptr())
+                .collect::<Vec<_>>();
+            let result = self.build_acceleration_structures_khr_raw(
                 deferred_operation,
-                infos.len() as u32,
+                info_count_len as u32,
                 infos.as_ptr(),
-                pointers.as_ptr(),
-            )
-        };
-        result.into_result()?;
-        Ok(result)
+                build_range_infos_pointers.as_ptr(),
+            );
+            result.into_result()?;
+            Ok(result)
+        }
     }
     /// Build a micromap on the host.
     ///
@@ -46888,40 +46893,41 @@ impl crate::Device {
         indirect_strides: &[u32],
         max_primitive_counts: &[&[u32]],
     ) {
-        assert_eq!(
-            infos.len(),
-            indirect_device_addresses.len(),
-            "vkCmdBuildAccelerationStructuresIndirectKHR: `indirect_device_addresses` must have one entry per info"
-        );
-        assert_eq!(
-            infos.len(),
-            indirect_strides.len(),
-            "vkCmdBuildAccelerationStructuresIndirectKHR: `indirect_strides` must have one entry per info"
-        );
-        assert_eq!(
-            infos.len(),
-            max_primitive_counts.len(),
-            "vkCmdBuildAccelerationStructuresIndirectKHR: `max_primitive_counts` must have one entry per info"
-        );
-        for (info, entry) in infos.iter().zip(max_primitive_counts.iter()) {
-            assert_eq!(
-                entry.len(),
-                info.geometry_count as usize,
-                "vkCmdBuildAccelerationStructuresIndirectKHR: each `max_primitive_counts` entry must have `geometry_count` elements"
-            );
-        }
-        let pointers = max_primitive_counts
-            .iter()
-            .map(|entry| entry.as_ptr())
-            .collect::<Vec<_>>();
         unsafe {
+            let info_count_len: usize = infos.len();
+            assert_eq!(
+                indirect_device_addresses.len(),
+                info_count_len,
+                "vkCmdBuildAccelerationStructuresIndirectKHR: `indirect_device_addresses` must have the same length as the other arrays sharing `infoCount`"
+            );
+            assert_eq!(
+                indirect_strides.len(),
+                info_count_len,
+                "vkCmdBuildAccelerationStructuresIndirectKHR: `indirect_strides` must have the same length as the other arrays sharing `infoCount`"
+            );
+            assert_eq!(
+                max_primitive_counts.len(),
+                info_count_len,
+                "vkCmdBuildAccelerationStructuresIndirectKHR: `max_primitive_counts` must have the same length as the other arrays sharing `infoCount`"
+            );
+            for (element, entry) in infos.iter().zip(max_primitive_counts.iter()) {
+                assert_eq!(
+                    entry.len(),
+                    element.geometry_count as usize,
+                    "vkCmdBuildAccelerationStructuresIndirectKHR: each `max_primitive_counts` entry must have `geometry_count` elements"
+                );
+            }
+            let max_primitive_counts_pointers = max_primitive_counts
+                .iter()
+                .map(|entry| entry.as_ptr())
+                .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_indirect_khr_raw(
                 command_buffer,
-                infos.len() as u32,
+                info_count_len as u32,
                 infos.as_ptr(),
                 indirect_device_addresses.as_ptr(),
                 indirect_strides.as_ptr(),
-                pointers.as_ptr(),
+                max_primitive_counts_pointers.as_ptr(),
             )
         }
     }
@@ -46951,28 +46957,29 @@ impl crate::Device {
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
         build_range_infos: &[&[AccelerationStructureBuildRangeInfoKHR]],
     ) {
-        assert_eq!(
-            infos.len(),
-            build_range_infos.len(),
-            "vkCmdBuildAccelerationStructuresKHR: `build_range_infos` must have one entry per info"
-        );
-        for (info, entry) in infos.iter().zip(build_range_infos.iter()) {
-            assert_eq!(
-                entry.len(),
-                info.geometry_count as usize,
-                "vkCmdBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
-            );
-        }
-        let pointers = build_range_infos
-            .iter()
-            .map(|entry| entry.as_ptr())
-            .collect::<Vec<_>>();
         unsafe {
+            let info_count_len: usize = infos.len();
+            assert_eq!(
+                build_range_infos.len(),
+                info_count_len,
+                "vkCmdBuildAccelerationStructuresKHR: `build_range_infos` must have the same length as the other arrays sharing `infoCount`"
+            );
+            for (element, entry) in infos.iter().zip(build_range_infos.iter()) {
+                assert_eq!(
+                    entry.len(),
+                    element.geometry_count as usize,
+                    "vkCmdBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
+                );
+            }
+            let build_range_infos_pointers = build_range_infos
+                .iter()
+                .map(|entry| entry.as_ptr())
+                .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_khr_raw(
                 command_buffer,
-                infos.len() as u32,
+                info_count_len as u32,
                 infos.as_ptr(),
-                pointers.as_ptr(),
+                build_range_infos_pointers.as_ptr(),
             )
         }
     }
