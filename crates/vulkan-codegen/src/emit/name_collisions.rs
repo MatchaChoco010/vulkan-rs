@@ -265,60 +265,38 @@ fn members_whose_setters_share_a_name_are_both_named_when_generation_stops() {
     )));
 }
 
-#[derive(Default)]
-struct LetBindings(Vec<String>);
-
-impl<'ast> syn::visit::Visit<'ast> for LetBindings {
-    fn visit_local(&mut self, local: &'ast syn::Local) {
-        let mut pattern = &local.pat;
-        if let syn::Pat::Type(typed) = pattern {
-            pattern = &typed.pat;
-        }
-        if let syn::Pat::Ident(ident) = pattern {
-            self.0.push(ident.ident.to_string());
-        }
-        syn::visit::visit_local(self, local);
-    }
-}
-
 #[test]
-fn no_wrapper_of_the_registry_binds_a_local_with_the_name_of_one_of_its_parameters() {
-    let source = crate::emit::commands::emit(&Model::with_docs(Registry::get(), Docs::get()));
-    let file = syn::parse_file(&source).expect("the generated commands parse");
-    let mut functions = 0;
-    for item in &file.items {
-        let syn::Item::Impl(block) = item else {
-            continue;
-        };
-        for member in &block.items {
-            let syn::ImplItem::Fn(function) = member else {
-                continue;
-            };
-            functions += 1;
-            let parameters = function
-                .sig
-                .inputs
-                .iter()
-                .filter_map(|input| match input {
-                    syn::FnArg::Typed(typed) => match &*typed.pat {
-                        syn::Pat::Ident(ident) => Some(ident.ident.to_string()),
-                        _ => None,
-                    },
-                    syn::FnArg::Receiver(_) => None,
-                })
-                .collect::<Vec<_>>();
-            let mut bindings = LetBindings::default();
-            syn::visit::Visit::visit_block(&mut bindings, &function.block);
-            for binding in bindings.0 {
-                assert!(
-                    !parameters.contains(&binding),
-                    "{}: the local `{binding}` hides the parameter of the same name",
-                    function.sig.ident
-                );
-            }
-        }
+#[should_panic(
+    expected = "vkCollide: the C parameter `result` and the local `result` that holds the result code of the command both become the Rust name `result`"
+)]
+fn an_input_named_like_the_result_local_of_an_enumeration_with_non_negative_errors_stops_the_generator()
+ {
+    let mut ir = with_command(vec![
+        field("result", "uint32_t"),
+        field("pItemCount", "uint32_t*"),
+        counted("pItems", "VkItem*", "pItemCount"),
+    ]);
+    let results = ir
+        .enums
+        .iter_mut()
+        .find(|e| e.name == "VkResult")
+        .expect("VkResult");
+    for (name, value) in [
+        ("VK_SUCCESS", "0"),
+        ("VK_NOT_READY", "1"),
+        ("VK_INCOMPLETE", "5"),
+    ] {
+        results.fields.push(vulkan_registry::EnumField {
+            name: name.to_string(),
+            value: value.to_string(),
+            ..Default::default()
+        });
     }
-    assert!(functions > 1000, "only {functions} methods were checked");
+    let c = ir.commands.last_mut().expect("vkCollide");
+    c.return_ty = "VkResult".to_string();
+    c.success_codes = vec!["VK_SUCCESS".to_string(), "VK_INCOMPLETE".to_string()];
+    c.error_codes = vec!["VK_NOT_READY".to_string()];
+    generate(&ir);
 }
 
 #[test]

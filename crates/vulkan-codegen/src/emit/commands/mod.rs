@@ -272,6 +272,42 @@ mod tests {
     use std::collections::BTreeMap;
     use vulkan_registry::{DocItem, DocPage, Docs, EnumField, Handle, Registry};
 
+    #[derive(Default)]
+    struct Bindings(Vec<String>);
+
+    impl<'ast> syn::visit::Visit<'ast> for Bindings {
+        fn visit_pat_ident(&mut self, pattern: &'ast syn::PatIdent) {
+            self.0.push(pattern.ident.to_string());
+            syn::visit::visit_pat_ident(self, pattern);
+        }
+    }
+
+    #[test]
+    fn every_name_that_a_wrapper_of_the_registry_binds_is_checked_against_its_parameters() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut wrappers = 0;
+        for dispatch in Dispatch::ALL {
+            for c in commands(&model, dispatch).filter(|c| !creates_a_dispatching_handle(c)) {
+                let source = wrapper::wrapper(&model, c, dispatch);
+                let function = syn::parse_str::<syn::ImplItemFn>(&source)
+                    .unwrap_or_else(|error| panic!("{}: {error}", c.name));
+                let mut bindings = Bindings::default();
+                syn::visit::Visit::visit_block(&mut bindings, &function.block);
+                let checked = wrapper::checked_names(&model, c, dispatch);
+                for binding in bindings.0 {
+                    assert!(
+                        checked.contains(binding.trim_start_matches("r#")),
+                        "{}: the wrapper binds `{binding}`, which the generator does not check \
+                         against the parameters",
+                        c.name
+                    );
+                }
+                wrappers += 1;
+            }
+        }
+        assert!(wrappers > 500, "only {wrappers} wrappers were checked");
+    }
+
     fn base() -> Registry {
         let mut ir = registry();
         let results = ir.enums.iter_mut().find(|e| e.name == "VkResult").unwrap();
