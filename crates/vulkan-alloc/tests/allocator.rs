@@ -129,6 +129,26 @@ unsafe fn allocate_in_sequence(allocator: &mut Allocator, seed: u64) -> Vec<Allo
     allocations
 }
 
+unsafe fn map_host_visible(allocator: &mut Allocator, allocations: &[Allocation]) -> Vec<bool> {
+    allocations
+        .iter()
+        .enumerate()
+        .map(|(index, allocation)| {
+            if allocation.memory_type_index() == DEVICE_LOCAL {
+                return false;
+            }
+            unsafe {
+                allocator.map_persistent(allocation).unwrap();
+                if index % 2 == 0 {
+                    allocator.map_memory(allocation).unwrap();
+                    return true;
+                }
+            }
+            false
+        })
+        .collect()
+}
+
 unsafe fn assert_not_held(allocator: &mut Allocator, fake: &FakeDevice, stale: Allocation) {
     let snapshot = allocator.snapshot();
     let memory_objects = fake.memory_objects();
@@ -204,10 +224,14 @@ fn allocations_from_before_free_all_are_rejected_whatever_is_allocated_afterward
                 assert_ne!(stale, live, "seed {seed}");
             }
 
+            let mapped = map_host_visible(&mut allocator, &live);
             for stale in stale {
                 assert_not_held(&mut allocator, &fake, stale);
             }
-            for live in live {
+            for (live, mapped) in live.into_iter().zip(mapped) {
+                if mapped {
+                    allocator.unmap_memory(&live).unwrap();
+                }
                 assert_eq!(allocator.free(live), Ok(()), "seed {seed}");
             }
         }
@@ -233,11 +257,15 @@ fn allocations_of_another_allocator_with_the_same_layout_are_rejected() {
                     "seed {seed}"
                 );
             }
+            let mapped = map_host_visible(&mut second, &of_second);
             for foreign in of_first {
                 assert_not_held(&mut second, &second_device, foreign);
             }
             assert_eq!(second.live_allocation_count(), of_second.len());
-            for own in of_second {
+            for (own, mapped) in of_second.into_iter().zip(mapped) {
+                if mapped {
+                    second.unmap_memory(&own).unwrap();
+                }
                 assert_eq!(second.free(own), Ok(()), "seed {seed}");
             }
             first.free_all();
