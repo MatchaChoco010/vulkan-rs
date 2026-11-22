@@ -635,9 +635,10 @@ impl Call<'_> {
             place: format!("let padding = values.as_ptr().addr().wrapping_neg() % {alignment};\n"),
             pointer: format!("values.as_mut_ptr().add(padding){cast}"),
             keep: format!(
-                "let written = {len}.min(values.len() - padding);
+                "let written = {len}.min(values.len() - {});
                 values.copy_within(padding..padding + written, 0);
-                values.truncate(written);"
+                values.truncate(written);",
+                alignment - 1
             ),
             note: format!(
                 " The command requires `{}` to be aligned to {alignment} bytes, so the wrapper lets it write at such an address and then moves the bytes to the start of the returned vector, which does not have to be aligned to {alignment} bytes itself. {}",

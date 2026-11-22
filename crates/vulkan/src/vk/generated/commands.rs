@@ -65373,7 +65373,7 @@ impl crate::Device {
                     continue;
                 }
                 result.into_result()?;
-                let written = count.min(values.len() - padding);
+                let written = count.min(values.len() - 15);
                 values.copy_within(padding..padding + written, 0);
                 values.truncate(written);
                 return Ok(values);

@@ -207,7 +207,7 @@ mod tests {
         squash(&commands::emit(&Model::new(ir)))
     }
 
-    const ALIGNED_BODY: &str = "loop { let mut count: usize = 0; self.get_shader_binary_data_ext_raw(shader, &mut count, core::ptr::null_mut()).into_result()?; let mut values: Vec<u8> = alloc::vec![0u8; count.saturating_add(15)]; let padding = values.as_ptr().addr().wrapping_neg() % 16; let result = self.get_shader_binary_data_ext_raw(shader, &mut count, values.as_mut_ptr().add(padding).cast()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; let written = count.min(values.len() - padding); values.copy_within(padding..padding + written, 0); values.truncate(written); return Ok(values); }";
+    const ALIGNED_BODY: &str = "loop { let mut count: usize = 0; self.get_shader_binary_data_ext_raw(shader, &mut count, core::ptr::null_mut()).into_result()?; let mut values: Vec<u8> = alloc::vec![0u8; count.saturating_add(15)]; let padding = values.as_ptr().addr().wrapping_neg() % 16; let result = self.get_shader_binary_data_ext_raw(shader, &mut count, values.as_mut_ptr().add(padding).cast()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; let written = count.min(values.len() - 15); values.copy_within(padding..padding + written, 0); values.truncate(written); return Ok(values); }";
 
     #[test]
     fn a_listed_command_writes_at_an_aligned_address_and_returns_the_bytes_from_the_start() {
@@ -254,7 +254,7 @@ mod tests {
         let out = generated(&registry_with(vec![c]));
         assert!(
             out.contains(
-                "let mut count: usize = 0; self.get_shader_binary_data_ext_raw(shader, &mut count, core::ptr::null_mut()); let mut values: Vec<u8> = alloc::vec![0u8; count.saturating_add(15)]; let padding = values.as_ptr().addr().wrapping_neg() % 16; self.get_shader_binary_data_ext_raw(shader, &mut count, values.as_mut_ptr().add(padding).cast()); let written = count.min(values.len() - padding); values.copy_within(padding..padding + written, 0); values.truncate(written); values"
+                "let mut count: usize = 0; self.get_shader_binary_data_ext_raw(shader, &mut count, core::ptr::null_mut()); let mut values: Vec<u8> = alloc::vec![0u8; count.saturating_add(15)]; let padding = values.as_ptr().addr().wrapping_neg() % 16; self.get_shader_binary_data_ext_raw(shader, &mut count, values.as_mut_ptr().add(padding).cast()); let written = count.min(values.len() - 15); values.copy_within(padding..padding + written, 0); values.truncate(written); values"
             ),
             "{out}"
         );
@@ -268,7 +268,7 @@ mod tests {
         assert!(
             out.contains(
                 "let mut values: Vec<u8> = alloc::vec![0u8; (count as usize).saturating_add(15)];"
-            ) && out.contains("let written = (count as usize).min(values.len() - padding);"),
+            ) && out.contains("let written = (count as usize).min(values.len() - 15);"),
             "{out}"
         );
     }
@@ -352,6 +352,91 @@ mod tests {
             message,
             "the registry has no command vkGetShaderBinaryDataEXT: correct the list of memory that the specification requires to be aligned, which takes `pData` from VUID-vkGetShaderBinaryDataEXT-None-08499"
         );
+    }
+
+    fn chapters_of_the_specification() -> Option<String> {
+        let chapters = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../third_party/vulkan-docs/chapters");
+        if !chapters.is_dir() {
+            assert!(
+                std::env::var_os("VULKAN_RS_REQUIRE_DOCS_TEST").is_none(),
+                "the valid usage test is required but third_party/vulkan-docs is not checked out"
+            );
+            eprintln!("skipping the valid usage test: third_party/vulkan-docs is not checked out");
+            return None;
+        }
+        let mut text = String::new();
+        let mut directories = vec![chapters];
+        while let Some(directory) = directories.pop() {
+            let entries = std::fs::read_dir(&directory)
+                .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()));
+            for entry in entries {
+                let path = entry.expect("a directory entry").path();
+                if path.is_dir() {
+                    directories.push(path);
+                } else if path
+                    .extension()
+                    .is_some_and(|extension| extension == "adoc")
+                {
+                    let chapter = std::fs::read_to_string(&path)
+                        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+                    text.push_str(&chapter);
+                    text.push('\n');
+                }
+            }
+        }
+        Some(text)
+    }
+
+    fn valid_usage_statement(chapters: &str, vuid: &str) -> String {
+        let anchor = format!("[[{vuid}]]");
+        assert_eq!(
+            chapters.matches(&anchor).count(),
+            1,
+            "{vuid} is not one valid usage statement of the specification"
+        );
+        let after = chapters
+            .split_once(&anchor)
+            .map(|(_, after)| after)
+            .unwrap_or_default();
+        let end = ["[[VUID-", "****"]
+            .iter()
+            .filter_map(|next| after.find(next))
+            .min()
+            .unwrap_or(after.len());
+        after[..end]
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn the_listed_valid_usage_statements_of_the_specification_require_the_listed_alignment() {
+        let Some(chapters) = chapters_of_the_specification() else {
+            return;
+        };
+        for output in ALIGNED_OUTPUTS {
+            let statement = valid_usage_statement(&chapters, output.stated_by);
+            assert!(
+                statement.contains(&format!("pname:{}", output.parameter))
+                    && statement
+                        .contains(&format!("must: be aligned to `{}` bytes", output.alignment)),
+                "{} does not require `{}` to be aligned to {} bytes: {statement}",
+                output.stated_by,
+                output.parameter,
+                output.alignment
+            );
+        }
+        for input in ALIGNED_INPUTS {
+            for vuid in input.stated_by.split(" and ") {
+                let statement = valid_usage_statement(&chapters, vuid);
+                assert!(
+                    statement.contains(&format!("pname:{} must: be aligned to `", input.member)),
+                    "{vuid} does not require `{}` to be aligned: {statement}",
+                    input.member
+                );
+            }
+        }
     }
 
     #[test]
