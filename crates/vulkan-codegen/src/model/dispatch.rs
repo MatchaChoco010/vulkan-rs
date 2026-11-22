@@ -52,11 +52,21 @@ impl Dispatch {
 
 impl Model<'_> {
     pub(crate) fn dispatch(&self, c: &Command) -> Dispatch {
-        match c.name.as_str() {
-            "vkGetInstanceProcAddr" => return Dispatch::Entry,
-            "vkGetDeviceProcAddr" => return Dispatch::Instance,
-            _ => {}
+        let level = self.level_of_first_parameter(c);
+        if c.return_ty != "PFN_vkVoidFunction" {
+            return level;
         }
+        match level {
+            Dispatch::Device => Dispatch::Instance,
+            Dispatch::Instance => Dispatch::Entry,
+            Dispatch::Entry => panic!(
+                "{} returns command pointers but takes no handle to load them for",
+                c.name
+            ),
+        }
+    }
+
+    fn level_of_first_parameter(&self, c: &Command) -> Dispatch {
         let first_is_handle = c
             .params
             .first()
@@ -79,8 +89,8 @@ impl Model<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{command, field, registry};
-    use vulkan_registry::Handle;
+    use crate::test_support::{command, field, optional, registry};
+    use vulkan_registry::{Handle, Registry};
 
     #[test]
     fn dispatch_follows_the_registry_level_not_the_first_parameter_name() {
@@ -96,8 +106,6 @@ mod tests {
             vec![field("externalQueue", "VkExternalComputeQueueNV")],
         );
         queue_data.device = true;
-        let mut gdpa = command("vkGetDeviceProcAddr", vec![field("device", "VkDevice")]);
-        gdpa.device = true;
         let mut create_instance = command(
             "vkCreateInstance",
             vec![field("pCreateInfo", "const VkInstanceCreateInfo*")],
@@ -105,8 +113,64 @@ mod tests {
         create_instance.instance = true;
         let model = Model::new(&ir);
         assert_eq!(model.dispatch(&queue_data), Dispatch::Device);
-        assert_eq!(model.dispatch(&gdpa), Dispatch::Instance);
         assert_eq!(model.dispatch(&create_instance), Dispatch::Entry);
+    }
+
+    #[test]
+    fn commands_that_return_command_pointers_are_loaded_one_level_up_whatever_their_name() {
+        let mut ir = registry();
+        for name in ["VkInstance", "VkDevice"] {
+            ir.handles.push(Handle {
+                name: name.to_string(),
+                dispatchable: true,
+                ..Default::default()
+            });
+        }
+        let model = Model::new(&ir);
+        for name in ["vkGetDeviceProcAddr", "vkLookUpCommandNV"] {
+            let mut c = command(
+                name,
+                vec![field("device", "VkDevice"), field("pName", "const char*")],
+            );
+            c.return_ty = "PFN_vkVoidFunction".to_string();
+            c.device = true;
+            assert_eq!(model.dispatch(&c), Dispatch::Instance, "{name}");
+            c.return_ty = "void".to_string();
+            assert_eq!(model.dispatch(&c), Dispatch::Device, "{name}");
+        }
+        for name in ["vkGetInstanceProcAddr", "vkFindEntryPointEXT"] {
+            let mut c = command(
+                name,
+                vec![
+                    optional(field("instance", "VkInstance")),
+                    field("pName", "const char*"),
+                ],
+            );
+            c.return_ty = "PFN_vkVoidFunction".to_string();
+            c.instance = true;
+            assert_eq!(model.dispatch(&c), Dispatch::Entry, "{name}");
+            c.return_ty = "void".to_string();
+            assert_eq!(model.dispatch(&c), Dispatch::Instance, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_embedded_registry_loads_exactly_the_proc_addr_commands_one_level_up() {
+        let ir = Registry::get();
+        let model = Model::new(ir);
+        let loaded_one_level_up = ir
+            .commands
+            .iter()
+            .filter(|c| model.dispatch(c) != model.level_of_first_parameter(c))
+            .map(|c| (c.name.as_str(), model.dispatch(c)))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            loaded_one_level_up,
+            [
+                ("vkGetDeviceProcAddr", Dispatch::Instance),
+                ("vkGetInstanceProcAddr", Dispatch::Entry),
+            ]
+        );
     }
 
     #[test]
