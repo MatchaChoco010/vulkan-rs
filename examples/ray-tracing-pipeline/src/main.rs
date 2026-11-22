@@ -722,35 +722,6 @@ unsafe fn create_scene_acceleration_structures(
     let begin =
         vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
     device.begin_command_buffer(command_buffer, &begin)?;
-    let upload_barriers = [
-        vk::BufferMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR)
-            .buffer(vertex_buffer.buffer)
-            .offset(0)
-            .size(core::mem::size_of_val(&vertices) as u64),
-        vk::BufferMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR)
-            .buffer(index_buffer.buffer)
-            .offset(0)
-            .size(core::mem::size_of_val(&indices) as u64),
-        vk::BufferMemoryBarrier::default()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR)
-            .buffer(instance_buffer.buffer)
-            .offset(0)
-            .size(core::mem::size_of_val(&instances) as u64),
-    ];
-    device.cmd_pipeline_barrier(
-        command_buffer,
-        vk::PipelineStageFlags::TRANSFER,
-        vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-        vk::DependencyFlags::empty(),
-        &[],
-        &upload_barriers,
-        &[],
-    );
     device.cmd_build_acceleration_structures_khr(
         command_buffer,
         &[blas_build_info],
@@ -955,6 +926,21 @@ unsafe fn copy_buffer_one_time(
     device.begin_command_buffer(command_buffer, &begin)?;
     let region = vk::BufferCopy::default().size(size);
     device.cmd_copy_buffer(command_buffer, src, dst, &[region]);
+    // Waiting for the fence orders the copy before the work submitted later, but that
+    // work also needs a memory dependency to see what the copy wrote. The second scope
+    // of a barrier reaches into later submissions.
+    let barrier = vk::MemoryBarrier::default()
+        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+        .dst_access_mask(vk::AccessFlags::MEMORY_READ);
+    device.cmd_pipeline_barrier(
+        command_buffer,
+        vk::PipelineStageFlags::TRANSFER,
+        vk::PipelineStageFlags::ALL_COMMANDS,
+        vk::DependencyFlags::empty(),
+        &[barrier],
+        &[],
+        &[],
+    );
     device.end_command_buffer(command_buffer)?;
     let command_buffers = [command_buffer];
     let submit = vk::SubmitInfo::default().command_buffers(&command_buffers);
