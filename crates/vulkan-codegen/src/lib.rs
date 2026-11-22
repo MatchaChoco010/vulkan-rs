@@ -139,6 +139,10 @@ pub fn required_features(ir: &Registry) -> Vec<String> {
     Model::new(ir).features()
 }
 
+pub fn assert_unmarked_arrays_exist(ir: &Registry) {
+    emit::structs::assert_listed_structures_exist(ir);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
