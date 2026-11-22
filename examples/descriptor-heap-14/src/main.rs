@@ -820,7 +820,7 @@ unsafe fn create_texture_image(
     queue_family: u32,
     queue: vk::Queue,
     name: &'static str,
-    pixels: &[u32],
+    pixels: &[[u8; 4]],
 ) -> Result<ImageAllocation> {
     let extent = vk::Extent3D::default()
         .width(TEXTURE_SIZE)
@@ -1405,17 +1405,16 @@ unsafe fn verify_and_write_ppm(
     if !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
         mapped.invalidate()?;
     }
-    let pixels =
-        bytemuck::cast_slice::<u8, u32>(mapped.byte_range(0, (WIDTH * HEIGHT * 4) as usize));
+    let pixels = mapped
+        .byte_range(0, (WIDTH * HEIGHT * 4) as usize)
+        .chunks_exact(4)
+        .collect::<Vec<_>>();
     let mut slice_bright = [0_usize; 4];
     let bright_pixels = pixels
         .iter()
         .enumerate()
-        .filter(|&(index, &px)| {
-            let r = px & 255;
-            let g = (px >> 8) & 255;
-            let b = (px >> 16) & 255;
-            let bright = r > 80 || g > 80 || b > 120;
+        .filter(|&(index, px)| {
+            let bright = px[0] > 80 || px[1] > 80 || px[2] > 120;
             if bright {
                 let x = (index as u32) % WIDTH;
                 slice_bright[(x * 4 / WIDTH) as usize] += 1;
@@ -1436,12 +1435,8 @@ unsafe fn verify_and_write_ppm(
 
     let mut file = BufWriter::new(File::create(path)?);
     writeln!(file, "P6\n{} {}\n255", WIDTH, HEIGHT)?;
-    for px in pixels.iter().copied() {
-        file.write_all(&[
-            (px & 255) as u8,
-            ((px >> 8) & 255) as u8,
-            ((px >> 16) & 255) as u8,
-        ])?;
+    for px in pixels {
+        file.write_all(&px[..3])?;
     }
     Ok(())
 }
@@ -1551,20 +1546,16 @@ fn clip_from_world() -> Mat4 {
     projection * view
 }
 
-fn texture0() -> Vec<u32> {
-    checker_texture(rgba8(255, 208, 102), rgba8(230, 74, 46))
+fn texture0() -> Vec<[u8; 4]> {
+    checker_texture([255, 208, 102, 255], [230, 74, 46, 255])
 }
 
-fn texture1() -> Vec<u32> {
-    checker_texture(rgba8(142, 230, 197), rgba8(63, 125, 217))
+fn texture1() -> Vec<[u8; 4]> {
+    checker_texture([142, 230, 197, 255], [63, 125, 217, 255])
 }
 
-fn rgba8(r: u8, g: u8, b: u8) -> u32 {
-    u32::from(r) | (u32::from(g) << 8) | (u32::from(b) << 16) | 0xff00_0000
-}
-
-fn checker_texture(a: u32, b: u32) -> Vec<u32> {
-    let mut values = vec![0_u32; (TEXTURE_SIZE * TEXTURE_SIZE) as usize];
+fn checker_texture(a: [u8; 4], b: [u8; 4]) -> Vec<[u8; 4]> {
+    let mut values = vec![[0_u8; 4]; (TEXTURE_SIZE * TEXTURE_SIZE) as usize];
     for y in 0..TEXTURE_SIZE {
         for x in 0..TEXTURE_SIZE {
             let checker = ((x / 8) + (y / 8)) % 2 == 0;
