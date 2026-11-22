@@ -339,7 +339,7 @@ impl MemoryBlock {
     }
 
     fn is_empty(&self) -> bool {
-        self.suballocator.is_wholly_free(self.size)
+        self.suballocator.is_empty()
     }
 
     pub(crate) fn set_name(&mut self, allocation_id: u64, name: &str) {
