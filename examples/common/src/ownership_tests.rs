@@ -165,3 +165,15 @@ fn a_successful_setup_creates_and_destroys_every_object() {
     assert!(report.leaked.is_empty(), "leaked {:?}", report.leaked);
     assert!(report.misuse.is_empty(), "{:?}", report.misuse);
 }
+
+#[test]
+fn a_lost_device_still_destroys_everything_and_nothing_in_use() {
+    let entry = fake::entry();
+    fake::reset(None);
+    fake::lose_device();
+    let result = unsafe { setup(&entry) };
+    let report = fake::report();
+    assert!(result.is_err(), "the wait for the submission succeeded");
+    assert!(report.leaked.is_empty(), "leaked {:?}", report.leaked);
+    assert!(report.misuse.is_empty(), "{:?}", report.misuse);
+}

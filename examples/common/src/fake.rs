@@ -1,6 +1,8 @@
 //! A fake Vulkan implementation for the tests of the ownership of objects: it records
 //! every object that is created and destroyed, checks the order in which they are
-//! destroyed, and can make the n-th call that returns a `VkResult` fail.
+//! destroyed and that the device is done with them, and can make the n-th call that
+//! returns a `VkResult` fail. Handles are passed as `u64`, which is the size of a
+//! dispatchable handle on the 64-bit targets it is built for.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -25,9 +27,15 @@ struct State {
     /// The images of each swapchain.
     swapchain_images: HashMap<u64, Vec<u64>>,
     mapped: HashMap<u64, Box<[u8]>>,
+    /// The pool of each command buffer.
+    command_pools: HashMap<u64, u64>,
+    /// The fence of each submission that was not waited for, and the objects it uses.
+    pending: Vec<(u64, Vec<u64>)>,
     calls: u32,
     fail_at: Option<u32>,
     failed: bool,
+    /// Every wait fails, as after the device was lost.
+    lost: bool,
     misuse: Vec<String>,
 }
 
@@ -62,6 +70,11 @@ pub fn reset(fail_at: Option<u32>) {
             ..State::default()
         }
     });
+}
+
+/// From now on, every wait fails, as it does after the device was lost.
+pub fn lose_device() {
+    with(|state| state.lost = true);
 }
 
 /// What happened since [`reset`].
@@ -124,6 +137,16 @@ fn destroy_object(handle: u64, what: &str) {
                 .push(format!("{what} of {handle:#x}, which is not alive"));
             return;
         };
+        if state
+            .pending
+            .iter()
+            .any(|(_, in_use)| in_use.contains(&handle))
+        {
+            state.misuse.push(format!(
+                "{what} of {:?} {handle:#x} while a submission uses it",
+                object.kind
+            ));
+        }
         let mut children = state
             .live
             .iter()
@@ -193,7 +216,7 @@ unsafe extern "system" fn get_device_proc_addr(
     commands!(name,
         b"vkDestroyDevice" => destroy_dispatchable,
         b"vkGetDeviceQueue" => get_device_queue,
-        b"vkDeviceWaitIdle" => succeed,
+        b"vkDeviceWaitIdle" => device_wait_idle,
         b"vkCreateBuffer" => create,
         b"vkDestroyBuffer" => destroy,
         b"vkCreateImage" => create,
@@ -450,10 +473,6 @@ unsafe extern "system" fn get_device_queue(
     unsafe { *queue = 0x9 };
 }
 
-unsafe extern "system" fn succeed(_handle: u64) -> vk::VkResult {
-    vk::VkResult::SUCCESS
-}
-
 unsafe extern "system" fn fallible(_handle: u64) -> vk::VkResult {
     result(fails())
 }
@@ -575,27 +594,78 @@ unsafe extern "system" fn allocate_command_buffers(
     if fails() {
         return result(true);
     }
-    for index in 0..unsafe { (*info).command_buffer_count } as usize {
-        unsafe { *command_buffers.add(index) = 0xc0 + index as u64 };
-    }
+    let (pool, count) = unsafe { ((*info).command_pool.as_raw(), (*info).command_buffer_count) };
+    with(|state| {
+        for index in 0..count as usize {
+            state.next_handle += 1;
+            let command_buffer = state.next_handle;
+            state.command_pools.insert(command_buffer, pool);
+            unsafe { *command_buffers.add(index) = command_buffer };
+        }
+    });
     vk::VkResult::SUCCESS
 }
 
+/// Marks the pools of the submitted command buffers and the fence as in use, until the
+/// fence is waited for or the device is idle.
 unsafe extern "system" fn queue_submit(
     _queue: u64,
-    _count: u32,
-    _submits: *const c_void,
-    _fence: u64,
+    count: u32,
+    submits: *const vk::SubmitInfo<'_>,
+    fence: u64,
 ) -> vk::VkResult {
-    result(fails())
+    if fails() {
+        return result(true);
+    }
+    let submits = unsafe { std::slice::from_raw_parts(submits, count as usize) };
+    with(|state| {
+        let mut in_use = vec![fence];
+        for submit in submits {
+            let command_buffers = unsafe {
+                std::slice::from_raw_parts(
+                    submit.p_command_buffers.cast::<u64>(),
+                    submit.command_buffer_count as usize,
+                )
+            };
+            in_use.extend(
+                command_buffers
+                    .iter()
+                    .filter_map(|command_buffer| state.command_pools.get(command_buffer)),
+            );
+        }
+        state.pending.push((fence, in_use));
+    });
+    vk::VkResult::SUCCESS
 }
 
+/// A failed wait leaves the work pending.
 unsafe extern "system" fn wait_for_fences(
     _device: u64,
-    _count: u32,
-    _fences: *const u64,
+    count: u32,
+    fences: *const u64,
     _wait_all: u32,
     _timeout: u64,
 ) -> vk::VkResult {
-    result(fails())
+    if fails() {
+        return result(true);
+    }
+    if with(|state| state.lost) {
+        return vk::VkResult::ERROR_DEVICE_LOST;
+    }
+    let fences = unsafe { std::slice::from_raw_parts(fences, count as usize) };
+    with(|state| state.pending.retain(|(fence, _)| !fences.contains(fence)));
+    vk::VkResult::SUCCESS
+}
+
+/// Ends all pending work: when it succeeds, because the work is done, and when it fails,
+/// as it does after the device is lost, because the work is terminated.
+unsafe extern "system" fn device_wait_idle(_device: u64) -> vk::VkResult {
+    with(|state| {
+        state.pending.clear();
+        if state.lost {
+            vk::VkResult::ERROR_DEVICE_LOST
+        } else {
+            vk::VkResult::SUCCESS
+        }
+    })
 }
