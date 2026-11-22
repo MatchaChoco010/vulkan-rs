@@ -1,6 +1,6 @@
 [package]
 name = "source-lint"
-description = "Checks where the Rust sources under crates/ have comments and doc comments"
+description = "Checks where the Rust sources under crates/ have comments and doc comments, and that the Markdown files name the workspace version"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

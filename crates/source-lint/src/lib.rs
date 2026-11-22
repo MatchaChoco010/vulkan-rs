@@ -1,9 +1,13 @@
 mod api;
 mod comments;
+mod versions;
 mod workspace;
 
 pub use api::ChildModule;
 pub use comments::{Comment, CommentKind, find_comments};
+pub use versions::{
+    VersionMention, VersionReport, check_versions, find_version_mentions, markdown_files,
+};
 pub use workspace::{Report, check_crates};
 
 pub const USER_FACING_CRATES: &[&str] = &["crates/vulkan", "crates/vulkan-alloc"];
