@@ -513,6 +513,8 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
+    /// The first of these that applies:
+    ///
     /// - [`HeapLayoutError::ZeroDescriptorSize`] if `bufferDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `bufferDescriptorSize` is not a
     ///   multiple of `bufferDescriptorAlignment`.
@@ -532,6 +534,8 @@ impl ResourceHeapPlan {
     /// `imageDescriptorSize`.
     ///
     /// # Errors
+    ///
+    /// The first of these that applies:
     ///
     /// - [`HeapLayoutError::ZeroDescriptorSize`] if `imageDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `imageDescriptorSize` is not a
@@ -558,13 +562,15 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
+    /// The first of these that applies:
+    ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `bufferDescriptorSize` or
+    ///   `imageDescriptorSize` is 0.
     /// - [`HeapLayoutError::Overflow`] if the least common multiple of the two
     ///   descriptor alignments or the stride does not fit in `u64`, the first index of
     ///   the run or the index of one of its slots does not fit in `u32`, or its end does
     ///   not fit in `u64`. A run of 0 slots has a first index too: where it starts, in
     ///   units of the stride.
-    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `bufferDescriptorSize` or
-    ///   `imageDescriptorSize` is 0.
     pub fn uniform(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
         if self.buffer_size == 0 || self.image_size == 0 {
             return Err(HeapLayoutError::ZeroDescriptorSize);
@@ -578,8 +584,9 @@ impl ResourceHeapPlan {
         self.plan.run(count, stride, size, alignment)
     }
 
-    /// Places the reserved range after the last run, at a multiple of both descriptor
-    /// alignments, and returns the layout of the heap.
+    /// Places the reserved range at the smallest multiple of both descriptor alignments
+    /// that is at or after the end of the last run, or at offset 0 if the plan has no
+    /// runs, and returns the layout of the heap.
     ///
     /// When the plan holds no slots (no runs, or only runs of 0 slots) and
     /// `minResourceHeapReservedRange` is 0, the layout has a size of 0: there is no buffer
@@ -587,9 +594,12 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
+    /// The first of these that applies:
+    ///
+    /// - [`HeapLayoutError::Overflow`] if the least common multiple of the two
+    ///   descriptor alignments, the offset of the reserved range or the size of the heap
+    ///   does not fit in `u64`.
     /// - [`HeapLayoutError::TooLarge`] if the heap is larger than `maxResourceHeapSize`.
-    /// - [`HeapLayoutError::Overflow`] if its size, or the least common multiple of the
-    ///   two descriptor alignments, does not fit in `u64`.
     pub fn finish(self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
         self.plan.finish()
     }
@@ -678,6 +688,8 @@ impl SamplerHeapPlan {
     ///
     /// # Errors
     ///
+    /// The first of these that applies:
+    ///
     /// - [`HeapLayoutError::ZeroDescriptorSize`] if `samplerDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `samplerDescriptorSize` is not
     ///   a multiple of `samplerDescriptorAlignment`.
@@ -693,8 +705,9 @@ impl SamplerHeapPlan {
         )
     }
 
-    /// Places the reserved range after the last run, at a multiple of
-    /// `samplerDescriptorAlignment`, and returns the layout of the heap.
+    /// Places the reserved range at the smallest multiple of
+    /// `samplerDescriptorAlignment` that is at or after the end of the last run, or at
+    /// offset 0 if the plan has no runs, and returns the layout of the heap.
     ///
     /// When the plan holds no slots (no runs, or only runs of 0 slots) and the reserved
     /// range is 0 bytes, the layout has a size of 0: there is no buffer to create and no
@@ -702,8 +715,11 @@ impl SamplerHeapPlan {
     ///
     /// # Errors
     ///
+    /// The first of these that applies:
+    ///
+    /// - [`HeapLayoutError::Overflow`] if the offset of the reserved range or the size
+    ///   of the heap does not fit in `u64`.
     /// - [`HeapLayoutError::TooLarge`] if the heap is larger than `maxSamplerHeapSize`.
-    /// - [`HeapLayoutError::Overflow`] if its size does not fit in `u64`.
     pub fn finish(self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
         self.plan.finish()
     }
