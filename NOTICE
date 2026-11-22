@@ -1,0 +1,40 @@
+vulkan-rs contains material of The Khronos Group Inc.
+
+1. Vulkan API Registry
+
+   The files in crates/vulkan/src/vk/generated/ and crates/vulkan/tests/generated/ and
+   the file crates/vulkan-registry/vulkan-ir.json are generated from the Vulkan API
+   Registry, vk.xml and video.xml of Khronos Vulkan-Headers
+   (https://github.com/KhronosGroup/Vulkan-Headers).
+
+   Copyright 2015-2026 The Khronos Group Inc.
+   SPDX-License-Identifier: Apache-2.0 OR MIT
+
+2. Vulkan Specification
+
+   The descriptions of the Vulkan API in the documentation comments of the files in
+   crates/vulkan/src/vk/generated/ and in the file
+   crates/vulkan-registry/vulkan-docs.json are excerpts from the sources of the Vulkan
+   Specification, Khronos Vulkan-Docs (https://github.com/KhronosGroup/Vulkan-Docs), at
+   the commit that crates/vulkan-registry/vulkan-docs.json records as "commit".
+
+   Copyright 2014-2026 The Khronos Group Inc. and the other copyright holders that the
+   source files of Vulkan-Docs name.
+   SPDX-License-Identifier: CC-BY-4.0
+
+   The excerpts are licensed under the Creative Commons Attribution 4.0 International
+   License, https://creativecommons.org/licenses/by/4.0/. A copy of the license is in
+   LICENSES/CC-BY-4.0.txt. The license disclaims warranties and limits liability.
+
+   Changes made to the material: the short description of each reference page and the
+   descriptions of structure members, command parameters and enumerants were selected;
+   text that depends on API versions and extensions was resolved for all versions and all
+   extensions of Vulkan. vulkan-docs.json holds the excerpts in their AsciiDoc form. In the
+   documentation comments the AsciiDoc markup is converted to Markdown, references to the
+   API link to the Rust items, references to other parts of the Specification are reduced
+   to their text, and lines are wrapped anew.
+
+   The excerpts are not the Vulkan Specification. The Specification that Khronos publishes
+   at https://registry.khronos.org/vulkan/ is the normative text.
+
+Vulkan and the Vulkan logo are registered trademarks of The Khronos Group Inc.

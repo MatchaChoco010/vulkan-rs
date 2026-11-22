@@ -1,4 +1,5 @@
 use super::MethodNames;
+use crate::docs::Doc;
 use crate::model::{CType, Model};
 use crate::naming::{field_name, type_name};
 use vulkan_registry::{Field, Struct};
@@ -86,9 +87,20 @@ pub(super) fn accessors(
     } else {
         ("u32".to_string(), "value", raw)
     };
+    let c_name = &bit.member.name;
+    let width = match bit.width {
+        1 => "1 bit".to_string(),
+        width => format!("{width} bits"),
+    };
+    let setter_doc = Doc::new().text(format!(
+        "Sets the C bit-field `{c_name}`, which is {width} wide. The higher bits of `value` are dropped."
+    ));
+    let getter_doc = Doc::new().text(format!("The value of the C bit-field `{c_name}`."));
     format!(
-        "pub fn {setter}(mut self, value: {ty}) -> Self {{ self.{storage} = (self.{storage} & !({mask:#x}{shl})) | (({value_as_raw} & {mask:#x}){shl}); self }}
-        pub fn {getter}(&self) -> {ty} {{ {read} }}\n"
+        "{}pub fn {setter}(mut self, value: {ty}) -> Self {{ self.{storage} = (self.{storage} & !({mask:#x}{shl})) | (({value_as_raw} & {mask:#x}){shl}); self }}
+        {}pub fn {getter}(&self) -> {ty} {{ {read} }}\n",
+        setter_doc.render(),
+        getter_doc.render()
     )
 }
 

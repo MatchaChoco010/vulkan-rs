@@ -2,6 +2,8 @@ pub(crate) mod bitmasks;
 pub(crate) mod command_info;
 pub(crate) mod commands;
 pub(crate) mod constants;
+#[cfg(test)]
+mod documentation;
 pub(crate) mod enums;
 pub(crate) mod extensions;
 pub(crate) mod formats;
@@ -15,6 +17,7 @@ pub(crate) mod version;
 
 pub(crate) use indentation::indent_by_nesting;
 
+use crate::docs::alias_doc;
 use crate::model::Cfg;
 use crate::naming::type_name;
 
@@ -54,9 +57,10 @@ pub(crate) fn arrow(return_ty: &str) -> String {
 pub(crate) fn type_aliases(cfg: &Cfg, aliases: &[String], target: &str, generics: &str) -> String {
     aliases
         .iter()
-        .map(|alias| {
-            let alias = type_name(alias);
-            format!("{cfg}pub type {alias}{generics} = {target}{generics};\n\n")
+        .map(|c_name| {
+            let alias = type_name(c_name);
+            let doc = alias_doc(target, c_name).render();
+            format!("{doc}{cfg}pub type {alias}{generics} = {target}{generics};\n\n")
         })
         .collect()
 }
@@ -105,5 +109,41 @@ impl Borrow {
 
 #[cfg(test)]
 pub(crate) fn squash(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+    text.lines()
+        .filter(|line| {
+            let line = line.trim_start();
+            !(line.starts_with("///") || line.starts_with("#[doc("))
+        })
+        .flat_map(str::split_whitespace)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(test)]
+pub(crate) fn doc_of(source: &str, item: &str) -> Vec<String> {
+    let lines = source.lines().map(str::trim).collect::<Vec<_>>();
+    let position = lines
+        .iter()
+        .position(|line| line.starts_with(item))
+        .unwrap_or_else(|| panic!("no line starts with `{item}` in:\n{source}"));
+    let mut start = position;
+    while start > 0 && (lines[start - 1].starts_with("///") || lines[start - 1].starts_with("#[")) {
+        start -= 1;
+    }
+    let mut blocks = vec![String::new()];
+    for line in &lines[start..position] {
+        match line.strip_prefix("///") {
+            Some(text) if text.trim().is_empty() => blocks.push(String::new()),
+            Some(text) => {
+                let block = blocks.last_mut().expect("a block");
+                if !block.is_empty() {
+                    block.push(' ');
+                }
+                block.push_str(text.trim());
+            }
+            None if line.starts_with("#[doc(") => blocks.push(line.to_string()),
+            None => {}
+        }
+    }
+    blocks
 }

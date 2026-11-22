@@ -2,11 +2,26 @@ use std::fmt;
 
 use vulkan::vk;
 
+/// Why an [`Allocator`](crate::Allocator) operation failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationError {
+    /// No memory type allowed by [`vk::MemoryRequirements::memory_type_bits`] has all the
+    /// flags that the [`MemoryLocation`](crate::MemoryLocation) requires.
     NoCompatibleMemoryType,
+    /// The request cannot be met inside the allocator, for example because
+    /// [`vk::MemoryRequirements::size`] is 0.
+    ///
+    /// The device running out of memory is reported as [`AllocationError::Vulkan`] with
+    /// the result of `vkAllocateMemory`, such as
+    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
     OutOfMemory,
+    /// A Vulkan call (`vkAllocateMemory`, `vkMapMemory`, `vkFlushMappedMemoryRanges` or
+    /// `vkInvalidateMappedMemoryRanges`) failed with this result.
     Vulkan(vk::VkResult),
+    /// The allocator does not hold the allocation, for example because it comes from
+    /// another allocator, or the operation does not apply to the allocation in its
+    /// current state, such as mapping memory that is not host-visible or unmapping an
+    /// allocation that is not mapped. Each function lists its cases under `# Errors`.
     InvalidAllocation,
 }
 

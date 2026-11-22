@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 const VULKAN_IR_JSON: &str = include_str!("../vulkan-ir.json");
+const VULKAN_DOCS_JSON: &str = include_str!("../vulkan-docs.json");
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Registry {
@@ -37,6 +38,42 @@ impl Registry {
     pub fn from_json(json: &str) -> serde_json::Result<Self> {
         serde_json::from_str(json)
     }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Docs {
+    pub commit: String,
+    pub attributes: BTreeMap<String, String>,
+    pub titles: BTreeMap<String, String>,
+    pub pages: Vec<DocPage>,
+}
+
+impl Docs {
+    pub fn get() -> &'static Self {
+        static DOCS: OnceLock<Docs> = OnceLock::new();
+        DOCS.get_or_init(|| {
+            Self::from_json(VULKAN_DOCS_JSON).expect("embedded Vulkan descriptions are valid")
+        })
+    }
+
+    pub fn from_json(json: &str) -> serde_json::Result<Self> {
+        serde_json::from_str(json)
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DocPage {
+    pub name: String,
+    pub kind: String,
+    pub desc: String,
+    pub aliases: Vec<String>,
+    pub items: Vec<DocItem>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DocItem {
+    pub name: String,
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -176,6 +213,9 @@ pub struct Extension {
     pub protect: Option<String>,
     pub depends: Option<String>,
     pub promoted_to: Option<String>,
+    pub deprecated_by: Option<String>,
+    pub obsoleted_by: Option<String>,
+    pub provisional: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -223,6 +263,33 @@ mod tests {
         );
         assert!(!registry.structs.is_empty());
         assert!(!registry.commands.is_empty());
+    }
+
+    #[test]
+    fn embedded_descriptions_parse_and_cover_the_registry() {
+        let docs = Docs::get();
+        let registry = Registry::get();
+        assert!(!docs.commit.is_empty());
+        let page = |name: &str| docs.pages.iter().find(|page| page.name == name);
+        let create_info = page("VkDeviceQueueCreateInfo").expect("a page for a core struct");
+        assert_eq!(create_info.kind, "structs");
+        assert_eq!(
+            create_info.desc,
+            "Structure specifying parameters of a newly created device queue"
+        );
+        assert!(
+            create_info
+                .items
+                .iter()
+                .any(|item| item.name == "queueFamilyIndex"
+                    && item.text.starts_with("pname:queueFamilyIndex is "))
+        );
+        let described_handles = registry
+            .handles
+            .iter()
+            .filter(|handle| page(&handle.name).is_some())
+            .count();
+        assert_eq!(described_handles, registry.handles.len());
     }
 
     #[test]

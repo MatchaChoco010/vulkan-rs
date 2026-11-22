@@ -20,9 +20,9 @@ used for generation.
 ```sh
 git submodule update --init
 
-# Checks out the newest `vulkan-sdk-*` tag in third_party/vulkan, sets the
-# workspace version in Cargo.toml to "<semver>+<SDK tag>" and runs
-# ./tools/generate-vulkan.
+# Checks out the newest `vulkan-sdk-*` tag in third_party/vulkan and the
+# matching Vulkan-Docs tag in third_party/vulkan-docs, sets the workspace
+# version in Cargo.toml to "<semver>+<SDK tag>" and runs ./tools/generate-vulkan.
 ./tools/update-vulkan-headers
 
 cargo test --workspace --all-features
@@ -30,7 +30,7 @@ cargo test --workspace --all-features
 SDK_TAG="$(git -C third_party/vulkan describe --tags --exact-match --match 'vulkan-sdk-*')"
 CRATE_VERSION="$(sed -n 's/^version = "\(.*\)+.*"$/\1/p' Cargo.toml)"
 
-git add third_party/vulkan crates examples tools Cargo.toml Cargo.lock README.md
+git add third_party/vulkan third_party/vulkan-docs crates examples tools Cargo.toml Cargo.lock README.md
 git commit -m "Update Vulkan bindings to $SDK_TAG"
 git tag "v${CRATE_VERSION}+${SDK_TAG}"
 ```

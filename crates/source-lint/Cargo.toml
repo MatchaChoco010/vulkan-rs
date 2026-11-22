@@ -1,14 +1,13 @@
 [package]
 name = "source-lint"
-description = "Checks that the Rust sources under crates/ contain no comments"
+description = "Checks where the Rust sources under crates/ have comments and doc comments"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
 
-[lints]
-workspace = true
-
 [dependencies]
+proc-macro2 = { version = "1", features = ["span-locations"] }
 ra-ap-rustc_lexer = "0.185"
+syn = { version = "2", features = ["full"] }

@@ -1,15 +1,24 @@
 use super::inputs::Inputs;
 use super::shape::Shape;
-use super::{argument_name, raw_name, special};
+use super::{argument_name, called, not_loaded, provided, raw_name, special};
+use crate::docs::{Doc, join_or};
 use crate::emit::arrow;
-use crate::model::{CType, Dispatch, Model, null_ptr};
+use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
 use crate::naming::command_name;
 use vulkan_registry::{Command, Field};
 
 pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
     let cfg = model.cfg(c.protect.as_deref());
     if let Some(wrapper) = special::wrapper(c) {
-        return format!("{cfg}{wrapper}");
+        let doc = doc(
+            model,
+            &cfg,
+            c,
+            "Each slice of slices is passed as an array of pointers to the inner slices.",
+            c.return_ty == "VkResult",
+            true,
+        );
+        return format!("{}{cfg}{wrapper}", doc.render());
     }
     let params = dispatch.explicit_params(c);
     let shape = Shape::detect(model, c, params);
@@ -20,7 +29,11 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         params,
         inputs: &inputs,
     };
-    let Returned { ty, statements } = match &shape {
+    let Returned {
+        ty,
+        statements,
+        note,
+    } = match &shape {
         Shape::PassThrough => call.passes_through(),
         Shape::ReturnsValue { out } => call.returns_value(*out),
         Shape::Enumerates { count, data } => call.enumerates(*count, *data),
@@ -38,11 +51,20 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
             call.fills_vector(*out, &format!("{owner}.{member} as usize"))
         }
     };
+    let doc = doc(
+        model,
+        &cfg,
+        c,
+        &note,
+        ty.contains("Result<"),
+        inputs.checks.contains("assert_eq!"),
+    );
     format!(
-        "{cfg}pub unsafe fn {name}(&self{signature}){arrow} {{
+        "{doc}{cfg}pub unsafe fn {name}(&self{signature}){arrow} {{
             unsafe {{
                 {checks}{statements}}}
         }}\n",
+        doc = doc.render(),
         name = command_name(&c.name),
         signature = inputs.signature(),
         arrow = arrow(&ty),
@@ -50,9 +72,51 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     )
 }
 
+fn doc(
+    model: &Model<'_>,
+    cfg: &Cfg,
+    c: &Command,
+    note: &str,
+    returns_result: bool,
+    checks_lengths: bool,
+) -> Doc {
+    let raw = raw_name(c);
+    let errors = if !returns_result {
+        String::new()
+    } else if c.error_codes.is_empty() {
+        "Returns the result code of the command if it is an error.".to_string()
+    } else {
+        format!(
+            "Returns the result code of the command if it is an error. The registry lists {} for it.",
+            codes(model, cfg, &c.error_codes)
+        )
+    };
+    let lengths = if checks_lengths {
+        " Also panics if the slices do not have the lengths that the command needs: slices that it counts with one parameter have to be equally long, and a slice whose length it reads from another argument has to have that length."
+    } else {
+        ""
+    };
+    Doc::new()
+        .text(model.summary(cfg, &c.name).unwrap_or_default())
+        .text(format!(
+            "Calls {} through [`Self::{raw}`], which describes the parameters. {note} {}",
+            called(model, cfg, c),
+            provided(model, cfg, c)
+        ))
+        .section("Errors", errors)
+        .section("Safety", format!("The same as for [`Self::{raw}`]."))
+        .section("Panics", format!("{}{lengths}", not_loaded(c)))
+        .alias(&c.name)
+}
+
+fn codes(model: &Model<'_>, cfg: &Cfg, codes: &[String]) -> String {
+    join_or(codes.iter().map(|code| model.link(cfg, code)).collect())
+}
+
 struct Returned {
     ty: String,
     statements: String,
+    note: String,
 }
 
 impl Returned {
@@ -60,7 +124,13 @@ impl Returned {
         Self {
             ty: ty.into(),
             statements: statements.into() + "\n",
+            note: String::new(),
         }
+    }
+
+    fn note(mut self, note: impl Into<String>) -> Self {
+        self.note = note.into();
+        self
     }
 }
 
@@ -92,6 +162,17 @@ impl Call<'_> {
         self.c.return_ty == "VkResult"
     }
 
+    fn success_code(&self) -> String {
+        format!(
+            "the result code of the command when it is not an error, which the registry lists as {}",
+            codes(
+                self.model,
+                &self.model.cfg(self.c.protect.as_deref()),
+                &self.c.success_codes
+            )
+        )
+    }
+
     fn has_success_codes_besides_success(&self) -> bool {
         self.c.success_codes.iter().any(|code| code != "VK_SUCCESS")
     }
@@ -117,7 +198,8 @@ impl Call<'_> {
         let call = self.raw(&[]);
         if !self.returns_result() {
             return match self.model.return_ty(&self.c.return_ty).as_str() {
-                "Bool32" => Returned::new("bool", format!("{call} != 0")),
+                "Bool32" => Returned::new("bool", format!("{call} != 0"))
+                    .note("Returns whether the command returned `VK_TRUE`."),
                 ty => Returned::new(ty, call),
             };
         }
@@ -129,7 +211,8 @@ impl Call<'_> {
                     result.into_result()?;
                     Ok(result == VkResult::SUBOPTIMAL_KHR)"
                 ),
-            );
+            )
+            .note("Returns whether the command reported `VK_SUBOPTIMAL_KHR`.");
         }
         if self.has_success_codes_besides_success() {
             return Returned::new(
@@ -139,7 +222,8 @@ impl Call<'_> {
                     result.into_result()?;
                     Ok(result)"
                 ),
-            );
+            )
+            .note(format!("Returns {}.", self.success_code()));
         }
         Returned::new("crate::vk::Result<()>", format!("{call}.into_result()"))
     }
@@ -155,6 +239,7 @@ impl Call<'_> {
         };
         let declaration = format!("let mut value: {storage_ty} = {init};");
         let call = self.raw(&[(out, "&mut value")]);
+        let written = format!("Returns what the command writes to `{}`", p.name);
         if !self.returns_result() {
             return Returned::new(
                 ty,
@@ -163,7 +248,8 @@ impl Call<'_> {
                     {call};
                     {value}"
                 ),
-            );
+            )
+            .note(format!("{written}."));
         }
         if self.acquires_a_swapchain_image() {
             return Returned::new(
@@ -177,7 +263,10 @@ impl Call<'_> {
                         error => Err(error),
                     }}"
                 ),
-            );
+            )
+            .note(format!(
+                "{written} and whether the command reported `VK_SUBOPTIMAL_KHR`, or `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`."
+            ));
         }
         if self.has_success_codes_besides_success() {
             return Returned::new(
@@ -188,7 +277,8 @@ impl Call<'_> {
                     result.into_result()?;
                     Ok(({value}, result))"
                 ),
-            );
+            )
+            .note(format!("{written}, and {}.", self.success_code()));
         }
         Returned::new(
             format!("crate::vk::Result<{ty}>"),
@@ -198,6 +288,7 @@ impl Call<'_> {
                 Ok({value})"
             ),
         )
+        .note(format!("{written}."))
     }
 
     fn enumerates(&self, count: usize, data: usize) -> Returned {
@@ -233,7 +324,11 @@ impl Call<'_> {
                         return Ok(values);
                     }}"
                 ),
-            );
+            )
+            .note(format!(
+                "Asks the command for the number of elements and then for the elements, again for as long as it reports `VK_INCOMPLETE`, and returns what it writes to `{}`.",
+                p.name
+            ));
         }
         Returned::new(
             format!("Vec<{element}>"),
@@ -246,12 +341,20 @@ impl Call<'_> {
                 values"
             ),
         )
+        .note(format!(
+            "Asks the command for the number of elements and then for the elements, and returns what it writes to `{}`.",
+            p.name
+        ))
     }
 
     fn fills_vector(&self, out: usize, len: &str) -> Returned {
         let (element, init) = self.output_element(&self.params[out]);
         let declaration = format!("let mut values: Vec<{element}> = alloc::vec![{init}; {len}];");
         let call = self.raw(&[(out, "values.as_mut_ptr()")]);
+        let written = format!(
+            "Returns the elements that the command writes to `{}`",
+            self.params[out].name
+        );
         if !self.returns_result() {
             return Returned::new(
                 format!("Vec<{element}>"),
@@ -260,7 +363,8 @@ impl Call<'_> {
                     {call};
                     values"
                 ),
-            );
+            )
+            .note(format!("{written}."));
         }
         if self.creates_pipelines() {
             return Returned::new(
@@ -270,7 +374,10 @@ impl Call<'_> {
                     let result = {call};
                     if result == VkResult::SUCCESS {{ Ok(values) }} else {{ Err((values, result)) }}"
                 ),
-            );
+            )
+            .note(format!(
+                "{written}. Any result other than `VK_SUCCESS` is returned as the error, together with the same elements."
+            ));
         }
         Returned::new(
             format!("crate::vk::Result<Vec<{element}>>"),
@@ -280,6 +387,7 @@ impl Call<'_> {
                 Ok(values)"
             ),
         )
+        .note(format!("{written}."))
     }
 
     fn output_element(&self, p: &Field) -> (String, String) {

@@ -3,77 +3,144 @@ use vulkan::vk;
 use crate::allocation::AllocationResourceClass;
 use crate::block::MemoryTypeAllocator;
 
+/// Totals of the memory an allocator holds, returned by
+/// [`Allocator::stats`](crate::Allocator::stats).
+///
+/// `allocated_bytes + free_bytes` equals `total_block_bytes`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AllocatorStats {
+    /// The total size of all `VkDeviceMemory` blocks.
     pub total_block_bytes: u64,
+    /// The bytes inside allocations, counted with [`Allocation::size`](crate::Allocation::size).
     pub allocated_bytes: u64,
+    /// The bytes of the blocks outside any allocation, including gaps left by
+    /// alignment.
     pub free_bytes: u64,
+    /// The number of live allocations.
     pub allocation_count: usize,
+    /// The number of `VkDeviceMemory` blocks.
     pub block_count: usize,
+    /// The same totals for each memory type that has at least one block, in memory
+    /// type order.
     pub memory_types: Vec<MemoryTypeStats>,
 }
 
+/// Totals of the memory an allocator holds in one memory type. See
+/// [`AllocatorStats`] for the meaning of the fields.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MemoryTypeStats {
+    /// The index of the memory type.
     pub memory_type_index: u32,
+    /// The total size of the blocks of this memory type.
     pub total_block_bytes: u64,
+    /// The bytes inside allocations.
     pub allocated_bytes: u64,
+    /// The bytes of the blocks outside any allocation.
     pub free_bytes: u64,
+    /// The number of live allocations.
     pub allocation_count: usize,
+    /// The number of blocks.
     pub block_count: usize,
 }
 
+/// The state of an allocator down to each region of each block, returned by
+/// [`Allocator::snapshot`](crate::Allocator::snapshot).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AllocatorSnapshot {
+    /// The totals, as [`Allocator::stats`](crate::Allocator::stats) returns them.
     pub stats: AllocatorStats,
+    /// Each memory type that has at least one block, in memory type order.
     pub memory_types: Vec<MemoryTypeSnapshot>,
 }
 
+/// The blocks of one memory type in an [`AllocatorSnapshot`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MemoryTypeSnapshot {
+    /// The index of the memory type.
     pub memory_type_index: u32,
+    /// The property flags of the memory type.
     pub property_flags: vk::MemoryPropertyFlags,
+    /// The totals of this memory type.
     pub stats: MemoryTypeStats,
+    /// Each block of this memory type, in [`MemoryBlockSnapshot::block_index`] order.
     pub blocks: Vec<MemoryBlockSnapshot>,
 }
 
+/// One `VkDeviceMemory` block in a [`MemoryTypeSnapshot`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryBlockSnapshot {
+    /// The position of the block among the blocks of its memory type. It stays the same
+    /// while the block exists; the position of a freed block can be taken by a new one,
+    /// and positions of freed blocks that were not reused are skipped.
     pub block_index: usize,
+    /// The kind of resource the block holds.
     pub resource_class: AllocationResourceClass,
+    /// Whether the block is the `VkDeviceMemory` of a single dedicated or exportable
+    /// allocation.
     pub dedicated: bool,
+    /// The `VkDeviceMemory` of the block.
     pub memory: vk::DeviceMemory,
+    /// The size of the block in bytes.
     pub size: u64,
+    /// The bytes in free regions.
     pub free_bytes: u64,
+    /// The bytes in allocated regions.
     pub allocated_bytes: u64,
+    /// The size of the largest free region. An allocation larger than this does not
+    /// fit in the block.
     pub largest_free_region_bytes: u64,
+    /// The number of free regions.
     pub free_region_count: usize,
+    /// The number of allocated regions, one per live allocation in the block.
     pub allocated_region_count: usize,
+    /// The regions of the block in offset order. They cover the block without gaps or
+    /// overlaps.
     pub regions: Vec<MemoryRegionSnapshot>,
 }
 
+/// A free or allocated range of a block in a [`MemoryBlockSnapshot`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryRegionSnapshot {
+    /// The byte offset of the region in the block.
     pub offset: u64,
+    /// The size of the region in bytes.
     pub size: u64,
+    /// Whether the region is free or allocated.
     pub state: MemoryRegionState,
 }
 
+/// Whether a [`MemoryRegionSnapshot`] is free or allocated.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryRegionState {
+    /// The region is not part of any allocation.
     Free,
+    /// The region is one live allocation.
     Allocated {
+        /// An identifier of the allocation, unique among the allocations ever made in
+        /// this block.
         allocation_id: u64,
+        /// The number of mapping references the allocation holds: one for each live
+        /// [`MappedAllocation`](crate::MappedAllocation) guard and each
+        /// [`Allocator::map_memory`](crate::Allocator::map_memory) call not yet
+        /// unmapped, and one for a persistent mapping.
         mapped_count: usize,
     },
 }
 
+/// An allocation that has not been freed, returned by
+/// [`Allocator::live_allocations`](crate::Allocator::live_allocations).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveAllocation {
+    /// The [`AllocationCreateDesc::name`](crate::AllocationCreateDesc::name) the
+    /// allocation was made with.
     pub name: Option<String>,
+    /// The `VkDeviceMemory` that holds the allocation, as [`Allocation::memory`](crate::Allocation::memory).
     pub memory: vk::DeviceMemory,
+    /// The byte offset in `memory`, as [`Allocation::offset`](crate::Allocation::offset).
     pub offset: u64,
+    /// The size in bytes, as [`Allocation::size`](crate::Allocation::size).
     pub size: u64,
+    /// The memory type, as [`Allocation::memory_type_index`](crate::Allocation::memory_type_index).
     pub memory_type_index: u32,
 }
 

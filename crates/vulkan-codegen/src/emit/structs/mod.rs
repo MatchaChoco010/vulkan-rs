@@ -6,10 +6,66 @@ mod unions;
 pub(crate) use bit_fields::{Slot, slots};
 
 use super::{header, type_aliases, w};
+use crate::docs::{Doc, join_and};
 use crate::model::{Cfg, Model, has_p_next};
 use crate::naming::{field_name, type_name};
 use std::collections::BTreeSet;
-use vulkan_registry::Struct;
+use vulkan_registry::{Field, Struct};
+
+const MARKER_DOC: &str =
+    "/// Ties the value to the lifetime `'a` of the data that its pointers borrow.\n";
+
+pub(super) fn field_link(c_name: &str) -> String {
+    let field = field_name(c_name);
+    format!("[`{}`](Self::{field})", field.trim_start_matches("r#"))
+}
+
+fn c_declaration(m: &Field) -> String {
+    let arrays = m
+        .fixed_size_array
+        .iter()
+        .map(|len| format!("[{len}]"))
+        .collect::<String>();
+    let bits = m
+        .bit_field_width
+        .map(|width| format!(" : {width}"))
+        .unwrap_or_default();
+    format!("{} {}{arrays}{bits}", m.full_ty, m.name)
+}
+
+pub(super) fn member_doc(model: &Model<'_>, cfg: &Cfg, s: &Struct, m: &Field) -> Doc {
+    match model.described(cfg, &s.name, &m.name) {
+        Some(described) => Doc::new().blocks(described),
+        None => Doc::new().text(format!("The C member `{}`.", c_declaration(m))),
+    }
+}
+
+pub(super) fn type_doc(model: &Model<'_>, cfg: &Cfg, s: &Struct) -> Doc {
+    let kind = if s.union { "C union" } else { "C structure" };
+    let provenance = model.provenance(
+        cfg,
+        s.version.as_deref(),
+        &s.extensions,
+        s.video_std_header.as_deref(),
+    );
+    let roots = s
+        .extends
+        .iter()
+        .filter(|root| model.get_struct(root).is_some())
+        .map(|root| model.link(cfg, root))
+        .collect::<Vec<_>>();
+    let extends = if roots.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "Extends {}: their `push_next` accepts this structure.",
+            join_and(roots)
+        )
+    };
+    model
+        .type_doc(cfg, &s.name, kind, &provenance)
+        .text(extends)
+}
 
 pub(crate) fn emit(model: &Model<'_>) -> String {
     let mut out = header(&["derivable_impls"]);
@@ -95,7 +151,12 @@ fn definition(model: &Model<'_>, s: &Struct) -> String {
         match slot {
             Slot::Plain(m) => {
                 let field = field_name(&m.name);
-                w!(fields, "pub {field}: {},", model.member_ty(m, "'a"));
+                w!(
+                    fields,
+                    "{}pub {field}: {},",
+                    member_doc(model, &cfg, s, m).render(),
+                    model.member_ty(m, "'a")
+                );
                 w!(
                     defaults,
                     "{field}: {},",
@@ -106,7 +167,15 @@ fn definition(model: &Model<'_>, s: &Struct) -> String {
                 }
             }
             Slot::Bits { storage, bits } => {
-                w!(fields, "pub {storage}: u32,");
+                let members = bits
+                    .iter()
+                    .map(|bit| format!("`{}`", bit.member.name))
+                    .collect();
+                let doc = Doc::new().text(format!(
+                    "The storage unit of the C bit-fields {}. The methods named after the bit-fields read and write them.",
+                    join_and(members)
+                ));
+                w!(fields, "{}pub {storage}: u32,", doc.render());
                 w!(defaults, "{storage}: 0,");
                 for bit in &bits {
                     methods.push_str(&bit_fields::accessors(model, &storage, bit, &mut names));
@@ -115,7 +184,7 @@ fn definition(model: &Model<'_>, s: &Struct) -> String {
         }
     }
     if borrows {
-        w!(fields, "pub _marker: PhantomData<&'a ()>,");
+        w!(fields, "{MARKER_DOC}pub _marker: PhantomData<&'a ()>,");
         w!(defaults, "_marker: PhantomData,");
     }
     if let Some(p_next) = s.members.iter().find(|m| m.name == "pNext") {
@@ -125,7 +194,7 @@ fn definition(model: &Model<'_>, s: &Struct) -> String {
     let mut out = String::new();
     w!(
         out,
-        r#"{cfg}#[repr(C)]
+        r#"{doc}{cfg}#[repr(C)]
 #[derive({derives})]
 #[cfg_attr(feature = "debug", derive(Debug))]
 pub struct {name}{generics} {{
@@ -141,6 +210,7 @@ pub struct {name}{generics} {{
 {cfg}impl{generics} {name}{generics} {{
     {methods}}}
 "#,
+        doc = type_doc(model, &cfg, s).render(),
         derives = derives.join(", "),
         thread_safety = thread_safety_impls(&cfg, &name, borrows),
     );

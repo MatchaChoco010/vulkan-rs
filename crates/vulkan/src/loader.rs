@@ -37,6 +37,12 @@ impl LoaderLibrary {
     }
 }
 
+/// The Vulkan loader could not be loaded: the dynamic library could not be opened, or it
+/// has no `vkGetInstanceProcAddr` symbol.
+///
+/// Returned by [`Entry::load`](crate::Entry::load) and
+/// [`Entry::load_from`](crate::Entry::load_from). Its `Display` form names the cause, and
+/// `Error::source` gives the error of the dynamic library loader.
 #[cfg(feature = "std")]
 #[derive(Debug)]
 pub struct LoadError(libloading::Error);

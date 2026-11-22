@@ -1,5 +1,6 @@
 use super::{header, w};
-use crate::model::Model;
+use crate::docs::Doc;
+use crate::model::{Cfg, Model};
 use crate::naming::const_name;
 
 fn numbers<const N: usize>(text: &str, separator: char) -> [u32; N] {
@@ -19,16 +20,32 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
     let ir = model.ir;
     let [major, minor, patch] = numbers(&ir.header_version_complete, '.');
     let mut out = header(&[]);
+    let define = |c_name: &str| {
+        Doc::new()
+            .text(model.summary(&Cfg::default(), c_name).unwrap_or_default())
+            .text(format!("C macro {}.", model.reference(c_name)))
+            .alias(c_name)
+            .render()
+    };
     w!(
         out,
-        r#"pub const HEADER_VERSION: u32 = {header_version};
-pub const HEADER_VERSION_COMPLETE: u32 = make_api_version(0, {major}, {minor}, {patch});
+        r#"{header_version_doc}pub const HEADER_VERSION: u32 = {header_version};
+{header_version_complete_doc}pub const HEADER_VERSION_COMPLETE: u32 = make_api_version(0, {major}, {minor}, {patch});
+/// The tag of Khronos Vulkan-Headers that these bindings were generated from.
 pub const HEADERS_TAG: &str = "{tag}";
+/// The commit of Khronos Vulkan-Headers that these bindings were generated from.
 pub const HEADERS_COMMIT: &str = "{commit}";
-pub const API_VERSION_1_0: u32 = make_api_version(0, 1, 0, 0);"#,
+/// The commit of Khronos Vulkan-Docs, the source of the Vulkan Specification, that the
+/// descriptions in this documentation were taken from.
+pub const DOCS_COMMIT: &str = "{docs_commit}";
+{api_version_1_0_doc}pub const API_VERSION_1_0: u32 = make_api_version(0, 1, 0, 0);"#,
+        header_version_doc = define("VK_HEADER_VERSION"),
+        header_version_complete_doc = define("VK_HEADER_VERSION_COMPLETE"),
+        api_version_1_0_doc = define("VK_API_VERSION_1_0"),
         header_version = ir.header_version,
         tag = ir.headers_tag,
         commit = ir.headers_commit,
+        docs_commit = model.docs.commit,
     );
     for version in &ir.versions {
         let digits = version
@@ -38,7 +55,8 @@ pub const API_VERSION_1_0: u32 = make_api_version(0, 1, 0, 0);"#,
         let [major, minor] = numbers(digits, '_');
         w!(
             out,
-            "pub const {}: u32 = make_api_version(0, {major}, {minor}, 0);",
+            "{}pub const {}: u32 = make_api_version(0, {major}, {minor}, 0);",
+            define(&version.name_api),
             const_name(&version.name_api)
         );
     }

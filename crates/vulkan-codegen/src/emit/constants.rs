@@ -1,5 +1,6 @@
 use super::{header, w};
-use crate::model::Model;
+use crate::docs::Doc;
+use crate::model::{Cfg, Model};
 use crate::naming::const_name;
 
 fn rust_ty(c_ty: &str, constant: &str) -> &'static str {
@@ -22,9 +23,24 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         } else {
             rust_ty(&c.ty, &c.name)
         };
+        let from = Cfg::default();
+        let origin = match c.video_std_header.as_deref() {
+            Some(header) => format!(
+                "C constant `{}`, provided by {}.",
+                c.name,
+                model.provenance(&from, None, &[], Some(header))
+            ),
+            None => format!("C constant {}.", model.reference(&c.name)),
+        };
+        let doc = Doc::new()
+            .text(model.summary(&from, &c.name).unwrap_or_default())
+            .text(origin)
+            .alias(&c.name)
+            .of_item(&const_name(&c.name));
         w!(
             out,
-            "pub const {}: {ty} = {};",
+            "{}pub const {}: {ty} = {};",
+            doc.render(),
             const_name(&c.name),
             c.value
         );

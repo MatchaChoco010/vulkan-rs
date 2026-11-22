@@ -1,5 +1,6 @@
 use super::{header, w};
-use crate::model::{Depends, Model, parse_version};
+use crate::docs::{Doc, join_and, join_or};
+use crate::model::{Cfg, Depends, Model, parse_version};
 use crate::naming::{const_name, extension_name_const};
 use vulkan_registry::Extension;
 
@@ -10,8 +11,17 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         let cfg = model.cfg(ext.protect.as_deref());
         w!(
             out,
-            "{cfg}pub const {name_const}: &CStr = c\"{name}\";
-{cfg}pub const {version_const}: u32 = {version};\n",
+            "{name_doc}{cfg}pub const {name_const}: &CStr = c\"{name}\";
+{version_doc}{cfg}pub const {version_const}: u32 = {version};\n",
+            name_doc = name_doc(model, &cfg, ext).render(),
+            version_doc = Doc::new()
+                .text(format!(
+                    "The revision of the {} extension that these bindings were generated from, the C macro `{}`.",
+                    model.extension_reference(&ext.name),
+                    ext.spec_version_macro
+                ))
+                .alias(&ext.spec_version_macro)
+                .render(),
             name_const = extension_name_const(&ext.name_macro),
             name = ext.name,
             version_const = const_name(&ext.spec_version_macro),
@@ -20,6 +30,70 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
     }
     out.push_str(&lookup_table(model));
     out
+}
+
+fn successor(model: &Model<'_>, from: &Cfg, name: &str) -> String {
+    match parse_version(name) {
+        Some((major, minor)) => format!("Vulkan {major}.{minor}"),
+        None => model.link(from, name),
+    }
+}
+
+fn requirement(model: &Model<'_>, from: &Cfg, depends: &Depends, nested: bool) -> String {
+    let list = |items: &[Depends], join: fn(Vec<String>) -> String| {
+        let joined = join(
+            items
+                .iter()
+                .map(|item| requirement(model, from, item, true))
+                .collect(),
+        );
+        if nested {
+            format!("({joined})")
+        } else {
+            joined
+        }
+    };
+    match depends {
+        Depends::Version(major, minor) => format!("Vulkan {major}.{minor}"),
+        Depends::Extension(name) => model.link(from, name),
+        Depends::All(all) => list(all, join_and),
+        Depends::Any(any) => list(any, join_or),
+    }
+}
+
+fn name_doc(model: &Model<'_>, cfg: &Cfg, ext: &Extension) -> Doc {
+    let level = match level(ext) {
+        "Instance" => "instance",
+        _ => "device",
+    };
+    let provisional = if ext.provisional { "provisional " } else { "" };
+    let mut facts = Vec::new();
+    if let Some(depends) = ext.depends.as_deref() {
+        facts.push(format!(
+            "Requires {}.",
+            requirement(model, cfg, &Depends::parse(depends), false)
+        ));
+    }
+    for (verb, by) in [
+        ("Promoted to", &ext.promoted_to),
+        ("Deprecated by", &ext.deprecated_by),
+        ("Obsoleted by", &ext.obsoleted_by),
+    ] {
+        match by.as_deref() {
+            Some("") => facts.push(format!("{}.", verb.trim_end_matches(" by"))),
+            Some(name) => facts.push(format!("{verb} {}.", successor(model, cfg, name))),
+            None => {}
+        }
+    }
+    Doc::new()
+        .text(format!(
+            "The name of the {provisional}{level} extension {}, the C macro `{}`.",
+            model.extension_reference(&ext.name),
+            ext.name_macro
+        ))
+        .text(facts.join(" "))
+        .alias(&ext.name)
+        .alias(&ext.name_macro)
 }
 
 pub(crate) fn api_version_expr(version_name: &str) -> Option<String> {
@@ -65,6 +139,10 @@ fn lookup_table(model: &Model<'_>) -> String {
     extensions.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
 
     let mut out = String::new();
+    w!(
+        out,
+        "/// Every extension of the registry, sorted by name as bytes. [`ExtensionInfo::get`] searches it."
+    );
     w!(out, "pub const EXTENSIONS: &[ExtensionInfo] = &[");
     for ext in extensions {
         let depends = ext

@@ -13,14 +13,20 @@ pub(crate) use dispatch::Dispatch;
 pub(crate) use platform::{is_opaque, is_platform_type};
 pub(crate) use rust_types::Scalar;
 
+use crate::docs::Links;
 use crate::naming::enum_variant_name;
 use std::collections::{BTreeMap, BTreeSet};
-use vulkan_registry::{Enum, Registry, Struct};
+use std::sync::OnceLock;
+use vulkan_registry::{DocPage, Docs, Enum, Registry, Struct};
 
 const POINTER_TYPEDEFS: &[&str] = &["VkRemoteAddressNV"];
 
 pub(crate) struct Model<'a> {
     pub(crate) ir: &'a Registry,
+    pub(crate) docs: &'a Docs,
+    pub(crate) pages: BTreeMap<&'a str, &'a DocPage>,
+    pub(crate) command_aliases: BTreeMap<&'a str, &'a str>,
+    pub(crate) links: Links,
     structs: BTreeMap<&'a str, &'a Struct>,
     handles: BTreeSet<&'a str>,
     enums: BTreeSet<&'a str>,
@@ -54,8 +60,25 @@ macro_rules! alias_targets {
 
 impl<'a> Model<'a> {
     pub(crate) fn new(ir: &'a Registry) -> Self {
+        static NO_DOCS: OnceLock<Docs> = OnceLock::new();
+        Self::with_docs(ir, NO_DOCS.get_or_init(Docs::default))
+    }
+
+    pub(crate) fn with_docs(ir: &'a Registry, docs: &'a Docs) -> Self {
+        let pages = docs.pages.iter().flat_map(|page| {
+            let names = std::iter::once(&page.name).chain(&page.aliases);
+            names.map(move |name| (name.as_str(), page))
+        });
+        let command_aliases = ir.commands.iter().filter_map(|command| {
+            let alias = command.alias.as_deref()?;
+            Some((command.name.as_str(), alias))
+        });
         let mut model = Self {
             ir,
+            docs,
+            pages: pages.collect(),
+            command_aliases: command_aliases.collect(),
+            links: Links::default(),
             structs: ir.structs.iter().map(|s| (s.name.as_str(), s)).collect(),
             handles: names!(ir.handles),
             enums: names!(ir.enums),
@@ -71,6 +94,7 @@ impl<'a> Model<'a> {
         model.lifetimes = model.structs_that_borrow();
         model.plain_eq = model.structs_of_plain_values(derives::Floats::Allowed);
         model.plain_hash = model.structs_of_plain_values(derives::Floats::Forbidden);
+        model.links = Links::build(&model);
         model
     }
 

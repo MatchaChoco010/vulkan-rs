@@ -48,16 +48,43 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         } else {
             NON_DISPATCHABLE
         };
+        let kind = if h.dispatchable {
+            "C dispatchable handle"
+        } else {
+            "C non-dispatchable handle"
+        };
+        let provenance = if h.extensions.is_empty() {
+            String::new()
+        } else {
+            model.provenance(&cfg, None, &h.extensions, None)
+        };
+        let parent = match &h.parent {
+            Some(parent) => format!(
+                "Objects of this type are created from a {}.",
+                model.link(&cfg, parent)
+            ),
+            None => String::new(),
+        };
+        let doc = model
+            .type_doc(&cfg, &h.name, kind, &provenance)
+            .text(format!(
+                "{parent} The value is the handle itself: copying it does not copy the object, and dropping it does not destroy the object."
+            ))
+            .render();
         w!(
             out,
-            r#"{cfg}#[repr(transparent)]
+            r#"{doc}{cfg}#[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct {name}(pub {ty});
 
 {cfg}impl {name} {{
+    /// The null handle, `VK_NULL_HANDLE`.
     pub const fn null() -> Self {{ Self({null}) }}
+    /// Whether this is the null handle.
     pub const fn is_null(self) -> bool {{ {is_null} }}
+    /// Wraps a handle value of the C API.
     pub const fn from_raw(value: {ty}) -> Self {{ Self(value) }}
+    /// The handle value as the C API passes it.
     pub const fn as_raw(self) -> {ty} {{ self.0 }}
 }}
 

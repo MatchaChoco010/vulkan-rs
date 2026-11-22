@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Regenerate the `vulkan` crate from `third_party/vulkan` (Khronos Vulkan-Headers).
+"""Regenerate the `vulkan` crate from `third_party/vulkan` (Khronos Vulkan-Headers) and
+`third_party/vulkan-docs` (Khronos Vulkan-Docs, the source of the Vulkan Specification).
 
 Pipeline:
 
@@ -8,8 +9,11 @@ Pipeline:
    `crates/vulkan-registry/vulkan-ir.json`. All Rust naming and shaping decisions live
    in `vulkan-codegen`, not here. Only attributes that the generator reads are dumped:
    every extra one is one more way for a Vulkan-Headers update to break this script.
-2. Run `vulkan-codegen`, which writes the generated sources and test tables.
-3. Format the generated Rust with rustfmt.
+2. Dump the descriptions that the specification gives for the registry's names, as the
+   AsciiDoc text of the specification, to `crates/vulkan-registry/vulkan-docs.json`.
+   Turning that text into rustdoc is `vulkan-codegen`'s job as well.
+3. Run `vulkan-codegen`, which writes the generated sources and test tables.
+4. Format the generated Rust with rustfmt.
 
 `--check` regenerates and fails if any generated file differs from what is committed.
 """
@@ -17,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -26,7 +31,9 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = ROOT / "third_party" / "vulkan"
 REGISTRY = HEADERS / "registry"
+DOCS = ROOT / "third_party" / "vulkan-docs"
 IR_PATH = ROOT / "crates" / "vulkan-registry" / "vulkan-ir.json"
+DOCS_PATH = ROOT / "crates" / "vulkan-registry" / "vulkan-docs.json"
 GENERATED_DIRS = [
     ROOT / "crates" / "vulkan" / "src" / "vk" / "generated",
     ROOT / "crates" / "vulkan" / "tests" / "generated",
@@ -54,9 +61,30 @@ def main() -> int:
         )
         return 1
 
+    if not (DOCS / "vkspec.adoc").exists():
+        print(
+            "third_party/vulkan-docs is empty; run `git submodule update --init` first",
+            file=sys.stderr,
+        )
+        return 1
+    # Vulkan-Headers takes both registry files from Vulkan-Docs, so equal files mean that
+    # the descriptions and the registry belong to the same revision of the specification.
+    for registry_file in ("vk.xml", "video.xml"):
+        if (DOCS / "xml" / registry_file).read_bytes() != (REGISTRY / registry_file).read_bytes():
+            print(
+                f"third_party/vulkan-docs/xml/{registry_file} differs from "
+                f"third_party/vulkan/registry/{registry_file}: check out the Vulkan-Docs tag "
+                "that the Vulkan-Headers revision was generated from "
+                "(tools/update-vulkan-headers does)",
+                file=sys.stderr,
+            )
+            return 1
+
     vk = load_vulkan_object()
     ir = build_ir(vk, args.allow_non_sdk_tag)
     IR_PATH.write_text(json.dumps(ir, indent=1, sort_keys=True) + "\n")
+    docs = build_docs(defined_spec_attributes(vk))
+    DOCS_PATH.write_text(json.dumps(docs, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
 
     subprocess.run(
         ["cargo", "run", "--quiet", "-p", "vulkan-codegen", "--", str(ROOT)],
@@ -69,7 +97,11 @@ def main() -> int:
             subprocess.run(["rustfmt", "--edition", "2024", *files], cwd=ROOT, check=True)
 
     if args.check:
-        paths = [str(IR_PATH.relative_to(ROOT)), *(str(d.relative_to(ROOT)) for d in GENERATED_DIRS)]
+        paths = [
+            str(IR_PATH.relative_to(ROOT)),
+            str(DOCS_PATH.relative_to(ROOT)),
+            *(str(d.relative_to(ROOT)) for d in GENERATED_DIRS),
+        ]
         status = git(["status", "--porcelain", "--", *paths])
         if status:
             print("generated files are stale; run ./tools/generate-vulkan and commit:", file=sys.stderr)
@@ -281,6 +313,9 @@ def build_ir(vk, allow_non_sdk_tag: bool):
                 "protect": e.protect,
                 "depends": e.depends,
                 "promoted_to": e.promotedTo,
+                "deprecated_by": e.deprecatedBy,
+                "obsoleted_by": e.obsoletedBy,
+                "provisional": e.provisional,
             }
             for e in sorted(vk.extensions.values(), key=lambda x: x.name)
         ],
@@ -315,6 +350,254 @@ def build_ir(vk, allow_non_sdk_tag: bool):
             }
             for f in sorted(vk.formats.values(), key=lambda x: x.name)
         ],
+    }
+
+
+# --- Descriptions from the specification -------------------------------------------------
+#
+# The specification marks the text that documents one name of the API as an open block:
+#
+#     [open,refpage='VkExtent2D',desc='Structure specifying a two-dimensional extent',type='structs']
+#     --
+#     ...
+#       * pname:width is the width of the extent.
+#       * pname:height is the height of the extent.
+#     --
+#
+# Khronos builds the reference pages from these blocks. For each block this dumps the
+# short description and the list items that start with the name of a member, a parameter
+# or an enumerant.
+
+SPEC_CONDITIONAL = re.compile(r"^(ifdef|ifndef)::([^\[]*)\[(.*)\]\s*$")
+SPEC_END_CONDITIONAL = re.compile(r"^endif::[^\[]*\[\]\s*$")
+SPEC_INCLUDE_TAG = re.compile(r"^include::\{chapters\}/([^\[]+)\[tags?=([^\],;]+)\]\s*$")
+SPEC_TAG_MARKER = re.compile(r"^// (tag|end)::([^\[]+)\[\]\s*$")
+SPEC_REFPAGE = re.compile(r"^\[open,(refpage=.*)\]\s*$")
+SPEC_REFPAGE_ATTRIBUTE = re.compile(r"(\w+)='((?:[^'\\]|\\.)*)'")
+SPEC_LIST_ITEM = re.compile(r"^\s*(\*+)\s+(\S.*)$")
+SPEC_ANCHOR = re.compile(r"\[\[[^\]]*\]\]\s*")
+SPEC_DESCRIBED_NAME = re.compile(r"^(?:pname|ename):(\w+)\b")
+SPEC_ATTRIBUTE_ENTRY = re.compile(r"^:([\w-]+)(!?):\s*(.*)$")
+SPEC_ATTRIBUTE_REFERENCE = re.compile(r"\{([\w-]+)\}")
+SPEC_ANCHOR_LINE = re.compile(r"^\[\[([\w.-]+)\]\]\s*$")
+SPEC_SECTION_TITLE = re.compile(r"^=+ +(\S.*?)\s*$")
+SPEC_BLOCK_TITLE = re.compile(r"^\.([^\s.].*?)\s*$")
+SPEC_IMAGE_TITLE = re.compile(r"^image::.*\btitle=\"([^\"]+)\"")
+SPEC_BARE_REFERENCE = re.compile(r"<<([\w.-]+)>>")
+SPEC_PASSTHROUGH = re.compile(r"^pass:\w*\[(.*)\]$")
+SPEC_BLOCK_DELIMITERS = ("--", "====", "****", "----", "....", "|===", "|====", "++++")
+
+
+def defined_spec_attributes(vk) -> set[str]:
+    """Names that `ifdef::` sees as defined when the specification is built with every
+    version and every extension of the `vulkan` API."""
+    features = ElementTree.parse(REGISTRY / "vk.xml").getroot().findall("feature")
+    versions = {f.get("name") for f in features if "vulkan" in f.get("api", "").split(",")}
+    return versions | set(vk.extensions)
+
+
+def spec_condition_holds(directive: str, target: str, defined: set[str]) -> bool:
+    # Asciidoctor: `a,b` asks for any of the names, `a+b` for all of them.
+    if "," in target:
+        result = any(name in defined for name in target.split(","))
+    elif "+" in target:
+        result = all(name in defined for name in target.split("+"))
+    else:
+        result = target in defined
+    return result if directive == "ifdef" else not result
+
+
+def spec_lines(
+    path: Path,
+    defined: set[str],
+    tag: str | None = None,
+    depth: int = 0,
+    local_attributes: dict[str, str] | None = None,
+):
+    """The lines of a specification source file that a build with `defined` keeps, with
+    tagged includes of other chapters expanded. With `tag`, only that tagged region.
+
+    Attributes that the sources set on the way (`:name: value`) are replaced where they
+    are referenced; the ones from the specification's configuration are left as `{name}`
+    and dumped separately, because their values are formatted text."""
+    if depth > 8:
+        raise RuntimeError(f"{path}: includes nest too deeply")
+    if local_attributes is None:
+        local_attributes = {}
+
+    def replace(reference):
+        return local_attributes.get(reference.group(1), reference.group(0))
+
+    conditions: list[bool] = []
+    in_region = tag is None
+    for line in path.read_text().splitlines():
+        marker = SPEC_TAG_MARKER.match(line)
+        if marker:
+            if tag is not None and marker.group(2) == tag:
+                in_region = marker.group(1) == "tag"
+            continue
+        if not in_region:
+            continue
+        conditional = SPEC_CONDITIONAL.match(line)
+        if conditional:
+            directive, target, inline_text = conditional.groups()
+            holds = spec_condition_holds(directive, target, defined)
+            if inline_text:
+                if holds and all(conditions):
+                    yield SPEC_ATTRIBUTE_REFERENCE.sub(replace, inline_text)
+            else:
+                conditions.append(holds)
+            continue
+        if SPEC_END_CONDITIONAL.match(line):
+            if conditions:
+                conditions.pop()
+            continue
+        if line.startswith("ifeval::"):
+            raise RuntimeError(f"{path}: ifeval is not supported")
+        if not all(conditions):
+            continue
+        include = SPEC_INCLUDE_TAG.match(line)
+        if include:
+            yield from spec_lines(
+                DOCS / "chapters" / include.group(1),
+                defined,
+                include.group(2),
+                depth + 1,
+                local_attributes,
+            )
+            continue
+        entry = SPEC_ATTRIBUTE_ENTRY.match(line)
+        if entry:
+            name, unset, value = entry.groups()
+            if unset:
+                local_attributes.pop(name, None)
+            else:
+                local_attributes[name] = SPEC_ATTRIBUTE_REFERENCE.sub(replace, value)
+            yield line
+            continue
+        yield SPEC_ATTRIBUTE_REFERENCE.sub(replace, line)
+
+
+def spec_described_items(body: list[str]) -> list[dict[str, str]]:
+    """The first-level list items of a reference page block that start with `pname:x` or
+    `ename:x`, in the order of the block. Nested items stay part of their parent's text."""
+    items: list[tuple[str, list[str]]] = []
+    current: list[str] | None = None
+    for line in body:
+        stripped = line.strip()
+        if stripped.startswith("//"):
+            continue
+        item = SPEC_LIST_ITEM.match(line)
+        if item and len(item.group(1)) == 1:
+            current = [item.group(2)]
+            items.append(("", current))
+            continue
+        if current is None:
+            continue
+        ends_the_item = (
+            not stripped
+            or stripped == "+"
+            or stripped in SPEC_BLOCK_DELIMITERS
+            or stripped.startswith(("include::", "image::", ":"))
+            or (stripped.startswith("[") and not stripped.startswith("[["))
+            or (stripped.startswith(".") and not stripped.startswith(".."))
+        )
+        if ends_the_item:
+            current = None
+        else:
+            current.append(stripped)
+
+    described: dict[str, str] = {}
+    for _, lines in items:
+        lines[0] = SPEC_ANCHOR.sub("", lines[0])
+        if not lines[0]:
+            lines.pop(0)
+        if not lines:
+            continue
+        lines[0] = SPEC_ANCHOR.sub("", lines[0])
+        name = SPEC_DESCRIBED_NAME.match(lines[0])
+        if name and name.group(1) not in described:
+            described[name.group(1)] = "\n".join(lines)
+    return [{"name": name, "text": text} for name, text in described.items()]
+
+
+def spec_attributes(defined: set[str]) -> dict[str, str]:
+    """The text replacements (`{times}` and the like) that the specification defines."""
+    attributes = {}
+    for line in spec_lines(DOCS / "config" / "attribs.adoc", defined):
+        entry = SPEC_ATTRIBUTE_ENTRY.match(line)
+        if entry:
+            name, _, value = entry.groups()
+            passthrough = SPEC_PASSTHROUGH.match(value)
+            attributes[name] = passthrough.group(1) if passthrough else value
+    return attributes
+
+
+def spec_anchor_titles(sources: list[Path]) -> dict[str, str]:
+    """The title of the section, block or figure that follows each anchor. Asciidoctor
+    shows it as the text of a cross reference that has no text of its own (`<<anchor>>`)."""
+    titles = {}
+    for source in sources:
+        anchors: list[str] = []
+        for line in source.read_text().splitlines():
+            anchor = SPEC_ANCHOR_LINE.match(line)
+            if anchor:
+                anchors.append(anchor.group(1))
+                continue
+            if not anchors or line.startswith(("ifdef::", "ifndef::", "endif::", "//", "[")):
+                continue
+            for pattern in (SPEC_SECTION_TITLE, SPEC_BLOCK_TITLE, SPEC_IMAGE_TITLE):
+                title = pattern.match(line)
+                if title:
+                    for name in anchors:
+                        titles.setdefault(name, title.group(1))
+                    break
+            if line.strip():
+                anchors = []
+    return titles
+
+
+def build_docs(defined: set[str]):
+    pages = {}
+    sources = sorted([*DOCS.glob("chapters/**/*.adoc"), *DOCS.glob("appendices/**/*.adoc")])
+    for source in sources:
+        lines = list(spec_lines(source, defined))
+        index = 0
+        while index < len(lines):
+            refpage = SPEC_REFPAGE.match(lines[index])
+            if not refpage or index + 1 >= len(lines) or lines[index + 1].strip() != "--":
+                index += 1
+                continue
+            attributes = {
+                key: value.replace("\\'", "'")
+                for key, value in SPEC_REFPAGE_ATTRIBUTE.findall(refpage.group(1))
+            }
+            end = index + 2
+            while end < len(lines) and lines[end].strip() != "--":
+                end += 1
+            name = attributes["refpage"]
+            if name in pages:
+                raise RuntimeError(f"{source}: a second reference page for {name}")
+            pages[name] = {
+                "name": name,
+                "kind": attributes.get("type", ""),
+                "desc": attributes.get("desc", "").strip(),
+                "aliases": attributes.get("alias", "").split(),
+                "items": spec_described_items(lines[index + 2 : end]),
+            }
+            index = end + 1
+    if not pages:
+        raise RuntimeError("third_party/vulkan-docs has no reference page blocks")
+    all_titles = spec_anchor_titles(sources)
+    referenced = set()
+    for page in pages.values():
+        for text in (page["desc"], *(item["text"] for item in page["items"])):
+            referenced.update(SPEC_BARE_REFERENCE.findall(text))
+    return {
+        "commit": git(["-C", str(DOCS), "rev-parse", "--short=12", "HEAD"]),
+        "attributes": dict(sorted(spec_attributes(defined).items())),
+        "titles": {name: all_titles[name] for name in sorted(referenced) if name in all_titles},
+        "pages": [pages[name] for name in sorted(pages)],
     }
 
 

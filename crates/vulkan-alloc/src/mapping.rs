@@ -8,6 +8,12 @@ use crate::allocation::Allocation;
 use crate::allocator::Allocator;
 use crate::error::AllocationError;
 
+/// A mapped allocation, returned by [`Allocator::map`].
+///
+/// The guard holds one mapping reference of the allocation and releases it when dropped,
+/// unmapping the block if no other reference remains. It borrows the allocator mutably,
+/// so nothing can be allocated, freed or mapped until it is dropped. Every byte accessor
+/// covers the [`Allocation::size`] bytes of the allocation.
 #[must_use = "dropping the guard unmaps the allocation"]
 pub struct MappedAllocation<'a> {
     allocator: &'a mut Allocator,
@@ -28,44 +34,100 @@ impl<'a> MappedAllocation<'a> {
         }
     }
 
+    /// A pointer to the first byte of the allocation. It is valid while the guard is
+    /// alive.
     pub fn as_ptr(&self) -> *mut c_void {
         self.ptr.as_ptr().cast()
     }
 
+    /// All bytes of the allocation.
+    ///
+    /// # Safety
+    ///
+    /// While the slice is in use, neither the device nor any other host pointer may
+    /// write these bytes.
     pub unsafe fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.allocation.size() as usize) }
     }
 
+    /// All bytes of the allocation, writable.
+    ///
+    /// # Safety
+    ///
+    /// While the slice is in use, neither the device nor any other host pointer may
+    /// read or write these bytes.
     pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
         unsafe {
             std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.allocation.size() as usize)
         }
     }
 
+    /// The bytes `offset..offset + size` of the allocation.
+    ///
+    /// The safety conditions of [`Allocator::map`] cover the returned slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range does not lie inside the allocation. Use
+    /// [`MappedAllocation::try_byte_range`] when the range comes from untrusted input.
     pub fn byte_range(&self, offset: usize, size: usize) -> &[u8] {
         self.try_byte_range(offset, size)
             .expect("mapped byte range exceeds allocation size")
     }
 
+    /// The bytes `offset..offset + size` of the allocation, writable.
+    ///
+    /// The safety conditions of [`Allocator::map`] cover the returned slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range does not lie inside the allocation. Use
+    /// [`MappedAllocation::try_byte_range_mut`] when the range comes from untrusted
+    /// input.
     pub fn byte_range_mut(&mut self, offset: usize, size: usize) -> &mut [u8] {
         self.try_byte_range_mut(offset, size)
             .expect("mapped byte range exceeds allocation size")
     }
 
+    /// The bytes `offset..offset + size` of the allocation, or `None` if the range does
+    /// not lie inside the allocation.
     pub fn try_byte_range(&self, offset: usize, size: usize) -> Option<&[u8]> {
         let end = offset.checked_add(size)?;
         unsafe { self.as_bytes() }.get(offset..end)
     }
 
+    /// The bytes `offset..offset + size` of the allocation, writable, or `None` if the
+    /// range does not lie inside the allocation.
     pub fn try_byte_range_mut(&mut self, offset: usize, size: usize) -> Option<&mut [u8]> {
         let end = offset.checked_add(size)?;
         unsafe { self.as_bytes_mut() }.get_mut(offset..end)
     }
 
+    /// Flushes the host writes to the allocation, as [`Allocator::flush_allocation`]
+    /// does. Only memory types without `HOST_COHERENT` need it.
+    ///
+    /// # Errors
+    ///
+    /// [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
+    ///
+    /// # Safety
+    ///
+    /// The device the allocator was created with must not have been destroyed.
     pub unsafe fn flush(&mut self) -> Result<(), AllocationError> {
         unsafe { self.allocator.flush_allocation(self.allocation) }
     }
 
+    /// Invalidates the host's view of the allocation, as
+    /// [`Allocator::invalidate_allocation`] does, so that device writes made available
+    /// to the host become visible. Only memory types without `HOST_COHERENT` need it.
+    ///
+    /// # Errors
+    ///
+    /// [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
+    ///
+    /// # Safety
+    ///
+    /// The device the allocator was created with must not have been destroyed.
     pub unsafe fn invalidate(&mut self) -> Result<(), AllocationError> {
         unsafe { self.allocator.invalidate_allocation(self.allocation) }
     }

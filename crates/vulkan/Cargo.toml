@@ -3,12 +3,14 @@ name = "vulkan"
 description = "Pure Rust Vulkan bindings generated from Khronos Vulkan-Headers"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license = "Apache-2.0 AND CC-BY-4.0"
 repository.workspace = true
 publish = false
 
-[lints]
-workspace = true
+[lints.clippy]
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+missing_safety_doc = "warn"
 
 [features]
 default = ["std", "debug"]
@@ -46,6 +48,8 @@ xlib-xrandr = ["xlib"]
 libloading = { version = "0.8", optional = true }
 
 [dev-dependencies]
+regex = "1"
+syn = { version = "2", features = ["full"] }
 trybuild = "1"
 
 [package.metadata.docs.rs]

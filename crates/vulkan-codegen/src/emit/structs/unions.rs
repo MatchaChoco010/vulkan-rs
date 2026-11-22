@@ -1,4 +1,4 @@
-use super::{MethodNames, thread_safety_impls};
+use super::{MARKER_DOC, MethodNames, field_link, member_doc, thread_safety_impls, type_doc};
 use crate::emit::{Borrow, w};
 use crate::model::{CType, Model, is_opaque};
 use crate::naming::{field_name, pointer_setter_name, type_name};
@@ -21,20 +21,21 @@ pub(super) fn definition(model: &Model<'_>, s: &Struct) -> String {
         );
         w!(
             fields,
-            "pub {}: {},",
+            "{}pub {}: {},",
+            member_doc(model, &cfg, s, m).render(),
             field_name(&m.name),
             model.member_ty(m, "'a")
         );
         constructors.push_str(&constructor(model, m, &mut names));
     }
     if borrows {
-        w!(fields, "pub _marker: PhantomData<&'a ()>,");
+        w!(fields, "{MARKER_DOC}pub _marker: PhantomData<&'a ()>,");
     }
 
     let mut out = String::new();
     w!(
         out,
-        r#"{cfg}#[repr(C)]
+        r#"{doc}{cfg}#[repr(C)]
 #[derive(Copy, Clone)]
 pub union {name}{generics} {{
     {fields}}}
@@ -55,6 +56,7 @@ impl core::fmt::Debug for {name}{anonymous} {{
 {cfg}impl{generics} {name}{generics} {{
     {constructors}}}
 "#,
+        doc = type_doc(model, &cfg, s).render(),
         thread_safety = thread_safety_impls(&cfg, &name, borrows),
     );
     out
@@ -79,5 +81,13 @@ fn constructor(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Str
     } else {
         (model.member_ty(m, "'a"), "value".to_string())
     };
-    format!("pub fn {name}(value: {value_ty}) -> Self {{ Self {{ {field}: {value} }} }}\n")
+    let how = if borrows_one_value {
+        " pointing to `value`"
+    } else {
+        " set to `value`"
+    };
+    format!(
+        "/// Creates the union with {}{how}.\npub fn {name}(value: {value_ty}) -> Self {{ Self {{ {field}: {value} }} }}\n",
+        field_link(&m.name)
+    )
 }

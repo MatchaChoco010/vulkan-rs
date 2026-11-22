@@ -6,9 +6,11 @@ Steps:
 1. Fetch the tags of Khronos Vulkan-Headers and pick the newest `vulkan-sdk-*` tag
    (or the one given with `--tag`).
 2. Check it out in the submodule.
-3. Set the workspace version to `<semver>+<tag>`, bumping the minor version because new
+3. Check out the revision of the specification that those headers were generated from in
+   `third_party/vulkan-docs`: the Vulkan-Docs tag `v<header version>`.
+4. Set the workspace version to `<semver>+<tag>`, bumping the minor version because new
    headers can rename or remove provisional items (see README.md "Versioning").
-4. Run `tools/generate-vulkan`.
+5. Run `tools/generate-vulkan`.
 
 Nothing is committed. Review the diff, run the checks, then commit.
 
@@ -26,9 +28,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADERS = ROOT / "third_party" / "vulkan"
+DOCS = ROOT / "third_party" / "vulkan-docs"
 MANIFEST = ROOT / "Cargo.toml"
 SDK_TAG = re.compile(r"^vulkan-sdk-(\d+)\.(\d+)\.(\d+)\.(\d+)$")
 VERSION_LINE = re.compile(r'^version = "(\d+)\.(\d+)\.(\d+)\+(vulkan-sdk-[0-9.]+)"$', re.M)
+HEADER_VERSION = re.compile(r"<name>VK_HEADER_VERSION</name> (\d+)</type>")
+HEADER_VERSION_COMPLETE = re.compile(
+    r"<name>VK_HEADER_VERSION_COMPLETE</name> <type>VK_MAKE_API_VERSION</type>"
+    r"\(0, (\d+), (\d+), VK_HEADER_VERSION\)"
+)
 
 
 def git(*args: str, cwd: Path = ROOT) -> str:
@@ -43,6 +51,25 @@ def sdk_tags(*filters: str) -> list[str]:
     """SDK tags of the submodule, oldest first. `filters` are extra `git tag` arguments."""
     tags = git("tag", "--list", "vulkan-sdk-*", *filters, cwd=HEADERS).splitlines()
     return sorted((tag for tag in tags if SDK_TAG.match(tag)), key=tag_key)
+
+
+def docs_tag() -> str:
+    """The Vulkan-Docs tag of the specification that the checked out headers describe."""
+    registry = (HEADERS / "registry" / "vk.xml").read_text()
+    patch = HEADER_VERSION.search(registry)
+    complete = HEADER_VERSION_COMPLETE.search(registry)
+    if patch is None or complete is None:
+        raise SystemExit("vk.xml does not define VK_HEADER_VERSION_COMPLETE as expected")
+    major, minor = complete.groups()
+    return f"v{major}.{minor}.{patch.group(1)}"
+
+
+def checkout_docs(fetch: bool) -> None:
+    tag = docs_tag()
+    if fetch:
+        git("fetch", "--quiet", "--depth=1", "origin", "tag", tag, cwd=DOCS)
+    git("checkout", "--quiet", tag, cwd=DOCS)
+    print(f"third_party/vulkan-docs is at {tag}")
 
 
 def current_version() -> tuple[int, int, int, str]:
@@ -80,9 +107,13 @@ def main() -> int:
     parser.add_argument("--github-output", action="store_true", help="report the result to $GITHUB_OUTPUT")
     args = parser.parse_args()
 
-    if not (HEADERS / "registry" / "vk.xml").exists():
-        print("third_party/vulkan is empty; run `git submodule update --init` first", file=sys.stderr)
-        return 1
+    for submodule, marker in ((HEADERS, "registry/vk.xml"), (DOCS, "vkspec.adoc")):
+        if not (submodule / marker).exists():
+            print(
+                f"{submodule.relative_to(ROOT)} is empty; run `git submodule update --init` first",
+                file=sys.stderr,
+            )
+            return 1
     if not args.no_fetch:
         git("fetch", "--tags", "--quiet", "origin", cwd=HEADERS)
 
@@ -109,6 +140,7 @@ def main() -> int:
             write_github_output({"updated": "false", "old_tag": old_tag, "new_tag": new_tag})
         return 0
     print(f"updating {old_tag} -> {new_tag}")
+    checkout_docs(fetch=not args.no_fetch)
     major, minor, patch, _ = old
     new_semver = f"{major}.{minor}.{patch}" if args.no_bump else f"{major}.{minor + 1}.0"
     set_version(old, new_semver, new_tag)

@@ -1,3 +1,4 @@
+mod docs;
 mod emit;
 mod model;
 mod naming;
@@ -6,7 +7,7 @@ mod naming;
 mod test_support;
 
 use model::Model;
-use vulkan_registry::Registry;
+use vulkan_registry::{Docs, Registry};
 
 pub const GENERATED_SRC: &str = "crates/vulkan/src/vk/generated";
 pub const GENERATED_TESTS: &str = "crates/vulkan/tests/generated";
@@ -101,8 +102,8 @@ fn bindings_root() -> String {
         .collect()
 }
 
-pub fn generate(ir: &Registry) -> Vec<GeneratedFile> {
-    let model = Model::new(ir);
+pub fn generate(ir: &Registry, docs: &Docs) -> Vec<GeneratedFile> {
+    let model = Model::with_docs(ir, docs);
     let file = |directory: &str, name: &str, contents: String| GeneratedFile {
         path: format!("{directory}/{name}"),
         contents,
@@ -141,7 +142,7 @@ mod tests {
 
     #[test]
     fn embedded_registry_generates() {
-        let files = generate(Registry::get());
+        let files = generate(Registry::get(), Docs::get());
         assert_eq!(files.len(), 14);
         for file in &files {
             assert!(!file.contents.is_empty(), "{} is empty", file.path);
@@ -150,7 +151,10 @@ mod tests {
 
     #[test]
     fn generation_is_deterministic() {
-        assert_eq!(generate(Registry::get()), generate(Registry::get()));
+        assert_eq!(
+            generate(Registry::get(), Docs::get()),
+            generate(Registry::get(), Docs::get())
+        );
     }
 
     #[test]
