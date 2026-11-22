@@ -6,7 +6,9 @@ use crate::block::MemoryTypeAllocator;
 /// Totals of the memory an allocator holds, returned by
 /// [`Allocator::stats`](crate::Allocator::stats).
 ///
-/// `allocated_bytes + free_bytes` equals `total_block_bytes`.
+/// `allocated_bytes + free_bytes` equals `total_block_bytes`, unless a total is larger
+/// than [`u64::MAX`]: each total saturates at [`u64::MAX`], and the equality may then
+/// not hold.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AllocatorStats {
     /// The total size of all `VkDeviceMemory` blocks.
@@ -151,11 +153,17 @@ pub(crate) fn stats_from_memory_types(memory_types: &[MemoryTypeAllocator]) -> A
         if type_stats.block_count == 0 {
             continue;
         }
-        stats.total_block_bytes += type_stats.total_block_bytes;
-        stats.allocated_bytes += type_stats.allocated_bytes;
-        stats.free_bytes += type_stats.free_bytes;
-        stats.allocation_count += type_stats.allocation_count;
-        stats.block_count += type_stats.block_count;
+        stats.total_block_bytes = stats
+            .total_block_bytes
+            .saturating_add(type_stats.total_block_bytes);
+        stats.allocated_bytes = stats
+            .allocated_bytes
+            .saturating_add(type_stats.allocated_bytes);
+        stats.free_bytes = stats.free_bytes.saturating_add(type_stats.free_bytes);
+        stats.allocation_count = stats
+            .allocation_count
+            .saturating_add(type_stats.allocation_count);
+        stats.block_count = stats.block_count.saturating_add(type_stats.block_count);
         stats.memory_types.push(type_stats);
     }
     stats
@@ -198,6 +206,146 @@ mod tests {
         let mut memory_type = MemoryTypeAllocator::new(memory_type_index);
         memory_type.insert_block(block, suballocation);
         (memory_type, suballocation)
+    }
+
+    fn saturating_total(values: impl IntoIterator<Item = u64>) -> u64 {
+        let total: u128 = values.into_iter().map(u128::from).sum();
+        u64::try_from(total).unwrap_or(u64::MAX)
+    }
+
+    struct ExpectedTotals {
+        total_block_bytes: u64,
+        allocated_bytes: u64,
+        free_bytes: u64,
+        allocation_count: usize,
+        block_count: usize,
+    }
+
+    fn memory_type_with_blocks(
+        memory_type_index: u32,
+        block_sizes: &[u64],
+        first_handle: u64,
+    ) -> (MemoryTypeAllocator, ExpectedTotals) {
+        let mut memory_type = MemoryTypeAllocator::new(memory_type_index);
+        let mut allocated = Vec::new();
+        for (index, &size) in block_sizes.iter().enumerate() {
+            let mut block = MemoryBlock::new(
+                vk::DeviceMemory(first_handle + index as u64),
+                size,
+                AllocationResourceClass::Linear,
+                false,
+                vk::MemoryAllocateFlags::empty(),
+            );
+            let suballocation = block.suballocate((size / 2).max(1), 1).unwrap();
+            allocated.push(suballocation.size);
+            memory_type.insert_block(block, suballocation);
+        }
+        let expected = ExpectedTotals {
+            total_block_bytes: saturating_total(block_sizes.iter().copied()),
+            allocated_bytes: saturating_total(allocated.iter().copied()),
+            free_bytes: saturating_total(
+                block_sizes
+                    .iter()
+                    .zip(&allocated)
+                    .map(|(&size, &allocated)| size - allocated),
+            ),
+            allocation_count: block_sizes.len(),
+            block_count: block_sizes.len(),
+        };
+        (memory_type, expected)
+    }
+
+    #[test]
+    fn totals_saturate_at_u64_max_and_are_exact_below_it() {
+        let block_size_sets: [&[&[u64]]; 8] = [
+            &[&[1 << 63, 1 << 63]],
+            &[&[u64::MAX, 1]],
+            &[&[u64::MAX, u64::MAX, u64::MAX]],
+            &[&[(1 << 63) - 1, 1 << 63]],
+            &[&[1 << 62, 1 << 62], &[1 << 62]],
+            &[&[1 << 63], &[1 << 63]],
+            &[&[u64::MAX], &[4096], &[u64::MAX, 1 << 40]],
+            &[&[1024, 2048], &[4096]],
+        ];
+        for memory_type_blocks in block_size_sets {
+            let properties = memory_properties(&vec![
+                vk::MemoryPropertyFlags::DEVICE_LOCAL;
+                memory_type_blocks.len()
+            ]);
+            let mut memory_types = Vec::new();
+            let mut expected = Vec::new();
+            for (index, block_sizes) in memory_type_blocks.iter().enumerate() {
+                let (memory_type, totals) =
+                    memory_type_with_blocks(index as u32, block_sizes, 100 * (index as u64 + 1));
+                memory_types.push(memory_type);
+                expected.push(totals);
+            }
+
+            let stats = stats_from_memory_types(&memory_types);
+            let label = format!("{memory_type_blocks:?}");
+            assert_eq!(
+                stats.total_block_bytes,
+                saturating_total(expected.iter().map(|totals| totals.total_block_bytes)),
+                "{label}: total_block_bytes must be the sum, saturated at u64::MAX"
+            );
+            assert_eq!(
+                stats.allocated_bytes,
+                saturating_total(expected.iter().map(|totals| totals.allocated_bytes)),
+                "{label}: allocated_bytes must be the sum, saturated at u64::MAX"
+            );
+            assert_eq!(
+                stats.free_bytes,
+                saturating_total(expected.iter().map(|totals| totals.free_bytes)),
+                "{label}: free_bytes must be the sum, saturated at u64::MAX"
+            );
+            assert_eq!(
+                stats.allocation_count,
+                expected
+                    .iter()
+                    .map(|totals| totals.allocation_count)
+                    .sum::<usize>(),
+                "{label}: allocation_count must be exact"
+            );
+            assert_eq!(
+                stats.block_count,
+                expected
+                    .iter()
+                    .map(|totals| totals.block_count)
+                    .sum::<usize>(),
+                "{label}: block_count must be exact"
+            );
+            assert_eq!(stats.memory_types.len(), expected.len(), "{label}");
+            for (type_stats, totals) in stats.memory_types.iter().zip(&expected) {
+                assert_eq!(
+                    (
+                        type_stats.total_block_bytes,
+                        type_stats.allocated_bytes,
+                        type_stats.free_bytes,
+                        type_stats.allocation_count,
+                        type_stats.block_count,
+                    ),
+                    (
+                        totals.total_block_bytes,
+                        totals.allocated_bytes,
+                        totals.free_bytes,
+                        totals.allocation_count,
+                        totals.block_count,
+                    ),
+                    "{label}: the totals of memory type {} must be the sums, saturated at u64::MAX",
+                    type_stats.memory_type_index
+                );
+            }
+
+            let snapshot = snapshot_from_memory_types(&memory_types, &properties);
+            assert_eq!(
+                snapshot.stats, stats,
+                "{label}: the snapshot must carry the same totals"
+            );
+            for (type_snapshot, type_stats) in snapshot.memory_types.iter().zip(&stats.memory_types)
+            {
+                assert_eq!(&type_snapshot.stats, type_stats, "{label}");
+            }
+        }
     }
 
     #[test]

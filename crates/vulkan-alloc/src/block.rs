@@ -194,11 +194,15 @@ impl MemoryTypeAllocator {
         };
         for block in self.blocks.iter().flatten() {
             let block_stats = block.suballocator.stats();
-            stats.total_block_bytes += block.size;
-            stats.allocated_bytes += block_stats.allocated_bytes;
-            stats.free_bytes += block_stats.free_bytes;
-            stats.allocation_count += block_stats.allocation_count;
-            stats.block_count += 1;
+            stats.total_block_bytes = stats.total_block_bytes.saturating_add(block.size);
+            stats.allocated_bytes = stats
+                .allocated_bytes
+                .saturating_add(block_stats.allocated_bytes);
+            stats.free_bytes = stats.free_bytes.saturating_add(block_stats.free_bytes);
+            stats.allocation_count = stats
+                .allocation_count
+                .saturating_add(block_stats.allocation_count);
+            stats.block_count = stats.block_count.saturating_add(1);
         }
         stats
     }
