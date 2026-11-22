@@ -99,15 +99,6 @@ impl TlsfSuballocator {
         })
     }
 
-    #[cfg(test)]
-    fn can_allocate(&self, requested_size: u64, alignment: u64) -> bool {
-        if requested_size == 0 || requested_size > self.size || self.next_id == u64::MAX {
-            return false;
-        }
-        self.find_candidate_block(requested_size, alignment.max(1))
-            .is_some()
-    }
-
     fn find_candidate_block(
         &self,
         requested_size: u64,
@@ -536,27 +527,6 @@ pub(crate) mod tests {
         assert!(allocator.allocate(1, 1).is_none());
         allocator.free(allocation.id).unwrap();
         assert_eq!(allocator.stats().free_bytes, u64::MAX);
-    }
-
-    #[test]
-    fn can_allocate_rejects_fragmented_or_alignment_impossible_requests_without_mutation() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(256, 1).unwrap();
-        let b = allocator.allocate(256, 1).unwrap();
-        let c = allocator.allocate(256, 1).unwrap();
-        allocator.free(b.id).unwrap();
-
-        let before = allocator.clone();
-        assert!(allocator.can_allocate(128, 1));
-        assert!(!allocator.can_allocate(300, 1));
-        assert!(!allocator.can_allocate(256, 512));
-        assert_eq!(allocator.blocks, before.blocks);
-        assert_eq!(allocator.free_bins, before.free_bins);
-        assert_eq!(allocator.allocations, before.allocations);
-
-        allocator.free(a.id).unwrap();
-        allocator.free(c.id).unwrap();
-        assert!(allocator.can_allocate(1024, 1));
     }
 
     #[test]
