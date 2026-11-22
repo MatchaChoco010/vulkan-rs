@@ -1,4 +1,4 @@
-use super::{argument_name, struct_member_len, value_count_param};
+use super::{argument_name, inner_len, struct_member_len, value_count_param};
 use crate::emit::{Borrow, w};
 use crate::model::{CType, Model, is_opaque, null_ptr};
 use crate::naming::field_name;
@@ -36,6 +36,7 @@ impl Input {
 pub(super) struct Inputs {
     by_param: Vec<Option<Input>>,
     pub(super) checks: String,
+    pub(super) has_slices_of_slices: bool,
 }
 
 impl Inputs {
@@ -45,11 +46,18 @@ impl Inputs {
         params: &[Field],
         outputs: &[usize],
     ) -> Self {
+        let inner_lens = params
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !outputs.contains(index))
+            .filter_map(|(index, p)| Some((index, inner_len(model, c, params, p)?)))
+            .collect::<BTreeMap<_, _>>();
         let mut planner = Planner {
             model,
             c,
             params,
-            slices_of_count: slices_of_count(params, outputs),
+            slices_of_count: slices_of_count(params, outputs, &inner_lens),
+            inner_lens,
             checks: String::new(),
         };
         let by_param = (0..params.len())
@@ -58,6 +66,7 @@ impl Inputs {
         Self {
             by_param,
             checks: planner.checks,
+            has_slices_of_slices: !planner.inner_lens.is_empty(),
         }
     }
 
@@ -94,11 +103,16 @@ impl Inputs {
     }
 }
 
-fn slices_of_count(params: &[Field], outputs: &[usize]) -> BTreeMap<usize, Vec<usize>> {
+fn slices_of_count(
+    params: &[Field],
+    outputs: &[usize],
+    inner_lens: &BTreeMap<usize, (usize, String)>,
+) -> BTreeMap<usize, Vec<usize>> {
     let mut slices_of_count = BTreeMap::<usize, Vec<usize>>::new();
     for (index, p) in params.iter().enumerate() {
         let ty = CType::of(p);
-        if outputs.contains(&index) || ty.depth() != 1 || ty.is_array() {
+        let is_slice = ty.depth() == 1 || inner_lens.contains_key(&index);
+        if outputs.contains(&index) || !is_slice || ty.is_array() {
             continue;
         }
         if let Some(count) = value_count_param(params, p)
@@ -115,6 +129,7 @@ struct Planner<'a> {
     c: &'a Command,
     params: &'a [Field],
     slices_of_count: BTreeMap<usize, Vec<usize>>,
+    inner_lens: BTreeMap<usize, (usize, String)>,
     checks: String,
 }
 
@@ -125,6 +140,9 @@ impl Planner<'_> {
         let name = argument_name(p);
         if let Some(slices) = self.slices_of_count.get(&index).cloned() {
             return self.slice_len(p, &slices);
+        }
+        if let Some((owner, member)) = self.inner_lens.get(&index).cloned() {
+            return self.slice_of_slices(p, &ty, owner, &member);
         }
         if ty.is_array() {
             assert_eq!(ty.depth(), 0, "{}: pointer array parameter", self.c.name);
@@ -182,6 +200,26 @@ impl Planner<'_> {
             pass: format!("{local}{cast}"),
             local,
         }
+    }
+
+    fn slice_of_slices(&mut self, p: &Field, ty: &CType, owner: usize, member: &str) -> Input {
+        let name = argument_name(p);
+        let owner = argument_name(&self.params[owner]);
+        let member = field_name(member);
+        let element = self.model.base_ty(&ty.base, "'_");
+        w!(
+            self.checks,
+            "for (element, entry) in {owner}.iter().zip({name}.iter()) {{
+                assert_eq!(entry.len(), element.{member} as usize, \"{}: each `{name}` entry must have `{member}` elements\");
+            }}
+            let {name}_pointers = {name}.iter().map(|entry| entry.as_ptr()).collect::<Vec<_>>();",
+            self.c.name
+        );
+        Input::argument(
+            &name,
+            format!("&[&[{element}]]"),
+            format!("{name}_pointers.as_ptr()"),
+        )
     }
 
     fn assert_slice_len(&mut self, slice: &Field, expected: &str, message: &str) {

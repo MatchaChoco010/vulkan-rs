@@ -56,8 +56,8 @@ pub(super) fn table(model: &Model<'_>, dispatch: Dispatch) -> String {
             model.reference(&c.name),
             c.name
         );
-        if field == get_proc_addr && dispatch == Dispatch::Entry {
-            w!(loads, "{field},");
+        if dispatch == Dispatch::Entry && c.return_ty == "PFN_vkVoidFunction" {
+            w!(loads, "{field}: Some(get),");
         } else {
             w!(
                 loads,

@@ -93,6 +93,11 @@ pub enum HeapLayoutError {
         /// The descriptor alignment, in bytes.
         alignment: u64,
     },
+    /// The size of a descriptor type is 0, so its descriptors cannot be indexed in units
+    /// of their size. A device reports a power of two for every descriptor size; 0
+    /// usually means the properties were not filled in by
+    /// `vkGetPhysicalDeviceProperties2`.
+    ZeroDescriptorSize,
 }
 
 impl fmt::Display for HeapLayoutError {
@@ -111,6 +116,7 @@ impl fmt::Display for HeapLayoutError {
                 f,
                 "descriptor size {size} is not a multiple of its alignment {alignment}"
             ),
+            Self::ZeroDescriptorSize => f.write_str("descriptor size is 0"),
         }
     }
 }
@@ -248,7 +254,7 @@ impl DescriptorHeapLayout {
         &self,
         address: vk::DeviceAddress,
     ) -> Result<vk::BindHeapInfoEXT<'static>, HeapLayoutError> {
-        if !address.is_multiple_of(self.alignment) {
+        if !address.is_multiple_of(self.alignment.max(1)) {
             return Err(HeapLayoutError::Misaligned {
                 address,
                 alignment: self.alignment,
@@ -282,7 +288,9 @@ impl Plan {
         descriptor_size: u64,
         alignment: u64,
     ) -> Result<DescriptorSlots, HeapLayoutError> {
-        let stride = stride.max(1);
+        if stride == 0 {
+            return Err(HeapLayoutError::ZeroDescriptorSize);
+        }
         let alignment = alignment.max(1);
         if !stride.is_multiple_of(alignment) {
             return Err(HeapLayoutError::UnalignedDescriptorSize {
@@ -298,9 +306,11 @@ impl Plan {
             stride,
             descriptor_size,
         };
-        first_index
-            .checked_add(count)
-            .ok_or(HeapLayoutError::Overflow)?;
+        if let Some(last_slot) = count.checked_sub(1) {
+            first_index
+                .checked_add(last_slot)
+                .ok_or(HeapLayoutError::Overflow)?;
+        }
         self.cursor = (u64::from(first_index) + u64::from(count))
             .checked_mul(stride)
             .ok_or(HeapLayoutError::Overflow)?;
@@ -384,6 +394,7 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `bufferDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `bufferDescriptorSize` is not a
     ///   multiple of `bufferDescriptorAlignment`.
     /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
@@ -402,6 +413,7 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `imageDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `imageDescriptorSize` is not a
     ///   multiple of `imageDescriptorAlignment`.
     /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
@@ -428,9 +440,12 @@ impl ResourceHeapPlan {
     /// - [`HeapLayoutError::Overflow`] if the least common multiple of the two
     ///   descriptor alignments, the stride, an index of the run, or its end does not
     ///   fit.
-    /// - [`HeapLayoutError::UnalignedDescriptorSize`] if both descriptor sizes are 0 and
-    ///   an alignment is larger than 1.
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `bufferDescriptorSize` or
+    ///   `imageDescriptorSize` is 0.
     pub fn uniform(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
+        if self.buffer_size == 0 || self.image_size == 0 {
+            return Err(HeapLayoutError::ZeroDescriptorSize);
+        }
         let alignment =
             lcm(self.buffer_alignment, self.image_alignment).ok_or(HeapLayoutError::Overflow)?;
         let size = self.buffer_size.max(self.image_size);
@@ -487,6 +502,7 @@ impl SamplerHeapPlan {
     ///
     /// # Errors
     ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `samplerDescriptorSize` is 0.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `samplerDescriptorSize` is not
     ///   a multiple of `samplerDescriptorAlignment`.
     /// - [`HeapLayoutError::Overflow`] if an index of the run does not fit in `u32` or
@@ -611,6 +627,113 @@ mod tests {
     }
 
     #[test]
+    fn rejected_descriptor_sizes_are_reported_as_the_device_reports_them() {
+        let values = [
+            0,
+            1,
+            2,
+            3,
+            8,
+            16,
+            24,
+            32,
+            40,
+            48,
+            64,
+            72,
+            96,
+            128,
+            1 << 32,
+            1 << 63,
+            u64::MAX - 1,
+            u64::MAX,
+        ];
+        let mut unaligned = 0;
+        let mut zero = 0;
+        for size in values {
+            for alignment in values {
+                for kind in 0..3 {
+                    let context = format!("kind {kind}, size {size}, alignment {alignment}");
+                    let pair = |of: usize, valid: u64| {
+                        if of == kind {
+                            (size, alignment)
+                        } else {
+                            (valid, valid)
+                        }
+                    };
+                    let (buffer_size, buffer_alignment) = pair(0, 16);
+                    let (image_size, image_alignment) = pair(1, 32);
+                    let (sampler_size, sampler_alignment) = pair(2, 8);
+                    let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+                        .max_resource_heap_size(u64::MAX)
+                        .max_sampler_heap_size(u64::MAX)
+                        .buffer_descriptor_size(buffer_size)
+                        .buffer_descriptor_alignment(buffer_alignment)
+                        .image_descriptor_size(image_size)
+                        .image_descriptor_alignment(image_alignment)
+                        .sampler_descriptor_size(sampler_size)
+                        .sampler_descriptor_alignment(sampler_alignment);
+                    let expected = if size == 0 {
+                        zero += 1;
+                        Err(HeapLayoutError::ZeroDescriptorSize)
+                    } else if size.is_multiple_of(alignment.max(1)) {
+                        Ok(size)
+                    } else {
+                        unaligned += 1;
+                        Err(HeapLayoutError::UnalignedDescriptorSize { size, alignment })
+                    };
+
+                    let mut resources = ResourceHeapPlan::new(&properties);
+                    let mut samplers = SamplerHeapPlan::new(&properties);
+                    let run = match kind {
+                        0 => resources.buffers(1),
+                        1 => resources.images(1),
+                        _ => samplers.samplers(1),
+                    };
+                    assert_eq!(run.map(|slots| slots.stride), expected, "{context}");
+                    if let Err(HeapLayoutError::UnalignedDescriptorSize { size, alignment }) = run {
+                        assert!(
+                            size != 0 && !size.is_multiple_of(alignment.max(1)),
+                            "{context}"
+                        );
+                    }
+
+                    if kind != 2 {
+                        let uniform = ResourceHeapPlan::new(&properties).uniform(1);
+                        assert!(
+                            !matches!(
+                                uniform,
+                                Err(HeapLayoutError::UnalignedDescriptorSize { .. })
+                            ),
+                            "{context}: {uniform:?}"
+                        );
+                        assert_eq!(
+                            uniform == Err(HeapLayoutError::ZeroDescriptorSize),
+                            size == 0,
+                            "{context}: {uniform:?}"
+                        );
+                        if let Ok(slots) = uniform {
+                            assert!(slots.stride >= slots.descriptor_size, "{context}");
+                            assert_eq!(slots.descriptor_size, buffer_size.max(image_size));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(unaligned > 100 && zero > 10);
+
+        let unqueried = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default();
+        let mut plan = ResourceHeapPlan::new(&unqueried);
+        assert_eq!(plan.buffers(1), Err(HeapLayoutError::ZeroDescriptorSize));
+        assert_eq!(plan.images(0), Err(HeapLayoutError::ZeroDescriptorSize));
+        assert_eq!(plan.uniform(1), Err(HeapLayoutError::ZeroDescriptorSize));
+        assert_eq!(
+            SamplerHeapPlan::new(&unqueried).samplers(1),
+            Err(HeapLayoutError::ZeroDescriptorSize)
+        );
+    }
+
+    #[test]
     fn bytes_are_exactly_one_descriptor_and_stay_inside_the_heap() {
         let properties = radv();
         let mut plan = ResourceHeapPlan::new(&properties);
@@ -659,6 +782,11 @@ mod tests {
 
         let mut plan = ResourceHeapPlan::new(&properties);
         plan.images(u32::MAX).unwrap();
+        assert_eq!(
+            plan.images(1).map(|slots| slots.index(0)),
+            Ok(Some(u32::MAX))
+        );
+        assert_eq!(plan.images(0), Err(HeapLayoutError::Overflow));
         assert_eq!(plan.images(1), Err(HeapLayoutError::Overflow));
 
         let odd = radv().image_descriptor_size(40);
@@ -669,6 +797,62 @@ mod tests {
                 alignment: 32
             })
         );
+    }
+
+    #[test]
+    fn a_run_fits_exactly_when_every_index_of_it_fits_in_u32() {
+        let near_the_limit = [
+            0,
+            1,
+            2,
+            1 << 31,
+            (1 << 31) + 1,
+            u32::MAX - 2,
+            u32::MAX - 1,
+            u32::MAX,
+        ];
+        let properties = awkward();
+        let stride = properties.image_descriptor_size;
+        let mut fitting = 0;
+        let mut overflowing = 0;
+        for first in near_the_limit {
+            for count in near_the_limit {
+                let context = format!("first index {first}, count {count}");
+                let mut plan = ResourceHeapPlan::new(&properties);
+                assert_eq!(
+                    plan.images(first).map(|slots| slots.end()),
+                    Ok(u64::from(first) * stride),
+                    "{context}"
+                );
+                let end = u64::from(first) + u64::from(count);
+                let every_index_fits = count == 0 || end - 1 <= u64::from(u32::MAX);
+                match plan.images(count) {
+                    Ok(slots) => {
+                        fitting += 1;
+                        assert!(every_index_fits, "{context}");
+                        assert_eq!(slots.first_index, first, "{context}");
+                        assert_eq!(slots.count, count, "{context}");
+                        assert_eq!(slots.end(), end * stride, "{context}");
+                        if let Some(last) = count.checked_sub(1) {
+                            assert_eq!(slots.index(last), Some(first + last), "{context}");
+                            assert_eq!(slots.offset(last), Some((end - 1) * stride), "{context}");
+                        }
+                        assert_eq!(slots.index(count), None, "{context}");
+                    }
+                    Err(error) => {
+                        overflowing += 1;
+                        assert!(!every_index_fits, "{context}");
+                        assert_eq!(error, HeapLayoutError::Overflow, "{context}");
+                        assert_eq!(
+                            plan.images(0).map(|slots| slots.first_index),
+                            Ok(first),
+                            "{context}: a rejected run leaves the plan unchanged"
+                        );
+                    }
+                }
+            }
+        }
+        assert!(fitting > 20 && overflowing > 10);
     }
 
     #[test]
@@ -797,5 +981,61 @@ mod tests {
                 alignment: 4096
             })
         );
+    }
+
+    #[test]
+    fn bind_info_accepts_exactly_the_multiples_of_the_alignment_with_0_as_1() {
+        let alignments = [0, 1, 2, 3, 16, 24, 4096, 65536, 1 << 63, u64::MAX];
+        let addresses = [
+            0,
+            1,
+            2,
+            3,
+            16,
+            24,
+            48,
+            0x1_0000,
+            0x1_0040,
+            0xdead_beef,
+            1 << 63,
+            u64::MAX - 1,
+            u64::MAX,
+        ];
+        let mut accepted = 0;
+        let mut rejected = 0;
+        for alignment in alignments {
+            let layout = DescriptorHeapLayout {
+                size: 0x2_0000,
+                alignment,
+                reserved_offset: 0x1_f000,
+                reserved_size: 0x1000,
+            };
+            for address in addresses {
+                let context = format!("address {address:#x}, alignment {alignment}");
+                match layout.bind_info(address) {
+                    Ok(bind) => {
+                        accepted += 1;
+                        assert!(address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert_eq!(bind.heap_range.address, address, "{context}");
+                        assert_eq!(bind.heap_range.size, layout.size, "{context}");
+                        assert_eq!(
+                            bind.reserved_range_offset, layout.reserved_offset,
+                            "{context}"
+                        );
+                        assert_eq!(bind.reserved_range_size, layout.reserved_size, "{context}");
+                    }
+                    Err(error) => {
+                        rejected += 1;
+                        assert!(!address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert_eq!(
+                            error,
+                            HeapLayoutError::Misaligned { address, alignment },
+                            "{context}"
+                        );
+                    }
+                }
+            }
+        }
+        assert!(accepted > 20 && rejected > 20);
     }
 }

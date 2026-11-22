@@ -120,6 +120,14 @@ impl<'a> Model<'a> {
             .unwrap_or_else(|| panic!("the registry has no enum {name}"))
     }
 
+    pub(crate) fn result_code<'b>(&'b self, code: &'b str) -> &'b str {
+        self.get_enum("VkResult")
+            .fields
+            .iter()
+            .find(|f| f.name == code || f.aliases.iter().any(|alias| alias == code))
+            .map_or(code, |f| f.name.as_str())
+    }
+
     pub(crate) fn is_handle(&self, name: &str) -> bool {
         self.handles.contains(self.canonical(name))
     }
