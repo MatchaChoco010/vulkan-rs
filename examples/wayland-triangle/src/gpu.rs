@@ -28,13 +28,11 @@ pub unsafe fn create_gpu(window: WaylandWindow) -> Result<(Gpu, vk::SurfaceKHR)>
         let selected = pick_physical_device(&instance, |physical_device, properties| {
             let extensions =
                 instance.enumerate_device_extension_properties(physical_device, None)?;
-            let present_queue_family =
-                find_present_queue_family(&instance, physical_device, surface)?;
-            Ok(queue_family_for(
-                properties.api_version,
-                &extensions,
-                present_queue_family,
-            ))
+            // The surface is asked about a device that can run the example only.
+            if !can_run(properties.api_version, &extensions) {
+                return Ok(None);
+            }
+            find_present_queue_family(&instance, physical_device, surface)
         })?;
         let Some((physical_device, queue_family)) = selected else {
             instance.destroy_surface_khr(surface, None);
@@ -50,17 +48,10 @@ pub unsafe fn create_gpu(window: WaylandWindow) -> Result<(Gpu, vk::SurfaceKHR)>
     }
 }
 
-/// The queue family to draw and present with, on a physical device that reports
-/// `api_version` and the device extensions `extensions` and whose first queue family that
-/// draws and presents to the surface is `present_queue_family`. `None` when the device
-/// cannot run the example.
-fn queue_family_for(
-    api_version: u32,
-    extensions: &[vk::ExtensionProperties],
-    present_queue_family: Option<u32>,
-) -> Option<u32> {
-    present_queue_family
-        .filter(|_| meets_requirements(api_version, extensions, API_VERSION, &DEVICE_EXTENSIONS))
+/// Whether a physical device that reports `api_version` and the device extensions
+/// `extensions` can run the example, given a queue family that presents to the surface.
+fn can_run(api_version: u32, extensions: &[vk::ExtensionProperties]) -> bool {
+    meets_requirements(api_version, extensions, API_VERSION, &DEVICE_EXTENSIONS)
 }
 
 unsafe fn create_device(
@@ -93,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn a_device_is_chosen_exactly_when_it_has_vulkan_1_1_the_swapchain_and_a_present_queue() {
+    fn a_device_can_run_the_example_exactly_when_it_has_vulkan_1_1_and_the_swapchain() {
         let versions = [
             vk::API_VERSION_1_0,
             vk::make_api_version(0, 1, 0, 300),
@@ -111,21 +102,17 @@ mod tests {
         ];
         for api_version in versions {
             for extensions in &extension_lists {
-                for present_queue_family in [None, Some(0), Some(2)] {
-                    let has_swapchain = extensions.iter().any(|extension| {
-                        extension.extension_name_as_c_str() == Ok(vk::KHR_SWAPCHAIN_NAME)
-                    });
-                    let expected = present_queue_family
-                        .filter(|_| api_version >= vk::API_VERSION_1_1 && has_swapchain);
-                    assert_eq!(
-                        queue_family_for(api_version, extensions, present_queue_family),
-                        expected,
-                        "version {}.{}.{}, swapchain: {has_swapchain}, present: {present_queue_family:?}",
-                        vk::api_version_major(api_version),
-                        vk::api_version_minor(api_version),
-                        vk::api_version_patch(api_version),
-                    );
-                }
+                let has_swapchain = extensions.iter().any(|extension| {
+                    extension.extension_name_as_c_str() == Ok(vk::KHR_SWAPCHAIN_NAME)
+                });
+                assert_eq!(
+                    can_run(api_version, extensions),
+                    api_version >= vk::API_VERSION_1_1 && has_swapchain,
+                    "version {}.{}.{}, swapchain: {has_swapchain}",
+                    vk::api_version_major(api_version),
+                    vk::api_version_minor(api_version),
+                    vk::api_version_patch(api_version),
+                );
             }
         }
     }
