@@ -42,6 +42,12 @@ fn attribute_entries(list: &str) -> Vec<String> {
 }
 
 fn column_count(cols: &str) -> Option<usize> {
+    let cols = cols.replace(' ', "");
+    if let Ok(count) = cols.parse::<usize>()
+        && count.to_string() == cols
+    {
+        return Some(count);
+    }
     let mut count = 0;
     for column in cols.split([',', ';']) {
         let column = column.trim();
@@ -57,30 +63,48 @@ fn column_count(cols: &str) -> Option<usize> {
     (count > 0).then_some(count)
 }
 
-fn cell_style(spec: &str) -> Option<Option<char>> {
-    let mut rest = spec;
-    if let Some(after) = rest.strip_prefix(['<', '^', '>']) {
-        rest = after;
-    }
-    if let Some(after) = rest
-        .strip_prefix(".<")
-        .or_else(|| rest.strip_prefix(".^"))
-        .or_else(|| rest.strip_prefix(".>"))
-    {
-        rest = after;
-    }
-    let mut chars = rest.chars();
-    match (chars.next(), chars.next()) {
-        (None, _) => Some(None),
-        (Some(style), None) if "adehlmsv".contains(style) => Some(Some(style)),
-        _ => None,
-    }
+#[derive(Debug, PartialEq, Eq)]
+struct CellSpec {
+    spans: bool,
+    style: Option<char>,
 }
 
-fn is_span(spec: &str) -> bool {
-    let factor = spec.trim_start_matches(|c: char| c == '.' || c.is_ascii_digit());
-    let factor_len = spec.len() - factor.len();
-    spec[..factor_len].chars().any(|c| c.is_ascii_digit()) && factor.starts_with(['+', '*'])
+fn cell_spec(token: &str) -> Option<CellSpec> {
+    let factor_len = token
+        .find(|c: char| !(c == '.' || c.is_ascii_digit()))
+        .unwrap_or(token.len());
+    let factor = &token[..factor_len];
+    let spans = token[factor_len..].starts_with(['+', '*'])
+        && factor.matches('.').count() <= 1
+        && factor
+            .split_once('.')
+            .map_or(!factor.is_empty(), |(columns, rows)| {
+                !columns.is_empty() || !rows.is_empty()
+            });
+    let mut rest = if spans {
+        &token[factor_len + 1..]
+    } else {
+        token
+    };
+    let alignment = ['<', '^', '>'];
+    let horizontal = rest.starts_with(alignment);
+    if horizontal {
+        rest = &rest[1..];
+    }
+    if let Some(after) = rest.strip_prefix('.') {
+        let vertical = after.starts_with(alignment);
+        if !horizontal && !vertical {
+            return None;
+        }
+        rest = if vertical { &after[1..] } else { after };
+    }
+    let mut chars = rest.chars();
+    let style = match (chars.next(), chars.next()) {
+        (None, _) => None,
+        (Some(style), None) if style.is_ascii_lowercase() => Some(style),
+        _ => return None,
+    };
+    (!token.is_empty()).then_some(CellSpec { spans, style })
 }
 
 fn raw_cells(content: &[&str]) -> Option<Vec<RawCell>> {
@@ -101,21 +125,21 @@ fn raw_cells(content: &[&str]) -> Option<Vec<RawCell>> {
                 continue;
             }
             let before = &line[segment_start..index];
-            let token_start = before
+            let after_space = before
                 .char_indices()
                 .rev()
-                .find(|(_, c)| c.is_whitespace())
-                .map_or(0, |(space, c)| space + c.len_utf8());
-            let token = &before[token_start..];
-            let (text, style) = if token.is_empty() {
-                (before, None)
-            } else if is_span(token) {
-                return None;
-            } else {
-                match cell_style(token) {
-                    Some(style) => (&before[..token_start], style),
-                    None => (before, None),
-                }
+                .find(|(_, c)| *c == ' ' || *c == '\t')
+                .map(|(space, c)| space + c.len_utf8());
+            let token_start = match after_space {
+                Some(start) => Some(start),
+                None if segment_start == 0 => Some(0),
+                None => None,
+            };
+            let spec = token_start.and_then(|start| Some((start, cell_spec(&before[start..])?)));
+            let (text, style) = match spec {
+                Some((_, CellSpec { spans: true, .. })) => return None,
+                Some((start, CellSpec { style, .. })) => (&before[..start], style),
+                None => (before, None),
             };
             match cells.last_mut() {
                 Some(cell) => cell.content.push_str(text),
@@ -252,9 +276,12 @@ pub(crate) fn read(text: &str) -> Option<Table> {
                 let (key, value) = entry.split_once('=').unwrap_or((&entry, ""));
                 let options = match key.trim() {
                     "cols" => {
-                        columns = Some(column_count(value.trim().trim_matches('"'))?);
+                        columns = Some(column_count(value.trim().trim_matches('"'))?)
+                            .filter(|count| *count > 0);
                         continue;
                     }
+                    "format" if value.trim().trim_matches('"') != "psv" => return None,
+                    "separator" => return None,
                     "options" | "opts" => value.trim().trim_matches('"').to_string(),
                     option if option.starts_with('%') => option.to_string(),
                     _ => continue,
@@ -313,6 +340,8 @@ pub(crate) fn read(text: &str) -> Option<Table> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::proptest_config;
+    use proptest::prelude::*;
 
     fn lines(lines: &[&str]) -> Cell {
         Cell::Lines(lines.iter().map(|line| line.to_string()).collect())
@@ -600,6 +629,320 @@ mod tests {
         assert_eq!(table.rows[0][1], Cell::Unsupported);
         assert_eq!(table.rows[1][1], Cell::Unsupported);
         assert_eq!(table.rows[2][1], lines(&["plain text"]));
+    }
+
+    #[test]
+    fn a_single_number_of_columns_spreads_the_columns_equally() {
+        assert_eq!(column_count("3"), Some(3));
+        assert_eq!(column_count(" 2 "), Some(2));
+        assert_eq!(column_count("0"), Some(0));
+        assert_eq!(column_count("03"), Some(1));
+        assert_eq!(column_count("007"), Some(1));
+        let one_column = table(&["[cols=\"03\"]", "|===", "|a|b", "|==="]);
+        assert_eq!(
+            one_column.rows,
+            vec![vec![lines(&["a"])], vec![lines(&["b"])]]
+        );
+        let unspecified = table(&["[cols=\"0\"]", "|===", "|a|b", "|c|d", "|==="]);
+        assert_eq!(
+            unspecified.rows,
+            vec![
+                vec![lines(&["a"]), lines(&["b"])],
+                vec![lines(&["c"]), lines(&["d"])]
+            ]
+        );
+        let table = table(&[
+            "[cols=\"2\",options=\"header\"]",
+            "|===",
+            "|h1|h2",
+            "|a|b",
+            "|===",
+        ]);
+        assert_eq!(table.header, Some(vec![lines(&["h1"]), lines(&["h2"])]));
+        assert_eq!(table.rows, vec![vec![lines(&["a"]), lines(&["b"])]]);
+    }
+
+    #[test]
+    fn a_one_character_cell_between_separators_is_content_not_a_specifier() {
+        let letters = table(&["|===", "|a|b|c", "|d|e|f", "|==="]);
+        assert_eq!(
+            letters.rows,
+            vec![
+                vec![lines(&["a"]), lines(&["b"]), lines(&["c"])],
+                vec![lines(&["d"]), lines(&["e"]), lines(&["f"])],
+            ]
+        );
+        let specifier_like = table(&["[cols=\"1,1,1\"]", "|===", "|x |s|^", "|m|<.^|.", "|==="]);
+        assert_eq!(
+            specifier_like.rows,
+            vec![
+                vec![lines(&["x"]), lines(&["s"]), lines(&["^"])],
+                vec![lines(&["m"]), lines(&["<.^"]), lines(&["."])],
+            ]
+        );
+    }
+
+    #[test]
+    fn specifiers_after_a_space_or_at_the_start_of_a_line_apply_to_the_next_cell() {
+        let aligned = table(&[
+            "[cols=\"1,1,1\"]",
+            "|===",
+            "|ename:VK_A ^|centered >.^d|bottom",
+            "^.|top .>|middle <.<|left",
+            "|===",
+        ]);
+        assert_eq!(
+            aligned.rows,
+            vec![
+                vec![
+                    lines(&["ename:VK_A"]),
+                    lines(&["centered"]),
+                    lines(&["bottom"])
+                ],
+                vec![lines(&["top"]), lines(&["middle"]), lines(&["left"])],
+            ]
+        );
+        let styled = table(&[
+            "[cols=\"1,1\"]",
+            "|===",
+            "|ename:VK_A x|unknown style",
+            "|===",
+        ]);
+        assert_eq!(styled.rows[0][1], Cell::Unsupported);
+    }
+
+    #[test]
+    fn cell_specifiers_follow_the_asciidoctor_grammar() {
+        let spec = |spans, style| Some(CellSpec { spans, style });
+        assert_eq!(cell_spec("a"), spec(false, Some('a')));
+        assert_eq!(cell_spec("^"), spec(false, None));
+        assert_eq!(cell_spec("^."), spec(false, None));
+        assert_eq!(cell_spec(".^"), spec(false, None));
+        assert_eq!(cell_spec("<.>m"), spec(false, Some('m')));
+        assert_eq!(cell_spec("2+"), spec(true, None));
+        assert_eq!(cell_spec(".3+"), spec(true, None));
+        assert_eq!(cell_spec("2.+^s"), spec(true, Some('s')));
+        assert_eq!(cell_spec("3*e"), spec(true, Some('e')));
+        for content in ["", ".", "+", "2", "ab", "A", "^^", "<^", ".+", "x2", "*"] {
+            assert_eq!(cell_spec(content), None, "{content:?}");
+        }
+    }
+
+    #[test]
+    fn tables_in_other_formats_or_with_other_separators_are_refused() {
+        for attributes in [
+            "[format=csv]",
+            "[format=\"dsv\",options=\"header\"]",
+            "[separator=!]",
+            "[cols=\"1,1\",separator=\";\"]",
+        ] {
+            let text = format!("{attributes}\n|===\n|a|b\n|===");
+            assert_eq!(read(&text), None, "{attributes}");
+        }
+        assert!(read("[format=psv]\n|===\n|a|b\n|===").is_some());
+    }
+
+    #[derive(Clone, Debug)]
+    enum Content {
+        Empty,
+        Char(char),
+        Words(String),
+        Wrapped(String, String),
+        Broken(String, String),
+    }
+
+    impl Content {
+        fn expected(&self) -> Cell {
+            match self {
+                Content::Empty => lines(&[]),
+                Content::Char(c) => lines(&[&c.to_string()]),
+                Content::Words(words) => lines(&[words]),
+                Content::Wrapped(first, second) => lines(&[&format!("{first}\n{second}")]),
+                Content::Broken(first, second) => lines(&[first, second]),
+            }
+        }
+
+        fn source(&self) -> String {
+            match self {
+                Content::Empty => String::new(),
+                Content::Char(c) => c.to_string(),
+                Content::Words(words) => words.clone(),
+                Content::Wrapped(first, second) => format!("{first}\n{second}"),
+                Content::Broken(first, second) => format!("{first} +\n{second}"),
+            }
+        }
+
+        fn on_one_line(self) -> Self {
+            match self {
+                Content::Wrapped(first, second) | Content::Broken(first, second) => {
+                    Content::Words(format!("{first} {second}"))
+                }
+                other => other,
+            }
+        }
+
+        fn spans_lines(&self) -> bool {
+            matches!(self, Content::Wrapped(..) | Content::Broken(..))
+        }
+    }
+
+    fn content() -> impl Strategy<Value = Content> {
+        let word = "[a-z]{2,8}";
+        prop_oneof![
+            Just(Content::Empty),
+            proptest::sample::select("abcdehlmsvxz019<^>.*%~=-".chars().collect::<Vec<_>>())
+                .prop_map(Content::Char),
+            "[a-z]{2,8}( [a-z]{2,8}){0,2}".prop_map(Content::Words),
+            (word, word).prop_map(|(a, b)| Content::Wrapped(a, b)),
+            (word, word).prop_map(|(a, b)| Content::Broken(a, b)),
+        ]
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum Cols {
+        Absent,
+        Count,
+        Ones,
+        Widths,
+        Multiplied,
+        Aligned,
+    }
+
+    fn cols_attribute(cols: Cols, columns: usize) -> Option<String> {
+        let each =
+            |spec: &dyn Fn(usize) -> String| (0..columns).map(spec).collect::<Vec<_>>().join(",");
+        match cols {
+            Cols::Absent => None,
+            Cols::Count => Some(columns.to_string()),
+            Cols::Ones => Some(each(&|_| "1".to_string())),
+            Cols::Widths => Some(each(&|i| format!("{}%", 10 + i))),
+            Cols::Multiplied => Some(format!("{columns}*")),
+            Cols::Aligned => Some(each(&|i| ["<1", "^2", ">.^1", ".>3"][i % 4].to_string())),
+        }
+    }
+
+    #[derive(Debug)]
+    struct Generated {
+        text: String,
+        expected: Table,
+    }
+
+    fn generated_table() -> impl Strategy<Value = Generated> {
+        (1usize..=4, 1usize..=4).prop_flat_map(|(columns, rows)| {
+            (
+                proptest::collection::vec(proptest::collection::vec(content(), columns), rows),
+                proptest::sample::select(vec![
+                    Cols::Absent,
+                    Cols::Count,
+                    Cols::Ones,
+                    Cols::Widths,
+                    Cols::Multiplied,
+                    Cols::Aligned,
+                ]),
+                any::<bool>(),
+                any::<bool>(),
+                proptest::collection::vec(any::<u8>(), 1..32),
+            )
+                .prop_map(move |(rows, cols, header, title, choices)| {
+                    print_table(columns, rows, cols, header, title, &choices)
+                })
+        })
+    }
+
+    fn print_table(
+        columns: usize,
+        mut rows: Vec<Vec<Content>>,
+        cols: Cols,
+        header: bool,
+        title: bool,
+        choices: &[u8],
+    ) -> Generated {
+        let mut next = 0;
+        let mut choose = |range: u8| {
+            next += 1;
+            choices[next % choices.len()] % range
+        };
+        let implicit_header = header && rows.len() > 1 && choose(2) == 0;
+        let first_row_on_one_line = matches!(cols, Cols::Absent) || implicit_header;
+        if first_row_on_one_line {
+            rows[0] = std::mem::take(&mut rows[0])
+                .into_iter()
+                .map(Content::on_one_line)
+                .collect();
+        }
+        let mut text = Vec::<String>::new();
+        if title {
+            text.push(".Generated Table".to_string());
+        }
+        let mut attributes = Vec::new();
+        if let Some(cols) = cols_attribute(cols, columns) {
+            attributes.push(format!("cols=\"{cols}\""));
+        }
+        if header && !implicit_header {
+            attributes.push("options=\"header\"".to_string());
+        }
+        if !attributes.is_empty() {
+            text.push(format!("[{}]", attributes.join(",")));
+        }
+        let delimiter = ["|===", "|===="][choose(2) as usize];
+        text.push(delimiter.to_string());
+        for (index, row) in rows.iter().enumerate() {
+            let one_line = (index == 0 && first_row_on_one_line)
+                || (!row.iter().any(Content::spans_lines) && choose(2) == 0);
+            let mut line = String::new();
+            for (column, content) in row.iter().enumerate() {
+                let leading = choose(2) == 0;
+                let mut trailing = choose(2) == 0;
+                let last = column + 1 == row.len();
+                if one_line && !last && leading && matches!(content, Content::Char(_)) {
+                    trailing = true;
+                }
+                let cell = format!(
+                    "|{}{}{}",
+                    if leading { " " } else { "" },
+                    content.source(),
+                    if trailing { " " } else { "" }
+                );
+                if one_line {
+                    line.push_str(&cell);
+                } else {
+                    text.extend(cell.lines().map(str::to_string));
+                }
+            }
+            if one_line {
+                text.push(line);
+            }
+            if index == 0 && implicit_header {
+                text.push(String::new());
+            }
+        }
+        text.push(delimiter.to_string());
+        let mut expected_rows = rows
+            .iter()
+            .map(|row| row.iter().map(Content::expected).collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        let expected_header = header.then(|| expected_rows.remove(0));
+        Generated {
+            text: text.join("\n"),
+            expected: Table {
+                title: title.then(|| "Generated Table".to_string()),
+                header: expected_header,
+                rows: expected_rows,
+            },
+        }
+    }
+
+    proptest! {
+        #![proptest_config(proptest_config(2048))]
+
+        #[test]
+        fn generated_tables_read_back_to_their_rows_and_columns(generated in generated_table()) {
+            prop_assert_eq!(
+                read(&generated.text),
+                Some(generated.expected),
+                "reading\n{}", generated.text
+            );
+        }
     }
 
     #[test]
