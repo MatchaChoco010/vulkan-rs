@@ -1,4 +1,3 @@
-//! A slice stored through a setter must outlive the struct.
 use vulkan::vk;
 
 fn main() {

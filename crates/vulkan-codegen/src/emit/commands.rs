@@ -1,15 +1,3 @@
-//! Function pointer tables and command wrappers.
-//!
-//! Every command gets two methods on `Entry`, `Instance` or `Device`:
-//!
-//! - `foo_raw`: the C signature, minus the handle the wrapper owns.
-//! - `foo`: slices instead of pointer + count, references instead of pointers,
-//!   `vk::Result` instead of `VkResult`, and returned values instead of out-pointers.
-//!
-//! The shape of `foo` is derived from registry attributes (`len`, `optional`, constness,
-//! success codes). The few commands whose shape cannot be derived are listed explicitly in
-//! this file.
-
 use super::basic::arrow;
 use super::{header, w};
 use crate::model::{CType, Dispatch, Model, provided_by};
@@ -17,8 +5,6 @@ use crate::naming::{command_name, field_name, pointer_setter_name};
 use std::collections::BTreeMap;
 use vulkan_registry::{Command, Field};
 
-/// Wrappers written by hand in `crates/vulkan/src/lib.rs` because they construct the
-/// `Instance` / `Device` wrapper types. They still get a `_raw` method.
 const HAND_WRITTEN: &[&str] = &["vkCreateInstance", "vkCreateDevice"];
 
 pub fn emit_commands(model: &Model<'_>) -> String {
@@ -136,7 +122,6 @@ fn emit_table(out: &mut String, model: &Model<'_>, dispatch: Dispatch) {
     w!(out, "            }}\n        }}\n    }}\n}}\n");
 }
 
-/// Parameters after the handle that the wrapper type passes itself.
 fn explicit_params(c: &Command, dispatch: Dispatch) -> (bool, &[Field]) {
     let passes_self = dispatch
         .self_handle()
@@ -190,32 +175,33 @@ fn emit_raw(out: &mut String, model: &Model<'_>, c: &Command, dispatch: Dispatch
     w!(out, "    }}");
 }
 
-/// How a C parameter appears in the high-level wrapper.
 #[derive(Clone, Debug)]
 enum Plan {
-    /// A wrapper argument. `raw` is the expression passed to the `_raw` call.
     Arg {
         name: String,
         ty: String,
         raw: String,
         mutable: bool,
     },
-    /// Not a wrapper argument; `raw` is computed from other arguments or locals.
-    Hidden { raw: String },
+    Hidden {
+        raw: String,
+    },
 }
 
-/// Where the wrapper's return value comes from.
 #[derive(Clone, Debug, PartialEq)]
 enum Shape {
-    /// Nothing is returned through pointers.
     Plain,
-    /// The last parameter is a single out-pointer.
-    Single { out: usize },
-    /// `(uint32_t* pCount, T* pData)`: the two-call enumeration idiom.
-    Enumerate { count: usize, data: usize },
-    /// The last parameter is an output array as long as an input array.
-    CountedOut { count: usize, out: usize },
-    /// The last parameter is an output array whose length is a member of an input struct.
+    Single {
+        out: usize,
+    },
+    Enumerate {
+        count: usize,
+        data: usize,
+    },
+    CountedOut {
+        count: usize,
+        out: usize,
+    },
     StructLenOut {
         info: usize,
         member: String,
@@ -231,13 +217,11 @@ fn arg_name(p: &Field) -> String {
     }
 }
 
-/// `pAllocateInfo->commandBufferCount` to (`pAllocateInfo`, `commandBufferCount`).
 fn struct_len(len: Option<&str>) -> Option<(&str, &str)> {
     let len = len?;
     len.split_once("->").or_else(|| len.split_once("::"))
 }
 
-/// Index of the by-value count parameter named by `p.len`.
 fn value_count(params: &[Field], p: &Field) -> Option<usize> {
     let len = p.len.as_deref()?;
     params
@@ -288,8 +272,6 @@ fn detect_shape(model: &Model<'_>, c: &Command, params: &[Field]) -> Shape {
         }
     }
 
-    // An array of structs that hold pointers is not an output: the caller has to say
-    // where each element points (`VkHostAddressRangeEXT* pDatas`). It stays a slice.
     if ty.depth() == 1 && ty.base != "void" && !model.has_lifetime(&ty.base) {
         if let Some(count) = value_count(params, last)
             && params.iter().enumerate().any(|(i, p)| {
@@ -312,7 +294,6 @@ fn detect_shape(model: &Model<'_>, c: &Command, params: &[Field]) -> Shape {
     let single = last.len.is_none()
         && match ty.depth() {
             1 => !is_opaque(model, &ty) && !has_p_next(model, &ty.base),
-            // `void**`, `AHardwareBuffer**`: the pointer value itself is the output.
             2 => true,
             _ => false,
         };
@@ -323,7 +304,6 @@ fn detect_shape(model: &Model<'_>, c: &Command, params: &[Field]) -> Shape {
     }
 }
 
-/// Plans every parameter that is not consumed by the output shape.
 fn plan_inputs(
     model: &Model<'_>,
     c: &Command,
@@ -331,7 +311,6 @@ fn plan_inputs(
     consumed: &[usize],
     prelude: &mut String,
 ) -> Vec<Option<Plan>> {
-    // By-value counts and the slice arguments that determine them.
     let mut groups = BTreeMap::<usize, Vec<usize>>::new();
     for (i, p) in params.iter().enumerate() {
         let ty = CType::of(p);
@@ -362,8 +341,6 @@ fn plan_inputs(
         };
 
         if let Some(slices) = groups.get(&i) {
-            // The count is the length of the first required slice, or of the first
-            // provided optional one.
             let len_of = |index: usize| {
                 let slice = &params[index];
                 let slice_name = arg_name(slice);
@@ -546,7 +523,6 @@ fn plan_inputs(
             continue;
         }
 
-        // Deeper pointer shapes have no borrowed form.
         plans[i] = arg(model.param_ty(p, "'_"), name.clone(), false);
     }
     plans
@@ -583,7 +559,6 @@ fn signature(name: &str, plans: &[Option<Plan>], ret: &str) -> String {
     out
 }
 
-/// The `_raw` call expression with `extra` filling the parameters consumed by the shape.
 fn raw_call(c: &Command, plans: &[Option<Plan>], extra: &[(usize, &str)]) -> String {
     let name = command_name(&c.name);
     let args = plans
@@ -607,7 +582,6 @@ fn extra_success_codes(c: &Command) -> bool {
     c.success_codes.iter().any(|code| code != "VK_SUCCESS")
 }
 
-/// Type of a value written through an out-pointer, and how to initialize its storage.
 fn out_ty(model: &Model<'_>, p: &Field) -> (String, String) {
     let ty = CType::of(p);
     if ty.depth() == 2 {
@@ -625,11 +599,8 @@ fn out_ty(model: &Model<'_>, p: &Field) -> (String, String) {
     }
     let rust = model.base_ty(&ty.base, "'static");
     let init = if model.get_struct(&ty.base).is_some() || model.is_handle(&ty.base) {
-        // Sets `sType` for structs that have one.
         "Default::default()".to_string()
     } else {
-        // Integers, enums and flags: all-zero is a valid value. The wrapper body is one
-        // `unsafe` block.
         format!("core::mem::zeroed::<{rust}>()")
     };
     (rust, init)
@@ -670,7 +641,6 @@ fn emit_wrapper(out: &mut String, model: &Model<'_>, c: &Command, dispatch: Disp
                     ret
                 }
             } else if c.name == "vkQueuePresentKHR" {
-                // `Ok(true)` means VK_SUBOPTIMAL_KHR.
                 w!(body, "let result = {call};");
                 w!(body, "result.into_result()?;");
                 w!(body, "Ok(result == VkResult::SUBOPTIMAL_KHR)");
@@ -704,7 +674,6 @@ fn emit_wrapper(out: &mut String, model: &Model<'_>, c: &Command, dispatch: Disp
                 c.name.as_str(),
                 "vkAcquireNextImageKHR" | "vkAcquireNextImage2KHR"
             ) {
-                // The image index is only written for VK_SUCCESS and VK_SUBOPTIMAL_KHR.
                 w!(body, "match {call} {{");
                 w!(body, "    VkResult::SUCCESS => Ok(Some(({value}, false))),");
                 w!(
@@ -751,7 +720,6 @@ fn emit_wrapper(out: &mut String, model: &Model<'_>, c: &Command, dispatch: Disp
             let fill_arg = format!("values.as_mut_ptr(){cast}");
             let fill = raw_call(c, &plans, &[(*count, "&mut count"), (*data, &fill_arg)]);
             if is_result {
-                // The set may change between the two calls, so retry on VK_INCOMPLETE.
                 w!(body, "loop {{");
                 w!(body, "    let mut count: {count_ty} = 0;");
                 w!(body, "    {query}.into_result()?;");
@@ -801,8 +769,6 @@ fn emit_wrapper(out: &mut String, model: &Model<'_>, c: &Command, dispatch: Disp
                 w!(body, "values");
                 format!("Vec<{elem}>")
             } else if is_pipeline_creation(c) {
-                // Pipeline creation can fail, or return VK_PIPELINE_COMPILE_REQUIRED, after
-                // writing some handles. Hand them back so the caller can destroy them.
                 w!(body, "let result = {call};");
                 w!(
                     body,
@@ -845,10 +811,6 @@ fn is_pipeline_creation(c: &Command) -> bool {
         && c.params.last().is_some_and(|p| p.ty == "VkPipeline")
 }
 
-/// Commands whose shape the registry attributes cannot express.
-///
-/// Acceleration structure builds take `ppBuildRangeInfos`: one pointer per build info,
-/// each to `geometryCount` elements. A slice of slices keeps both lengths checked.
 fn special_wrapper(c: &Command) -> Option<String> {
     let checks = |nested: &str| {
         format!(
@@ -985,8 +947,6 @@ mod tests {
             ],
         )));
         let out = generate(&ir);
-        // `optional_pointer` (null handles allowed inside the array) does not make the
-        // array itself optional.
         assert!(out.contains(
             "pub unsafe fn cmd_bind_vertex_buffers2(&self, command_buffer: CommandBuffer, first_binding: u32, buffers: &[Buffer], offsets: &[DeviceSize], sizes: Option<&[DeviceSize]>) {"
         ));

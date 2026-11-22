@@ -1,5 +1,3 @@
-//! Emitters for everything except structs and commands.
-
 use super::{header, w};
 use crate::model::Model;
 use crate::naming::{
@@ -28,7 +26,6 @@ pub fn emit_mod() -> String {
     }
     out.push('\n');
     for module in modules {
-        // `formats` only adds methods to `Format`; it exports nothing.
         if module != "formats" {
             w!(out, "pub use {module}::*;");
         }
@@ -79,7 +76,6 @@ pub fn emit_version(model: &Model<'_>) -> String {
         "pub const API_VERSION_1_0: u32 = make_api_version(0, 1, 0, 0);"
     );
     for version in &ir.versions {
-        // VK_API_VERSION_1_1 -> (1, 1)
         let mut digits = version
             .name_api
             .strip_prefix("VK_API_VERSION_")
@@ -197,8 +193,6 @@ pub fn emit_handles(model: &Model<'_>) -> String {
         w!(out, "    }}");
         w!(out, "}}\n");
         if h.dispatchable {
-            // A handle is an opaque name for a driver object. Moving or sharing the name
-            // across threads is fine; the external synchronization rules apply to commands.
             w!(out, "{cfg}unsafe impl Send for {name} {{}}");
             w!(out, "{cfg}unsafe impl Sync for {name} {{}}\n");
         }
@@ -209,18 +203,14 @@ pub fn emit_handles(model: &Model<'_>) -> String {
     out
 }
 
-/// One associated constant of an enum or bitmask type.
 pub struct Variant {
     pub cfg: String,
     pub name: String,
     pub value: String,
     pub c_name: String,
-    /// Aliases are left out of the `Debug` name table.
     pub alias: bool,
 }
 
-/// Resolves names for the fields and their aliases, dropping aliases whose Rust name
-/// collides with an earlier constant of the same value.
 fn variants<'a>(
     model: &Model<'_>,
     type_name: &str,
@@ -298,15 +288,6 @@ fn emit_consts(out: &mut String, variants: &[Variant]) {
     }
 }
 
-/// Emits `variants()`, the private `aliases()`, `name()` and `from_name()` inside an
-/// `impl` block.
-///
-/// `variants()` lists every named value once, by ascending value, so that `name()` can
-/// binary-search it. Alias constants, which repeat a value under an older name, go to
-/// `aliases()` and are only consulted by `from_name()`.
-///
-/// These are functions, not associated constants: a constant could collide with a
-/// registry name such as `ALL`.
 fn emit_name_tables(out: &mut String, variants: &[Variant]) {
     let numeric = |v: &Variant| v.value.parse::<i128>().expect("integer value");
     let mut canonical = Vec::<&Variant>::new();
@@ -635,7 +616,6 @@ fn repr(bit_width: u32) -> &'static str {
     }
 }
 
-/// `Debug` for a flags or flag-bit type: the names of the set bits.
 fn emit_flags_debug(out: &mut String, cfg: &str, name: &str, repr: &str) {
     let widen = if repr == "u64" {
         "flag.0"
@@ -770,8 +750,6 @@ mod tests {
         let out = emit_enums(&Model::new(&ir));
         assert!(out.contains("pub const FIFO_LATEST_READY: Self = Self(1000361000);"));
         assert!(out.contains("pub const FIFO_LATEST_READY_EXT: Self = Self(1000361000);"));
-        // The alias is a constant and a name `from_name` accepts, but `name()` and
-        // `Debug` use the canonical one.
         let out = out.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(out.contains(
             "pub const fn variants() -> &'static [(Self, &'static str)] { &[ (Self(1000361000), \"FIFO_LATEST_READY\"), ] }"

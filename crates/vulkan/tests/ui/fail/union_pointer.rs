@@ -1,4 +1,3 @@
-//! A union that selects a pointer member borrows what it points to.
 use vulkan::vk;
 
 fn main() {

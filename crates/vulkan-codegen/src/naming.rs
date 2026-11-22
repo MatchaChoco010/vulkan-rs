@@ -1,7 +1,3 @@
-//! C identifier to Rust identifier mapping.
-
-/// `VkBufferCreateInfo` to `BufferCreateInfo`. `VkResult` keeps its prefix because
-/// `vk::Result<T>` is the result alias.
 pub fn type_name(name: &str) -> String {
     if name == "VkResult" {
         return name.to_string();
@@ -9,17 +5,14 @@ pub fn type_name(name: &str) -> String {
     name.strip_prefix("Vk").unwrap_or(name).to_string()
 }
 
-/// `vkCreateBuffer` to `create_buffer`.
 pub fn command_name(name: &str) -> String {
     field_name(name.strip_prefix("vk").unwrap_or(name))
 }
 
-/// `pQueueCreateInfos` to `p_queue_create_infos`.
 pub fn field_name(name: &str) -> String {
     raw_ident(&to_snake(name))
 }
 
-/// `VK_MAX_MEMORY_TYPES` to `MAX_MEMORY_TYPES`.
 pub fn const_name(name: &str) -> String {
     raw_ident(
         &name
@@ -29,13 +22,10 @@ pub fn const_name(name: &str) -> String {
     )
 }
 
-/// `VK_KHR_SWAPCHAIN_EXTENSION_NAME` to `KHR_SWAPCHAIN_NAME`.
 pub fn extension_name_const(name_macro: &str) -> String {
     const_name(name_macro).replace("_EXTENSION_NAME", "_NAME")
 }
 
-/// Name of the setter that takes a reference or slice for a pointer member:
-/// `pQueueCreateInfos` to `queue_create_infos`, `ppEnabledLayerNames` to `enabled_layer_names`.
 pub fn pointer_setter_name(name: &str) -> String {
     let bytes = name.as_bytes();
     if name.starts_with("pp") && bytes.len() > 2 && bytes[2].is_ascii_uppercase() {
@@ -47,12 +37,10 @@ pub fn pointer_setter_name(name: &str) -> String {
     field_name(name)
 }
 
-/// Splits a trailing vendor tag off a type name: `PresentModeKHR` to (`PresentMode`, `KHR`).
 pub fn split_vendor_tag<'a>(
     name: &'a str,
     vendor_tags: &'a [String],
 ) -> (&'a str, Option<&'a str>) {
-    // Prefer the longest tag so that `NVX` is not read as `X` after `NV`.
     let mut best: Option<&str> = None;
     for tag in vendor_tags {
         if name.ends_with(tag.as_str())
@@ -68,11 +56,6 @@ pub fn split_vendor_tag<'a>(
     }
 }
 
-/// `VK_PRESENT_MODE_IMMEDIATE_KHR` in `VkPresentModeKHR` to `IMMEDIATE`.
-///
-/// The enum type prefix is removed, and so is the vendor tag when it repeats the tag of
-/// the enum type. A foreign tag stays: `VK_COLOR_SPACE_HDR10_ST2084_EXT` in
-/// `VkColorSpaceKHR` becomes `HDR10_ST2084_EXT`.
 pub fn enum_variant_name(enum_name: &str, value: &str, vendor_tags: &[String]) -> String {
     let rust_type = type_name(enum_name);
     let (base, tag) = split_vendor_tag(&rust_type, vendor_tags);
@@ -83,10 +66,6 @@ pub fn enum_variant_name(enum_name: &str, value: &str, vendor_tags: &[String]) -
     raw_ident(name)
 }
 
-/// `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` in `VkImageUsageFlagBits` to `COLOR_ATTACHMENT`.
-///
-/// `_BIT` is dropped. `VK_ACCESS_2_SHADER_READ_BIT` in `VkAccessFlagBits2` becomes
-/// `SHADER_READ`.
 pub fn flag_bit_name(bitmask_name: &str, value: &str, vendor_tags: &[String]) -> String {
     let rust_type = type_name(bitmask_name);
     let (base, tag) = split_vendor_tag(&rust_type, vendor_tags);
@@ -100,7 +79,6 @@ pub fn flag_bit_name(bitmask_name: &str, value: &str, vendor_tags: &[String]) ->
     if let Some(rest) = name.strip_prefix(prefix.as_str()) {
         name = rest.to_string();
     }
-    // `FOO_BIT` or `FOO_BIT_KHR`
     if let Some(rest) = name.strip_suffix("_BIT") {
         name = rest.to_string();
     } else if let Some(pos) = name.rfind("_BIT_") {
@@ -120,22 +98,17 @@ fn strip_tag_suffix<'a>(name: &'a str, tag: Option<&str>) -> &'a str {
     }
 }
 
-/// Makes a name a valid Rust identifier: keywords are renamed or escaped, and a name that
-/// starts with a digit gets a leading underscore.
 pub fn raw_ident(name: &str) -> String {
     if name.as_bytes().first().is_some_and(|b| b.is_ascii_digit()) {
         return format!("_{name}");
     }
     match name {
-        // `type` is common enough in Vulkan (`VkDescriptorPoolSize::type`) that `r#type`
-        // at every use is a nuisance. `ty` is the conventional Rust spelling.
         "type" => "ty".to_string(),
         "match" | "ref" | "box" | "loop" | "move" | "where" | "use" | "fn" | "mod" | "in"
         | "as" | "pub" | "const" | "static" | "struct" | "enum" | "union" | "trait" | "impl"
         | "for" | "while" | "async" | "await" | "dyn" | "final" | "override" | "gen" => {
             format!("r#{name}")
         }
-        // These cannot be raw identifiers.
         "self" | "Self" | "super" | "crate" => format!("{name}_"),
         _ => name.to_string(),
     }

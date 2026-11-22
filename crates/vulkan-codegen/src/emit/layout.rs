@@ -1,13 +1,3 @@
-//! Emits the two halves of the ABI cross-check in `crates/vulkan/tests/layout.rs`.
-//!
-//! - `layout.c` prints sizes, alignments, member offsets, bit-field positions and
-//!   constant values as the C compiler sees them in the Khronos headers.
-//! - `layout_table.rs` holds the same facts as the Rust compiler sees them in the
-//!   generated bindings.
-//!
-//! Platform-specific items need platform headers and are left out. Provisional (beta)
-//! items are included.
-
 use super::basic::{bitmask_variants, enum_variants};
 use super::structs::{Slot, slots};
 use super::w;
@@ -16,7 +6,6 @@ use crate::naming::{const_name, field_name, type_name};
 
 const BETA: &str = "VK_ENABLE_BETA_EXTENSIONS";
 
-/// `None` when the item needs a platform header; otherwise the `#[cfg]` line to use.
 fn gate(model: &Model<'_>, protect: Option<&str>) -> Option<String> {
     match protect {
         None => Some(String::new()),
@@ -25,7 +14,6 @@ fn gate(model: &Model<'_>, protect: Option<&str>) -> Option<String> {
     }
 }
 
-/// Same as [`gate`] for a `#[cfg]` line that was already rendered.
 fn gate_cfg(model: &Model<'_>, cfg: &str) -> bool {
     cfg.is_empty() || cfg == model.cfg(Some(BETA))
 }
@@ -66,7 +54,6 @@ pub fn emit_layout_table(model: &Model<'_>) -> String {
                 ),
                 Slot::Bits { storage, bits } => {
                     for bit in bits {
-                        // `+ 0` would trip clippy::identity_op.
                         let shift = match bit.shift {
                             0 => String::new(),
                             shift => format!(" + {shift}"),
@@ -138,7 +125,6 @@ pub fn emit_layout_table(model: &Model<'_>) -> String {
                 } else {
                     cfg.clone()
                 };
-                // Both the FlagBits constant and its Flags twin must match C.
                 for ty in [&b.name, &b.flags_name] {
                     w!(
                         out,

@@ -1,4 +1,3 @@
-//! There is no way to turn a borrowing struct into a `'static` one.
 use vulkan::vk;
 
 fn keep<T: 'static>(_: T) {}

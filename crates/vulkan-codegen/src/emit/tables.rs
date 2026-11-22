@@ -1,6 +1,3 @@
-//! Lookup tables generated from registry data that the C headers do not carry: the
-//! texel layout of formats and the dependencies of extensions.
-
 use super::{header, w};
 use crate::model::{Depends, Dispatch, Model, parse_version};
 use crate::naming::{command_name, enum_variant_name};
@@ -26,7 +23,6 @@ pub fn emit_formats(model: &Model<'_>) -> String {
             .get(name)
             .unwrap_or_else(|| panic!("format info for unknown format {name}"))
     };
-    // Every format has to come with its layout, or `Format::info` silently has a hole.
     for field in &format_enum.fields {
         assert!(
             field.name == "VK_FORMAT_UNDEFINED"
@@ -154,11 +150,8 @@ fn depends_expr(depends: &Depends) -> String {
     }
 }
 
-/// The `EXTENSIONS` table. It is not gated on platform features: a checking layer wants
-/// to know about every extension a driver may report.
 pub fn emit_extension_table(model: &Model<'_>) -> String {
     let mut extensions = model.ir.extensions.iter().collect::<Vec<&Extension>>();
-    // `ExtensionInfo::get` does a binary search with `CStr`'s ordering, which is bytewise.
     extensions.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
 
     let mut out = String::new();
@@ -197,9 +190,6 @@ pub fn emit_extension_table(model: &Model<'_>) -> String {
     out
 }
 
-/// The `command` module, with one `CommandInfo` constant per command, and the
-/// `COMMANDS` table. Like `EXTENSIONS`, it is not gated on platform features: it only
-/// holds names and result codes.
 pub fn emit_command_table(model: &Model<'_>) -> String {
     let result_enum = model
         .ir
@@ -213,7 +203,6 @@ pub fn emit_command_table(model: &Model<'_>) -> String {
             .iter()
             .find(|f| f.name == code || f.aliases.iter().any(|a| a == code))
             .unwrap_or_else(|| panic!("unknown result code {code}"));
-        // A result code behind a platform feature could not be named here.
         match field.protect {
             None => format!(
                 "VkResult::{}",
@@ -231,7 +220,6 @@ pub fn emit_command_table(model: &Model<'_>) -> String {
     };
 
     let mut commands = model.ir.commands.iter().collect::<Vec<_>>();
-    // `CommandInfo::get` does a binary search with `str`'s ordering, which is bytewise.
     commands.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
 
     let mut out = header(&[]);
@@ -450,7 +438,6 @@ mod tests {
         assert!(out.contains(
             "name: \"vkQueueWaitIdle2\", level: CommandLevel::Device, success_codes: &[], error_codes: &[], version: Some(make_api_version(0, 1, 3, 0)), extensions: &[],"
         ));
-        // Sorted by C name for the binary search.
         assert!(out.contains(
             "pub const COMMANDS: &[CommandInfo] = &[ command::QUEUE_PRESENT_KHR, command::QUEUE_WAIT_IDLE2, ];"
         ));

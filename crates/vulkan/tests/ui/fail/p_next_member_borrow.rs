@@ -1,4 +1,3 @@
-//! What a chained struct points to must outlive the root as well.
 use vulkan::vk;
 
 fn main() {

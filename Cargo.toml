@@ -15,6 +15,9 @@ edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/MatchaChoco010/vulkan-rs"
 
+[workspace.lints.clippy]
+missing_safety_doc = "allow"
+
 [workspace.dependencies]
 vulkan = { path = "crates/vulkan", version = "0.3.1", default-features = false }
 vulkan-alloc = { path = "crates/vulkan-alloc", version = "0.3.1" }

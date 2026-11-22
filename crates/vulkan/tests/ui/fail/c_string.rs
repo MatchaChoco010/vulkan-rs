@@ -1,4 +1,3 @@
-//! A C string must outlive the struct that points to it.
 use std::ffi::CString;
 use vulkan::vk;
 

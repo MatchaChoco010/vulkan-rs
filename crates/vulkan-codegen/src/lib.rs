@@ -1,12 +1,3 @@
-//! Code generator for the `vulkan` crate.
-//!
-//! Input: the registry dumped by `tools/generate-vulkan` (see `vulkan-registry`).
-//! Output: the files listed by [`generate`], relative to the workspace root.
-//!
-//! - [`naming`]: C identifier to Rust identifier mapping.
-//! - [`model`]: registry analysis (type lookup, lifetimes, dispatch levels).
-//! - [`emit`]: one emitter per generated file.
-
 pub mod emit;
 pub mod model;
 pub mod naming;
@@ -17,14 +8,9 @@ mod test_support;
 use model::Model;
 use vulkan_registry::Registry;
 
-/// Directory of the generated modules of the `vulkan` crate.
 pub const GENERATED_SRC: &str = "crates/vulkan/src/vk/generated";
-/// Directory of the generated ABI cross-check inputs.
 pub const GENERATED_TESTS: &str = "crates/vulkan/tests/generated";
 
-/// Generates every file as `(path relative to the workspace root, contents)`.
-///
-/// Rust output is not formatted; run rustfmt on it.
 pub fn generate(ir: &Registry) -> Vec<(String, String)> {
     let model = Model::new(ir);
     let src = |name: &str, body: String| (format!("{GENERATED_SRC}/{name}"), body);
@@ -50,7 +36,6 @@ pub fn generate(ir: &Registry) -> Vec<(String, String)> {
     ]
 }
 
-/// Cargo features of the `vulkan` crate that gate generated items.
 pub fn required_features(ir: &Registry) -> Vec<String> {
     Model::new(ir).features()
 }
@@ -59,8 +44,6 @@ pub fn required_features(ir: &Registry) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// The embedded registry must always generate: this is the check that a
-    /// Vulkan-Headers update did not introduce a shape the generator rejects.
     #[test]
     fn embedded_registry_generates() {
         let files = generate(Registry::get());

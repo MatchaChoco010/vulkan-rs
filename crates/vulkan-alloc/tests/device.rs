@@ -1,7 +1,3 @@
-//! Allocator tests against a real Vulkan implementation (lavapipe in CI).
-//!
-//! Skipped without a Vulkan 1.2 device, unless `VULKAN_RS_REQUIRE_DEVICE_TEST` is set.
-
 use std::ffi::CStr;
 use std::os::fd::{FromRawFd, OwnedFd};
 use vulkan::{Device, Entry, Instance, vk};
@@ -164,7 +160,6 @@ fn mapped_allocations_hold_data_and_share_a_block() {
         let b = allocator
             .allocate(desc(requirements, MemoryLocation::CpuToGpu))
             .unwrap();
-        // Same kind of memory: both come from one VkDeviceMemory.
         assert_eq!(a.memory(), b.memory());
         assert_ne!(a.offset(), b.offset());
         gpu.device
@@ -191,8 +186,6 @@ fn mapped_allocations_hold_data_and_share_a_block() {
     assert!(allocator.is_empty());
 }
 
-/// Allocate flags are fixed when a `VkDeviceMemory` is created, so a buffer that needs
-/// `DEVICE_ADDRESS` must not be placed in a block that was created without it.
 #[test]
 fn allocations_with_different_allocate_flags_do_not_share_memory() {
     let Some(gpu) = Gpu::new() else { return };
@@ -226,7 +219,6 @@ fn allocations_with_different_allocate_flags_do_not_share_memory() {
         gpu.device
             .bind_buffer_memory(address_buffer, with_address.memory(), with_address.offset())
             .unwrap();
-        // Only valid because the memory was allocated with DEVICE_ADDRESS.
         let address = gpu.device.get_buffer_device_address(
             &vk::BufferDeviceAddressInfo::default().buffer(address_buffer),
         );
@@ -239,8 +231,6 @@ fn allocations_with_different_allocate_flags_do_not_share_memory() {
     }
 }
 
-/// Exportable memory gets a `VkDeviceMemory` of its own, and the allocator's export
-/// request reaches Vulkan: the memory can be exported as a file descriptor.
 #[test]
 fn exportable_allocations_are_not_suballocated() {
     let Some(gpu) = Gpu::new() else { return };
@@ -290,7 +280,6 @@ fn exportable_allocations_are_not_suballocated() {
             )
             .unwrap();
         assert!(fd >= 0);
-        // The exported fd is a new reference that the caller owns.
         drop(OwnedFd::from_raw_fd(fd));
 
         gpu.device.destroy_buffer(first, None);
@@ -300,7 +289,6 @@ fn exportable_allocations_are_not_suballocated() {
     }
 }
 
-/// Collects `log` records so that the leak report can be asserted on.
 struct CapturedLog;
 
 static CAPTURED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
@@ -320,8 +308,6 @@ impl log::Log for CapturedLog {
     fn flush(&self) {}
 }
 
-/// A host that runs scripts cannot guarantee that every allocation is freed. Dropping
-/// the allocator must report what is left and carry on, not bring the process down.
 #[test]
 fn dropping_with_live_allocations_reports_and_continues() {
     let Some(gpu) = Gpu::new() else { return };
@@ -346,7 +332,6 @@ fn dropping_with_live_allocations_reports_and_continues() {
             .bind_buffer_memory(buffer, leaked.memory(), leaked.offset())
             .unwrap();
         leaked_memory = leaked.memory();
-        // `leaked` is forgotten on purpose: it is never passed to `Allocator::free`.
     }
 
     let live = allocator.live_allocations();
@@ -354,7 +339,7 @@ fn dropping_with_live_allocations_reports_and_continues() {
     assert_eq!(live[0].name.as_deref(), Some("script texture"));
     assert_eq!(live[0].memory, leaked_memory);
 
-    drop(allocator); // Must not panic.
+    drop(allocator);
 
     let records = CAPTURED.lock().unwrap().join("\n");
     assert!(
@@ -363,14 +348,12 @@ fn dropping_with_live_allocations_reports_and_continues() {
     );
     assert!(records.contains("\"script texture\""), "{records}");
 
-    // The memory was left alone, so the buffer is still valid until we clean up.
     unsafe {
         gpu.device.destroy_buffer(buffer, None);
         gpu.device.free_memory(leaked_memory, None);
     }
 }
 
-/// The explicit shutdown path: release everything, live or not.
 #[test]
 fn free_all_releases_memory_that_still_has_live_allocations() {
     let Some(gpu) = Gpu::new() else { return };
@@ -388,23 +371,18 @@ fn free_all_releases_memory_that_still_has_live_allocations() {
             .unwrap();
         {
             let mapped = allocator.map(&allocation).unwrap();
-            // Out-of-range requests are an error value, not a panic.
             assert!(mapped.try_byte_range(0, 4096).is_some());
             assert!(mapped.try_byte_range(4096, usize::MAX).is_none());
             assert!(mapped.try_byte_range(1 << 40, 1).is_none());
         }
 
-        // The resource goes first, then the memory.
         gpu.device.destroy_buffer(buffer, None);
         assert_eq!(allocator.free_all(), 1);
     }
     assert!(allocator.is_empty());
     assert!(allocator.live_allocations().is_empty());
-    // Nothing is left to report on drop, and the device has no memory to complain about.
 }
 
-/// A buffer that stays mapped for its whole life: the pointer borrows nothing, and
-/// freeing the allocation ends the mapping.
 #[test]
 fn persistent_mappings_last_until_the_allocation_is_freed() {
     let Some(gpu) = Gpu::new() else { return };
@@ -428,7 +406,6 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
 
         assert!(allocator.persistent_ptr(&a).is_none());
         let pointer = allocator.map_persistent(&a).unwrap();
-        // The allocator is free for other work while the mapping lives.
         let other = allocator.map_persistent(&b).unwrap();
         assert_ne!(pointer, other);
         assert_eq!(allocator.map_persistent(&a).unwrap(), pointer);
@@ -437,16 +414,13 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
         let bytes = std::slice::from_raw_parts_mut(pointer.as_ptr(), a.size() as usize);
         bytes[..4].copy_from_slice(&[9, 8, 7, 6]);
         {
-            // The guard form sees the same memory and can be used alongside.
             let mapped = allocator.map(&a).unwrap();
             assert_eq!(mapped.byte_range(0, 4), &[9, 8, 7, 6]);
         }
         assert_eq!(allocator.persistent_ptr(&a), Some(pointer));
 
-        // Freeing a persistently mapped allocation is not an error: it ends the mapping.
         gpu.device.destroy_buffer(first, None);
         allocator.free(a).unwrap();
-        // `b` shares the block and is still mapped at the same address.
         assert_eq!(allocator.persistent_ptr(&b), Some(other));
         std::slice::from_raw_parts_mut(other.as_ptr(), 4).copy_from_slice(&[1, 2, 3, 4]);
 
@@ -456,7 +430,6 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
     assert!(allocator.is_empty());
 }
 
-/// Host-only memory cannot be mapped persistently either: an error, not a panic.
 #[test]
 fn persistent_mapping_of_device_local_memory_is_an_error() {
     let Some(gpu) = Gpu::new() else { return };
@@ -473,7 +446,6 @@ fn persistent_mapping_of_device_local_memory_is_an_error() {
             .allocation_memory_flags(&allocation)
             .unwrap()
             .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
-        // Integrated and software devices have no memory that is not host-visible.
         if !host_visible {
             assert!(allocator.map_persistent(&allocation).is_err());
             assert!(allocator.persistent_ptr(&allocation).is_none());

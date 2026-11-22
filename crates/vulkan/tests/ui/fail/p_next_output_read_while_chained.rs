@@ -1,5 +1,3 @@
-//! While a query struct is chained for output, it cannot be read through its own name:
-//! Vulkan may still write to it through the chain.
 use vulkan::vk;
 
 fn query(_: &mut vk::PhysicalDeviceFeatures2<'_>) {}

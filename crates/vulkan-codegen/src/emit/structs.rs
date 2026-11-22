@@ -1,27 +1,12 @@
-//! Struct and union emitter.
-//!
-//! Lifetime rules, which the trybuild tests in `crates/vulkan/tests/ui` pin down:
-//!
-//! - A struct has a lifetime parameter `'a` exactly when it can hold a pointer.
-//! - Every setter that stores a pointer takes a `&'a` reference or slice, so the struct
-//!   cannot outlive what it points to.
-//! - The only setters that take raw pointers are those for `void*` and opaque platform
-//!   types, where Rust has no type to borrow.
-
 use super::{header, w};
 use crate::model::{CType, Model, provided_by};
 use crate::naming::{const_name, enum_variant_name, field_name, pointer_setter_name, type_name};
 use std::collections::{BTreeMap, BTreeSet};
 use vulkan_registry::{Field, Struct};
 
-/// A field of the emitted Rust struct.
 pub enum Slot<'a> {
     Plain(&'a Field),
-    /// Consecutive C bit-fields packed into one `u32` storage unit.
-    Bits {
-        storage: String,
-        bits: Vec<Bit<'a>>,
-    },
+    Bits { storage: String, bits: Vec<Bit<'a>> },
 }
 
 pub struct Bit<'a> {
@@ -30,9 +15,6 @@ pub struct Bit<'a> {
     pub width: u32,
 }
 
-/// Groups C bit-fields into storage units the way the C ABIs used by Vulkan do: fields of
-/// a 32-bit type are packed, in order, into 32-bit units, and a field that does not fit
-/// starts a new unit.
 pub fn slots<'a>(model: &Model<'_>, s: &'a Struct) -> Vec<Slot<'a>> {
     let mut out: Vec<Slot<'a>> = Vec::new();
     let mut used = 0;
@@ -211,8 +193,6 @@ fn emit_struct(out: &mut String, model: &Model<'_>, s: &Struct) {
     w!(out, "}}\n");
 
     if lt {
-        // Pointers stored in a struct are plain data. They are only ever dereferenced by
-        // Vulkan inside an `unsafe` command call.
         w!(out, "{cfg}unsafe impl Send for {name}<'_> {{}}");
         w!(out, "{cfg}unsafe impl Sync for {name}<'_> {{}}\n");
     }
@@ -251,7 +231,6 @@ fn emit_struct(out: &mut String, model: &Model<'_>, s: &Struct) {
         }
     }
     if let Some(p_next) = s.members.iter().find(|m| m.name == "pNext") {
-        // VkBaseInStructure / VkBaseOutStructure type their own `pNext`.
         let assign = if p_next.ty == "void" {
             "self.p_next = push_chain(next, self.p_next);"
         } else {
@@ -376,10 +355,8 @@ fn emit_union(out: &mut String, model: &Model<'_>, s: &Struct) {
     w!(out, "}}\n");
 }
 
-/// The sibling member that holds the element count of pointer member `m`.
 fn len_count<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
     let len = m.len.as_deref()?;
-    // `geometryCount,1` describes `T* const*`: `geometryCount` pointers to one `T` each.
     let first = match len.split_once(',') {
         Some((first, "1")) => first,
         Some(_) => return None,
@@ -390,7 +367,6 @@ fn len_count<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
         .find(|c| c.name == first && CType::of(c).depth() == 0 && c.fixed_size_array.is_empty())
 }
 
-/// Count member name to the pointer members whose length it is.
 fn count_users(s: &Struct) -> BTreeMap<&str, Vec<&Field>> {
     let mut map = BTreeMap::<&str, Vec<&Field>>::new();
     for m in &s.members {
@@ -433,7 +409,6 @@ fn scalar_default_expr(model: &Model<'_>, s: &Struct, m: &Field, ty: &CType) -> 
     if model.is_func_pointer(&m.ty) {
         return "None".to_string();
     }
-    // Defaults that differ from zero because zero is never a valid or neutral value.
     if matches!(
         m.name.as_str(),
         "srcQueueFamilyIndex" | "dstQueueFamilyIndex"
@@ -450,7 +425,6 @@ fn scalar_default_expr(model: &Model<'_>, s: &Struct, m: &Field, ty: &CType) -> 
         "char" | "int" | "uint8_t" | "int8_t" | "uint16_t" | "int16_t" | "uint32_t" | "int32_t"
         | "uint64_t" | "int64_t" | "size_t" | "VkBool32" | "VkFlags" | "VkFlags64"
         | "VkDeviceSize" | "VkDeviceAddress" | "VkSampleMask" => "0".to_string(),
-        // Platform typedefs are integers or raw pointers.
         _ if model.is_external(base) || base == "VkRemoteAddressNV" => {
             "unsafe { core::mem::zeroed() }".to_string()
         }
@@ -458,7 +432,6 @@ fn scalar_default_expr(model: &Model<'_>, s: &Struct, m: &Field, ty: &CType) -> 
     }
 }
 
-/// Reserves a method name; two members mapping to one name is a generator bug.
 fn reserve(emitted: &mut BTreeSet<String>, owner: &str, name: &str) {
     assert!(
         emitted.insert(name.to_string()),
@@ -534,10 +507,8 @@ fn emit_setters(
     let opaque = model.is_opaque(&ty.base);
     let mut name = pointer_setter_name(&m.name);
     if emitted.contains(&name) {
-        // `pGeometries` and `ppGeometries` would both be `geometries`.
         name = format!("{name}_ptrs");
     }
-    // Other pointer members that share this member's count.
     let shared_check = |count: &Field| {
         let others = counts[count.name.as_str()]
             .iter()
@@ -607,7 +578,6 @@ fn emit_setters(
                 "    pub fn {name}(mut self, value: &'a CStr) -> Self {{ self.{field} = value.as_ptr(); self }}"
             );
         } else if m.len.is_some() && !opaque {
-            // The length is an expression of other members; only the pointer is stored.
             reserve(emitted, &s.name, &name);
             w!(
                 out,
@@ -678,7 +648,6 @@ fn emit_setters(
         return;
     }
 
-    // Shapes without a borrowed form.
     reserve(emitted, &s.name, &field);
     w!(
         out,
@@ -713,7 +682,6 @@ fn emit_bit_accessors(
     } else {
         ("u32".to_string(), "value")
     };
-    // `<< 0` would trip clippy::identity_op in the generated code.
     let (shl, shr) = if shift == 0 {
         (String::new(), String::new())
     } else {
@@ -789,7 +757,6 @@ mod tests {
         assert!(out.contains("s_type: StructureType::DEVICE_QUEUE_CREATE_INFO,"));
         assert!(out.contains("unsafe impl TaggedStructure for DeviceQueueCreateInfo<'_> {"));
         assert!(out.contains("unsafe impl Send for DeviceQueueCreateInfo<'_> {}"));
-        // No setter takes a raw typed pointer.
         assert!(!out.contains("value: *const f32"));
     }
 
@@ -873,7 +840,6 @@ mod tests {
                 "pub fn geometries_ptrs(mut self, value: &'a [&'a Geometry<'a>]) -> Self {"
             )
         );
-        // void* has no borrowed form.
         assert!(out.contains("pub fn data(mut self, value: *const c_void) -> Self {"));
     }
 

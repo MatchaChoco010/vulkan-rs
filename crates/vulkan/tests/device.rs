@@ -1,17 +1,3 @@
-//! Tests against a real Vulkan implementation.
-//!
-//! They need a Vulkan loader and a Vulkan 1.3 device, which lavapipe provides in CI.
-//! Without one the tests are skipped, unless `VULKAN_RS_REQUIRE_DEVICE_TEST` is set.
-//!
-//! When `VK_LAYER_KHRONOS_validation` is installed it is enabled, and any validation
-//! error fails the test. That is the main check that the generated structs carry the
-//! values the setters were given.
-//!
-//! The tests are also the smallest working examples of what a compositor needs:
-//! instance and device creation, `pNext` queries, dynamic rendering, synchronization2,
-//! timeline semaphores, and memory and fence sharing through file descriptors.
-
-// `Entry::load` needs the `std` feature.
 #![cfg(feature = "std")]
 
 use std::ffi::{CStr, c_void};
@@ -21,11 +7,9 @@ use vulkan::{Device, Entry, Instance};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
-/// An instance and a device with one queue, torn down on drop.
 struct Gpu {
     instance: Instance,
     messenger: vk::DebugUtilsMessengerEXT,
-    /// Validation errors, filled by the debug messenger.
     errors: *mut Mutex<Vec<String>>,
     physical_device: vk::PhysicalDevice,
     device: Device,
@@ -33,10 +17,7 @@ struct Gpu {
     queue_family: u32,
     extensions: Vec<&'static CStr>,
     instance_extensions: Vec<&'static CStr>,
-    /// `samplerYcbcrConversion` is supported and enabled.
     ycbcr: bool,
-    /// `descriptorHeap`, `shaderUntypedPointers`, `bufferDeviceAddress` and
-    /// `shaderDrawParameters` are supported and enabled.
     descriptor_heap: bool,
 }
 
@@ -46,8 +27,6 @@ unsafe extern "system" fn debug_callback(
     data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
     user_data: *mut c_void,
 ) -> vk::Bool32 {
-    // SAFETY: `user_data` is the `Mutex` leaked in `Gpu::new`, and Vulkan passes a valid
-    // callback data pointer with a NUL-terminated message.
     unsafe {
         let errors = &*user_data.cast::<Mutex<Vec<String>>>();
         let message = CStr::from_ptr((*data).p_message).to_string_lossy();
@@ -57,14 +36,10 @@ unsafe extern "system" fn debug_callback(
 }
 
 impl Gpu {
-    /// Creates a device with every extension of `wanted` that the device supports.
-    /// Returns `None` when there is no usable Vulkan implementation.
     fn new(wanted: &[&'static CStr]) -> Option<Self> {
         Self::with_instance_extensions(&[], wanted)
     }
 
-    /// Like [`Gpu::new`], and also enables the supported instance extensions of
-    /// `instance_wanted`.
     fn with_instance_extensions(
         instance_wanted: &[&'static CStr],
         wanted: &[&'static CStr],
@@ -145,7 +120,6 @@ impl Gpu {
                     .map_err(|e| e.to_string())?;
             }
 
-            // The first Vulkan 1.3 device with a graphics queue.
             let mut selected = None;
             for physical_device in instance
                 .enumerate_physical_devices()
@@ -199,17 +173,12 @@ impl Gpu {
             let queues = [vk::DeviceQueueCreateInfo::default()
                 .queue_family_index(queue_family)
                 .queue_priorities(&priorities)];
-            // Optional feature: enable Y'CbCr conversion where the device has it.
             let mut supported11 = vk::PhysicalDeviceVulkan11Features::default();
             let mut supported = vk::PhysicalDeviceFeatures2::default().push_next(&mut supported11);
             instance.get_physical_device_features2(physical_device, &mut supported);
             let ycbcr = supported11.sampler_ycbcr_conversion != vk::FALSE;
-            // Slang's `SV_VertexID` needs the DrawParameters SPIR-V capability.
             let draw_parameters = supported11.shader_draw_parameters != vk::FALSE;
 
-            // Optional feature: descriptor heaps, with the untyped pointers that shaders
-            // use to reach into a heap. The feature structs may only be chained when the
-            // device has the extensions.
             let wants_heap = extensions.contains(&vk::EXT_DESCRIPTOR_HEAP_NAME)
                 && extensions.contains(&vk::KHR_SHADER_UNTYPED_POINTERS_NAME)
                 && extensions.contains(&vk::KHR_MAINTENANCE_5_NAME);
@@ -279,7 +248,6 @@ impl Gpu {
         self.extensions.contains(&extension)
     }
 
-    /// Index of a memory type allowed by `type_bits` that has all of `flags`.
     fn memory_type(&self, type_bits: u32, flags: vk::MemoryPropertyFlags) -> Option<u32> {
         let memory = unsafe {
             self.instance
@@ -293,8 +261,6 @@ impl Gpu {
             .map(|(index, _)| index as u32)
     }
 
-    /// A buffer with memory of its own. `address` makes the memory usable with
-    /// `vkGetBufferDeviceAddress`.
     unsafe fn buffer(
         &self,
         size: u64,
@@ -328,7 +294,6 @@ impl Gpu {
         }
     }
 
-    /// A host-visible buffer, filled with `bytes`.
     unsafe fn host_buffer(
         &self,
         bytes: &[u8],
@@ -352,7 +317,6 @@ impl Gpu {
         }
     }
 
-    /// A 2D image with device-local memory of its own.
     unsafe fn image(
         &self,
         format: vk::Format,
@@ -396,8 +360,6 @@ impl Gpu {
         }
     }
 
-    /// Records `record` into a one-time command buffer, submits it with
-    /// `vkQueueSubmit2` and waits for it.
     unsafe fn submit(&self, record: impl FnOnce(vk::CommandBuffer)) {
         unsafe {
             let device = &self.device;
@@ -462,8 +424,6 @@ fn queries_fill_p_next_chains() {
             .push_next(&mut vulkan13);
         gpu.instance
             .get_physical_device_features2(gpu.physical_device, &mut features);
-        // Both are required by Vulkan 1.3, so a chain that Vulkan could not follow would
-        // leave them at zero.
         assert_eq!(vulkan12.timeline_semaphore, vk::TRUE);
         assert_eq!(vulkan13.dynamic_rendering, vk::TRUE);
         assert_eq!(vulkan13.synchronization2, vk::TRUE);
@@ -576,7 +536,6 @@ fn dynamic_rendering_clear_reads_back() {
                 &vk::DependencyInfo::default().image_memory_barriers(&to_attachment),
             );
 
-            // A clear on load is enough to produce known pixels without a shader.
             let attachments = [vk::RenderingAttachmentInfo::default()
                 .image_view(view)
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -681,7 +640,6 @@ fn timeline_semaphore_waits_report_timeout_as_success_code() {
             .values(&reached);
         assert_eq!(device.wait_semaphores(&wait, 0), Ok(vk::VkResult::SUCCESS));
 
-        // VK_TIMEOUT is a success code: it comes back in `Ok`, not as an error.
         let not_reached = [6];
         let wait = vk::SemaphoreWaitInfo::default()
             .semaphores(&semaphores)
@@ -695,7 +653,6 @@ fn timeline_semaphore_waits_report_timeout_as_success_code() {
 #[test]
 fn object_names_use_handle_object_types() {
     let Some(gpu) = Gpu::new(&[]) else { return };
-    // Object naming needs VK_EXT_debug_utils, which `Gpu` enables with validation.
     if gpu.messenger.is_null() {
         eprintln!("skipping: VK_EXT_debug_utils is not enabled");
         return;
@@ -719,8 +676,6 @@ fn object_names_use_handle_object_types() {
     }
 }
 
-/// Memory exported as a file descriptor and imported again is the same memory. This is
-/// the mechanism behind dma-buf sharing between a compositor and its clients.
 #[test]
 fn memory_round_trips_through_a_file_descriptor() {
     let Some(gpu) = Gpu::new(&[vk::KHR_EXTERNAL_MEMORY_FD_NAME]) else {
@@ -795,7 +750,6 @@ fn memory_round_trips_through_a_file_descriptor() {
             .unwrap();
         assert!(fd >= 0);
 
-        // A successful import takes ownership of the file descriptor.
         let imported_buffer = create_buffer();
         let mut import = vk::ImportMemoryFdInfoKHR::default()
             .handle_type(handle_type)
@@ -837,8 +791,6 @@ fn memory_round_trips_through_a_file_descriptor() {
     }
 }
 
-/// A fence payload exported as a sync file and imported into another fence: the hand-off
-/// a compositor does with explicit sync.
 #[test]
 fn fence_round_trips_through_a_sync_file() {
     let Some(gpu) = Gpu::new(&[vk::KHR_EXTERNAL_FENCE_FD_NAME]) else {
@@ -870,7 +822,6 @@ fn fence_round_trips_through_a_sync_file() {
             .create_fence(&vk::FenceCreateInfo::default().push_next(&mut export), None)
             .unwrap();
 
-        // Give the fence a payload by submitting an empty batch with it.
         device.queue_submit2(gpu.queue, &[], source).unwrap();
         let fd = device
             .get_fence_fd_khr(
@@ -879,10 +830,8 @@ fn fence_round_trips_through_a_sync_file() {
                     .handle_type(handle_type),
             )
             .unwrap();
-        // -1 is the valid sync fd for "already signaled".
         assert!(fd >= -1);
 
-        // A temporary import: the payload is consumed by the next wait or reset.
         let target = device
             .create_fence(&vk::FenceCreateInfo::default(), None)
             .unwrap();
@@ -905,7 +854,6 @@ fn fence_round_trips_through_a_sync_file() {
     }
 }
 
-/// The two-call idiom inside a `pNext` struct: ask for the count, then for the data.
 #[test]
 fn drm_format_modifier_list_is_filled_through_p_next() {
     let Some(gpu) = Gpu::new(&[vk::EXT_IMAGE_DRM_FORMAT_MODIFIER_NAME]) else {
@@ -946,8 +894,6 @@ fn drm_format_modifier_list_is_filled_through_p_next() {
     }
 }
 
-/// A binary semaphore's pending signal exported as a sync file and imported into
-/// another semaphore: how a compositor waits for a client's rendering, and the reverse.
 #[test]
 fn semaphore_round_trips_through_a_sync_file() {
     let Some(gpu) = Gpu::new(&[vk::KHR_EXTERNAL_SEMAPHORE_FD_NAME]) else {
@@ -984,7 +930,6 @@ fn semaphore_round_trips_through_a_sync_file() {
             )
             .unwrap();
 
-        // A sync fd can only be exported while a signal operation is pending.
         let signals = [vk::SemaphoreSubmitInfo::default().semaphore(source)];
         let submits = [vk::SubmitInfo2::default().signal_semaphore_infos(&signals)];
         device
@@ -1012,7 +957,6 @@ fn semaphore_round_trips_through_a_sync_file() {
             )
             .unwrap();
 
-        // Waiting on the imported payload completes because the source was signaled.
         let fence = device
             .create_fence(&vk::FenceCreateInfo::default(), None)
             .unwrap();
@@ -1032,7 +976,6 @@ fn semaphore_round_trips_through_a_sync_file() {
     }
 }
 
-/// A Y'CbCr conversion has to be chained into both the sampler and the image view.
 #[test]
 fn ycbcr_conversion_chains_into_sampler_and_view() {
     let Some(gpu) = Gpu::new(&[]) else { return };
@@ -1042,13 +985,11 @@ fn ycbcr_conversion_chains_into_sampler_and_view() {
     }
     unsafe {
         let device = &gpu.device;
-        // NV12, the usual video and camera layout.
         let format = vk::Format::G8_B8R8_2PLANE_420_UNORM;
         let features = gpu
             .instance
             .get_physical_device_format_properties(gpu.physical_device, format)
             .optimal_tiling_features;
-        // A format supports midpoint chroma siting, cosited chroma siting, or both.
         let chroma_offset = if features.contains(vk::FormatFeatureFlags::MIDPOINT_CHROMA_SAMPLES) {
             vk::ChromaLocation::MIDPOINT
         } else if features.contains(vk::FormatFeatureFlags::COSITED_CHROMA_SAMPLES) {
@@ -1145,8 +1086,6 @@ fn ycbcr_conversion_chains_into_sampler_and_view() {
     }
 }
 
-/// `VK_KHR_display` enumeration works without owning the display. Acquiring one
-/// (`vkAcquireDrmDisplayEXT`) needs DRM master and is not attempted here.
 #[test]
 fn displays_can_be_enumerated() {
     let Some(gpu) =
@@ -1206,8 +1145,6 @@ fn align_up(value: u64, alignment: u64) -> u64 {
     value.div_ceil(alignment) * alignment
 }
 
-/// SPIR-V as words. The files are compiled from `shaders/*.slang` by
-/// `tools/compile-shaders`.
 fn spirv(bytes: &[u8]) -> Vec<u32> {
     bytes
         .chunks_exact(4)
@@ -1215,13 +1152,8 @@ fn spirv(bytes: &[u8]) -> Vec<u32> {
         .collect()
 }
 
-/// Draws with `VK_EXT_descriptor_heap`: no descriptor set layout, no pipeline layout, no
-/// descriptor pool. A texture, a sampler and a buffer are described in two heaps, which
-/// are plain buffers, and the shader reaches them through indices passed as push data.
 #[test]
 fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
-    // The instance asks for Vulkan 1.3, where VK_KHR_maintenance5 is still an extension
-    // that VK_EXT_descriptor_heap depends on.
     let Some(gpu) = Gpu::new(&[
         vk::KHR_MAINTENANCE_5_NAME,
         vk::EXT_DESCRIPTOR_HEAP_NAME,
@@ -1249,7 +1181,6 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
             .get_physical_device_properties2(gpu.physical_device, &mut properties);
         let heap = heap_properties;
 
-        // The resources the shader will read.
         let (texture, texture_memory) = gpu.image(
             FORMAT,
             1,
@@ -1268,9 +1199,6 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
             true,
         );
 
-        // Heap layout. A shader handle is an index; the byte offset of a descriptor is
-        // the index times the size of its descriptor type. The driver reserves a range
-        // at a position of our choosing, which we put at the end.
         let buffer_size = heap.buffer_descriptor_size;
         let image_size = heap.image_descriptor_size;
         let sampler_size = heap.sampler_descriptor_size;
@@ -1303,8 +1231,6 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
             device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
         };
 
-        // Write the descriptors. Vulkan fills host memory that we hand it as slices, so
-        // a descriptor cannot be written outside of the mapped heap.
         let resource_bytes = std::slice::from_raw_parts_mut(
             device
                 .map_memory(
@@ -1372,7 +1298,6 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
             .unwrap();
         device.unmap_memory(sampler_heap_memory);
 
-        // The pipeline has no layout: `DESCRIPTOR_HEAP_EXT` replaces it.
         let vertex_code = spirv(include_bytes!("shaders/descriptor_heap.vert.spv"));
         let fragment_code = spirv(include_bytes!("shaders/descriptor_heap.frag.spv"));
         let vertex_module = device
@@ -1475,14 +1400,12 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
         let (readback, readback_memory) =
             gpu.buffer(byte_count, vk::BufferUsageFlags::TRANSFER_DST, host, false);
 
-        // What the shader gets as push data: three handles, each an index and padding.
         let push = [texture_index, 0, sampler_index, 0, params_index, 0]
             .iter()
             .flat_map(|value| value.to_ne_bytes())
             .collect::<Vec<u8>>();
 
         gpu.submit(|command_buffer| {
-            // Upload the texel.
             let to_transfer_dst = [vk::ImageMemoryBarrier2::default()
                 .dst_stage_mask(vk::PipelineStageFlags2::COPY)
                 .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
@@ -1508,8 +1431,6 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
                     })],
             );
 
-            // Texture and target into the layouts the draw needs, and the heaps from
-            // "written by the host" to "read by shaders".
             let images = [
                 vk::ImageMemoryBarrier2::default()
                     .src_stage_mask(vk::PipelineStageFlags2::COPY)
@@ -1622,7 +1543,6 @@ fn descriptor_heap_draws_through_resource_and_sampler_heaps() {
             );
         });
 
-        // texel * tint, in 8-bit UNORM.
         let expected = [
             (f32::from(TEXEL[0]) * TINT[0]).round() as u8,
             (f32::from(TEXEL[1]) * TINT[1]).round() as u8,

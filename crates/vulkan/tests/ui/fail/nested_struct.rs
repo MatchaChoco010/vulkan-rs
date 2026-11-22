@@ -1,4 +1,3 @@
-//! A borrow inside a nested struct is carried by the outer struct.
 use vulkan::vk;
 
 fn main() {
