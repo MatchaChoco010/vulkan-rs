@@ -8,7 +8,6 @@ pub mod swapchain;
 
 use anyhow::{Result, bail};
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
-use std::fmt::Display;
 use vulkan::vk;
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize};
@@ -48,32 +47,40 @@ pub trait Renderer: Sized {
     /// found it outdated.
     unsafe fn recreate_swapchain(&mut self, window_extent: vk::Extent2D) -> Result<()>;
 
-    unsafe fn destroy(self);
+    /// Destroys everything the renderer created, also after a step of it failed, and
+    /// returns the first error.
+    unsafe fn destroy(self) -> Result<()>;
 }
 
 /// Opens a window titled `title` and draws to it until the window is closed or an error
-/// is printed. When `VULKAN_EXAMPLE_FRAMES` is set, it stops after that many frames.
+/// occurs. When `VULKAN_EXAMPLE_FRAMES` is set, it stops after that many frames.
+///
+/// # Errors
+///
+/// The first error of creating the window or the renderer, of drawing, of recreating
+/// the swapchain, of the event loop, or of destroying the renderer.
 pub fn run<R: Renderer>(title: &str) -> Result<()> {
     let event_loop = EventLoop::new()?;
     let mut runner = Runner::<R> {
         title,
-        renderer: None,
+        session: Session::new(
+            std::env::var("VULKAN_EXAMPLE_FRAMES")
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok()),
+        ),
         window: None,
-        frames: 0,
-        max_frames: std::env::var("VULKAN_EXAMPLE_FRAMES")
-            .ok()
-            .and_then(|value| value.parse::<u32>().ok()),
     };
-    event_loop.run_app(&mut runner)?;
-    Ok(())
+    let event_loop_result = event_loop.run_app(&mut runner).map_err(anyhow::Error::from);
+    runner.session.finish(event_loop_result)
 }
 
+/// The fields drop in order: the session destroys a renderer that is still there
+/// before the window goes, since the Vulkan surface has to go before the Wayland
+/// surface it was created from.
 struct Runner<'a, R: Renderer> {
     title: &'a str,
-    renderer: Option<R>,
+    session: Session<R>,
     window: Option<Window>,
-    frames: u32,
-    max_frames: Option<u32>,
 }
 
 impl<R: Renderer> ApplicationHandler for Runner<'_, R> {
@@ -89,20 +96,19 @@ impl<R: Renderer> ApplicationHandler for Runner<'_, R> {
                 .with_inner_size(WINDOW_SIZE),
         ) {
             Ok(window) => window,
-            Err(err) => return exit_with_error(event_loop, err),
+            Err(error) => return self.session.fail(error.into()).apply(event_loop),
         };
-        let wayland = match wayland_window(&window) {
-            Ok(wayland) => wayland,
-            Err(err) => return exit_with_error(event_loop, err),
-        };
-        // SAFETY: the renderer is destroyed before the window, in `Runner::drop`.
-        match unsafe { R::new(wayland, window_extent(window.inner_size())) } {
-            Ok(renderer) => {
-                self.renderer = Some(renderer);
-                self.window = Some(window);
-            }
-            Err(err) => exit_with_error(event_loop, err),
+        let extent = window_extent(window.inner_size());
+        let flow = self.session.start(|| {
+            let wayland = wayland_window(&window)?;
+            // SAFETY: the window is kept until the session has destroyed the renderer,
+            // which the order of the fields of `Runner` ensures.
+            unsafe { R::new(wayland, extent) }
+        });
+        if self.session.is_running() {
+            self.window = Some(window);
         }
+        flow.apply(event_loop);
     }
 
     fn window_event(
@@ -111,49 +117,20 @@ impl<R: Renderer> ApplicationHandler for Runner<'_, R> {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => {
-                let Some(renderer) = self.renderer.as_mut() else {
-                    return;
-                };
-                // SAFETY: the renderer upholds the valid usage rules of the commands it
-                // calls; the validation layer, when installed, reports any violation.
-                if let Err(err) = unsafe { renderer.recreate_swapchain(window_extent(size)) } {
-                    exit_with_error(event_loop, err);
-                }
-            }
-            WindowEvent::RedrawRequested => {
-                let Some(renderer) = self.renderer.as_mut() else {
-                    return;
-                };
-                // SAFETY: as for `recreate_swapchain` above.
-                match unsafe { renderer.draw() } {
-                    Ok(SwapchainStatus::Current) => {
-                        self.frames += 1;
-                        if self.max_frames.is_some_and(|max| self.frames >= max) {
-                            event_loop.exit();
-                        }
-                    }
-                    Ok(SwapchainStatus::Outdated) => {
-                        let Some(window) = self.window.as_ref() else {
-                            return;
-                        };
-                        let extent = window_extent(window.inner_size());
-                        // SAFETY: as for `recreate_swapchain` above.
-                        if let Err(err) = unsafe { renderer.recreate_swapchain(extent) } {
-                            exit_with_error(event_loop, err);
-                        }
-                    }
-                    Err(err) => exit_with_error(event_loop, err),
-                }
-            }
-            _ => {}
-        }
+        let flow = match event {
+            WindowEvent::CloseRequested => Flow::Exit,
+            WindowEvent::Resized(size) => self.session.resize(window_extent(size)),
+            WindowEvent::RedrawRequested => match self.window.as_ref() {
+                Some(window) => self.session.redraw(window_extent(window.inner_size())),
+                None => Flow::Continue,
+            },
+            _ => Flow::Continue,
+        };
+        flow.apply(event_loop);
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if self.renderer.is_some()
+        if self.session.is_running()
             && let Some(window) = self.window.as_ref()
         {
             window.request_redraw();
@@ -161,15 +138,130 @@ impl<R: Renderer> ApplicationHandler for Runner<'_, R> {
     }
 }
 
-impl<R: Renderer> Drop for Runner<'_, R> {
-    fn drop(&mut self) {
-        // The Vulkan surface has to go before the Wayland surface it was created from,
-        // which the window owns.
-        if let Some(renderer) = self.renderer.take() {
-            // SAFETY: the window is still alive, as `Renderer::new` requires.
-            unsafe { renderer.destroy() };
+/// Whether the event loop goes on after an event.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Flow {
+    Continue,
+    Exit,
+}
+
+impl Flow {
+    fn apply(self, event_loop: &ActiveEventLoop) {
+        if self == Flow::Exit {
+            event_loop.exit();
         }
     }
+}
+
+/// The renderer and what happened to it, apart from the window and the event loop: it
+/// stops at the first error and keeps that error for [`Session::finish`].
+struct Session<R: Renderer> {
+    renderer: Option<R>,
+    frames: u32,
+    max_frames: Option<u32>,
+    error: Option<anyhow::Error>,
+}
+
+impl<R: Renderer> Session<R> {
+    fn new(max_frames: Option<u32>) -> Self {
+        Self {
+            renderer: None,
+            frames: 0,
+            max_frames,
+            error: None,
+        }
+    }
+
+    fn is_running(&self) -> bool {
+        self.renderer.is_some()
+    }
+
+    fn start(&mut self, create: impl FnOnce() -> Result<R>) -> Flow {
+        match create() {
+            Ok(renderer) => {
+                self.renderer = Some(renderer);
+                Flow::Continue
+            }
+            Err(error) => self.fail(error),
+        }
+    }
+
+    fn resize(&mut self, extent: vk::Extent2D) -> Flow {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return Flow::Continue;
+        };
+        // SAFETY: the renderer upholds the valid usage rules of the commands it calls;
+        // the validation layer, when installed, reports any violation.
+        match unsafe { renderer.recreate_swapchain(extent) } {
+            Ok(()) => Flow::Continue,
+            Err(error) => self.fail(error),
+        }
+    }
+
+    /// `extent` is the size of the window, for a swapchain that turns out outdated.
+    fn redraw(&mut self, extent: vk::Extent2D) -> Flow {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return Flow::Continue;
+        };
+        // SAFETY: as for `Session::resize`.
+        match unsafe { renderer.draw() } {
+            Ok(SwapchainStatus::Current) => {
+                self.frames += 1;
+                if self.max_frames.is_some_and(|max| self.frames >= max) {
+                    Flow::Exit
+                } else {
+                    Flow::Continue
+                }
+            }
+            Ok(SwapchainStatus::Outdated) => self.resize(extent),
+            Err(error) => self.fail(error),
+        }
+    }
+
+    /// Keeps the first error and prints any later one, which would get lost otherwise.
+    fn fail(&mut self, error: anyhow::Error) -> Flow {
+        if self.error.is_some() {
+            eprintln!("{error:#}");
+        } else {
+            self.error = Some(error);
+        }
+        Flow::Exit
+    }
+
+    /// Destroys the renderer and tells how the run ended, given how the event loop did.
+    fn finish(&mut self, event_loop: Result<()>) -> Result<()> {
+        let destroyed = match self.renderer.take() {
+            // SAFETY: the window is still alive, as `Renderer::new` requires.
+            Some(renderer) => unsafe { renderer.destroy() },
+            None => Ok(()),
+        };
+        outcome([self.error.take().map_or(Ok(()), Err), event_loop, destroyed])
+    }
+}
+
+impl<R: Renderer> Drop for Session<R> {
+    fn drop(&mut self) {
+        if let Some(renderer) = self.renderer.take() {
+            // SAFETY: as in `Session::finish`.
+            if let Err(error) = unsafe { renderer.destroy() } {
+                eprintln!("{error:#}");
+            }
+        }
+    }
+}
+
+/// The first error of `results` in their order, after printing the later ones; success
+/// only when every one of them succeeded.
+fn outcome(results: impl IntoIterator<Item = Result<()>>) -> Result<()> {
+    let mut first = Ok(());
+    for result in results {
+        match (&first, result) {
+            (_, Ok(())) => {}
+            (Ok(()), Err(error)) => first = Err(error),
+            (Err(_), Err(error)) => eprintln!("{error:#}"),
+        }
+    }
+    first
 }
 
 fn wayland_window(window: &Window) -> Result<WaylandWindow> {
@@ -194,7 +286,214 @@ fn window_extent(size: PhysicalSize<u32>) -> vk::Extent2D {
     }
 }
 
-fn exit_with_error(event_loop: &ActiveEventLoop, error: impl Display) {
-    eprintln!("{error:#}");
-    event_loop.exit();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::anyhow;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    const EXTENT: vk::Extent2D = vk::Extent2D {
+        width: 8,
+        height: 8,
+    };
+
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Step {
+        Create,
+        Draw,
+        Recreate,
+        Destroy,
+    }
+
+    /// What a [`Fake`] renderer does: `failing` is a step and the call of it, counted
+    /// from 0, that fails; with `outdated`, every other draw finds the swapchain
+    /// outdated.
+    #[derive(Clone, Copy, Debug)]
+    struct Script {
+        failing: Option<(Step, u32)>,
+        outdated: bool,
+        max_frames: Option<u32>,
+    }
+
+    struct Fake {
+        script: Script,
+        draws: u32,
+        recreations: u32,
+        failed: Rc<Cell<Option<Step>>>,
+    }
+
+    impl Fake {
+        fn new(script: Script, failed: Rc<Cell<Option<Step>>>) -> Result<Self> {
+            let fake = Fake {
+                script,
+                draws: 0,
+                recreations: 0,
+                failed,
+            };
+            fake.check(Step::Create, 0)?;
+            Ok(fake)
+        }
+
+        fn check(&self, step: Step, call: u32) -> Result<()> {
+            if self.script.failing == Some((step, call)) {
+                self.failed.set(Some(step));
+                bail!("{step:?} failed");
+            }
+            Ok(())
+        }
+    }
+
+    impl Renderer for Fake {
+        unsafe fn new(_window: WaylandWindow, _window_extent: vk::Extent2D) -> Result<Self> {
+            bail!("the tests create the renderer with Session::start")
+        }
+
+        unsafe fn draw(&mut self) -> Result<SwapchainStatus> {
+            self.check(Step::Draw, self.draws)?;
+            self.draws += 1;
+            Ok(if self.script.outdated && self.draws.is_multiple_of(2) {
+                SwapchainStatus::Outdated
+            } else {
+                SwapchainStatus::Current
+            })
+        }
+
+        unsafe fn recreate_swapchain(&mut self, _window_extent: vk::Extent2D) -> Result<()> {
+            self.check(Step::Recreate, self.recreations)?;
+            self.recreations += 1;
+            Ok(())
+        }
+
+        unsafe fn destroy(self) -> Result<()> {
+            self.check(Step::Destroy, 0)
+        }
+    }
+
+    /// Runs a session the way the event loop drives it: a redraw, a resize, a redraw,
+    /// and so on, until a step asks to exit. Returns how the run ended and the step
+    /// that failed, if one did.
+    fn run_script(script: Script, event_loop: Result<()>) -> (Result<()>, Option<Step>) {
+        let failed = Rc::new(Cell::new(None));
+        let mut session = Session::<Fake>::new(script.max_frames);
+        let mut flow = session.start(|| Fake::new(script, failed.clone()));
+        for event in 0..12 {
+            if failed.get().is_some() {
+                assert_eq!(
+                    flow,
+                    Flow::Exit,
+                    "{script:?}: a failed step must end the loop"
+                );
+            }
+            if flow == Flow::Exit {
+                break;
+            }
+            flow = if event % 3 == 1 {
+                session.resize(EXTENT)
+            } else {
+                session.redraw(EXTENT)
+            };
+        }
+        (session.finish(event_loop), failed.get())
+    }
+
+    #[test]
+    fn a_run_fails_exactly_when_a_step_or_the_event_loop_failed() {
+        let steps = [Step::Create, Step::Draw, Step::Recreate, Step::Destroy];
+        let failures = [None]
+            .into_iter()
+            .chain(
+                steps
+                    .into_iter()
+                    .flat_map(|step| (0..3).map(move |call| Some((step, call)))),
+            )
+            .collect::<Vec<_>>();
+        let mut steps_that_failed = Vec::new();
+        for failing in failures {
+            for outdated in [false, true] {
+                for max_frames in [None, Some(1), Some(3)] {
+                    for event_loop_fails in [false, true] {
+                        let script = Script {
+                            failing,
+                            outdated,
+                            max_frames,
+                        };
+                        let event_loop = if event_loop_fails {
+                            Err(anyhow!("the event loop failed"))
+                        } else {
+                            Ok(())
+                        };
+                        let (result, failed) = run_script(script, event_loop);
+                        let expected = match failed {
+                            Some(step @ (Step::Create | Step::Draw | Step::Recreate)) => {
+                                Some(format!("{step:?} failed"))
+                            }
+                            _ if event_loop_fails => Some("the event loop failed".to_owned()),
+                            Some(Step::Destroy) => Some("Destroy failed".to_owned()),
+                            None => None,
+                        };
+                        assert_eq!(
+                            result.err().map(|error| error.to_string()),
+                            expected,
+                            "{script:?}, event loop fails: {event_loop_fails}"
+                        );
+                        steps_that_failed.extend(failed);
+                    }
+                }
+            }
+        }
+        for step in steps {
+            assert!(
+                steps_that_failed.contains(&step),
+                "no script made {step:?} fail"
+            );
+        }
+    }
+
+    #[test]
+    fn a_run_without_errors_stops_after_max_frames_and_succeeds() {
+        for max_frames in 1..5 {
+            let script = Script {
+                failing: None,
+                outdated: false,
+                max_frames: Some(max_frames),
+            };
+            let mut session = Session::<Fake>::new(script.max_frames);
+            let flow = session.start(|| Fake::new(script, Rc::default()));
+            assert_eq!(flow, Flow::Continue);
+            for frame in 1..max_frames {
+                assert_eq!(session.redraw(EXTENT), Flow::Continue, "frame {frame}");
+            }
+            assert_eq!(session.redraw(EXTENT), Flow::Exit, "frame {max_frames}");
+            assert!(session.finish(Ok(())).is_ok());
+        }
+    }
+
+    #[test]
+    fn a_later_error_does_not_replace_the_first() {
+        let mut session = Session::<Fake>::new(None);
+        assert_eq!(session.fail(anyhow!("first")), Flow::Exit);
+        assert_eq!(session.fail(anyhow!("second")), Flow::Exit);
+        let error = session.finish(Err(anyhow!("event loop"))).unwrap_err();
+        assert_eq!(error.to_string(), "first");
+    }
+
+    #[test]
+    fn outcome_is_the_first_error_of_any_combination() {
+        for bits in 0..8u32 {
+            let results = (0..3).map(|index| {
+                if bits & (1 << index) != 0 {
+                    Err(anyhow!("{index}"))
+                } else {
+                    Ok(())
+                }
+            });
+            let expected = (bits != 0).then(|| bits.trailing_zeros().to_string());
+            assert_eq!(
+                outcome(results).err().map(|error| error.to_string()),
+                expected,
+                "failing results {bits:03b}"
+            );
+        }
+    }
 }
