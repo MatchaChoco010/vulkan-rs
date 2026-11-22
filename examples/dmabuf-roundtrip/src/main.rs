@@ -465,10 +465,27 @@ unsafe fn read_back(
                 buffer,
                 &regions,
             );
+            let to_host = [vk::BufferMemoryBarrier2::default()
+                .src_stage_mask(vk::PipelineStageFlags2::COPY)
+                .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                .dst_stage_mask(vk::PipelineStageFlags2::HOST)
+                .dst_access_mask(vk::AccessFlags2::HOST_READ)
+                .buffer(buffer)
+                .size(size)];
+            device.cmd_pipeline_barrier2(
+                command_buffer,
+                &vk::DependencyInfo::default().buffer_memory_barriers(&to_host),
+            );
         })?;
 
         let pixels = {
-            let mapped = allocator.map(&allocation)?;
+            let coherent = allocator
+                .allocation_memory_flags(&allocation)?
+                .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
+            let mut mapped = allocator.map(&allocation)?;
+            if !coherent {
+                mapped.invalidate()?;
+            }
             mapped.byte_range(0, size as usize).to_vec()
         };
         device.destroy_buffer(buffer, None);
