@@ -108,7 +108,8 @@ pub enum HeapLayoutError {
         /// [`DescriptorHeapLayout::size`].
         heap_size: u64,
     },
-    /// The address of the heap is 0 although its size is not.
+    /// The address of the heap is 0. A heap range must come from a buffer, and no buffer
+    /// has device address 0, so this is rejected whatever the size of the heap.
     NullAddress,
     /// The heap would reach past the last device address: the address of its last
     /// byte, `address + size - 1`, does not fit in `u64`.
@@ -263,6 +264,9 @@ impl DescriptorSlots {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DescriptorHeapLayout {
     /// The size in bytes of the buffer to create. It ends with the reserved range.
+    ///
+    /// It is 0 when the plan holds no slots (no runs, or only runs of 0 slots) and the
+    /// reserved range is 0 bytes; there is then no buffer to create and no heap to bind.
     pub size: u64,
     /// What the device address of the heap must be a multiple of:
     /// `resourceHeapAlignment` or `samplerHeapAlignment`, with 0 treated as 1.
@@ -299,7 +303,7 @@ impl DescriptorHeapLayout {
     ///   reserved_size` is larger than `size`.
     /// - [`HeapLayoutError::Misaligned`] if `address` is not a multiple of
     ///   [`DescriptorHeapLayout::alignment`].
-    /// - [`HeapLayoutError::NullAddress`] if `address` is 0 and `size` is not.
+    /// - [`HeapLayoutError::NullAddress`] if `address` is 0, whatever `size` is.
     /// - [`HeapLayoutError::AddressRangeOverflow`] if the address of the last byte of
     ///   the heap, `address + size - 1`, does not fit in `u64`.
     pub fn bind_info(
@@ -323,7 +327,7 @@ impl DescriptorHeapLayout {
                 alignment: self.alignment,
             });
         }
-        if address == 0 && self.size != 0 {
+        if address == 0 {
             return Err(HeapLayoutError::NullAddress);
         }
         if self
@@ -562,6 +566,10 @@ impl ResourceHeapPlan {
     /// Places the reserved range after the last run, at a multiple of both descriptor
     /// alignments, and returns the layout of the heap.
     ///
+    /// When the plan holds no slots (no runs, or only runs of 0 slots) and
+    /// `minResourceHeapReservedRange` is 0, the layout has a size of 0: there is no buffer
+    /// to create and no heap to bind.
+    ///
     /// # Errors
     ///
     /// - [`HeapLayoutError::TooLarge`] if the heap is larger than `maxResourceHeapSize`.
@@ -672,6 +680,10 @@ impl SamplerHeapPlan {
 
     /// Places the reserved range after the last run, at a multiple of
     /// `samplerDescriptorAlignment`, and returns the layout of the heap.
+    ///
+    /// When the plan holds no slots (no runs, or only runs of 0 slots) and the reserved
+    /// range is 0 bytes, the layout has a size of 0: there is no buffer to create and no
+    /// heap to bind.
     ///
     /// # Errors
     ///
@@ -1317,7 +1329,7 @@ mod tests {
                             } else if u128::from(address) % u128::from(alignment.max(1)) != 0 {
                                 outcomes[1] += 1;
                                 Err(HeapLayoutError::Misaligned { address, alignment })
-                            } else if address == 0 && size != 0 {
+                            } else if address == 0 {
                                 outcomes[2] += 1;
                                 Err(HeapLayoutError::NullAddress)
                             } else if u128::from(address) + u128::from(size) > 1 << 64 {
@@ -1345,6 +1357,27 @@ mod tests {
             outcomes.iter().all(|&count| count > 50),
             "every outcome is exercised: {outcomes:?}"
         );
+
+        let nothing_to_hold = radv();
+        let mut empty_runs = ResourceHeapPlan::new(&nothing_to_hold);
+        empty_runs.buffers(0).unwrap();
+        empty_runs.images(0).unwrap();
+        empty_runs.uniform(0).unwrap();
+        let mut empty_samplers = SamplerHeapPlan::new(&nothing_to_hold);
+        empty_samplers.samplers(0).unwrap();
+        for layout in [
+            ResourceHeapPlan::new(&nothing_to_hold).finish().unwrap(),
+            SamplerHeapPlan::new(&nothing_to_hold).finish().unwrap(),
+            empty_runs.finish().unwrap(),
+            empty_samplers.finish().unwrap(),
+        ] {
+            assert_eq!(layout.size, 0, "a plan with no slots and no reserved range");
+            assert_eq!(
+                layout.bind_info(0).err(),
+                Some(HeapLayoutError::NullAddress),
+                "{layout:?}: no buffer has device address 0, whatever the size of the heap"
+            );
+        }
     }
 
     fn xorshift(mut seed: u64) -> impl FnMut() -> u64 {
