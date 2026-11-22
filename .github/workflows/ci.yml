@@ -104,12 +104,13 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # The examples print what the validation layer reports and carry on, so a message
-      # has to fail the step here. An example that skipped itself shows in the summary.
+      # has to fail the step here. The other headless examples need Vulkan 1.4 or
+      # extensions that this lavapipe lacks; the recent-lavapipe job runs them.
       - name: Run headless examples on lavapipe
         shell: bash
         run: |
           log="$RUNNER_TEMP/examples.log"
-          for example in headless-triangle compute-buffer; do
+          for example in headless-triangle; do
             cargo run -p "vulkan-$example" 2>&1 | tee -a "$log"
           done
           {
@@ -128,5 +129,118 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: example-output
+          path: target/example-output/
+          if-no-files-found: ignore
+
+  # The device tests and the headless examples on the lavapipe of a recent Mesa, which
+  # has Vulkan 1.4 and the extensions that the lavapipe of Ubuntu 24.04 lacks
+  # (VK_EXT_descriptor_heap among them). Here a device test or an example that skips
+  # itself fails, except for the skips listed in the device test step.
+  recent-lavapipe:
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:45
+      # lavapipe allocates dma-bufs through udmabuf and offers
+      # VK_EXT_image_drm_format_modifier only when it can open the device.
+      options: --device /dev/udmabuf
+    defaults:
+      run:
+        shell: bash
+    # Only lavapipe: the loader reports the other Mesa drivers, which find no device in
+    # the container, as errors, and the device tests fail on those. lavapipe has no
+    # VK_KHR_display, so the test of that extension skips itself here.
+    env:
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+    steps:
+      # git: actions/checkout downloads an archive through the REST API without it.
+      # tar and zstd: Swatinem/rust-cache. gcc: the linker for Rust.
+      # vulkan-loader-devel: the `linked` feature links the loader.
+      - name: Install lavapipe, the Vulkan loader, the validation layers and the build tools
+        run: |
+          dnf install --assumeyes --setopt=install_weak_deps=False \
+            git-core tar zstd gcc rustup \
+            vulkan-loader vulkan-loader-devel mesa-vulkan-drivers \
+            vulkan-validation-layers vulkan-tools
+          rpm -q mesa-vulkan-drivers vulkan-loader vulkan-validation-layers
+
+      # Neither the device tests nor the examples read the submodules.
+      - uses: actions/checkout@v7
+
+      # The examples step below finds nothing when the layer is missing, so its absence
+      # fails here.
+      - name: Show the Vulkan devices and layers
+        run: |
+          vulkaninfo --summary | tee "$RUNNER_TEMP/vulkaninfo.txt"
+          grep -q VK_LAYER_KHRONOS_validation "$RUNNER_TEMP/vulkaninfo.txt"
+
+      # The version, profile and components come from rust-toolchain.toml. The container
+      # runs as root with HOME set to another directory, which rustup-init otherwise
+      # reports as a possible sudo.
+      - name: Install Rust
+        env:
+          RUSTUP_INIT_SKIP_SUDO_CHECK: "yes"
+        run: |
+          rustup-init -y --no-modify-path --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install
+          "$HOME/.cargo/bin/cargo" --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      # A device test skips itself when the driver lacks the extension it exercises.
+      # cargo hides the output of passing tests, so list the skips where they can be seen.
+      # A skip fails the step unless it is in allowed_skips, which names what lavapipe
+      # does not implement.
+      - name: Device tests
+        run: |
+          log="$RUNNER_TEMP/device-tests.log"
+          allowed_skips="$RUNNER_TEMP/allowed-device-test-skips.txt"
+          printf '%s\n' \
+            "skipping: VK_KHR_display is not supported" \
+            > "$allowed_skips"
+          cargo test -p vulkan -p vulkan-alloc --all-features --test device -- --nocapture --test-threads=1 2>&1 \
+            | tee "$log"
+          {
+            echo "### Device tests"
+            echo '```'
+            grep -E "device test on|skipping|test result" "$log" \
+              | sed -E 's/^test [a-z_0-9:]+ \.\.\. //' | sort | uniq -c
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if grep -E "skipping" "$log" | grep -v -F -f "$allowed_skips"; then
+            echo "::error::a device test skipped itself"
+            exit 1
+          fi
+
+      # The examples print what the validation layer reports and carry on, so a message
+      # has to fail the step here, and so does an example that skipped itself.
+      - name: Run headless examples on lavapipe
+        run: |
+          log="$RUNNER_TEMP/examples.log"
+          for example in headless-triangle compute-buffer descriptor-heap-14 dmabuf-roundtrip \
+            mesh-shader ray-tracing-pipeline; do
+            cargo run -p "vulkan-$example" 2>&1 | tee -a "$log"
+          done
+          {
+            echo "### Examples"
+            echo '```'
+            grep -E "^(skipped|wrote|imported pixels match|all [0-9]+ values match)" "$log" \
+              | sed -E 's#/[^ ]*/target/#target/#' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if grep -E "Validation Error|VUID-" "$log"; then
+            echo "::error::an example produced a validation message"
+            exit 1
+          fi
+          if grep -E "^skipped" "$log"; then
+            echo "::error::an example skipped itself"
+            exit 1
+          fi
+
+      - name: Upload example images
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: example-output-recent-lavapipe
           path: target/example-output/
           if-no-files-found: ignore
