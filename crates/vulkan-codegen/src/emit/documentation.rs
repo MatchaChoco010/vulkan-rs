@@ -349,6 +349,89 @@ fn members_and_parameters_carry_everything_that_the_specification_attaches_to_th
     );
 }
 
+fn with_items(mut docs: Docs, name: &str, items: &[(&str, &str)]) -> Docs {
+    let described = docs
+        .pages
+        .iter_mut()
+        .find(|described| described.name == name)
+        .unwrap_or_else(|| panic!("no page {name}"));
+    described.items = page(name, "", items).items;
+    docs
+}
+
+#[test]
+fn an_item_that_starts_with_several_names_documents_each_of_them() {
+    let ir = ir();
+    let docs = with_items(
+        docs(),
+        "VkQueueInfo",
+        &[(
+            "queueCount",
+            "pname:queueCount, pname:pPriorities and pname:reserved are the number of queues,\ntheir priorities and nothing.",
+        )],
+    );
+    let docs = with_items(
+        docs,
+        "VkColor",
+        &[(
+            "VK_COLOR_RED",
+            "ename:VK_COLOR_RED and ename:VK_COLOR_BLUE specify a primary color.",
+        )],
+    );
+    let docs = with_items(
+        docs,
+        "vkGetQueue",
+        &[(
+            "queueIndex",
+            "pname:queueIndex and pname:pQueue are the index of the queue and where it is returned.",
+        )],
+    );
+    let model = Model::with_docs(&ir, &docs);
+    let structs = structs::emit(&model);
+    for member in ["queue_count", "p_priorities", "reserved"] {
+        assert_eq!(
+            doc_of(&structs, &format!("pub {member}:")),
+            [
+                "`queueCount`, `pPriorities` and `reserved` are the number of queues, their priorities and nothing."
+            ],
+            "{member}"
+        );
+    }
+    let enums = enums::emit(&model);
+    assert_eq!(
+        doc_of(&enums, "pub const RED:"),
+        [
+            "`VK_COLOR_RED` and [`VK_COLOR_BLUE`](Color::BLUE) specify a primary color."
+                .to_string(),
+            alias("VK_COLOR_RED"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&enums, "pub const BLUE:"),
+        [
+            "[`VK_COLOR_RED`](Color::RED) and `VK_COLOR_BLUE` specify a primary color.".to_string(),
+            alias("VK_COLOR_BLUE"),
+        ]
+    );
+    let commands = commands::emit(&model);
+    let parameters = commands
+        .lines()
+        .map(str::trim)
+        .skip_while(|line| *line != "/// # Parameters")
+        .skip(1)
+        .take_while(|line| *line != "/// # Safety")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        parameters,
+        [
+            "///",
+            "/// - `queueIndex` and `pQueue` are the index of the queue and where it is returned.",
+            "///",
+        ],
+        "an item that describes two parameters is listed once"
+    );
+}
+
 #[test]
 fn setters_name_the_members_they_set() {
     let (ir, docs) = (ir(), docs());

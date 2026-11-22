@@ -18,11 +18,12 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
             .map(|(name, p)| (name, model.pointer_ty(&CType::parse(&p.full_ty, &[]), "'_")))
             .collect::<Vec<_>>();
         let cfg = model.cfg(fp.protect.as_deref());
-        let described = fp
-            .params
-            .iter()
-            .filter_map(|p| model.described(&cfg, &fp.name, &p.name))
-            .collect::<Vec<_>>();
+        let described = parameter_items(
+            model,
+            &cfg,
+            &fp.name,
+            fp.params.iter().map(|p| p.name.as_str()),
+        );
         let mut doc = model.type_doc(&cfg, &fp.name, "C function pointer type", "");
         if !described.is_empty() {
             doc = doc.blocks([Block::Heading("Parameters"), Block::List(described)]);
@@ -61,6 +62,23 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         ));
     }
     out
+}
+
+pub(crate) fn parameter_items<'a>(
+    model: &Model<'_>,
+    cfg: &Cfg,
+    owner: &str,
+    parameters: impl Iterator<Item = &'a str>,
+) -> Vec<Vec<Block>> {
+    let mut described = Vec::new();
+    for parameter in parameters {
+        if let Some(item) = model.described(cfg, owner, parameter)
+            && !described.contains(&item)
+        {
+            described.push(item);
+        }
+    }
+    described
 }
 
 fn alias(cfg: &Cfg, name: &str, params: &[(String, String)], return_ty: &str) -> String {

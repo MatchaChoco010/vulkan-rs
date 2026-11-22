@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -37,6 +38,7 @@ struct Page {
     description: String,
     body: String,
     body_words: String,
+    valid_usage: OnceCell<Vec<String>>,
 }
 
 struct Cell {
@@ -235,7 +237,9 @@ impl Markup {
     fn new() -> Self {
         Self {
             list_item: regex(r"^[ \t]*\*[ \t]+\S"),
-            described_item: regex(r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)(pname|ename):(\w+)\b"),
+            described_item: regex(
+                r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)(pname:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)pname:\w+)*|ename:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)ename:\w+)*)\b",
+            ),
             block_attributes: regex(r#"^\[(?:|[\w.#%{,"'].*)\]$"#),
             block_delimiter: regex(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|\|={3,})$"),
             admonition: regex(r"^\[(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$"),
@@ -481,6 +485,7 @@ impl Specification {
                         description: description.clone(),
                         body: body.clone(),
                         body_words: String::new(),
+                        valid_usage: OnceCell::new(),
                     });
                 }
                 index = end + 1;
@@ -571,7 +576,7 @@ impl Specification {
         out
     }
 
-    fn items(&self, page: &str) -> Vec<(String, String, String)> {
+    fn items(&self, page: &str) -> Vec<(String, Vec<String>, String)> {
         let Some(page) = self.pages.get(page) else {
             return Vec::new();
         };
@@ -619,17 +624,35 @@ impl Specification {
             if let Some(described) = markup.described_item.captures(&text)
                 && !described[1].contains("[[VUID-")
             {
-                items.push((described[2].to_string(), described[3].to_string(), text));
+                let names = described[2]
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == ':'))
+                    .filter_map(|name| name.split_once(':'))
+                    .collect::<Vec<_>>();
+                items.push((
+                    names[0].0.to_string(),
+                    names.iter().map(|(_, name)| name.to_string()).collect(),
+                    text,
+                ));
             }
         }
         items
     }
 
     fn item(&self, page: &str, macro_name: &str, name: &str) -> Option<String> {
-        self.items(page)
+        let items = self
+            .items(page)
             .into_iter()
-            .find(|(item_macro, item_name, _)| item_macro == macro_name && item_name == name)
-            .map(|(_, _, text)| text)
+            .filter(|(item_macro, _, _)| item_macro == macro_name)
+            .collect::<Vec<_>>();
+        items
+            .iter()
+            .find(|(_, names, _)| names[0] == name)
+            .or_else(|| {
+                items
+                    .iter()
+                    .find(|(_, names, _)| names.iter().any(|n| n == name))
+            })
+            .map(|(_, _, text)| text.clone())
     }
 
     fn goes_on_in_another_file(&self, page: &str, macro_name: &str, name: &str) -> bool {
@@ -764,15 +787,59 @@ impl Specification {
 
     fn described(&self, page: &str, macro_name: &str) -> Vec<String> {
         let bullet = regex(&format!(
-            r"(?m)^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*){macro_name}:(\w+)\b"
+            r"(?m)^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)({macro_name}:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+){macro_name}:\w+)*)"
         ));
+        let name = regex(&format!(r"{macro_name}:(\w+)"));
         self.pages.get(page).map_or_else(Vec::new, |page| {
             bullet
                 .captures_iter(&page.body)
                 .filter(|bullet| !bullet[1].contains("[[VUID-"))
-                .map(|bullet| bullet[2].to_string())
+                .flat_map(|bullet| {
+                    name.captures_iter(&bullet[2])
+                        .map(|name| name[1].to_string())
+                        .collect::<Vec<_>>()
+                })
                 .collect()
         })
+    }
+
+    fn valid_usage(&self, page: &Page) -> Vec<String> {
+        let statement = regex(r"^[ \t]*\*[ \t]+\[\[VUID-[^\]]*\]\]\s*(.*)$");
+        let ends = regex(r"^[ \t]*(?:\*+[ \t]|\*{4,}$|$)");
+        let mut statements = Vec::<String>::new();
+        let mut open = false;
+        for line in page.body.lines() {
+            if let Some(start) = statement.captures(line) {
+                statements.push(start[1].to_string());
+                open = true;
+            } else if ends.is_match(line) {
+                open = false;
+            } else if open && let Some(last) = statements.last_mut() {
+                last.push('\n');
+                last.push_str(line);
+            }
+        }
+        statements
+            .iter()
+            .map(|statement| self.words(statement))
+            .collect()
+    }
+
+    fn states_valid_usage(&self, page: &str, markdown: &str) -> bool {
+        let Some(page) = self.pages.get(page) else {
+            return false;
+        };
+        let stated = generated_words(markdown);
+        let several_words = |words: &str| words.trim().contains(' ');
+        several_words(&stated)
+            && page
+                .valid_usage
+                .get_or_init(|| self.valid_usage(page))
+                .iter()
+                .any(|statement| {
+                    several_words(statement)
+                        && (stated.starts_with(statement) || statement.starts_with(&stated))
+                })
     }
 }
 
@@ -980,7 +1047,8 @@ struct Checker {
 
 struct Generated {
     reference_link: Regex,
-    code_at_start: Regex,
+    names_at_start: Regex,
+    name: Regex,
     described_under_another_name: Regex,
     value_of: Regex,
     bits_of: Regex,
@@ -998,7 +1066,10 @@ impl Generated {
                 r"\[`([\w-]+)`\]\({}([\w-]+)\.html\)",
                 regex::escape(REFERENCE_PAGES)
             )),
-            code_at_start: regex(r"^`(\w+)`"),
+            names_at_start: regex(
+                r"^(?:\[`\w+`\]\([^)\s]*\)|`\w+`)(?:(?:,\s+(?:and\s+)?|\s+and\s+)(?:\[`\w+`\]\([^)\s]*\)|`\w+`))*",
+            ),
+            name: regex(r"`(\w+)`"),
             described_under_another_name: regex(
                 r"^`(\w+)`,\s+which\s+the\s+specification\s+describes\s+under\s+the\s+name\s+`(\w+)`:\s+",
             ),
@@ -1023,6 +1094,16 @@ impl Generated {
         self.reference_link
             .captures(doc)
             .map(|link| link[2].to_string())
+    }
+
+    fn names_at_start<'a>(&self, description: &'a str) -> Vec<&'a str> {
+        let Some(names) = self.names_at_start.find(description) else {
+            return Vec::new();
+        };
+        self.name
+            .captures_iter(names.as_str())
+            .map(|name| name.get(1).map_or("", |name| name.as_str()))
+            .collect()
     }
 }
 
@@ -1189,18 +1270,36 @@ impl Checker {
             );
             return;
         };
-        let Some(name) = generated.code_at_start.captures(doc) else {
+        let names = generated.names_at_start(doc);
+        let Some(first) = names.first() else {
             self.fail(&item, "does not start with the name of the member");
             return;
         };
-        if !is_rust_name_of(field, &name[1]) {
+        let name = names
+            .iter()
+            .find(|name| is_rust_name_of(field, name))
+            .unwrap_or_else(|| {
+                self.fail(
+                    &item,
+                    format!("is documented with the description of `{first}`"),
+                );
+                first
+            });
+        self.contained(spec, &item, page, doc);
+        self.whole(spec, &item, page, ("pname", name), doc);
+        self.not_valid_usage(spec, &item, page, doc);
+    }
+
+    fn not_valid_usage(&mut self, spec: &Specification, item: &str, page: &str, doc: &str) {
+        if spec.states_valid_usage(page, doc) {
             self.fail(
-                &item,
-                format!("is documented with the description of `{}`", &name[1]),
+                item,
+                format!(
+                    "is documented with valid usage of the page `{page}`, which states a requirement and does not describe the item: `{}`",
+                    flat(doc)
+                ),
             );
         }
-        self.contained(spec, &item, page, doc);
-        self.whole(spec, &item, page, ("pname", &name[1]), doc);
     }
 
     fn value(
@@ -1222,7 +1321,19 @@ impl Checker {
             return;
         };
         if !doc.starts_with(&format!("`{c_name}`")) {
-            self.fail(item, format!("does not start with its C name `{c_name}`"));
+            let names = generated.names_at_start(doc);
+            match (names.contains(&c_name.as_str()), owner_page) {
+                (true, Some(page)) => {
+                    self.described_values += 1;
+                    self.contained(spec, item, page, doc);
+                    self.whole(spec, item, page, ("ename", c_name), doc);
+                    self.not_valid_usage(spec, item, page, doc);
+                }
+                (true, None) => {
+                    self.fail(item, "is described although its type has no reference page")
+                }
+                (false, _) => self.fail(item, format!("does not start with its C name `{c_name}`")),
+            }
             return;
         }
         let rest = &doc[c_name.len() + 2..];
@@ -1255,6 +1366,7 @@ impl Checker {
             Some(page) => {
                 self.contained(spec, item, page, doc);
                 self.whole(spec, item, page, ("ename", c_name), doc);
+                self.not_valid_usage(spec, item, page, doc);
             }
             None => self.fail(item, "is described although its type has no reference page"),
         }
@@ -1359,9 +1471,10 @@ impl Checker {
             self.described_parameters += 1;
             let Some(names) = generated.described_under_another_name.captures(parameter) else {
                 self.contained(spec, item, &page, parameter);
-                if let Some(name) = generated.code_at_start.captures(parameter) {
-                    self.whole(spec, item, &page, ("pname", &name[1]), parameter);
+                if let Some(name) = generated.names_at_start(parameter).first() {
+                    self.whole(spec, item, &page, ("pname", name), parameter);
                 }
+                self.not_valid_usage(spec, item, &page, parameter);
                 continue;
             };
             self.parameters_under_another_name += 1;
@@ -1385,8 +1498,8 @@ impl Checker {
         self.functions_with_arguments += 1;
         let listed = parameters
             .iter()
-            .filter_map(|parameter| generated.code_at_start.captures(parameter))
-            .map(|name| squeeze(&name[1]))
+            .flat_map(|parameter| generated.names_at_start(parameter))
+            .map(squeeze)
             .collect::<BTreeSet<_>>();
         let described = spec.described(&page, "pname");
         if !described.is_empty() {
@@ -1911,11 +2024,15 @@ The range has the following requirements:
 ====
 Empty ranges are for another day.
 ====
+  * pname:width, pname:height, and
+    pname:depth are the size of the thing.
 
 .Valid Usage
 ****
   * [[VUID-VkThing-padding-00001]]
     pname:padding must: be `0`
+  * [[VUID-VkThing-height-00002]]
+    pname:height must: be greater than `0`
 ****",
         ),
         (
@@ -1924,6 +2041,7 @@ Empty ranges are for another day.
             "
   * ename:VK_COLOR_RED specifies red.
   * ename:VK_COLOR_GREEN specifies green.
+  * ename:VK_COLOR_GOLD and ename:VK_COLOR_SILVER specify a metal.
   * ename:VK_COLOR_ALL is equivalent to the logical OR of:
 include::{generated}/colors/VK_COLOR_ALL.adoc[]",
         ),
@@ -1961,6 +2079,7 @@ include::{generated}/validity/funcpointers/PFN_vkThingCallback.adoc[]",
             description: description.to_string(),
             body: body.to_string(),
             body_words: body_words.clone(),
+            valid_usage: OnceCell::new(),
         };
         if name == "VkColor" {
             specification.pages.insert("VkColorKHR".to_string(), page());
@@ -1992,6 +2111,12 @@ pub struct Thing {
     ///   >
     ///   > Empty ranges are for another day.
     pub range: [u32; 2],
+    /// `width`, `height`, and `depth` are the size of the thing.
+    pub width: u32,
+    /// `width`, `height`, and `depth` are the size of the thing.
+    pub height: u32,
+    /// `width`, `height`, and `depth` are the size of the thing.
+    pub depth: u32,
     /// The C member `uint32_t padding`.
     pub padding: u32,
 }
@@ -2058,6 +2183,12 @@ impl Color {
     /// `VK_COLOR_ALL`, a value of [`VkColor`](PAGES/VkColor.html).
     #[doc(alias = "VK_COLOR_ALL")]
     pub const ALL: Self = Self(14);
+    /// `VK_COLOR_GOLD` and [`VK_COLOR_SILVER`](Color::SILVER) specify a metal.
+    #[doc(alias = "VK_COLOR_GOLD")]
+    pub const GOLD: Self = Self(15);
+    /// [`VK_COLOR_GOLD`](Color::GOLD) and `VK_COLOR_SILVER` specify a metal.
+    #[doc(alias = "VK_COLOR_SILVER")]
+    pub const SILVER: Self = Self(16);
 }
 
 /// Application-defined thing callback.
@@ -2388,6 +2519,131 @@ fn the_list_items_of_the_specification_are_read_to_their_end() {
         " size i is pSizes i for all 0 i 2 and ns ",
         "a role span keeps what is in it, brackets included"
     );
+    for (page, macro_name, names, text) in [
+        (
+            "VkThing",
+            "pname",
+            ["width", "height", "depth"].as_slice(),
+            "  * pname:width, pname:height, and\n    pname:depth are the size of the thing.",
+        ),
+        (
+            "VkColor",
+            "ename",
+            ["VK_COLOR_GOLD", "VK_COLOR_SILVER"].as_slice(),
+            "  * ename:VK_COLOR_GOLD and ename:VK_COLOR_SILVER specify a metal.",
+        ),
+    ] {
+        for name in names {
+            assert_eq!(
+                item(page, macro_name, name),
+                text,
+                "the item of {name} is the one that starts with the names of {names:?}"
+            );
+        }
+    }
+}
+
+const FIXTURE_HEIGHT: &str =
+    "    /// `width`, `height`, and `depth` are the size of the thing.\n    pub height: u32,\n";
+const FIXTURE_SILVER: &str =
+    "    /// [`VK_COLOR_GOLD`](Color::GOLD) and `VK_COLOR_SILVER` specify a metal.\n";
+
+#[test]
+fn checker_reports_a_fallback_for_a_name_that_an_item_starts_with_among_others() {
+    assert_reported(
+        "a member that the item of another member describes as well",
+        FIXTURE_HEIGHT,
+        "    /// The C member `uint32_t height`.\n    pub height: u32,\n",
+        "Thing::height: the specification describes `height` on the page `VkThing`, but the documentation does not use it",
+    );
+    assert_reported(
+        "a value that the item of another value describes as well",
+        FIXTURE_SILVER,
+        "    /// `VK_COLOR_SILVER`, a value of [`VkColor`](PAGES/VkColor.html).\n",
+        "Color::SILVER: the specification describes `VK_COLOR_SILVER` on the page `VkColor`, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_part_left_out_of_the_item_of_a_name_that_is_not_the_first() {
+    assert_reported(
+        "a member with a part of the item that it shares with other members",
+        FIXTURE_HEIGHT,
+        "    /// `width`, `height`, and `depth` are the size.\n    pub height: u32,\n",
+        "Thing::height: the description of `height` leaves out a part of its list item on the page `VkThing`: `depth are the size [of the thing]`",
+    );
+    assert_reported(
+        "a value with an item that it shares with another value, cut in a sentence",
+        FIXTURE_SILVER,
+        "    /// [`VK_COLOR_GOLD`](Color::GOLD) and `VK_COLOR_SILVER` specify a\n",
+        "Color::SILVER: the description of `VK_COLOR_SILVER` ends in the middle of a sentence: `…",
+    );
+}
+
+#[test]
+fn checker_reports_valid_usage_taken_for_a_description() {
+    assert_reported(
+        "a member documented with a requirement on it",
+        FIXTURE_HEIGHT,
+        "    /// `height` must be greater than `0`\n    pub height: u32,\n",
+        "Thing::height: is documented with valid usage of the page `VkThing`, which states a requirement and does not describe the item: ``height` must be greater than `0``",
+    );
+    let specification = fixture_specification();
+    for (description, states) in [
+        ("`height` must be greater than `0`", true),
+        ("`height` must be greater", true),
+        ("`padding` must be `0` or more", true),
+        ("`height` is greater than `0`", false),
+        (
+            "`width`, `height`, and `depth` are the size of the thing.",
+            false,
+        ),
+        ("`height`", false),
+    ] {
+        assert_eq!(
+            specification.states_valid_usage("VkThing", description),
+            states,
+            "{description}"
+        );
+    }
+}
+
+#[test]
+fn checker_reports_a_description_that_starts_with_other_names_only() {
+    assert_reported(
+        "a member with the description of other members",
+        FIXTURE_HEIGHT,
+        "    /// `width` and `depth` are the size of the thing.\n    pub height: u32,\n",
+        "Thing::height: is documented with the description of `width`",
+    );
+    assert_reported(
+        "a value with the description of other values",
+        FIXTURE_SILVER,
+        "    /// [`VK_COLOR_GOLD`](Color::GOLD) and `VK_COLOR_RED` specify a metal.\n",
+        "Color::SILVER: does not start with its C name `VK_COLOR_SILVER`",
+    );
+    let generated = Generated::new();
+    for (description, names) in [
+        ("`a` is one.", vec!["a"]),
+        ("`a` and `b` are two.", vec!["a", "b"]),
+        (
+            "`a`, [`b`](Color::B),\nand `c` are three.",
+            vec!["a", "b", "c"],
+        ),
+        (
+            "[`a`](Color::A), `b` and [`c`](Color::C) are three.",
+            vec!["a", "b", "c"],
+        ),
+        ("`a`, which is like `b` and `c`.", vec!["a"]),
+        ("`a` or `b` is one.", vec!["a"]),
+        ("The `a` and `b`.", vec![]),
+    ] {
+        assert_eq!(
+            generated.names_at_start(description),
+            names,
+            "{description}"
+        );
+    }
 }
 
 #[test]
@@ -2466,7 +2722,7 @@ fn checker_reports_a_table_row_that_the_specification_does_not_have() {
 fn color_values() -> BTreeSet<String> {
     [
         "RED", "BLUE", "BLACK", "INDIGO", "VIOLET", "TEAL", "CYAN", "MAGENTA", "YELLOW", "ORANGE",
-        "WHITE", "GREY", "PINK", "ALL",
+        "WHITE", "GREY", "PINK", "ALL", "GOLD", "SILVER",
     ]
     .iter()
     .map(|color| format!("VK_COLOR_{color}"))
@@ -2650,7 +2906,13 @@ fn checker_reports_a_parameter_left_out_of_the_parameters_of_a_command() {
 fn checker_does_not_take_valid_usage_for_a_description() {
     let specification = fixture_specification();
     let thing = specification.described("VkThing", "pname");
-    assert_eq!(thing, ["count", "flags", "type", "range"]);
+    assert_eq!(
+        thing,
+        [
+            "count", "flags", "type", "range", "width", "height", "depth"
+        ],
+        "an item describes every name that it starts with"
+    );
     let count_things = specification.described("vkCountThings", "pname");
     assert_eq!(
         count_things,

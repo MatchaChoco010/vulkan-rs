@@ -18340,7 +18340,10 @@ pub struct BufferImageCopy {
     /// of these values is zero, that aspect of the buffer memory is considered to be tightly packed
     /// according to the `imageExtent`.
     pub buffer_row_length: u32,
-    /// The C member `uint32_t bufferImageHeight`.
+    /// `bufferRowLength` and `bufferImageHeight` specify in texels a subregion of a larger two- or
+    /// three-dimensional image in buffer memory, and control the addressing calculations. If either
+    /// of these values is zero, that aspect of the buffer memory is considered to be tightly packed
+    /// according to the `imageExtent`.
     pub buffer_image_height: u32,
     /// `imageSubresource` is a [`VkImageSubresourceLayers`](ImageSubresourceLayers) used to specify
     /// the specific image subresources of the image used for the source or destination image data.
@@ -18420,7 +18423,10 @@ pub struct BufferImageCopy2<'a> {
     /// of these values is zero, that aspect of the buffer memory is considered to be tightly packed
     /// according to the `imageExtent`.
     pub buffer_row_length: u32,
-    /// The C member `uint32_t bufferImageHeight`.
+    /// `bufferRowLength` and `bufferImageHeight` specify in texels a subregion of a larger two- or
+    /// three-dimensional image in buffer memory, and control the addressing calculations. If either
+    /// of these values is zero, that aspect of the buffer memory is considered to be tightly packed
+    /// according to the `imageExtent`.
     pub buffer_image_height: u32,
     /// `imageSubresource` is a [`VkImageSubresourceLayers`](ImageSubresourceLayers) used to specify
     /// the specific image subresources of the image used for the source or destination image data.
@@ -23622,9 +23628,17 @@ pub struct CopyDescriptorSet<'a> {
     /// [`VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK`](DescriptorType::INLINE_UNIFORM_BLOCK) then
     /// `srcArrayElement` specifies the starting byte offset within the binding to copy from.
     pub src_set: DescriptorSet,
-    /// `srcBinding` must be a valid binding within `srcSet`
+    /// `srcSet`, `srcBinding`, and `srcArrayElement` are the source set, binding, and array
+    /// element, respectively. If the descriptor binding identified by `srcSet` and `srcBinding` has
+    /// a descriptor type of
+    /// [`VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK`](DescriptorType::INLINE_UNIFORM_BLOCK) then
+    /// `srcArrayElement` specifies the starting byte offset within the binding to copy from.
     pub src_binding: u32,
-    /// The C member `uint32_t srcArrayElement`.
+    /// `srcSet`, `srcBinding`, and `srcArrayElement` are the source set, binding, and array
+    /// element, respectively. If the descriptor binding identified by `srcSet` and `srcBinding` has
+    /// a descriptor type of
+    /// [`VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK`](DescriptorType::INLINE_UNIFORM_BLOCK) then
+    /// `srcArrayElement` specifies the starting byte offset within the binding to copy from.
     pub src_array_element: u32,
     /// `dstSet`, `dstBinding`, and `dstArrayElement` are the destination set, binding, and array
     /// element, respectively. If the descriptor binding identified by `dstSet` and `dstBinding` has
@@ -23632,9 +23646,17 @@ pub struct CopyDescriptorSet<'a> {
     /// [`VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK`](DescriptorType::INLINE_UNIFORM_BLOCK) then
     /// `dstArrayElement` specifies the starting byte offset within the binding to copy to.
     pub dst_set: DescriptorSet,
-    /// `dstBinding` must be a valid binding within `dstSet`
+    /// `dstSet`, `dstBinding`, and `dstArrayElement` are the destination set, binding, and array
+    /// element, respectively. If the descriptor binding identified by `dstSet` and `dstBinding` has
+    /// a descriptor type of
+    /// [`VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK`](DescriptorType::INLINE_UNIFORM_BLOCK) then
+    /// `dstArrayElement` specifies the starting byte offset within the binding to copy to.
     pub dst_binding: u32,
-    /// The C member `uint32_t dstArrayElement`.
+    /// `dstSet`, `dstBinding`, and `dstArrayElement` are the destination set, binding, and array
+    /// element, respectively. If the descriptor binding identified by `dstSet` and `dstBinding` has
+    /// a descriptor type of
+    /// [`VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK`](DescriptorType::INLINE_UNIFORM_BLOCK) then
+    /// `dstArrayElement` specifies the starting byte offset within the binding to copy to.
     pub dst_array_element: u32,
     /// `descriptorCount` is the number of descriptors to copy from the source to destination. If
     /// `descriptorCount` is greater than the number of remaining array elements in the source or
@@ -24540,7 +24562,10 @@ pub struct CopyMemoryToImageIndirectCommandKHR {
     /// of these values is zero, that aspect of the buffer memory is considered to be tightly packed
     /// according to the `imageExtent`.
     pub buffer_row_length: u32,
-    /// The C member `uint32_t bufferImageHeight`.
+    /// `bufferRowLength` and `bufferImageHeight` specify in texels a subregion of a larger two- or
+    /// three-dimensional image in buffer memory, and control the addressing calculations. If either
+    /// of these values is zero, that aspect of the buffer memory is considered to be tightly packed
+    /// according to the `imageExtent`.
     pub buffer_image_height: u32,
     /// `imageSubresource` is a [`VkImageSubresourceLayers`](ImageSubresourceLayers) structure used
     /// to specify the specific image subresources of the image used for the destination image data,
@@ -36382,11 +36407,20 @@ pub struct DisplayPlaneCapabilitiesKHR {
     /// the mode rather than the input region within the source image. Unlike the `*Src*` offsets,
     /// `minDstPosition` and `maxDstPosition` may contain negative values.
     pub min_dst_position: Offset2D,
-    /// The C member `VkOffset2D maxDstPosition`.
+    /// `minDstPosition`, `maxDstPosition`, `minDstExtent`, `maxDstExtent` all have similar
+    /// semantics to their corresponding `*Src*` equivalents, but apply to the output region within
+    /// the mode rather than the input region within the source image. Unlike the `*Src*` offsets,
+    /// `minDstPosition` and `maxDstPosition` may contain negative values.
     pub max_dst_position: Offset2D,
-    /// The C member `VkExtent2D minDstExtent`.
+    /// `minDstPosition`, `maxDstPosition`, `minDstExtent`, `maxDstExtent` all have similar
+    /// semantics to their corresponding `*Src*` equivalents, but apply to the output region within
+    /// the mode rather than the input region within the source image. Unlike the `*Src*` offsets,
+    /// `minDstPosition` and `maxDstPosition` may contain negative values.
     pub min_dst_extent: Extent2D,
-    /// The C member `VkExtent2D maxDstExtent`.
+    /// `minDstPosition`, `maxDstPosition`, `minDstExtent`, `maxDstExtent` all have similar
+    /// semantics to their corresponding `*Src*` equivalents, but apply to the output region within
+    /// the mode rather than the input region within the source image. Unlike the `*Src*` offsets,
+    /// `minDstPosition` and `maxDstPosition` may contain negative values.
     pub max_dst_extent: Extent2D,
 }
 
@@ -41723,9 +41757,15 @@ pub struct FramebufferCreateInfo<'a> {
     /// that is greater than the maximum bit index set in the view mask in the subpasses in which it
     /// is used.
     pub width: u32,
-    /// `height` must be greater than `0`
+    /// `width`, `height` and `layers` define the dimensions of the framebuffer. If the render pass
+    /// uses multiview, then `layers` must be one and each attachment requires a number of layers
+    /// that is greater than the maximum bit index set in the view mask in the subpasses in which it
+    /// is used.
     pub height: u32,
-    /// `layers` must be greater than `0`
+    /// `width`, `height` and `layers` define the dimensions of the framebuffer. If the render pass
+    /// uses multiview, then `layers` must be one and each attachment requires a number of layers
+    /// that is greater than the maximum bit index set in the view mask in the subpasses in which it
+    /// is used.
     pub layers: u32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -45207,9 +45247,12 @@ pub struct ImageCopy {
     /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
     /// sub-regions of the source and destination image data.
     pub src_offset: Offset3D,
-    /// The C member `VkImageSubresourceLayers dstSubresource`.
+    /// `srcSubresource` and `dstSubresource` are
+    /// [`VkImageSubresourceLayers`](ImageSubresourceLayers) structures specifying the image
+    /// subresources of the images used for the source and destination image data, respectively.
     pub dst_subresource: ImageSubresourceLayers,
-    /// The C member `VkOffset3D dstOffset`.
+    /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
+    /// sub-regions of the source and destination image data.
     pub dst_offset: Offset3D,
     /// `extent` is the size in texels of the image to copy in `width`, `height` and `depth`.
     pub extent: Extent3D,
@@ -45276,9 +45319,12 @@ pub struct ImageCopy2<'a> {
     /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
     /// sub-regions of the source and destination image data.
     pub src_offset: Offset3D,
-    /// The C member `VkImageSubresourceLayers dstSubresource`.
+    /// `srcSubresource` and `dstSubresource` are
+    /// [`VkImageSubresourceLayers`](ImageSubresourceLayers) structures specifying the image
+    /// subresources of the images used for the source and destination image data, respectively.
     pub dst_subresource: ImageSubresourceLayers,
-    /// The C member `VkOffset3D dstOffset`.
+    /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
+    /// sub-regions of the source and destination image data.
     pub dst_offset: Offset3D,
     /// `extent` is the size in texels of the image to copy in `width`, `height` and `depth`.
     pub extent: Extent3D,
@@ -46702,9 +46748,14 @@ pub struct ImageResolve {
     /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
     /// sub-regions of the source and destination image data.
     pub src_offset: Offset3D,
-    /// The C member `VkImageSubresourceLayers dstSubresource`.
+    /// `srcSubresource` and `dstSubresource` are
+    /// [`VkImageSubresourceLayers`](ImageSubresourceLayers) structures specifying the image
+    /// subresources of the images used for the source and destination image data, respectively.
+    /// Resolve of depth/stencil images is not supported. [`VkImageResolve2`](ImageResolve2) can
+    /// support resolve of depth/stencil images with `maintenance10` instead.
     pub dst_subresource: ImageSubresourceLayers,
-    /// The C member `VkOffset3D dstOffset`.
+    /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
+    /// sub-regions of the source and destination image data.
     pub dst_offset: Offset3D,
     /// `extent` is the size in texels of the source image to resolve in `width`, `height` and
     /// `depth`.
@@ -46772,9 +46823,12 @@ pub struct ImageResolve2<'a> {
     /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
     /// sub-regions of the source and destination image data.
     pub src_offset: Offset3D,
-    /// The C member `VkImageSubresourceLayers dstSubresource`.
+    /// `srcSubresource` and `dstSubresource` are
+    /// [`VkImageSubresourceLayers`](ImageSubresourceLayers) structures specifying the image
+    /// subresources of the images used for the source and destination image data, respectively.
     pub dst_subresource: ImageSubresourceLayers,
-    /// The C member `VkOffset3D dstOffset`.
+    /// `srcOffset` and `dstOffset` select the initial `x`, `y`, and `z` offsets in texels of the
+    /// sub-regions of the source and destination image data.
     pub dst_offset: Offset3D,
     /// `extent` is the size in texels of the source image to resolve in `width`, `height` and
     /// `depth`.
@@ -47166,7 +47220,7 @@ pub struct ImageSubresourceLayers {
     pub mip_level: u32,
     /// `baseArrayLayer` and `layerCount` are the starting layer and number of layers to copy.
     pub base_array_layer: u32,
-    /// The C member `uint32_t layerCount`.
+    /// `baseArrayLayer` and `layerCount` are the starting layer and number of layers to copy.
     pub layer_count: u32,
 }
 
@@ -47407,7 +47461,10 @@ pub struct ImageToMemoryCopy<'a> {
     /// of these values is zero, that aspect of the host memory is considered to be tightly packed
     /// according to the `imageExtent`.
     pub memory_row_length: u32,
-    /// The C member `uint32_t memoryImageHeight`.
+    /// `memoryRowLength` and `memoryImageHeight` specify in texels a subregion of a larger two- or
+    /// three-dimensional image in host memory, and control the addressing calculations. If either
+    /// of these values is zero, that aspect of the host memory is considered to be tightly packed
+    /// according to the `imageExtent`.
     pub memory_image_height: u32,
     /// `imageSubresource` is a [`VkImageSubresourceLayers`](ImageSubresourceLayers) used to specify
     /// the specific image subresources of the image used for the source or destination image data.
@@ -53986,7 +54043,10 @@ pub struct MemoryToImageCopy<'a> {
     /// of these values is zero, that aspect of the host memory is considered to be tightly packed
     /// according to the `imageExtent`.
     pub memory_row_length: u32,
-    /// The C member `uint32_t memoryImageHeight`.
+    /// `memoryRowLength` and `memoryImageHeight` specify in texels a subregion of a larger two- or
+    /// three-dimensional image in host memory, and control the addressing calculations. If either
+    /// of these values is zero, that aspect of the host memory is considered to be tightly packed
+    /// according to the `imageExtent`.
     pub memory_image_height: u32,
     /// `imageSubresource` is a [`VkImageSubresourceLayers`](ImageSubresourceLayers) used to specify
     /// the specific image subresources of the image used for the source or destination image data.
@@ -101202,7 +101262,8 @@ pub struct PipelineDepthStencilStateCreateInfo<'a> {
     /// `front` and `back` are [`VkStencilOpState`](StencilOpState) values controlling the
     /// corresponding parameters of the stencil test.
     pub front: StencilOpState,
-    /// The C member `VkStencilOpState back`.
+    /// `front` and `back` are [`VkStencilOpState`](StencilOpState) values controlling the
+    /// corresponding parameters of the stencil test.
     pub back: StencilOpState,
     /// `minDepthBounds` is the minimum depth bound used in the depth bounds test.
     pub min_depth_bounds: f32,
@@ -106440,7 +106501,9 @@ pub struct PushConstantRange {
     /// `offset` and `size` are in units of bytes and must be a multiple of 4. The layout of the
     /// push constant variables is specified in the shader.
     pub offset: u32,
-    /// `size` must be greater than `0`
+    /// `offset` and `size` are the start offset and size, respectively, consumed by the range. Both
+    /// `offset` and `size` are in units of bytes and must be a multiple of 4. The layout of the
+    /// push constant variables is specified in the shader.
     pub size: u32,
 }
 
@@ -113595,7 +113658,7 @@ pub struct ScreenSurfaceCreateInfoQNX<'a> {
     pub flags: ScreenSurfaceCreateFlagsQNX,
     /// `context` and `window` are QNX Screen `context` and `window` to associate the surface with.
     pub context: *mut _screen_context,
-    /// `window` must point to a valid QNX Screen `struct` _screen_window
+    /// `context` and `window` are QNX Screen `context` and `window` to associate the surface with.
     pub window: *mut _screen_window,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -133063,15 +133126,15 @@ unsafe impl TaggedStructure for VideoSessionParametersUpdateInfoKHR<'_> {
 pub struct Viewport {
     /// `x` and `y` are the viewport's upper left corner (x,y).
     pub x: f32,
-    /// `y` must be greater than or equal to `viewportBoundsRange`\[0\]
+    /// `x` and `y` are the viewport's upper left corner (x,y).
     pub y: f32,
     /// `width` and `height` are the viewport's width and height, respectively.
     pub width: f32,
-    /// The C member `float height`.
+    /// `width` and `height` are the viewport's width and height, respectively.
     pub height: f32,
     /// `minDepth` and `maxDepth` are the depth range for the viewport.
     pub min_depth: f32,
-    /// The C member `float maxDepth`.
+    /// `minDepth` and `maxDepth` are the depth range for the viewport.
     pub max_depth: f32,
 }
 
@@ -133191,7 +133254,7 @@ impl ViewportSwizzleNV {
 pub struct ViewportWScalingNV {
     /// `xcoeff` and `ycoeff` are the viewport's W scaling factor for x and y respectively.
     pub xcoeff: f32,
-    /// The C member `float ycoeff`.
+    /// `xcoeff` and `ycoeff` are the viewport's W scaling factor for x and y respectively.
     pub ycoeff: f32,
 }
 
@@ -133237,7 +133300,8 @@ pub struct WaylandSurfaceCreateInfoKHR<'a> {
     /// `display` and `surface` are pointers to the Wayland `wl_display` and `wl_surface` to
     /// associate the surface with.
     pub display: *mut wl_display,
-    /// `surface` must point to a valid Wayland `wl_surface`
+    /// `display` and `surface` are pointers to the Wayland `wl_display` and `wl_surface` to
+    /// associate the surface with.
     pub surface: *mut wl_surface,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,

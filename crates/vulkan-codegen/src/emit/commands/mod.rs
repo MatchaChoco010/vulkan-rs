@@ -3,6 +3,7 @@ mod inputs;
 mod shape;
 mod wrapper;
 
+use super::func_pointers::parameter_items;
 use super::{arrow, assert_distinct_names, header, parameter_names, w};
 use crate::docs::{Block, Doc};
 use crate::model::{CType, Cfg, Dispatch, Model, VoidArrayLength};
@@ -103,10 +104,7 @@ fn not_loaded(c: &Command) -> String {
 }
 
 fn raw_doc(model: &Model<'_>, cfg: &Cfg, c: &Command, params: &[Field]) -> Doc {
-    let parameters = params
-        .iter()
-        .filter_map(|p| model.described(cfg, &c.name, &p.name))
-        .collect::<Vec<_>>();
+    let parameters = parameter_items(model, cfg, &c.name, params.iter().map(|p| p.name.as_str()));
     let mut doc = Doc::new()
         .text(model.summary(cfg, &c.name).unwrap_or_default())
         .text(format!(

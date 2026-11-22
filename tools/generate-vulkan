@@ -595,14 +595,22 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
 def spec_described_items(body: list[str], page: str) -> list[dict[str, str]]:
     """The first-level list items of a reference page block that start with `pname:x` or
     `ename:x`, in the order of the block, each with everything that belongs to it: nested
-    items and the blocks that list continuations attach stay part of the item's text."""
-    described: dict[str, str] = {}
+    items and the blocks that list continuations attach stay part of the item's text.
+
+    An item is dumped under the first name that it starts with. One name can have several
+    items, and an item can start with several names (`pname:x and pname:y are ...`): the
+    generator picks the item for a name. The items of valid usage, which start with a
+    `[[VUID-...]]` anchor, state a requirement and do not describe what they name, so they
+    are left out."""
+    described = []
     index = 0
     while index < len(body):
         if not spec_is_first_level_item(body[index]):
             index += 1
             continue
         lines, index, problem = spec_list_item(body, index)
+        if lines[0].startswith("[[VUID-"):
+            continue
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
         if not lines[0]:
             lines.pop(0)
@@ -610,13 +618,13 @@ def spec_described_items(body: list[str], page: str) -> list[dict[str, str]]:
             continue
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
         name = SPEC_DESCRIBED_NAME.match(lines[0])
-        if name and name.group(1) not in described:
+        if name:
             if problem:
                 raise RuntimeError(
                     f"{page}: the list item of {name.group(1)} cannot be read reliably: {problem}"
                 )
-            described[name.group(1)] = "\n".join(lines)
-    return [{"name": name, "text": text} for name, text in described.items()]
+            described.append({"name": name.group(1), "text": "\n".join(lines)})
+    return described
 
 
 def spec_attributes(defined: set[str]) -> dict[str, str]:
