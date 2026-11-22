@@ -219,8 +219,7 @@ impl Renderer for App {
             drop(self.allocator);
             self.gpu.instance.destroy_surface_khr(self.surface, None);
             self.gpu.destroy();
-            idle?;
-            freed
+            window::first_error([idle.map_err(anyhow::Error::from), freed])
         }
     }
 }
