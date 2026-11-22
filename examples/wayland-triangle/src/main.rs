@@ -6,7 +6,8 @@
 //! needs no barrier of its own. The render pass, the framebuffers and the pipeline,
 //! whose viewport is fixed, depend on the swapchain and are recreated with it.
 //!
-//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames.
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1. Any other value is
+//!   an error.
 //!
 //! `examples/wayland-dynamic-rendering` draws the same triangle without a render pass.
 
@@ -40,7 +41,7 @@ const VERTICES: [Vertex; 3] = [
 ];
 
 fn main() -> Result<()> {
-    window::run::<App>("vulkan wayland triangle")
+    window::run::<App>("vulkan wayland triangle", ())
 }
 
 struct App {
@@ -57,7 +58,9 @@ struct App {
 }
 
 impl Renderer for App {
-    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D) -> Result<Self> {
+    type Settings = ();
+
+    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D, _: &()) -> Result<Self> {
         unsafe {
             let (gpu, surface) = gpu::create_gpu(window)?;
             let device = &gpu.device;

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use vulkan::{Device, vk};
 use vulkan_alloc::{Allocator, MemoryLocation};
 use vulkan_example_common::commands::submit_and_wait;
@@ -18,6 +18,7 @@ pub unsafe fn create_texture(
     texels: &[[u8; 4]],
 ) -> Result<Image> {
     unsafe {
+        check_texel_count(texels.len(), extent)?;
         let device = &gpu.device;
         let bytes: &[u8] = bytemuck::cast_slice(texels);
         let staging = create_buffer(
@@ -108,5 +109,44 @@ unsafe fn copy_buffer_to_image(
                 .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .regions(&regions),
         );
+    }
+}
+
+/// Checks that `count` texels are exactly an image of `extent`, which the copy reads
+/// from the staging buffer.
+fn check_texel_count(count: usize, extent: vk::Extent2D) -> Result<()> {
+    let needed = u64::from(extent.width) * u64::from(extent.height);
+    ensure!(
+        u64::try_from(count).is_ok_and(|count| count == needed),
+        "{count} texels for a {}x{} texture, which has {needed}",
+        extent.width,
+        extent.height
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_texels_have_to_fill_the_extent_exactly() {
+        let sizes = [0, 1, 2, 3, 16, 255, u32::MAX];
+        for width in sizes {
+            for height in sizes {
+                let extent = vk::Extent2D { width, height };
+                let needed = u64::from(width) * u64::from(height);
+                for count in [0, 1, 2, 3, 4, 6, 9, 256, 4096, 65025, usize::MAX] {
+                    assert_eq!(
+                        check_texel_count(count, extent).is_ok(),
+                        count as u64 == needed,
+                        "{count} texels for {width}x{height}"
+                    );
+                }
+                if let Ok(needed) = usize::try_from(needed) {
+                    assert!(check_texel_count(needed, extent).is_ok());
+                }
+            }
+        }
     }
 }

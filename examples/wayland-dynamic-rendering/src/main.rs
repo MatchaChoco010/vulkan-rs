@@ -5,13 +5,14 @@
 //! `COLOR_ATTACHMENT_OPTIMAL` and back to `PRESENT_SRC_KHR` with barriers of its own.
 //!
 //! The swapchain parameters a compositor or an HDR-aware client cares about can be
-//! chosen from the environment. The surface's support for each is printed at startup.
+//! chosen from the environment; any other value is an error. The surface's support for
+//! each is printed at startup.
 //!
 //! - `VULKAN_EXAMPLE_PRESENT_MODE`: `fifo` (default), `fifo_relaxed`, `immediate`
 //!   (tearing) or `mailbox`.
 //! - `VULKAN_EXAMPLE_COLOR_SPACE`: `srgb` (default), `hdr10` (BT.2020 PQ, with
 //!   `VK_EXT_hdr_metadata` when available) or `scrgb` (extended linear sRGB).
-//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames.
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1.
 //!
 //! The shader always writes the same values, so the triangle is only colorimetrically
 //! right in `srgb`. The point of the other modes is the swapchain setup.
@@ -32,7 +33,7 @@ use vulkan_example_common::window::frame::{Frame, SwapchainStatus};
 use vulkan_example_common::window::swapchain::Swapchain;
 use vulkan_example_common::window::{self, Renderer, WaylandWindow};
 
-use color_space::{choose_surface_format, set_hdr_metadata};
+use color_space::{ColorSpace, choose_surface_format, set_hdr_metadata};
 use pipeline::Vertex;
 
 const VERTICES: [Vertex; 3] = [
@@ -50,8 +51,18 @@ const VERTICES: [Vertex; 3] = [
     },
 ];
 
+/// What the environment asks for, read before the window opens.
+struct Settings {
+    present_mode: vk::PresentModeKHR,
+    color_space: ColorSpace,
+}
+
 fn main() -> Result<()> {
-    window::run::<App>("vulkan wayland dynamic rendering")
+    let settings = Settings {
+        present_mode: present_mode::requested_present_mode()?,
+        color_space: color_space::requested_color_space()?,
+    };
+    window::run::<App>("vulkan wayland dynamic rendering", settings)
 }
 
 struct App {
@@ -61,6 +72,7 @@ struct App {
     allocator: Allocator,
     surface: vk::SurfaceKHR,
     present_mode: vk::PresentModeKHR,
+    color_space: ColorSpace,
     swapchain: Swapchain,
     /// The layout each swapchain image was left in: `UNDEFINED` until it is first drawn
     /// to, `PRESENT_SRC_KHR` after.
@@ -72,15 +84,22 @@ struct App {
 }
 
 impl Renderer for App {
-    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D) -> Result<Self> {
+    type Settings = Settings;
+
+    unsafe fn new(
+        window: WaylandWindow,
+        window_extent: vk::Extent2D,
+        settings: &Settings,
+    ) -> Result<Self> {
         unsafe {
             let (gpu, surface, extensions) = gpu::create_gpu(window)?;
             let device = &gpu.device;
             let mut allocator = create_allocator(&gpu);
 
             surface_support::print_surface_support(&gpu, surface, extensions.surface_maintenance1)?;
-            let surface_format = choose_surface_format(&gpu, surface)?;
-            let present_mode = present_mode::choose_present_mode(&gpu, surface)?;
+            let surface_format = choose_surface_format(&gpu, surface, settings.color_space)?;
+            let present_mode =
+                present_mode::choose_present_mode(&gpu, surface, settings.present_mode)?;
             println!(
                 "swapchain: {:?} / {:?}, present mode {:?}",
                 surface_format.format, surface_format.color_space, present_mode
@@ -115,6 +134,7 @@ impl Renderer for App {
                 allocator,
                 surface,
                 present_mode,
+                color_space: settings.color_space,
                 swapchain,
                 image_layouts,
                 frame,
@@ -186,7 +206,7 @@ impl Renderer for App {
             self.destroy_swapchain_resources();
 
             let device = &self.gpu.device;
-            let surface_format = choose_surface_format(&self.gpu, self.surface)?;
+            let surface_format = choose_surface_format(&self.gpu, self.surface, self.color_space)?;
             self.swapchain = Swapchain::new(
                 &self.gpu,
                 self.surface,

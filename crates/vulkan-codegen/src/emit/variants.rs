@@ -109,6 +109,8 @@ fn value_doc(model: &Model<'_>, owner: &str, owner_cfg: &Cfg, v: &Variant<'_>) -
             "`{c_name}`, the object type of {}.",
             model.link(&from, &h.name)
         ))
+    } else if let Some(tabulated) = model.tabulated(&from, owner, c_name) {
+        Doc::new().blocks(tabulated)
     } else {
         Doc::new().text(format!(
             "`{c_name}`, a value of {}.",
