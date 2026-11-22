@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use regex::{Captures, Regex};
-use syn::{Attribute, Expr, ImplItem, Item, Lit, Meta, Type};
+use syn::{Attribute, Expr, FnArg, ImplItem, Item, Lit, Meta, Pat, Type};
 
 const REFERENCE_PAGES: &str = "https://docs.vulkan.org/refpages/latest/refpages/source/";
 
@@ -350,12 +350,21 @@ impl Specification {
     }
 
     fn describes(&self, page: &str, macro_name: &str, item: &str) -> bool {
+        self.described(page, macro_name)
+            .iter()
+            .any(|described| described == item)
+    }
+
+    fn described(&self, page: &str, macro_name: &str) -> Vec<String> {
         let bullet = regex(&format!(
-            r"(?m)^[ \t]*\*[ \t]+(?:\[\[[^\]]*\]\]\s*)*{macro_name}:{item}\b"
+            r"(?m)^[ \t]*\*[ \t]+(?:\[\[[^\]]*\]\]\s*)*{macro_name}:(\w+)\b"
         ));
-        self.pages
-            .get(page)
-            .is_some_and(|page| bullet.is_match(&page.body))
+        self.pages.get(page).map_or_else(Vec::new, |page| {
+            bullet
+                .captures_iter(&page.body)
+                .map(|bullet| bullet[1].to_string())
+                .collect()
+        })
     }
 }
 
@@ -401,6 +410,10 @@ fn generated_words(markdown: &str) -> String {
     words(&text)
 }
 
+fn squeeze(name: &str) -> String {
+    name.replace('_', "").to_ascii_lowercase()
+}
+
 fn flat(doc: &str) -> String {
     doc.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -437,6 +450,7 @@ struct Checker {
     described_values: usize,
     undescribed_values: usize,
     described_parameters: usize,
+    functions_with_arguments: usize,
 }
 
 struct Generated {
@@ -574,7 +588,6 @@ impl Checker {
             self.fail(&item, "does not start with the name of the member");
             return;
         };
-        let squeeze = |name: &str| name.replace('_', "").to_ascii_lowercase();
         let same_name =
             squeeze(&name[1]) == squeeze(field) || (field == "ty" && &name[1] == "type");
         if !same_name {
@@ -630,20 +643,78 @@ impl Checker {
         }
     }
 
-    fn parameters(&mut self, spec: &Specification, generated: &Generated, item: &str, doc: &str) {
+    fn parameters(
+        &mut self,
+        spec: &Specification,
+        generated: &Generated,
+        item: &str,
+        doc: &str,
+        arguments: &[String],
+    ) {
         let parameters = section_items(doc, "Parameters");
-        if parameters.is_empty() {
-            return;
-        }
         let Some(page) = generated.page_of(doc) else {
-            self.fail(item, "lists parameters although it has no reference page");
+            if !parameters.is_empty() {
+                self.fail(item, "lists parameters although it has no reference page");
+            }
             return;
         };
-        for parameter in parameters {
+        for parameter in &parameters {
             self.described_parameters += 1;
-            self.contained(spec, item, &page, &parameter);
+            self.contained(spec, item, &page, parameter);
+        }
+        if arguments.is_empty() {
+            return;
+        }
+        self.functions_with_arguments += 1;
+        let listed = parameters
+            .iter()
+            .filter_map(|parameter| generated.code_at_start.captures(parameter))
+            .map(|name| squeeze(&name[1]))
+            .collect::<BTreeSet<_>>();
+        let arguments = arguments
+            .iter()
+            .map(|argument| squeeze(argument))
+            .collect::<BTreeSet<_>>();
+        for name in spec.described(&page, "pname") {
+            if arguments.contains(&squeeze(&name)) && !listed.contains(&squeeze(&name)) {
+                self.fail(item, format!("the specification describes the parameter `{name}` on the page `{page}`, but the documentation does not list it"));
+            }
         }
     }
+}
+
+fn function_pointer_arguments(ty: &Type) -> Vec<String> {
+    let Type::Path(path) = ty else {
+        return Vec::new();
+    };
+    let Some(segment) = path.path.segments.last() else {
+        return Vec::new();
+    };
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Vec::new();
+    };
+    let Some(syn::GenericArgument::Type(Type::BareFn(function))) = arguments.args.first() else {
+        return Vec::new();
+    };
+    function
+        .inputs
+        .iter()
+        .filter_map(|input| input.name.as_ref().map(|(name, _)| name.to_string()))
+        .collect()
+}
+
+fn function_arguments(signature: &syn::Signature) -> Vec<String> {
+    signature
+        .inputs
+        .iter()
+        .filter_map(|input| match input {
+            FnArg::Typed(typed) => match &*typed.pat {
+                Pat::Ident(name) => Some(name.ident.to_string()),
+                _ => None,
+            },
+            FnArg::Receiver(_) => None,
+        })
+        .collect()
 }
 
 fn type_name(ty: &Type) -> String {
@@ -683,6 +754,43 @@ fn generated_documentation_matches_the_specification() {
         files.push(file);
     }
 
+    check_files(&spec, &generated, &mut checker, &files);
+
+    eprintln!(
+        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described and {} undescribed values, {} parameters, the parameter lists of {} functions",
+        checker.reference_links,
+        checker.summaries,
+        checker.described_members,
+        checker.undescribed_members,
+        checker.described_values,
+        checker.undescribed_values,
+        checker.described_parameters,
+        checker.functions_with_arguments,
+    );
+    assert!(
+        checker.failures.is_empty(),
+        "{} generated doc comments do not match the specification:\n{}",
+        checker.failures.len(),
+        checker.failures.join("\n")
+    );
+    for (what, count, at_least) in [
+        ("reference links", checker.reference_links, 5000),
+        ("summaries", checker.summaries, 2500),
+        ("described members", checker.described_members, 5000),
+        ("described values", checker.described_values, 2500),
+        ("parameters", checker.described_parameters, 2000),
+        ("parameter lists", checker.functions_with_arguments, 800),
+    ] {
+        assert!(count >= at_least, "only {count} {what} were checked");
+    }
+}
+
+fn check_files(
+    spec: &Specification,
+    generated: &Generated,
+    checker: &mut Checker,
+    files: &[syn::File],
+) {
     let mut value_pages = BTreeMap::<String, String>::new();
     let mut c_names = BTreeMap::<String, String>::new();
     for item in files.iter().flat_map(|file| &file.items) {
@@ -711,33 +819,7 @@ fn generated_documentation_matches_the_specification() {
     }
 
     for item in files.iter().flat_map(|file| &file.items) {
-        check_item(&spec, &generated, &mut checker, &value_pages, item);
-    }
-
-    eprintln!(
-        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described and {} undescribed values, {} parameters",
-        checker.reference_links,
-        checker.summaries,
-        checker.described_members,
-        checker.undescribed_members,
-        checker.described_values,
-        checker.undescribed_values,
-        checker.described_parameters,
-    );
-    assert!(
-        checker.failures.is_empty(),
-        "{} generated doc comments do not match the specification:\n{}",
-        checker.failures.len(),
-        checker.failures.join("\n")
-    );
-    for (what, count, at_least) in [
-        ("reference links", checker.reference_links, 5000),
-        ("summaries", checker.summaries, 2500),
-        ("described members", checker.described_members, 5000),
-        ("described values", checker.described_values, 2500),
-        ("parameters", checker.described_parameters, 2000),
-    ] {
-        assert!(count >= at_least, "only {count} {what} were checked");
+        check_item(spec, generated, checker, &value_pages, item);
     }
 }
 
@@ -794,7 +876,12 @@ fn check_item(
             let (doc, aliases) = doc_attributes(&item.attrs);
             checker.links(spec, generated, &name, &doc);
             checker.summary(spec, &name, &doc, &aliases);
-            checker.parameters(spec, generated, &name, &doc);
+            let arguments = if generated.page_of(&doc).as_deref() == Some(name.as_str()) {
+                function_pointer_arguments(&item.ty)
+            } else {
+                Vec::new()
+            };
+            checker.parameters(spec, generated, &name, &doc, &arguments);
             if let Some(target) = flat(&doc).strip_prefix("Alias of [`") {
                 let target = target.split('`').next().unwrap_or_default();
                 if target != type_name(&item.ty) {
@@ -835,7 +922,12 @@ fn check_item(
                         let name = format!("{owner}::{}", function.sig.ident);
                         checker.links(spec, generated, &name, &doc);
                         checker.summary(spec, &name, &doc, &aliases);
-                        checker.parameters(spec, generated, &name, &doc);
+                        let arguments = if flat(&doc).contains(" with the arguments as they are.") {
+                            function_arguments(&function.sig)
+                        } else {
+                            Vec::new()
+                        };
+                        checker.parameters(spec, generated, &name, &doc, &arguments);
                     }
                     _ => {}
                 }
