@@ -98,6 +98,26 @@ pub enum HeapLayoutError {
     /// usually means the properties were not filled in by
     /// `vkGetPhysicalDeviceProperties2`.
     ZeroDescriptorSize,
+    /// The reserved range of a [`DescriptorHeapLayout`] does not lie inside the heap:
+    /// `reserved_offset + reserved_size` is larger than `size`.
+    ReservedRangeOutsideHeap {
+        /// [`DescriptorHeapLayout::reserved_offset`].
+        reserved_offset: u64,
+        /// [`DescriptorHeapLayout::reserved_size`].
+        reserved_size: u64,
+        /// [`DescriptorHeapLayout::size`].
+        heap_size: u64,
+    },
+    /// The address of the heap is 0 although its size is not.
+    NullAddress,
+    /// The heap would reach past the last device address: the address of its last
+    /// byte, `address + size - 1`, does not fit in `u64`.
+    AddressRangeOverflow {
+        /// The address that was passed.
+        address: u64,
+        /// [`DescriptorHeapLayout::size`].
+        size: u64,
+    },
 }
 
 impl fmt::Display for HeapLayoutError {
@@ -117,6 +137,21 @@ impl fmt::Display for HeapLayoutError {
                 "descriptor size {size} is not a multiple of its alignment {alignment}"
             ),
             Self::ZeroDescriptorSize => f.write_str("descriptor size is 0"),
+            Self::ReservedRangeOutsideHeap {
+                reserved_offset,
+                reserved_size,
+                heap_size,
+            } => write!(
+                f,
+                "reserved range of {reserved_size} bytes at offset {reserved_offset} does not \
+                 fit in a descriptor heap of {heap_size} bytes"
+            ),
+            Self::NullAddress => f.write_str("descriptor heap address is 0"),
+            Self::AddressRangeOverflow { address, size } => write!(
+                f,
+                "descriptor heap of {size} bytes at {address:#x} reaches past the last \
+                 device address"
+            ),
         }
     }
 }
@@ -236,8 +271,10 @@ pub struct DescriptorHeapLayout {
     /// Where the range reserved for the implementation starts. Do not write descriptors
     /// there.
     pub reserved_offset: u64,
-    /// The size of the reserved range: `minResourceHeapReservedRange` or
-    /// `minSamplerHeapReservedRange`.
+    /// The size of the reserved range: `minResourceHeapReservedRange`,
+    /// `minSamplerHeapReservedRange`, or for a plan made by
+    /// [`SamplerHeapPlan::with_embedded_samplers`] the larger of
+    /// `minSamplerHeapReservedRange` and `minSamplerHeapReservedRangeWithEmbedded`.
     pub reserved_size: u64,
 }
 
@@ -246,18 +283,57 @@ impl DescriptorHeapLayout {
     /// `address`, covering [`DescriptorHeapLayout::size`] bytes and naming the reserved
     /// range.
     ///
+    /// It checks what the layout and `address` alone can tell. It cannot check that the
+    /// range `address .. address + size` lies inside a buffer created with
+    /// `DESCRIPTOR_HEAP_EXT` usage, that [`DescriptorHeapLayout::alignment`] is the
+    /// alignment the device requires, that `size` and `reserved_size` are within the
+    /// device limits, or that `reserved_offset` is a multiple of the descriptor
+    /// alignments, which the layout does not store. [`ResourceHeapPlan::finish`] and
+    /// [`SamplerHeapPlan::finish`] make layouts that meet the last three.
+    ///
     /// # Errors
     ///
-    /// [`HeapLayoutError::Misaligned`] if `address` is not a multiple of
-    /// [`DescriptorHeapLayout::alignment`].
+    /// The first of these that applies:
+    ///
+    /// - [`HeapLayoutError::ReservedRangeOutsideHeap`] if `reserved_offset +
+    ///   reserved_size` is larger than `size`.
+    /// - [`HeapLayoutError::Misaligned`] if `address` is not a multiple of
+    ///   [`DescriptorHeapLayout::alignment`].
+    /// - [`HeapLayoutError::NullAddress`] if `address` is 0 and `size` is not.
+    /// - [`HeapLayoutError::AddressRangeOverflow`] if the address of the last byte of
+    ///   the heap, `address + size - 1`, does not fit in `u64`.
     pub fn bind_info(
         &self,
         address: vk::DeviceAddress,
     ) -> Result<vk::BindHeapInfoEXT<'static>, HeapLayoutError> {
+        if self
+            .reserved_offset
+            .checked_add(self.reserved_size)
+            .is_none_or(|end| end > self.size)
+        {
+            return Err(HeapLayoutError::ReservedRangeOutsideHeap {
+                reserved_offset: self.reserved_offset,
+                reserved_size: self.reserved_size,
+                heap_size: self.size,
+            });
+        }
         if !address.is_multiple_of(self.alignment.max(1)) {
             return Err(HeapLayoutError::Misaligned {
                 address,
                 alignment: self.alignment,
+            });
+        }
+        if address == 0 && self.size != 0 {
+            return Err(HeapLayoutError::NullAddress);
+        }
+        if self
+            .size
+            .checked_sub(1)
+            .is_some_and(|last| address.checked_add(last).is_none())
+        {
+            return Err(HeapLayoutError::AddressRangeOverflow {
+                address,
+                size: self.size,
             });
         }
         Ok(vk::BindHeapInfoEXT::default()
@@ -483,6 +559,9 @@ impl SamplerHeapPlan {
     /// Starts an empty plan from the device's descriptor heap properties: the sampler
     /// descriptor size and alignment, `samplerHeapAlignment`, `maxSamplerHeapSize` and
     /// `minSamplerHeapReservedRange`.
+    ///
+    /// This reserved range can be too small while a shader uses embedded samplers; plan
+    /// a heap bound for such shaders with [`SamplerHeapPlan::with_embedded_samplers`].
     pub fn new(properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>) -> Self {
         Self {
             plan: Plan {
@@ -495,6 +574,51 @@ impl SamplerHeapPlan {
             sampler_size: properties.sampler_descriptor_size,
             sampler_alignment: properties.sampler_descriptor_alignment,
         }
+    }
+
+    /// Starts an empty plan as [`SamplerHeapPlan::new`] does, for a heap that is bound
+    /// while a shader uses an embedded sampler through a descriptor mapping. The reserved
+    /// range is the larger of `minSamplerHeapReservedRange` and
+    /// `minSamplerHeapReservedRangeWithEmbedded`.
+    ///
+    /// The implementation may store the embedded sampler descriptors in the reserved
+    /// range of the bound sampler heap, so while any bound shader uses an embedded
+    /// sampler through a descriptor mapping (a mapping whose `pEmbeddedSampler` is not
+    /// null), the specification requires the reserved range size of the sampler heap to
+    /// be at least `minSamplerHeapReservedRangeWithEmbedded`. It must also be at least
+    /// `minSamplerHeapReservedRange` whenever the heap is bound.
+    ///
+    /// ```
+    /// use vulkan::vk;
+    /// use vulkan_alloc::descriptor_heap::{HeapLayoutError, SamplerHeapPlan};
+    ///
+    /// # fn main() -> Result<(), HeapLayoutError> {
+    /// let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+    ///     .sampler_heap_alignment(64)
+    ///     .max_sampler_heap_size(1 << 20)
+    ///     .min_sampler_heap_reserved_range(96 * 32)
+    ///     .min_sampler_heap_reserved_range_with_embedded(2048 * 32)
+    ///     .sampler_descriptor_size(32)
+    ///     .sampler_descriptor_alignment(32);
+    ///
+    /// let mut plan = SamplerHeapPlan::with_embedded_samplers(&properties);
+    /// plan.samplers(16)?;
+    /// let layout = plan.finish()?;
+    /// assert_eq!(layout.reserved_offset, 16 * 32);
+    /// assert_eq!(layout.reserved_size, 2048 * 32);
+    /// assert_eq!(layout.size, 16 * 32 + 2048 * 32);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_embedded_samplers(
+        properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>,
+    ) -> Self {
+        let mut plan = Self::new(properties);
+        plan.plan.reserved_size = plan
+            .plan
+            .reserved_size
+            .max(properties.min_sampler_heap_reserved_range_with_embedded);
+        plan
     }
 
     /// Adds a run of `count` sampler descriptors, indexed in units of
@@ -768,6 +892,81 @@ mod tests {
     }
 
     #[test]
+    fn embedded_samplers_reserve_the_larger_of_the_two_reserved_ranges() {
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut reserved = |choice: u64| match choice % 5 {
+            0 => 0,
+            1 => next() % 4096,
+            2 => next() % (1 << 20),
+            3 => next(),
+            _ => u64::MAX - next() % 4096,
+        };
+        let mut outcomes = [0; 3];
+        for case in 0..5000_u64 {
+            let without = reserved(case);
+            let with = reserved(case / 5);
+            let sampler_size = 1 << (case % 7);
+            let alignment = (sampler_size >> (case % 3)).max(1);
+            let count = (case * 7919 % 4001) as u32;
+            let max = match case % 3 {
+                0 => u64::MAX,
+                1 => 1 << 20,
+                _ => 1 << 16,
+            };
+            let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+                .sampler_heap_alignment(64)
+                .max_sampler_heap_size(max)
+                .min_sampler_heap_reserved_range(without)
+                .min_sampler_heap_reserved_range_with_embedded(with)
+                .sampler_descriptor_size(sampler_size)
+                .sampler_descriptor_alignment(alignment);
+            let context = format!(
+                "{count} samplers of {sampler_size} bytes, reserved {without} or {with} \
+                 with embedded samplers, at most {max} bytes"
+            );
+            let samplers_end = u128::from(count) * u128::from(sampler_size);
+            let expected = |reserved_size: u64| {
+                let size = samplers_end + u128::from(reserved_size);
+                match u64::try_from(size) {
+                    Err(_) => Err(HeapLayoutError::Overflow),
+                    Ok(size) if size > max => Err(HeapLayoutError::TooLarge { size, max }),
+                    Ok(size) => Ok((samplers_end as u64, reserved_size, size)),
+                }
+            };
+            let layout = |mut plan: SamplerHeapPlan| {
+                plan.samplers(count).unwrap();
+                plan.finish().map(|layout| {
+                    assert_eq!(layout.alignment, 64);
+                    (layout.reserved_offset, layout.reserved_size, layout.size)
+                })
+            };
+
+            let embedded = layout(SamplerHeapPlan::with_embedded_samplers(&properties));
+            outcomes[match embedded {
+                Ok(_) => 0,
+                Err(HeapLayoutError::TooLarge { .. }) => 1,
+                Err(_) => 2,
+            }] += 1;
+            assert_eq!(embedded, expected(without.max(with)), "{context}");
+            assert_eq!(
+                layout(SamplerHeapPlan::new(&properties)),
+                expected(without),
+                "{context}"
+            );
+        }
+        assert!(
+            outcomes.iter().all(|&count| count > 100),
+            "every outcome is exercised: {outcomes:?}"
+        );
+    }
+
+    #[test]
     fn limits_are_errors_not_panics() {
         let properties = awkward();
         let mut plan = SamplerHeapPlan::new(&properties);
@@ -1012,10 +1211,13 @@ mod tests {
             };
             for address in addresses {
                 let context = format!("address {address:#x}, alignment {alignment}");
+                let inside_the_address_space =
+                    address != 0 && u128::from(address) + u128::from(layout.size) <= 1 << 64;
                 match layout.bind_info(address) {
                     Ok(bind) => {
                         accepted += 1;
                         assert!(address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert!(inside_the_address_space, "{context}");
                         assert_eq!(bind.heap_range.address, address, "{context}");
                         assert_eq!(bind.heap_range.size, layout.size, "{context}");
                         assert_eq!(
@@ -1024,18 +1226,94 @@ mod tests {
                         );
                         assert_eq!(bind.reserved_range_size, layout.reserved_size, "{context}");
                     }
-                    Err(error) => {
+                    Err(HeapLayoutError::Misaligned {
+                        address: rejected_address,
+                        alignment: required,
+                    }) => {
                         rejected += 1;
                         assert!(!address.is_multiple_of(alignment.max(1)), "{context}");
-                        assert_eq!(
-                            error,
-                            HeapLayoutError::Misaligned { address, alignment },
-                            "{context}"
-                        );
+                        assert_eq!((rejected_address, required), (address, alignment));
+                    }
+                    Err(error) => {
+                        assert!(address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert!(!inside_the_address_space, "{context}: {error:?}");
                     }
                 }
             }
         }
         assert!(accepted > 20 && rejected > 20);
+    }
+
+    #[test]
+    fn bind_info_rejects_exactly_the_ranges_the_device_must_not_be_given() {
+        let sizes = [0, 1, 0x100, 0x1000, 0x2_0000, 1 << 63, u64::MAX];
+        let reserved_offsets = [0, 0x100, 0x1000, 0x1_f000, 1 << 63, u64::MAX];
+        let reserved_sizes = [0, 0x100, 0x1000, u64::MAX];
+        let alignments = [0, 1, 0x100, 4096];
+        let addresses = [
+            0,
+            1,
+            0x100,
+            0x1000,
+            0x1_0000,
+            1 << 63,
+            u64::MAX - 0x1_ffff,
+            u64::MAX - 0xfff,
+            u64::MAX - 0xff,
+            u64::MAX,
+        ];
+        let mut outcomes = [0; 5];
+        for size in sizes {
+            for reserved_offset in reserved_offsets {
+                for reserved_size in reserved_sizes {
+                    for alignment in alignments {
+                        let layout = DescriptorHeapLayout {
+                            size,
+                            alignment,
+                            reserved_offset,
+                            reserved_size,
+                        };
+                        for address in addresses {
+                            let expected = if u128::from(reserved_offset)
+                                + u128::from(reserved_size)
+                                > u128::from(size)
+                            {
+                                outcomes[0] += 1;
+                                Err(HeapLayoutError::ReservedRangeOutsideHeap {
+                                    reserved_offset,
+                                    reserved_size,
+                                    heap_size: size,
+                                })
+                            } else if u128::from(address) % u128::from(alignment.max(1)) != 0 {
+                                outcomes[1] += 1;
+                                Err(HeapLayoutError::Misaligned { address, alignment })
+                            } else if address == 0 && size != 0 {
+                                outcomes[2] += 1;
+                                Err(HeapLayoutError::NullAddress)
+                            } else if u128::from(address) + u128::from(size) > 1 << 64 {
+                                outcomes[3] += 1;
+                                Err(HeapLayoutError::AddressRangeOverflow { address, size })
+                            } else {
+                                outcomes[4] += 1;
+                                Ok((address, size, reserved_offset, reserved_size))
+                            };
+                            let bind = layout.bind_info(address).map(|bind| {
+                                (
+                                    bind.heap_range.address,
+                                    bind.heap_range.size,
+                                    bind.reserved_range_offset,
+                                    bind.reserved_range_size,
+                                )
+                            });
+                            assert_eq!(bind, expected, "{layout:?} at {address:#x}");
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            outcomes.iter().all(|&count| count > 50),
+            "every outcome is exercised: {outcomes:?}"
+        );
     }
 }

@@ -1,4 +1,4 @@
-use super::{struct_member_len, value_count_param};
+use super::{can_defer, struct_member_len, value_count_param};
 use crate::model::{CType, Model, has_p_next, is_opaque};
 use crate::naming::field_name;
 use vulkan_registry::{Command, Field};
@@ -26,7 +26,7 @@ pub(super) enum Shape {
 
 impl Shape {
     pub(super) fn detect(model: &Model<'_>, c: &Command, params: &[Field]) -> Self {
-        if c.return_ty != "void" && c.return_ty != "VkResult" {
+        if (c.return_ty != "void" && c.return_ty != "VkResult") || can_defer(model, c) {
             return Shape::PassThrough;
         }
         let Some((last, inputs)) = params.split_last() else {
