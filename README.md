@@ -2,6 +2,18 @@
 
 Pure Rust Vulkan bindings generated from Khronos Vulkan-Headers.
 
+## Crates
+
+- `crates/vulkan`: the bindings. `vk` mirrors the C API; `Entry`, `Instance` and
+  `Device` load the function pointers and expose the commands as methods.
+- `crates/vulkan-alloc`: a TLSF device-memory allocator for `vulkan`.
+- `crates/vulkan-codegen`: the generator of `crates/vulkan/src/vk/generated` and
+  `crates/vulkan/tests/generated`. `tools/generate-vulkan` runs it.
+- `crates/vulkan-registry`: the input of `vulkan-codegen`: the Vulkan registry and the
+  descriptions from the specification, dumped to JSON by `tools/generate-vulkan`.
+- `crates/source-lint`: tests the comment rules under `crates/` and the versions named
+  in the Markdown files.
+
 ## Versioning
 
 Workspace crate versions use Rust semver before `+` and record the
