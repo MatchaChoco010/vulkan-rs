@@ -1198,6 +1198,9 @@ mod tests {
                 "pub unsafe fn get_device_fault_reports_khr(&self, timeout: u64, fault_counts: &mut u32, mut fault_info: Option<&mut [DeviceFaultInfoKHR<'_>]>) -> crate::vk::Result<VkResult> {",
             );
             assert!(!generate(&fault_reports(codes)).contains("loop {"));
+            assert!(generate(&fault_reports(codes)).contains(
+                "if let Some(x) = fault_info.as_ref() { assert_eq!(x.len(), *fault_counts as usize, \"vkGetDeviceFaultReportsKHR: `fault_info` must have `*fault_counts` elements\"); }"
+            ));
         }
         assert!(
             generate(&fault_reports(&["VK_SUCCESS", "VK_INCOMPLETE"])).contains(

@@ -11751,7 +11751,9 @@ impl crate::Instance {
     ///
     /// Panics if `vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM` is not
     /// loaded: the loader returned no pointer for it, for example because the version or the
-    /// extension that provides it is not enabled.
+    /// extension that provides it is not enabled. Also panics if the slices do not have the lengths
+    /// that the command needs: slices that it counts with one parameter have to be equally long,
+    /// and a slice whose length it reads from another argument has to have that length.
     #[doc(alias = "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM")]
     pub unsafe fn enumerate_physical_device_queue_family_performance_counters_by_region_arm(
         &self,
@@ -11762,6 +11764,20 @@ impl crate::Instance {
         mut counter_descriptions: Option<&mut [PerformanceCounterDescriptionARM<'_>]>,
     ) -> crate::vk::Result<VkResult> {
         unsafe {
+            if let Some(x) = counters.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM: `counters` must have `*counter_count` elements"
+                );
+            }
+            if let Some(x) = counter_descriptions.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM: `counter_descriptions` must have `*counter_count` elements"
+                );
+            }
             let result = self
                 .enumerate_physical_device_queue_family_performance_counters_by_region_arm_raw(
                     physical_device,
@@ -11807,7 +11823,9 @@ impl crate::Instance {
     ///
     /// Panics if `vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR` is not loaded:
     /// the loader returned no pointer for it, for example because the version or the extension that
-    /// provides it is not enabled.
+    /// provides it is not enabled. Also panics if the slices do not have the lengths that the
+    /// command needs: slices that it counts with one parameter have to be equally long, and a slice
+    /// whose length it reads from another argument has to have that length.
     #[doc(alias = "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR")]
     pub unsafe fn enumerate_physical_device_queue_family_performance_query_counters_khr(
         &self,
@@ -11818,6 +11836,20 @@ impl crate::Instance {
         mut counter_descriptions: Option<&mut [PerformanceCounterDescriptionKHR<'_>]>,
     ) -> crate::vk::Result<VkResult> {
         unsafe {
+            if let Some(x) = counters.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR: `counters` must have `*counter_count` elements"
+                );
+            }
+            if let Some(x) = counter_descriptions.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *counter_count as usize,
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR: `counter_descriptions` must have `*counter_count` elements"
+                );
+            }
             let result = self
                 .enumerate_physical_device_queue_family_performance_query_counters_khr_raw(
                     physical_device,
@@ -61079,7 +61111,10 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkGetDeviceFaultReportsKHR` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// for example because the version or the extension that provides it is not enabled. Also
+    /// panics if the slices do not have the lengths that the command needs: slices that it counts
+    /// with one parameter have to be equally long, and a slice whose length it reads from another
+    /// argument has to have that length.
     #[doc(alias = "vkGetDeviceFaultReportsKHR")]
     pub unsafe fn get_device_fault_reports_khr(
         &self,
@@ -61088,6 +61123,13 @@ impl crate::Device {
         mut fault_info: Option<&mut [DeviceFaultInfoKHR<'_>]>,
     ) -> crate::vk::Result<VkResult> {
         unsafe {
+            if let Some(x) = fault_info.as_ref() {
+                assert_eq!(
+                    x.len(),
+                    *fault_counts as usize,
+                    "vkGetDeviceFaultReportsKHR: `fault_info` must have `*fault_counts` elements"
+                );
+            }
             let result = self.get_device_fault_reports_khr_raw(
                 timeout,
                 core::ptr::from_mut(&mut *fault_counts),
