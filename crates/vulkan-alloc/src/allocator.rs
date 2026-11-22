@@ -118,7 +118,8 @@ impl Allocator {
     /// every preferred flag, or else the one with the most preferred flags (the lowest
     /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
     /// are left out unless the required or preferred flags of the location include one
-    /// of these two flags (see [`MemoryLocation`](crate::MemoryLocation)). Only the
+    /// of these two flags, and memory types with `PROTECTED` are left out unless they
+    /// include `PROTECTED` (see [`MemoryLocation`](crate::MemoryLocation)). Only the
     /// chosen memory type is tried.
     ///
     /// The allocation is placed in an existing shared block of that type when one has
@@ -147,7 +148,9 @@ impl Allocator {
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
     ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
     ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
-    ///   `deviceCoherentMemory` feature; non-empty
+    ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
+    ///   `protectedMemory` feature, and only protected resources may be bound to the
+    ///   allocation; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
     ///   type; a block must not be larger than the memory heap of the chosen type; and
