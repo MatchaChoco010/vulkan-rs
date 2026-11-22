@@ -430,17 +430,28 @@ impl MemoryBlock {
         device: &Device,
         allocation_id: u64,
     ) -> Result<(), AllocationError> {
+        if self.suballocator.allocation(allocation_id).is_none()
+            || self.holds_mapping_besides_its_persistent_one(allocation_id)
+        {
+            return Err(AllocationError::InvalidAllocation);
+        }
         if self.persistently_mapped.remove(&allocation_id) {
             unsafe { self.release_mapping(device, allocation_id) }?;
-        }
-        if self.is_allocation_mapped(allocation_id) {
-            return Err(AllocationError::InvalidAllocation);
         }
         self.suballocator
             .free(allocation_id)
             .ok_or(AllocationError::InvalidAllocation)?;
         self.names.remove(&allocation_id);
         Ok(())
+    }
+
+    fn holds_mapping_besides_its_persistent_one(&self, allocation_id: u64) -> bool {
+        let references = self
+            .mapped_allocations
+            .get(&allocation_id)
+            .copied()
+            .unwrap_or(0);
+        references > usize::from(self.persistently_mapped.contains(&allocation_id))
     }
 
     fn is_allocation_mapped(&self, allocation_id: u64) -> bool {

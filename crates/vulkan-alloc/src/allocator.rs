@@ -206,13 +206,13 @@ impl Allocator {
     ///
     /// [`AllocationError::InvalidAllocation`] if the allocator does not hold the
     /// allocation, or if it still has a mapping made with [`Allocator::map_memory`]
-    /// that was not released with [`Allocator::unmap_memory`]. In the second case the
-    /// allocation is consumed but its range stays allocated and mapped, because neither
-    /// this function nor [`Allocator::unmap_memory`] can be called for it again: it is
-    /// still reported by [`Allocator::live_allocations`] and is only released by
-    /// [`Allocator::free_all`]. Call [`Allocator::unmap_memory`] before freeing.
-    /// A persistent mapping of the allocation is released even when this error is
-    /// returned.
+    /// that was not released with [`Allocator::unmap_memory`]. Nothing is freed or
+    /// unmapped when this error is returned. In the second case the allocation is
+    /// consumed but its range stays allocated and keeps every mapping it had, the
+    /// persistent one included, because neither this function nor
+    /// [`Allocator::unmap_memory`] can be called for it again: it is still reported by
+    /// [`Allocator::live_allocations`] and is only released by [`Allocator::free_all`].
+    /// Call [`Allocator::unmap_memory`] before freeing.
     ///
     /// # Safety
     ///
