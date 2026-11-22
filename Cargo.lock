@@ -1367,6 +1367,7 @@ dependencies = [
  "anyhow",
  "vulkan",
  "vulkan-alloc",
+ "vulkan-example-common",
 ]
 
 [[package]]
