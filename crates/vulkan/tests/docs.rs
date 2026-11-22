@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use regex::{Captures, Regex};
-use syn::{Attribute, Expr, ImplItem, Item, Lit, Meta, Type};
+use syn::{Attribute, Expr, FnArg, ImplItem, Item, Lit, Meta, Pat, Type};
 
 const REFERENCE_PAGES: &str = "https://docs.vulkan.org/refpages/latest/refpages/source/";
 
@@ -350,12 +350,22 @@ impl Specification {
     }
 
     fn describes(&self, page: &str, macro_name: &str, item: &str) -> bool {
+        self.described(page, macro_name)
+            .iter()
+            .any(|described| described == item)
+    }
+
+    fn described(&self, page: &str, macro_name: &str) -> Vec<String> {
         let bullet = regex(&format!(
-            r"(?m)^[ \t]*\*[ \t]+(?:\[\[[^\]]*\]\]\s*)*{macro_name}:{item}\b"
+            r"(?m)^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*){macro_name}:(\w+)\b"
         ));
-        self.pages
-            .get(page)
-            .is_some_and(|page| bullet.is_match(&page.body))
+        self.pages.get(page).map_or_else(Vec::new, |page| {
+            bullet
+                .captures_iter(&page.body)
+                .filter(|bullet| !bullet[1].contains("[[VUID-"))
+                .map(|bullet| bullet[2].to_string())
+                .collect()
+        })
     }
 }
 
@@ -401,6 +411,15 @@ fn generated_words(markdown: &str) -> String {
     words(&text)
 }
 
+fn squeeze(name: &str) -> String {
+    name.replace('_', "").to_ascii_lowercase()
+}
+
+fn is_rust_name_of(rust_name: &str, c_name: &str) -> bool {
+    let rust_name = rust_name.strip_prefix("r#").unwrap_or(rust_name);
+    squeeze(rust_name) == squeeze(c_name) || (rust_name == "ty" && c_name == "type")
+}
+
 fn flat(doc: &str) -> String {
     doc.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -437,6 +456,8 @@ struct Checker {
     described_values: usize,
     undescribed_values: usize,
     described_parameters: usize,
+    functions_with_arguments: usize,
+    required_parameters: usize,
 }
 
 struct Generated {
@@ -574,10 +595,7 @@ impl Checker {
             self.fail(&item, "does not start with the name of the member");
             return;
         };
-        let squeeze = |name: &str| name.replace('_', "").to_ascii_lowercase();
-        let same_name =
-            squeeze(&name[1]) == squeeze(field) || (field == "ty" && &name[1] == "type");
-        if !same_name {
+        if !is_rust_name_of(field, &name[1]) {
             self.fail(
                 &item,
                 format!("is documented with the description of `{}`", &name[1]),
@@ -630,20 +648,81 @@ impl Checker {
         }
     }
 
-    fn parameters(&mut self, spec: &Specification, generated: &Generated, item: &str, doc: &str) {
+    fn parameters(
+        &mut self,
+        spec: &Specification,
+        generated: &Generated,
+        item: &str,
+        doc: &str,
+        arguments: &[String],
+    ) {
         let parameters = section_items(doc, "Parameters");
-        if parameters.is_empty() {
-            return;
-        }
         let Some(page) = generated.page_of(doc) else {
-            self.fail(item, "lists parameters although it has no reference page");
+            if !parameters.is_empty() {
+                self.fail(item, "lists parameters although it has no reference page");
+            }
             return;
         };
-        for parameter in parameters {
+        for parameter in &parameters {
             self.described_parameters += 1;
-            self.contained(spec, item, &page, &parameter);
+            self.contained(spec, item, &page, parameter);
+        }
+        if arguments.is_empty() {
+            return;
+        }
+        self.functions_with_arguments += 1;
+        let listed = parameters
+            .iter()
+            .filter_map(|parameter| generated.code_at_start.captures(parameter))
+            .map(|name| squeeze(&name[1]))
+            .collect::<BTreeSet<_>>();
+        for name in spec.described(&page, "pname") {
+            if !arguments
+                .iter()
+                .any(|argument| is_rust_name_of(argument, &name))
+            {
+                continue;
+            }
+            self.required_parameters += 1;
+            if !listed.contains(&squeeze(&name)) {
+                self.fail(item, format!("the specification describes the parameter `{name}` on the page `{page}`, but the documentation does not list it"));
+            }
         }
     }
+}
+
+fn function_pointer_arguments(ty: &Type) -> Vec<String> {
+    let Type::Path(path) = ty else {
+        return Vec::new();
+    };
+    let Some(segment) = path.path.segments.last() else {
+        return Vec::new();
+    };
+    let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Vec::new();
+    };
+    let Some(syn::GenericArgument::Type(Type::BareFn(function))) = arguments.args.first() else {
+        return Vec::new();
+    };
+    function
+        .inputs
+        .iter()
+        .filter_map(|input| input.name.as_ref().map(|(name, _)| name.to_string()))
+        .collect()
+}
+
+fn function_arguments(signature: &syn::Signature) -> Vec<String> {
+    signature
+        .inputs
+        .iter()
+        .filter_map(|input| match input {
+            FnArg::Typed(typed) => match &*typed.pat {
+                Pat::Ident(name) => Some(name.ident.to_string()),
+                _ => None,
+            },
+            FnArg::Receiver(_) => None,
+        })
+        .collect()
 }
 
 fn type_name(ty: &Type) -> String {
@@ -683,6 +762,49 @@ fn generated_documentation_matches_the_specification() {
         files.push(file);
     }
 
+    check_files(&spec, &generated, &mut checker, &files);
+
+    eprintln!(
+        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described and {} undescribed values, {} parameters, the parameter lists of {} functions with {} parameters that the specification describes",
+        checker.reference_links,
+        checker.summaries,
+        checker.described_members,
+        checker.undescribed_members,
+        checker.described_values,
+        checker.undescribed_values,
+        checker.described_parameters,
+        checker.functions_with_arguments,
+        checker.required_parameters,
+    );
+    assert!(
+        checker.failures.is_empty(),
+        "{} generated doc comments do not match the specification:\n{}",
+        checker.failures.len(),
+        checker.failures.join("\n")
+    );
+    for (what, count, at_least) in [
+        ("reference links", checker.reference_links, 5000),
+        ("summaries", checker.summaries, 2500),
+        ("described members", checker.described_members, 5000),
+        ("described values", checker.described_values, 2500),
+        ("parameters", checker.described_parameters, 2000),
+        ("parameter lists", checker.functions_with_arguments, 800),
+        (
+            "parameters that the specification describes",
+            checker.required_parameters,
+            2000,
+        ),
+    ] {
+        assert!(count >= at_least, "only {count} {what} were checked");
+    }
+}
+
+fn check_files(
+    spec: &Specification,
+    generated: &Generated,
+    checker: &mut Checker,
+    files: &[syn::File],
+) {
     let mut value_pages = BTreeMap::<String, String>::new();
     let mut c_names = BTreeMap::<String, String>::new();
     for item in files.iter().flat_map(|file| &file.items) {
@@ -711,33 +833,7 @@ fn generated_documentation_matches_the_specification() {
     }
 
     for item in files.iter().flat_map(|file| &file.items) {
-        check_item(&spec, &generated, &mut checker, &value_pages, item);
-    }
-
-    eprintln!(
-        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described and {} undescribed values, {} parameters",
-        checker.reference_links,
-        checker.summaries,
-        checker.described_members,
-        checker.undescribed_members,
-        checker.described_values,
-        checker.undescribed_values,
-        checker.described_parameters,
-    );
-    assert!(
-        checker.failures.is_empty(),
-        "{} generated doc comments do not match the specification:\n{}",
-        checker.failures.len(),
-        checker.failures.join("\n")
-    );
-    for (what, count, at_least) in [
-        ("reference links", checker.reference_links, 5000),
-        ("summaries", checker.summaries, 2500),
-        ("described members", checker.described_members, 5000),
-        ("described values", checker.described_values, 2500),
-        ("parameters", checker.described_parameters, 2000),
-    ] {
-        assert!(count >= at_least, "only {count} {what} were checked");
+        check_item(spec, generated, checker, &value_pages, item);
     }
 }
 
@@ -794,7 +890,12 @@ fn check_item(
             let (doc, aliases) = doc_attributes(&item.attrs);
             checker.links(spec, generated, &name, &doc);
             checker.summary(spec, &name, &doc, &aliases);
-            checker.parameters(spec, generated, &name, &doc);
+            let arguments = if generated.page_of(&doc).as_deref() == Some(name.as_str()) {
+                function_pointer_arguments(&item.ty)
+            } else {
+                Vec::new()
+            };
+            checker.parameters(spec, generated, &name, &doc, &arguments);
             if let Some(target) = flat(&doc).strip_prefix("Alias of [`") {
                 let target = target.split('`').next().unwrap_or_default();
                 if target != type_name(&item.ty) {
@@ -835,12 +936,394 @@ fn check_item(
                         let name = format!("{owner}::{}", function.sig.ident);
                         checker.links(spec, generated, &name, &doc);
                         checker.summary(spec, &name, &doc, &aliases);
-                        checker.parameters(spec, generated, &name, &doc);
+                        let arguments = if flat(&doc).contains(" with the arguments as they are.") {
+                            function_arguments(&function.sig)
+                        } else {
+                            Vec::new()
+                        };
+                        checker.parameters(spec, generated, &name, &doc, &arguments);
                     }
                     _ => {}
                 }
             }
         }
         _ => {}
+    }
+}
+
+fn fixture_specification() -> Specification {
+    let mut specification = Specification {
+        pages: BTreeMap::new(),
+        extensions: BTreeSet::new(),
+        attributes: BTreeMap::new(),
+        titles: BTreeMap::new(),
+        markup: Markup::new(),
+    };
+    let pages = [
+        (
+            "VkThing",
+            "Structure specifying a thing",
+            "
+  * pname:count is the number of things.
+  * pname:flags is reserved for future use.
+  * pname:type is the kind of the thing.
+
+.Valid Usage
+****
+  * [[VUID-VkThing-padding-00001]]
+    pname:padding must: be `0`
+****",
+        ),
+        (
+            "VkColor",
+            "Colors of a thing",
+            "
+  * ename:VK_COLOR_RED specifies red.
+  * ename:VK_COLOR_GREEN specifies green.",
+        ),
+        (
+            "vkCountThings",
+            "Count the things",
+            "
+  * pname:device is the logical device that owns the things.
+  * pname:type is the type of the things to count.
+  * pname:pThingCount is a pointer to a slink:VkThing structure in which
+    the number of things is returned.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkCountThings-flags-00001]]
+    pname:flags must: be `0`
+****",
+        ),
+        (
+            "PFN_vkThingCallback",
+            "Application-defined thing callback",
+            "
+  * pname:pUserData is the user data.
+  * pname:thing is the thing.",
+        ),
+    ];
+    for (name, description, body) in pages {
+        let page = Page {
+            description: description.to_string(),
+            body: body.to_string(),
+            body_words: specification.words(body),
+        };
+        specification.pages.insert(name.to_string(), page);
+    }
+    specification
+}
+
+const FIXTURE_SOURCE: &str = r#"
+/// Structure specifying a thing.
+///
+/// C structure [`VkThing`](PAGES/VkThing.html).
+#[doc(alias = "VkThing")]
+pub struct Thing {
+    /// `count` is the number of things.
+    pub count: u32,
+    /// `flags` is reserved for future use.
+    pub flags: u32,
+    /// `type` is the kind of the thing.
+    pub ty: u32,
+    /// The C member `uint32_t padding`.
+    pub padding: u32,
+}
+
+/// Alias of [`Thing`].
+pub type ThingKHR = Thing;
+
+/// Colors of a thing.
+///
+/// C enumeration [`VkColor`](PAGES/VkColor.html).
+#[doc(alias = "VkColor")]
+pub struct Color(pub i32);
+
+impl Color {
+    /// `VK_COLOR_RED` specifies red.
+    #[doc(alias = "VK_COLOR_RED")]
+    pub const RED: Self = Self(0);
+    /// `VK_COLOR_BLUE`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_BLUE")]
+    pub const BLUE: Self = Self(2);
+}
+
+/// Application-defined thing callback.
+///
+/// C function pointer type [`PFN_vkThingCallback`](PAGES/PFN_vkThingCallback.html).
+///
+/// # Parameters
+///
+/// - `pUserData` is the user data.
+/// - `thing` is the thing.
+#[doc(alias = "PFN_vkThingCallback")]
+pub type PFN_vkThingCallback = Option<unsafe extern "system" fn(p_user_data: *mut c_void, thing: u32)>;
+
+impl Device {
+    /// Count the things.
+    ///
+    /// Calls the C command [`vkCountThings`](PAGES/vkCountThings.html) with the arguments as they are.
+    ///
+    /// # Parameters
+    ///
+    /// - `type` is the type of the things to count.
+    /// - `pThingCount` is a pointer to a [`VkThing`](Thing) structure in which the number of things
+    ///   is returned.
+    /// - `pAllocator` controls host memory allocation as described in the Memory Allocation chapter.
+    ///
+    /// # Safety
+    ///
+    /// The call has to satisfy the valid usage that the Vulkan specification states for
+    /// [`vkCountThings`](PAGES/vkCountThings.html).
+    pub unsafe fn count_things_raw(
+        &self,
+        ty: u32,
+        flags: u32,
+        p_thing_count: *mut Thing,
+        p_allocator: *const c_void,
+    ) {
+    }
+
+    /// Count the things.
+    ///
+    /// Calls the C command [`vkCountThings`](PAGES/vkCountThings.html) through [`Self::count_things_raw`], which describes the parameters.
+    #[doc(alias = "vkCountThings")]
+    pub unsafe fn count_things(&self, allocator: Option<&c_void>) -> u32 {
+        0
+    }
+}
+"#;
+
+fn fixture_failures(source: &str) -> Vec<String> {
+    let source = source.replace("PAGES/", REFERENCE_PAGES);
+    let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
+    let mut checker = Checker::default();
+    check_files(
+        &fixture_specification(),
+        &Generated::new(),
+        &mut checker,
+        &[file],
+    );
+    checker.failures
+}
+
+fn assert_reported(defect: &str, replace: &str, with: &str, report: &str) {
+    assert_eq!(
+        FIXTURE_SOURCE.matches(replace).count(),
+        1,
+        "{defect}: `{replace}` is not exactly once in the fixture"
+    );
+    let failures = fixture_failures(&FIXTURE_SOURCE.replacen(replace, with, 1));
+    assert!(
+        failures.iter().any(|failure| failure.contains(report)),
+        "{defect}: expected a failure containing `{report}`, got {failures:#?}"
+    );
+}
+
+#[test]
+fn checker_accepts_documentation_that_matches_the_specification() {
+    let failures = fixture_failures(FIXTURE_SOURCE);
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+#[test]
+fn checker_reports_a_member_fallback_when_the_specification_describes_the_member() {
+    assert_reported(
+        "a member documented with its C declaration",
+        "/// `count` is the number of things.",
+        "/// The C member `uint32_t count`.",
+        "Thing::count: the specification describes `count` on the page `VkThing`, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_value_fallback_when_the_specification_describes_the_value() {
+    assert_reported(
+        "a value documented only by its type",
+        "/// `VK_COLOR_RED` specifies red.",
+        "/// `VK_COLOR_RED`, a value of [`VkColor`](PAGES/VkColor.html).",
+        "Color::RED: the specification describes `VK_COLOR_RED` on the page `VkColor`, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_parameter_left_out_of_the_parameters_of_a_command() {
+    assert_reported(
+        "a command without one of its parameters",
+        "    /// - `pAllocator` controls host memory allocation as described in the Memory Allocation chapter.\n",
+        "",
+        "Device::count_things_raw: the specification describes the parameter `pAllocator` on the page `vkCountThings`, but the documentation does not list it",
+    );
+    assert_reported(
+        "a command without the parameter that its Rust name `ty` stands for",
+        "    /// - `type` is the type of the things to count.\n",
+        "",
+        "Device::count_things_raw: the specification describes the parameter `type` on the page `vkCountThings`, but the documentation does not list it",
+    );
+    assert_reported(
+        "a command without one of its wrapped parameter items",
+        "    /// - `pThingCount` is a pointer to a [`VkThing`](Thing) structure in which the number of things\n    ///   is returned.\n",
+        "",
+        "Device::count_things_raw: the specification describes the parameter `pThingCount` on the page `vkCountThings`, but the documentation does not list it",
+    );
+    let section_start = FIXTURE_SOURCE
+        .find("    /// # Parameters\n    ///\n    /// - `type`")
+        .expect("the parameters of count_things_raw");
+    let section_end = section_start
+        + FIXTURE_SOURCE[section_start..]
+            .find("    /// # Safety")
+            .expect("the safety section of count_things_raw");
+    assert_reported(
+        "a command without its parameters section",
+        &FIXTURE_SOURCE[section_start..section_end],
+        "",
+        "Device::count_things_raw: the specification describes the parameter `pThingCount` on the page `vkCountThings`, but the documentation does not list it",
+    );
+}
+
+#[test]
+fn checker_does_not_take_valid_usage_for_a_description() {
+    let specification = fixture_specification();
+    let thing = specification.described("VkThing", "pname");
+    assert_eq!(thing, ["count", "flags", "type"]);
+    let count_things = specification.described("vkCountThings", "pname");
+    assert_eq!(
+        count_things,
+        ["device", "type", "pThingCount", "pAllocator"]
+    );
+    let failures = fixture_failures(FIXTURE_SOURCE);
+    assert!(
+        !failures
+            .iter()
+            .any(|failure| failure.contains("`flags`") || failure.contains("`padding`")),
+        "an argument or a member that only valid usage mentions is taken as described: {failures:#?}"
+    );
+}
+
+#[test]
+fn rust_names_are_matched_with_the_c_names_they_were_made_from() {
+    for (rust_name, c_name) in [
+        ("p_thing_count", "pThingCount"),
+        ("ty", "type"),
+        ("r#match", "match"),
+        ("self_", "self"),
+        ("_2d", "2D"),
+    ] {
+        assert!(
+            is_rust_name_of(rust_name, c_name),
+            "`{rust_name}` is the Rust name of `{c_name}`"
+        );
+    }
+    for (rust_name, c_name) in [("ty", "typeCount"), ("p_thing_count", "thingCount")] {
+        assert!(
+            !is_rust_name_of(rust_name, c_name),
+            "`{rust_name}` is not the Rust name of `{c_name}`"
+        );
+    }
+}
+
+#[test]
+fn checker_reports_a_parameter_left_out_of_the_parameters_of_a_function_pointer() {
+    assert_reported(
+        "a function pointer type without one of its parameters",
+        "/// - `thing` is the thing.\n",
+        "",
+        "PFN_vkThingCallback: the specification describes the parameter `thing` on the page `PFN_vkThingCallback`, but the documentation does not list it",
+    );
+}
+
+#[test]
+fn checker_reports_each_other_kind_of_defect() {
+    let cases = [
+        (
+            "a parameter description that the specification does not have",
+            "structure in which the number of things",
+            "structure in which the number of widgets",
+            "Device::count_things_raw: ``pThingCount` is a pointer to a [`VkThing`](Thing) structure in which the number of widgets",
+        ),
+        (
+            "parameters without a reference page",
+            "/// C function pointer type [`PFN_vkThingCallback`](PAGES/PFN_vkThingCallback.html).",
+            "/// C function pointer type `PFN_vkThingCallback`.",
+            "PFN_vkThingCallback: lists parameters although it has no reference page",
+        ),
+        (
+            "a link to a reference page that does not exist",
+            "[`VkThing`](PAGES/VkThing.html)",
+            "[`VkThingy`](PAGES/VkThingy.html)",
+            "Thing: links to the reference page `VkThingy`, which the specification does not have",
+        ),
+        (
+            "a member of a type whose reference page does not exist",
+            "[`VkThing`](PAGES/VkThing.html)",
+            "[`VkThingy`](PAGES/VkThingy.html)",
+            "Thing::count: is described, but the specification has no page `VkThingy`",
+        ),
+        (
+            "a docs.vulkan.org link that is not a reference page",
+            "/// Alias of [`Thing`].",
+            "/// Alias of [`Thing`]. See https://docs.vulkan.org/spec/latest/index.html.",
+            "ThingKHR: has a docs.vulkan.org link of an unexpected form",
+        ),
+        (
+            "a summary that differs from the specification",
+            "/// Structure specifying a thing.",
+            "/// Structure specifying a widget.",
+            "Thing: starts with `Structure specifying a widget.`, but the specification describes `VkThing` as `Structure specifying a thing`",
+        ),
+        (
+            "a described member of a type without a reference page",
+            "/// C structure [`VkThing`](PAGES/VkThing.html).",
+            "/// C structure `VkThing`.",
+            "Thing::count: is described although its type has no reference page",
+        ),
+        (
+            "a member description that does not start with the member",
+            "/// `count` is the number of things.",
+            "/// The number of things.",
+            "Thing::count: does not start with the name of the member",
+        ),
+        (
+            "a member with the description of another member",
+            "/// `count` is the number of things.",
+            "/// `flags` is reserved for future use.",
+            "Thing::count: is documented with the description of `flags`",
+        ),
+        (
+            "a member description that the specification does not have",
+            "/// `count` is the number of things.",
+            "/// `count` is the number of widgets.",
+            "Thing::count: ``count` is the number of widgets.` is not in the text that the specification has for `VkThing`",
+        ),
+        (
+            "a value description that does not start with the C name",
+            "/// `VK_COLOR_RED` specifies red.",
+            "/// Red.",
+            "Color::RED: does not start with its C name `VK_COLOR_RED`",
+        ),
+        (
+            "a described value of a type without a reference page",
+            "/// C enumeration [`VkColor`](PAGES/VkColor.html).",
+            "/// C enumeration `VkColor`.",
+            "Color::RED: is described although its type has no reference page",
+        ),
+        (
+            "a value description that the specification does not have",
+            "/// `VK_COLOR_RED` specifies red.",
+            "/// `VK_COLOR_RED` specifies crimson.",
+            "Color::RED: ``VK_COLOR_RED` specifies crimson.` is not in the text that the specification has for `VkColor`",
+        ),
+        (
+            "an alias documented as the alias of another type",
+            "pub type ThingKHR = Thing;",
+            "pub type ThingKHR = Color;",
+            "ThingKHR: is documented as an alias of `Thing`",
+        ),
+    ];
+    for (defect, replace, with, report) in cases {
+        assert_reported(defect, replace, with, report);
     }
 }
