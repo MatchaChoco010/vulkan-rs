@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use std::ptr::NonNull;
 use vulkan::{Device, vk};
 use vulkan_alloc::{
@@ -111,16 +111,19 @@ pub unsafe fn buffer_device_address(device: &Device, buffer: vk::Buffer) -> vk::
     }
 }
 
-/// Copies `bytes` to the start of a host-visible buffer.
+/// Copies `bytes` to the start of a host-visible buffer. An error when they are more
+/// than the buffer holds; its allocation may be larger, but the device sees only the
+/// buffer.
 pub unsafe fn write_buffer(allocator: &mut Allocator, buffer: &Buffer, bytes: &[u8]) -> Result<()> {
     unsafe {
+        check_fits(bytes.len(), buffer.size)?;
         let coherent = allocator
             .allocation_memory_flags(&buffer.allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
         let mut mapped = allocator.map(&buffer.allocation)?;
         mapped
             .byte_range_mut(0, bytes.len())
-            .context("the data is larger than the buffer")?
+            .context("the buffer is larger than its allocation")?
             .copy_from_slice(bytes);
         if !coherent {
             mapped.flush()?;
@@ -141,10 +144,24 @@ pub unsafe fn read_buffer(allocator: &mut Allocator, buffer: &Buffer) -> Result<
             mapped.invalidate()?;
         }
         Ok(mapped
-            .byte_range(0, buffer.size as usize)
+            .byte_range(0, host_len(buffer.size)?)
             .context("the buffer is larger than its allocation")?
             .to_vec())
     }
+}
+
+/// Checks that `len` bytes fit into a buffer of `size` bytes.
+fn check_fits(len: usize, size: u64) -> Result<()> {
+    ensure!(
+        u64::try_from(len).is_ok_and(|len| len <= size),
+        "the data ({len} bytes) is larger than the buffer ({size} bytes)"
+    );
+    Ok(())
+}
+
+/// The device size `size` as a length on the host, whose `usize` may be narrower.
+fn host_len<T: TryFrom<u64>>(size: u64) -> Result<T> {
+    T::try_from(size).map_err(|_| anyhow!("{size} bytes do not fit into the host's address space"))
 }
 
 /// A device-local buffer that holds `data`, copied there through a staging buffer.
@@ -343,5 +360,62 @@ pub unsafe fn create_image(
             return Err(error.into());
         }
         Ok(Image { image, allocation })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SIZES: [u64; 9] = [
+        0,
+        1,
+        15,
+        16,
+        4096,
+        u32::MAX as u64,
+        u32::MAX as u64 + 1,
+        (4 << 30) + 16,
+        u64::MAX,
+    ];
+
+    #[test]
+    fn data_fits_exactly_when_it_is_not_longer_than_the_buffer() {
+        for size in SIZES {
+            for len in [0, 1, 15, 16, 17, 4096, u32::MAX as usize, usize::MAX] {
+                assert_eq!(
+                    check_fits(len, size).is_ok(),
+                    len as u128 <= size as u128,
+                    "{len} bytes into {size}"
+                );
+            }
+            if let Ok(len) = usize::try_from(size) {
+                assert!(check_fits(len, size).is_ok(), "{size} bytes into {size}");
+                if let Some(longer) = len.checked_add(1) {
+                    assert!(
+                        check_fits(longer, size).is_err(),
+                        "{longer} bytes into {size}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_size_becomes_a_host_length_unchanged_or_an_error() {
+        for size in SIZES {
+            match host_len::<u32>(size) {
+                Ok(len) => assert_eq!(u64::from(len), size),
+                Err(_) => assert!(size > u64::from(u32::MAX), "{size} was rejected"),
+            }
+            match host_len::<usize>(size) {
+                Ok(len) => assert_eq!(len as u64, size),
+                Err(_) => assert!(size > usize::MAX as u64, "{size} was rejected"),
+            }
+        }
+        assert!(
+            host_len::<u32>((4 << 30) + 16).is_err(),
+            "4 GiB and 16 bytes became a 32-bit length"
+        );
     }
 }
