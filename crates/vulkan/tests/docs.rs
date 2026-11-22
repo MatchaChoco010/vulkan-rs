@@ -357,12 +357,13 @@ impl Specification {
 
     fn described(&self, page: &str, macro_name: &str) -> Vec<String> {
         let bullet = regex(&format!(
-            r"(?m)^[ \t]*\*[ \t]+(?:\[\[[^\]]*\]\]\s*)*{macro_name}:(\w+)\b"
+            r"(?m)^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*){macro_name}:(\w+)\b"
         ));
         self.pages.get(page).map_or_else(Vec::new, |page| {
             bullet
                 .captures_iter(&page.body)
-                .map(|bullet| bullet[1].to_string())
+                .filter(|bullet| !bullet[1].contains("[[VUID-"))
+                .map(|bullet| bullet[2].to_string())
                 .collect()
         })
     }
@@ -414,6 +415,11 @@ fn squeeze(name: &str) -> String {
     name.replace('_', "").to_ascii_lowercase()
 }
 
+fn is_rust_name_of(rust_name: &str, c_name: &str) -> bool {
+    let rust_name = rust_name.strip_prefix("r#").unwrap_or(rust_name);
+    squeeze(rust_name) == squeeze(c_name) || (rust_name == "ty" && c_name == "type")
+}
+
 fn flat(doc: &str) -> String {
     doc.split_whitespace().collect::<Vec<_>>().join(" ")
 }
@@ -451,6 +457,7 @@ struct Checker {
     undescribed_values: usize,
     described_parameters: usize,
     functions_with_arguments: usize,
+    required_parameters: usize,
 }
 
 struct Generated {
@@ -588,9 +595,7 @@ impl Checker {
             self.fail(&item, "does not start with the name of the member");
             return;
         };
-        let same_name =
-            squeeze(&name[1]) == squeeze(field) || (field == "ty" && &name[1] == "type");
-        if !same_name {
+        if !is_rust_name_of(field, &name[1]) {
             self.fail(
                 &item,
                 format!("is documented with the description of `{}`", &name[1]),
@@ -671,12 +676,15 @@ impl Checker {
             .filter_map(|parameter| generated.code_at_start.captures(parameter))
             .map(|name| squeeze(&name[1]))
             .collect::<BTreeSet<_>>();
-        let arguments = arguments
-            .iter()
-            .map(|argument| squeeze(argument))
-            .collect::<BTreeSet<_>>();
         for name in spec.described(&page, "pname") {
-            if arguments.contains(&squeeze(&name)) && !listed.contains(&squeeze(&name)) {
+            if !arguments
+                .iter()
+                .any(|argument| is_rust_name_of(argument, &name))
+            {
+                continue;
+            }
+            self.required_parameters += 1;
+            if !listed.contains(&squeeze(&name)) {
                 self.fail(item, format!("the specification describes the parameter `{name}` on the page `{page}`, but the documentation does not list it"));
             }
         }
@@ -757,7 +765,7 @@ fn generated_documentation_matches_the_specification() {
     check_files(&spec, &generated, &mut checker, &files);
 
     eprintln!(
-        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described and {} undescribed values, {} parameters, the parameter lists of {} functions",
+        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described and {} undescribed values, {} parameters, the parameter lists of {} functions with {} parameters that the specification describes",
         checker.reference_links,
         checker.summaries,
         checker.described_members,
@@ -766,6 +774,7 @@ fn generated_documentation_matches_the_specification() {
         checker.undescribed_values,
         checker.described_parameters,
         checker.functions_with_arguments,
+        checker.required_parameters,
     );
     assert!(
         checker.failures.is_empty(),
@@ -780,6 +789,11 @@ fn generated_documentation_matches_the_specification() {
         ("described values", checker.described_values, 2500),
         ("parameters", checker.described_parameters, 2000),
         ("parameter lists", checker.functions_with_arguments, 800),
+        (
+            "parameters that the specification describes",
+            checker.required_parameters,
+            2000,
+        ),
     ] {
         assert!(count >= at_least, "only {count} {what} were checked");
     }
@@ -949,22 +963,47 @@ fn fixture_specification() -> Specification {
         (
             "VkThing",
             "Structure specifying a thing",
-            "* pname:count is the number of things.\n* pname:flags is reserved for future use.",
+            "
+  * pname:count is the number of things.
+  * pname:flags is reserved for future use.
+  * pname:type is the kind of the thing.
+
+.Valid Usage
+****
+  * [[VUID-VkThing-padding-00001]]
+    pname:padding must: be `0`
+****",
         ),
         (
             "VkColor",
             "Colors of a thing",
-            "* ename:VK_COLOR_RED specifies red.\n* ename:VK_COLOR_GREEN specifies green.",
+            "
+  * ename:VK_COLOR_RED specifies red.
+  * ename:VK_COLOR_GREEN specifies green.",
         ),
         (
             "vkCountThings",
             "Count the things",
-            "* pname:device is the logical device.\n* pname:pThingCount is a pointer to the number of things.\n* pname:pAllocator controls host memory allocation.",
+            "
+  * pname:device is the logical device that owns the things.
+  * pname:type is the type of the things to count.
+  * pname:pThingCount is a pointer to a slink:VkThing structure in which
+    the number of things is returned.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkCountThings-flags-00001]]
+    pname:flags must: be `0`
+****",
         ),
         (
             "PFN_vkThingCallback",
             "Application-defined thing callback",
-            "* pname:pUserData is the user data.\n* pname:thing is the thing.",
+            "
+  * pname:pUserData is the user data.
+  * pname:thing is the thing.",
         ),
     ];
     for (name, description, body) in pages {
@@ -988,6 +1027,8 @@ pub struct Thing {
     pub count: u32,
     /// `flags` is reserved for future use.
     pub flags: u32,
+    /// `type` is the kind of the thing.
+    pub ty: u32,
     /// The C member `uint32_t padding`.
     pub padding: u32,
 }
@@ -1028,9 +1069,23 @@ impl Device {
     ///
     /// # Parameters
     ///
-    /// - `pThingCount` is a pointer to the number of things.
-    /// - `pAllocator` controls host memory allocation.
-    pub unsafe fn count_things_raw(&self, p_thing_count: *mut u32, p_allocator: *const c_void) {}
+    /// - `type` is the type of the things to count.
+    /// - `pThingCount` is a pointer to a [`VkThing`](Thing) structure in which the number of things
+    ///   is returned.
+    /// - `pAllocator` controls host memory allocation as described in the Memory Allocation chapter.
+    ///
+    /// # Safety
+    ///
+    /// The call has to satisfy the valid usage that the Vulkan specification states for
+    /// [`vkCountThings`](PAGES/vkCountThings.html).
+    pub unsafe fn count_things_raw(
+        &self,
+        ty: u32,
+        flags: u32,
+        p_thing_count: *mut Thing,
+        p_allocator: *const c_void,
+    ) {
+    }
 
     /// Count the things.
     ///
@@ -1098,16 +1153,76 @@ fn checker_reports_a_value_fallback_when_the_specification_describes_the_value()
 fn checker_reports_a_parameter_left_out_of_the_parameters_of_a_command() {
     assert_reported(
         "a command without one of its parameters",
-        "    /// - `pAllocator` controls host memory allocation.\n",
+        "    /// - `pAllocator` controls host memory allocation as described in the Memory Allocation chapter.\n",
         "",
         "Device::count_things_raw: the specification describes the parameter `pAllocator` on the page `vkCountThings`, but the documentation does not list it",
     );
     assert_reported(
-        "a command without its parameters section",
-        "    ///\n    /// # Parameters\n    ///\n    /// - `pThingCount` is a pointer to the number of things.\n    /// - `pAllocator` controls host memory allocation.\n",
+        "a command without the parameter that its Rust name `ty` stands for",
+        "    /// - `type` is the type of the things to count.\n",
+        "",
+        "Device::count_things_raw: the specification describes the parameter `type` on the page `vkCountThings`, but the documentation does not list it",
+    );
+    assert_reported(
+        "a command without one of its wrapped parameter items",
+        "    /// - `pThingCount` is a pointer to a [`VkThing`](Thing) structure in which the number of things\n    ///   is returned.\n",
         "",
         "Device::count_things_raw: the specification describes the parameter `pThingCount` on the page `vkCountThings`, but the documentation does not list it",
     );
+    let section_start = FIXTURE_SOURCE
+        .find("    /// # Parameters\n    ///\n    /// - `type`")
+        .expect("the parameters of count_things_raw");
+    let section_end = section_start
+        + FIXTURE_SOURCE[section_start..]
+            .find("    /// # Safety")
+            .expect("the safety section of count_things_raw");
+    assert_reported(
+        "a command without its parameters section",
+        &FIXTURE_SOURCE[section_start..section_end],
+        "",
+        "Device::count_things_raw: the specification describes the parameter `pThingCount` on the page `vkCountThings`, but the documentation does not list it",
+    );
+}
+
+#[test]
+fn checker_does_not_take_valid_usage_for_a_description() {
+    let specification = fixture_specification();
+    let thing = specification.described("VkThing", "pname");
+    assert_eq!(thing, ["count", "flags", "type"]);
+    let count_things = specification.described("vkCountThings", "pname");
+    assert_eq!(
+        count_things,
+        ["device", "type", "pThingCount", "pAllocator"]
+    );
+    let failures = fixture_failures(FIXTURE_SOURCE);
+    assert!(
+        !failures
+            .iter()
+            .any(|failure| failure.contains("`flags`") || failure.contains("`padding`")),
+        "an argument or a member that only valid usage mentions is taken as described: {failures:#?}"
+    );
+}
+
+#[test]
+fn rust_names_are_matched_with_the_c_names_they_were_made_from() {
+    for (rust_name, c_name) in [
+        ("p_thing_count", "pThingCount"),
+        ("ty", "type"),
+        ("r#match", "match"),
+        ("self_", "self"),
+        ("_2d", "2D"),
+    ] {
+        assert!(
+            is_rust_name_of(rust_name, c_name),
+            "`{rust_name}` is the Rust name of `{c_name}`"
+        );
+    }
+    for (rust_name, c_name) in [("ty", "typeCount"), ("p_thing_count", "thingCount")] {
+        assert!(
+            !is_rust_name_of(rust_name, c_name),
+            "`{rust_name}` is not the Rust name of `{c_name}`"
+        );
+    }
 }
 
 #[test]
@@ -1125,9 +1240,9 @@ fn checker_reports_each_other_kind_of_defect() {
     let cases = [
         (
             "a parameter description that the specification does not have",
-            "is a pointer to the number of things.",
-            "is a pointer to the number of widgets.",
-            "Device::count_things_raw: ``pThingCount` is a pointer to the number of widgets.` is not in the text that the specification has for `vkCountThings`",
+            "structure in which the number of things",
+            "structure in which the number of widgets",
+            "Device::count_things_raw: ``pThingCount` is a pointer to a [`VkThing`](Thing) structure in which the number of widgets",
         ),
         (
             "parameters without a reference page",
