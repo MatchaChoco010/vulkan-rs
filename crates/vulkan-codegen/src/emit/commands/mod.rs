@@ -6,7 +6,7 @@ mod wrapper;
 use super::func_pointers::parameter_item;
 use super::{arrow, header, w};
 use crate::docs::{Block, Doc};
-use crate::model::{CType, Cfg, Dispatch, Model, Scalar};
+use crate::model::{CType, Cfg, Dispatch, Model};
 use crate::naming::{command_name, field_name, pointer_setter_name};
 use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
@@ -152,10 +152,31 @@ fn inner_len(
     p: &Field,
 ) -> Option<(usize, String)> {
     let ty = CType::of(p);
-    if ty.pointers != [true, true] || ty.is_array() || p.optional {
+    let count = value_count_param(params, p)?;
+    if ty.pointers != [true, true] || ty.is_array() {
         return None;
     }
-    let count = value_count_param(params, p)?;
+    assert!(
+        !p.optional,
+        "{}: {} is an optional array of arrays",
+        c.name, p.name
+    );
+    let len = described_inner_len(model, c, params, p, count);
+    Some(len.unwrap_or_else(|| {
+        panic!(
+            "{}: the specification describes no inner length for {}, the length of each array that it points to",
+            c.name, p.name
+        )
+    }))
+}
+
+fn described_inner_len(
+    model: &Model<'_>,
+    c: &Command,
+    params: &[Field],
+    p: &Field,
+    count: usize,
+) -> Option<(usize, String)> {
     let description = &model
         .page(&c.name)?
         .items
@@ -180,7 +201,7 @@ fn inner_len(
                 m.name == member
                     && m_ty.depth() == 0
                     && !m_ty.is_array()
-                    && model.scalar(model.canonical(&m.ty)) == Some(Scalar::Integer)
+                    && matches!(model.canonical(&m.ty), "uint32_t" | "size_t")
             });
             (counted_alike && counts).then(|| (index, member.to_string()))
         })
@@ -195,6 +216,8 @@ fn inner_len(
 fn creates_a_dispatching_handle(c: &Command) -> bool {
     c.params.last().is_some_and(|p| {
         CType::of(p).pointers == [false]
+            && p.len.is_none()
+            && !p.optional
             && Dispatch::ALL
                 .iter()
                 .any(|dispatch| dispatch.self_handle() == Some(p.ty.as_str()))
@@ -208,6 +231,7 @@ mod tests {
     use crate::test_support::{
         command, counted, field, optional, registry, result_command, structure, tagged,
     };
+    use std::collections::BTreeMap;
     use vulkan_registry::{DocItem, DocPage, Docs, EnumField, Handle, Registry};
 
     fn base() -> Registry {
@@ -893,16 +917,142 @@ mod tests {
     }
 
     #[test]
-    fn arrays_of_arrays_without_a_described_inner_length_stay_pointers() {
+    #[should_panic(
+        expected = "vkCmdAssembleWidgetsNV: the specification describes no inner length for ppParts"
+    )]
+    fn arrays_of_arrays_without_a_described_inner_length_stop_the_generator() {
         let (ir, _) = widgets();
-        let out = generate(&ir);
-        assert!(out.contains(
-            "pub unsafe fn cmd_assemble_widgets_nv(&self, command_buffer: CommandBuffer, batches: &[WidgetBatchNV], first_indices: &[u32], parts: *const *const WidgetPartNV, limits: *const *const u32) {"
-        ));
+        generate(&ir);
     }
 
     #[test]
-    fn every_array_of_arrays_parameter_of_the_registry_has_an_inner_length() {
+    fn inner_lengths_are_counts_not_other_integers() {
+        for ty in ["VkBool32", "VkDeviceSize", "VkDeviceAddress", "uint64_t"] {
+            let (mut ir, docs) = widgets();
+            for s in &mut ir.structs {
+                for m in &mut s.members {
+                    if m.name == "partCount" {
+                        m.ty = ty.to_string();
+                        m.full_ty = ty.to_string();
+                    }
+                }
+            }
+            let generated = std::panic::catch_unwind(|| generate_with_docs(&ir, &docs));
+            assert!(
+                generated.is_err(),
+                "a {ty} member is taken as an inner length"
+            );
+        }
+        let (mut ir, docs) = widgets();
+        for s in &mut ir.structs {
+            for m in &mut s.members {
+                if m.name == "partCount" {
+                    m.ty = "size_t".to_string();
+                    m.full_ty = "size_t".to_string();
+                }
+            }
+        }
+        assert!(generate_with_docs(&ir, &docs).contains("parts: &[&[WidgetPartNV]]"));
+    }
+
+    #[test]
+    fn counted_arrays_of_dispatching_handles_get_wrappers() {
+        let mut ir = base();
+        ir.structs.push(tagged(
+            "VkDeviceGroupInfoNV",
+            "VK_STRUCTURE_TYPE_DEVICE_GROUP_INFO_NV",
+            vec![field("deviceCount", "uint32_t")],
+        ));
+        let mut c = result_command(
+            "vkCreateDeviceGroupNV",
+            &["VK_SUCCESS"],
+            vec![
+                field("physicalDevice", "VkPhysicalDevice"),
+                field("pInfo", "const VkDeviceGroupInfoNV*"),
+                counted("pDevices", "VkDevice*", "pInfo->deviceCount"),
+            ],
+        );
+        c.instance = true;
+        ir.commands.push(c);
+        assert!(generate(&ir).contains(
+            "pub unsafe fn create_device_group_nv(&self, physical_device: PhysicalDevice, info: &DeviceGroupInfoNV<'_>) -> crate::vk::Result<Vec<Device>> {"
+        ));
+    }
+
+    fn wrapper_shapes_of_the_embedded_registry() -> BTreeMap<&'static str, BTreeSet<String>> {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let shapes = [
+            ("no generated wrapper", ""),
+            (
+                "reports suboptimal",
+                "Ok(result == VkResult::SUBOPTIMAL_KHR)",
+            ),
+            ("may not write the value", "-> crate::vk::Result<Option<("),
+            ("keeps partial output", "-> core::result::Result<Vec<"),
+            ("takes slices of slices", ": &[&["),
+        ];
+        let mut found = BTreeMap::<&'static str, BTreeSet<String>>::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                found
+                    .entry("no generated wrapper")
+                    .or_default()
+                    .insert(c.name.clone());
+                continue;
+            }
+            let out = squash(&wrapper::wrapper(&model, c, model.dispatch(c)));
+            for (shape, marker) in shapes {
+                if !marker.is_empty() && out.contains(marker) {
+                    found.entry(shape).or_default().insert(c.name.clone());
+                }
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn the_embedded_registry_gets_the_special_wrapper_shapes_where_expected() {
+        let names = |names: &[&str]| names.iter().map(|name| name.to_string()).collect();
+        let expected: BTreeMap<&'static str, BTreeSet<String>> = [
+            (
+                "no generated wrapper",
+                names(&["vkCreateDevice", "vkCreateInstance"]),
+            ),
+            (
+                "reports suboptimal",
+                names(&["vkGetSwapchainStatusKHR", "vkQueuePresentKHR"]),
+            ),
+            (
+                "may not write the value",
+                names(&["vkAcquireNextImage2KHR", "vkAcquireNextImageKHR"]),
+            ),
+            (
+                "keeps partial output",
+                names(&[
+                    "vkCreateComputePipelines",
+                    "vkCreateDataGraphPipelinesARM",
+                    "vkCreateExecutionGraphPipelinesAMDX",
+                    "vkCreateGraphicsPipelines",
+                    "vkCreateRayTracingPipelinesKHR",
+                    "vkCreateRayTracingPipelinesNV",
+                ]),
+            ),
+            (
+                "takes slices of slices",
+                names(&[
+                    "vkBuildAccelerationStructuresKHR",
+                    "vkCmdBuildAccelerationStructuresIndirectKHR",
+                    "vkCmdBuildAccelerationStructuresKHR",
+                ]),
+            ),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(wrapper_shapes_of_the_embedded_registry(), expected);
+    }
+
+    #[test]
+    fn every_counted_array_of_arrays_parameter_of_the_registry_has_an_inner_length() {
         let model = Model::with_docs(Registry::get(), Docs::get());
         let mut found = 0;
         for c in &model.ir.commands {
@@ -912,7 +1062,7 @@ mod tests {
                     found += 1;
                     assert!(
                         inner_len(&model, c, params, p).is_some(),
-                        "{}: the inner length of {} is not found",
+                        "{}: {} is not an array of arrays with an inner length",
                         c.name,
                         p.name
                     );
@@ -922,37 +1072,85 @@ mod tests {
         assert!(found > 0, "the registry has arrays of arrays");
     }
 
-    #[test]
-    fn wrapper_shapes_do_not_name_commands() {
-        let directory = concat!(env!("CARGO_MANIFEST_DIR"), "/src/emit/commands");
-        let mut files = std::fs::read_dir(directory)
-            .expect("the sources of the command wrappers")
-            .map(|entry| entry.expect("a directory entry").path())
-            .collect::<Vec<_>>();
-        files.sort();
-        assert!(files.len() >= 5, "{files:?}");
-        for file in &files {
-            let source = std::fs::read_to_string(file).expect("a source file");
-            let file = file.display();
-            let code = source
-                .split("#[cfg(test)]")
-                .next()
-                .expect("source before the tests");
-            for pattern in [
-                "name.as_str()",
-                "name.starts_with(",
-                "name.ends_with(",
-                "name.contains(",
-            ] {
-                assert!(!code.contains(pattern), "{file} uses `{pattern}`");
+    fn map_tokens(text: &str, map: &BTreeMap<String, String>) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut token = String::new();
+        let flush = |token: &mut String, out: &mut String| {
+            out.push_str(map.get(token.as_str()).unwrap_or(token));
+            token.clear();
+        };
+        for c in text.chars() {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                token.push(c);
+            } else {
+                flush(&mut token, &mut out);
+                out.push(c);
             }
-            let names_a_command = code.match_indices("\"vk").any(|(at, _)| {
-                code[at + 3..]
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_ascii_uppercase())
-            });
-            assert!(!names_a_command, "{file} names a command");
         }
+        flush(&mut token, &mut out);
+        out
+    }
+
+    #[test]
+    fn the_embedded_registry_generates_the_same_commands_under_other_command_names() {
+        let (ir, docs) = (Registry::get(), Docs::get());
+        let renamed = ir
+            .commands
+            .iter()
+            .enumerate()
+            .map(|(index, c)| (c.name.clone(), format!("vkRenamedCommand{index}")))
+            .collect::<BTreeMap<_, _>>();
+        let rename = |name: &mut String| {
+            if let Some(new) = renamed.get(name.as_str()) {
+                *name = new.clone();
+            }
+        };
+        let mut renamed_ir = ir.clone();
+        for c in &mut renamed_ir.commands {
+            rename(&mut c.name);
+            if let Some(alias) = &mut c.alias {
+                rename(alias);
+            }
+        }
+        let mut renamed_docs = docs.clone();
+        for page in &mut renamed_docs.pages {
+            rename(&mut page.name);
+            page.aliases.iter_mut().for_each(rename);
+        }
+        let mut back = BTreeMap::new();
+        for (old, new) in &renamed {
+            back.insert(new.clone(), old.clone());
+            back.insert(format!("PFN_{new}"), format!("PFN_{old}"));
+            back.insert(command_name(new), command_name(old));
+            back.insert(raw_name_of(new), raw_name_of(old));
+        }
+        let original = squash(&emit(&Model::with_docs(ir, docs)));
+        let restored = map_tokens(
+            &squash(&emit(&Model::with_docs(&renamed_ir, &renamed_docs))),
+            &back,
+        );
+        if let Some(at) = original
+            .bytes()
+            .zip(restored.bytes())
+            .position(|(a, b)| a != b)
+        {
+            let context = |text: &str| {
+                let start = text[..at].rfind("pub unsafe fn").unwrap_or(0);
+                text[start..(at + 200).min(text.len())].to_string()
+            };
+            panic!(
+                "renaming the commands changes the generated code:\n{}\n---\n{}",
+                context(&original),
+                context(&restored)
+            );
+        }
+        assert_eq!(original.len(), restored.len());
+    }
+
+    fn raw_name_of(c_name: &str) -> String {
+        raw_name(&Command {
+            name: c_name.to_string(),
+            ..Default::default()
+        })
     }
 }
