@@ -43,7 +43,11 @@ impl VkResult {
         if self.0 >= 0 { Ok(()) } else { Err(self) }
     }
 
-    /// Whether the code is an error code, that is, negative.
+    /// Whether the code is negative, the value range of the Vulkan error codes.
+    ///
+    /// It looks at the value only. A command wrapper also returns as an error a
+    /// non-negative code that the registry lists as an error code of its command: see
+    /// [`Result`].
     pub const fn is_error(self) -> bool {
         self.0 < 0
     }

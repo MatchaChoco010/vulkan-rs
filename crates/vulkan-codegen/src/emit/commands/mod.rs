@@ -1581,12 +1581,33 @@ mod tests {
         let model = Model::with_docs(Registry::get(), Docs::get());
         let mut found = BTreeSet::new();
         for c in &model.ir.commands {
+            let successes = c
+                .success_codes
+                .iter()
+                .map(|code| model.result_code(code))
+                .collect::<BTreeSet<_>>();
+            for code in &c.error_codes {
+                let code = model.result_code(code);
+                assert!(
+                    !successes.contains(code) && code != "VK_INCOMPLETE",
+                    "{}: {code} is listed as an error code although the wrappers take it as a success",
+                    c.name
+                );
+            }
             let non_negative = c
                 .error_codes
                 .iter()
                 .filter(|code| model.result_value(code) >= 0)
                 .collect::<Vec<_>>();
-            if non_negative.is_empty() || creates_a_dispatching_handle(c) {
+            if creates_a_dispatching_handle(c) {
+                assert!(
+                    non_negative.is_empty(),
+                    "{}: the hand-written wrapper converts the result with into_result, which takes {non_negative:?} as a success",
+                    c.name
+                );
+                continue;
+            }
+            if non_negative.is_empty() {
                 continue;
             }
             found.insert(c.name.as_str());
