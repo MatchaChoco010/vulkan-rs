@@ -150,6 +150,11 @@ impl Allocator {
     ///   support dedicated allocations (Vulkan 1.1 or `VK_KHR_dedicated_allocation`).
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
+    /// - Every resource bound to the returned allocation must be a linear resource if
+    ///   [`AllocationCreateDesc::linear`] is `true` and a non-linear resource if it is
+    ///   `false`. The allocator places allocations of the same kind next to each other
+    ///   without the `bufferImageGranularity` padding that a resource of the other kind
+    ///   needs, so a misstated kind makes the resource alias its neighbours.
     pub unsafe fn allocate(
         &mut self,
         desc: AllocationCreateDesc<'_>,

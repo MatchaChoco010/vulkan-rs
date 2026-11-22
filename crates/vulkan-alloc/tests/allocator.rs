@@ -7,8 +7,8 @@ use fake_device::{
 };
 use vulkan::vk;
 use vulkan_alloc::{
-    Allocation, AllocationCreateDesc, AllocationError, AllocationResourceClass, Allocator,
-    FreeError, MemoryRegionState,
+    Allocation, AllocationCreateDesc, AllocationError, AllocationResourceClass, AllocationScheme,
+    Allocator, FreeError, MemoryRegionState,
 };
 
 fn assert_device_holds_what_the_allocator_reports(allocator: &Allocator, fake: &FakeDevice) {
@@ -363,11 +363,17 @@ fn linear_and_non_linear_allocations_never_share_a_memory_object() {
                     } else {
                         vk::ExternalMemoryHandleTypeFlags::empty()
                     };
+                    let scheme = match (random.below(8), linear) {
+                        (0, true) => AllocationScheme::DedicatedBuffer(vk::Buffer(step + 1)),
+                        (0, false) => AllocationScheme::DedicatedImage(vk::Image(step + 1)),
+                        _ => AllocationScheme::GpuAllocatorManaged,
+                    };
                     let allocation = allocator
                         .allocate(AllocationCreateDesc {
                             linear,
                             memory_allocate_flags: flags,
                             export_handle_types: export,
+                            allocation_scheme: scheme,
                             ..desc(1 + random.below(1500), 1 << random.below(9), memory_type)
                         })
                         .unwrap();
