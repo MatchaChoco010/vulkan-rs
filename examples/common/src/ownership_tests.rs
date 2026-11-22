@@ -201,6 +201,33 @@ unsafe fn draw_after_failure(
     fail_at: u32,
     and_later: bool,
 ) -> Result<(bool, Result<()>, Vec<Result<()>>)> {
+    let arm = || {
+        if and_later {
+            fake::fail_all_from_now(fail_at);
+        } else {
+            fake::fail_from_now(Some(fail_at));
+        }
+    };
+    let draws = unsafe { draw_after(entry, arm) }?;
+    Ok((draws.failed, draws.first, draws.later))
+}
+
+/// How the draws of [`draw_after`] went.
+#[cfg(feature = "window")]
+struct Draws {
+    /// Whether the first draw reached a failing call.
+    failed: bool,
+    first: Result<()>,
+    /// The two draws after it.
+    later: Vec<Result<()>>,
+    /// How many calls that can fail the two later draws made.
+    later_calls: u32,
+}
+
+/// Sets a frame up without failures, calls `arm`, which tells the fake what is to fail,
+/// and draws; then draws two more frames without failing calls.
+#[cfg(feature = "window")]
+unsafe fn draw_after(entry: &Entry, arm: impl FnOnce()) -> Result<Draws> {
     unsafe {
         let instance = create_instance(entry, c"frame test", vk::API_VERSION_1_3, &[])?;
         let surface = crate::window::surface::create_wayland_surface(
@@ -249,17 +276,20 @@ unsafe fn draw_after_failure(
                 )
                 .map(|_| ())
         };
-        if and_later {
-            fake::fail_all_from_now(fail_at);
-        } else {
-            fake::fail_from_now(Some(fail_at));
-        }
+        arm();
         let first = draw();
         let failed = fake::report().failed;
         fake::fail_from_now(None);
+        let calls_before = fake::calls();
         let later = vec![draw(), draw()];
+        let later_calls = fake::calls() - calls_before;
         gpu.device.device_wait_idle()?;
-        Ok((failed, first, later))
+        Ok(Draws {
+            failed,
+            first,
+            later,
+            later_calls,
+        })
     }
 }
 
@@ -299,6 +329,238 @@ fn a_frame_that_fails_at_any_call_leaves_the_next_frames_able_to_run() {
         failing_runs >= 7,
         "only {failing_runs} calls of a frame can fail"
     );
+}
+
+/// The calls of a frame that can fail, counted as [`draw_after_failure`] counts them:
+/// the last one is the present.
+#[cfg(feature = "window")]
+fn failing_calls_of_a_frame(entry: &Entry) -> u32 {
+    (0..)
+        .find(|&fail_at| {
+            fake::reset(None);
+            let (failed, _, _) = unsafe { draw_after_failure(entry, fail_at, false) }.unwrap();
+            !failed
+        })
+        .expect("a frame makes a finite number of calls")
+}
+
+/// After `VK_ERROR_UNKNOWN`, Vulkan does not say what state the fences of a failed
+/// `vkResetFences` are in. The frame has to go on when the fence was reset all the same,
+/// as it does when the reset failed for lack of memory and left the fence as it was.
+#[cfg(feature = "window")]
+#[test]
+fn a_frame_goes_on_after_a_failed_fence_reset_that_reset_the_fence_all_the_same() {
+    let entry = fake::entry();
+    for fail_at in 0..failing_calls_of_a_frame(&entry) {
+        fake::reset(None);
+        fake::failed_resets_unsignal_the_fences();
+        let (failed, first, later) = unsafe { draw_after_failure(&entry, fail_at, false) }.unwrap();
+        let report = fake::report();
+        assert!(
+            failed && first.is_err(),
+            "failing call {fail_at}: {first:?}"
+        );
+        assert!(
+            report.misuse.is_empty(),
+            "failing call {fail_at} of the frame: {:?}",
+            report.misuse
+        );
+        assert!(report.leaked.is_empty(), "leaked {:?}", report.leaked);
+        for (index, result) in later.iter().enumerate() {
+            assert!(
+                result.is_ok(),
+                "after failing call {fail_at}, frame {} fails: {result:?}",
+                index + 1
+            );
+        }
+    }
+}
+
+/// A fence that a failed reset left unsignaled and that cannot be replaced either
+/// leaves nothing that the next frame could wait for: the frame is unusable, and its
+/// later draws return an error without calling Vulkan. That is so for exactly one
+/// failing call of a frame, the reset; after any other failing call no fence is needed.
+#[cfg(feature = "window")]
+#[test]
+fn a_frame_whose_fence_can_be_neither_reset_nor_replaced_is_unusable() {
+    let entry = fake::entry();
+    let mut unusable = 0;
+    for fail_at in 0..failing_calls_of_a_frame(&entry) {
+        fake::reset(None);
+        fake::failed_resets_unsignal_the_fences();
+        let arm = || {
+            fake::fail_from_now(Some(fail_at));
+            fake::fail_fence_creations();
+        };
+        let Draws {
+            failed,
+            first,
+            later,
+            later_calls,
+        } = unsafe { draw_after(&entry, arm) }.unwrap();
+        let report = fake::report();
+        assert!(
+            failed && first.is_err(),
+            "failing call {fail_at}: {first:?}"
+        );
+        assert!(
+            report.misuse.is_empty(),
+            "failing call {fail_at} of the frame: {:?}",
+            report.misuse
+        );
+        assert!(report.leaked.is_empty(), "leaked {:?}", report.leaked);
+        if later.iter().all(Result::is_ok) {
+            continue;
+        }
+        unusable += 1;
+        assert!(
+            format!("{first:?}").contains("ERROR_UNKNOWN"),
+            "failing call {fail_at}: the frame reports the error of the reset: {first:?}"
+        );
+        assert!(
+            later.iter().all(Result::is_err),
+            "failing call {fail_at}: {later:?}"
+        );
+        assert_eq!(
+            later_calls, 0,
+            "failing call {fail_at}: an unusable frame calls nothing"
+        );
+    }
+    assert_eq!(unusable, 1, "only a failed reset needs a new fence");
+}
+
+/// What a frame can do after a present failed.
+#[cfg(feature = "window")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AfterFailedPresent {
+    /// The draw reports an outdated swapchain, and the next frames run.
+    Outdated,
+    /// The draw returns the error, and the next frames run.
+    Recovers,
+    /// The draw returns the error, and the next frames fail without calling Vulkan.
+    Unusable,
+}
+
+/// What the specification says about each error code that the registry lists for
+/// `vkQueuePresentKHR`: whether the queue operations of the present, the wait for the
+/// semaphore among them, were enqueued (both where it does not say), and what a frame
+/// can do then.
+///
+/// - `VK_ERROR_OUT_OF_HOST_MEMORY`, `VK_ERROR_OUT_OF_DEVICE_MEMORY`: not enqueued, and
+///   everything that the call referenced is as it was.
+/// - `VK_ERROR_OUT_OF_DATE_KHR`, `VK_ERROR_SURFACE_LOST_KHR`,
+///   `VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT`,
+///   `VK_ERROR_PRESENT_TIMING_QUEUE_FULL_EXT`: rejected by the presentation engine, and
+///   still enqueued.
+/// - `VK_ERROR_DEVICE_LOST`: returned when the implementation cannot guarantee that
+///   everything is as it was. `VK_ERROR_UNKNOWN`, `VK_ERROR_VALIDATION_FAILED`: nothing
+///   is said.
+#[cfg(feature = "window")]
+const PRESENT_ERRORS: [(vk::VkResult, &[bool], AfterFailedPresent); 9] = [
+    (
+        vk::VkResult::ERROR_OUT_OF_HOST_MEMORY,
+        &[false],
+        AfterFailedPresent::Recovers,
+    ),
+    (
+        vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY,
+        &[false],
+        AfterFailedPresent::Recovers,
+    ),
+    (
+        vk::VkResult::ERROR_DEVICE_LOST,
+        &[false, true],
+        AfterFailedPresent::Unusable,
+    ),
+    (
+        vk::VkResult::ERROR_OUT_OF_DATE_KHR,
+        &[true],
+        AfterFailedPresent::Outdated,
+    ),
+    (
+        vk::VkResult::ERROR_SURFACE_LOST_KHR,
+        &[true],
+        AfterFailedPresent::Recovers,
+    ),
+    (
+        vk::VkResult::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
+        &[true],
+        AfterFailedPresent::Recovers,
+    ),
+    (
+        vk::VkResult::ERROR_UNKNOWN,
+        &[false, true],
+        AfterFailedPresent::Unusable,
+    ),
+    (
+        vk::VkResult::ERROR_VALIDATION_FAILED,
+        &[false, true],
+        AfterFailedPresent::Unusable,
+    ),
+    (
+        vk::VkResult::ERROR_PRESENT_TIMING_QUEUE_FULL_EXT,
+        &[true],
+        AfterFailedPresent::Recovers,
+    ),
+];
+
+/// A present fails with each error code that the registry lists for it, in each state
+/// that the specification allows the semaphore and the image to be left in. The frame
+/// must not wait for a semaphore that has no signal pending, and the next frames run,
+/// or fail without calling Vulkan, as [`PRESENT_ERRORS`] says.
+#[cfg(feature = "window")]
+#[test]
+fn a_frame_does_what_each_error_code_of_a_present_asks_for() {
+    let sorted = |codes: &[vk::VkResult]| {
+        let mut codes = codes.iter().map(|code| code.as_raw()).collect::<Vec<_>>();
+        codes.sort_unstable();
+        codes
+    };
+    assert_eq!(
+        sorted(&PRESENT_ERRORS.map(|(error, _, _)| error)),
+        sorted(vk::command::QUEUE_PRESENT_KHR.error_codes),
+        "the error codes that the registry lists for vkQueuePresentKHR"
+    );
+    let entry = fake::entry();
+    let present = failing_calls_of_a_frame(&entry) - 1;
+    for (error, enqueued_states, expected) in PRESENT_ERRORS {
+        for &enqueued in enqueued_states {
+            fake::reset(None);
+            fake::fail_presents_with(error, enqueued);
+            let arm = || fake::fail_from_now(Some(present));
+            let Draws {
+                failed,
+                first,
+                later,
+                later_calls,
+            } = unsafe { draw_after(&entry, arm) }.unwrap();
+            let report = fake::report();
+            let case = format!("{error:?}, enqueued: {enqueued}");
+            assert!(failed, "{case}: the present did not fail");
+            assert!(report.misuse.is_empty(), "{case}: {:?}", report.misuse);
+            assert!(
+                report.leaked.is_empty(),
+                "{case}: leaked {:?}",
+                report.leaked
+            );
+            assert_eq!(
+                first.is_ok(),
+                expected == AfterFailedPresent::Outdated,
+                "{case}: {first:?}"
+            );
+            for (index, result) in later.iter().enumerate() {
+                assert_eq!(
+                    result.is_ok(),
+                    expected != AfterFailedPresent::Unusable,
+                    "{case}: frame {} after the failure: {result:?}",
+                    index + 1
+                );
+            }
+            if expected == AfterFailedPresent::Unusable {
+                assert_eq!(later_calls, 0, "{case}: an unusable frame calls nothing");
+            }
+        }
+    }
 }
 
 #[cfg(feature = "window")]

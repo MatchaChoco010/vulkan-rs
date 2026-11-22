@@ -50,6 +50,13 @@ struct State {
     failed: bool,
     /// Every wait fails, as after the device was lost.
     lost: bool,
+    /// What a present that fails returns, instead of the result of other failing calls,
+    /// and whether its queue operations were enqueued all the same.
+    present_failure: Option<(vk::VkResult, bool)>,
+    /// A `vkResetFences` that fails has reset its fences all the same.
+    failed_reset_unsignals: bool,
+    /// No fence can be created.
+    fence_creations_fail: bool,
     misuse: Vec<String>,
 }
 
@@ -104,6 +111,32 @@ pub fn fail_all_from_now(n: u32) {
         state.fail_from = Some(state.calls + n);
         state.failed = false;
     });
+}
+
+/// From now on, a present that fails returns `error`. With `enqueued`, its queue
+/// operations were enqueued all the same: it has consumed the signals of the semaphores
+/// that it waits for and given the images back, as when the presentation engine rejects
+/// a request. Without, it leaves both as they were, as when it fails for lack of memory.
+pub fn fail_presents_with(error: vk::VkResult, enqueued: bool) {
+    with(|state| state.present_failure = Some((error, enqueued)));
+}
+
+/// From now on, a `vkResetFences` that fails returns `VK_ERROR_UNKNOWN` and has reset
+/// its fences all the same. Vulkan does not say what state the fences are in after that
+/// error. Without this, it fails as other calls do, for lack of memory, which leaves
+/// existing objects as they were.
+pub fn failed_resets_unsignal_the_fences() {
+    with(|state| state.failed_reset_unsignals = true);
+}
+
+/// From now on, no fence can be created.
+pub fn fail_fence_creations() {
+    with(|state| state.fence_creations_fail = true);
+}
+
+/// How many calls that can fail there were since [`reset`].
+pub fn calls() -> u32 {
+    with(|state| state.calls)
 }
 
 /// From now on, every wait fails, as it does after the device was lost.
@@ -381,10 +414,12 @@ unsafe extern "system" fn create(
     _allocator: *const c_void,
     handle: *mut u64,
 ) -> vk::VkResult {
-    if fails() {
+    let kind = unsafe { (*info).s_type };
+    let no_fence =
+        kind == vk::StructureType::FENCE_CREATE_INFO && with(|state| state.fence_creations_fail);
+    if fails() || no_fence {
         return result(true);
     }
-    let kind = unsafe { (*info).s_type };
     let target = match kind {
         vk::StructureType::IMAGE_VIEW_CREATE_INFO => unsafe {
             (*info.cast::<vk::ImageViewCreateInfo<'_>>()).image.as_raw()
@@ -765,16 +800,20 @@ unsafe extern "system" fn reset_fences(
     count: u32,
     fences: *const u64,
 ) -> vk::VkResult {
-    if fails() {
-        return result(true);
-    }
+    let fails = fails();
     let fences = unsafe { slice(fences, count) };
     with(|state| {
-        for fence in fences {
-            state.signaled_fences.remove(fence);
+        if !fails || state.failed_reset_unsignals {
+            for fence in fences {
+                state.signaled_fences.remove(fence);
+            }
         }
-    });
-    vk::VkResult::SUCCESS
+        if fails && state.failed_reset_unsignals {
+            vk::VkResult::ERROR_UNKNOWN
+        } else {
+            result(fails)
+        }
+    })
 }
 
 /// Ends all pending work: when it succeeds, because the work is done, and when it fails,
@@ -840,14 +879,18 @@ unsafe extern "system" fn acquire_next_image(
 }
 
 /// Consumes the signals of the semaphores that the present waits for and gives the
-/// images back. A present that fails as this one does, for lack of memory, leaves both
-/// as they were.
+/// images back. A present that fails leaves both as they were, and reports the lack of
+/// memory that other failing calls report, unless [`fail_presents_with`] said otherwise.
 unsafe extern "system" fn queue_present(
     _queue: u64,
     info: *const vk::PresentInfoKHR<'_>,
 ) -> vk::VkResult {
-    if fails() {
-        return result(true);
+    let failure = fails().then(|| {
+        with(|state| state.present_failure)
+            .unwrap_or((vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY, false))
+    });
+    if let Some((error, false)) = failure {
+        return error;
     }
     let (waits, swapchains, images) = unsafe {
         let info = &*info;
@@ -868,7 +911,7 @@ unsafe extern "system" fn queue_present(
             }
         }
     });
-    vk::VkResult::SUCCESS
+    failure.map_or(vk::VkResult::SUCCESS, |(error, _)| error)
 }
 
 unsafe extern "system" fn reset_command_buffer(_command_buffer: u64, _flags: u32) -> vk::VkResult {
