@@ -162,7 +162,9 @@ impl Allocator {
     ///   device.
     /// - The `vkAllocateMemory` call made from `desc` must be valid. In particular:
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
-    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
+    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`) and must
+    ///   not contain [`vk::MemoryAllocateFlags::DEVICE_MASK`], which needs a
+    ///   `deviceMask` the allocator cannot pass; a
     ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
     ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
     ///   `protectedMemory` feature; non-empty
