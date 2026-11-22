@@ -265,8 +265,8 @@ impl DescriptorSlots {
 pub struct DescriptorHeapLayout {
     /// The size in bytes of the buffer to create. It ends with the reserved range.
     ///
-    /// It is 0 when the plan has no runs and the reserved range is 0 bytes; there is then
-    /// no buffer to create and no heap to bind.
+    /// It is 0 when the plan holds no slots (no runs, or only runs of 0 slots) and the
+    /// reserved range is 0 bytes; there is then no buffer to create and no heap to bind.
     pub size: u64,
     /// What the device address of the heap must be a multiple of:
     /// `resourceHeapAlignment` or `samplerHeapAlignment`, with 0 treated as 1.
@@ -566,8 +566,9 @@ impl ResourceHeapPlan {
     /// Places the reserved range after the last run, at a multiple of both descriptor
     /// alignments, and returns the layout of the heap.
     ///
-    /// With no runs and a `minResourceHeapReservedRange` of 0, the layout has a size of
-    /// 0: there is no buffer to create and no heap to bind.
+    /// When the plan holds no slots (no runs, or only runs of 0 slots) and
+    /// `minResourceHeapReservedRange` is 0, the layout has a size of 0: there is no buffer
+    /// to create and no heap to bind.
     ///
     /// # Errors
     ///
@@ -680,8 +681,9 @@ impl SamplerHeapPlan {
     /// Places the reserved range after the last run, at a multiple of
     /// `samplerDescriptorAlignment`, and returns the layout of the heap.
     ///
-    /// With no runs and a reserved range of 0 bytes, the layout has a size of 0: there is
-    /// no buffer to create and no heap to bind.
+    /// When the plan holds no slots (no runs, or only runs of 0 slots) and the reserved
+    /// range is 0 bytes, the layout has a size of 0: there is no buffer to create and no
+    /// heap to bind.
     ///
     /// # Errors
     ///
@@ -1357,11 +1359,19 @@ mod tests {
         );
 
         let nothing_to_hold = radv();
+        let mut empty_runs = ResourceHeapPlan::new(&nothing_to_hold);
+        empty_runs.buffers(0).unwrap();
+        empty_runs.images(0).unwrap();
+        empty_runs.uniform(0).unwrap();
+        let mut empty_samplers = SamplerHeapPlan::new(&nothing_to_hold);
+        empty_samplers.samplers(0).unwrap();
         for layout in [
             ResourceHeapPlan::new(&nothing_to_hold).finish().unwrap(),
             SamplerHeapPlan::new(&nothing_to_hold).finish().unwrap(),
+            empty_runs.finish().unwrap(),
+            empty_samplers.finish().unwrap(),
         ] {
-            assert_eq!(layout.size, 0, "a plan with no runs and no reserved range");
+            assert_eq!(layout.size, 0, "a plan with no slots and no reserved range");
             assert_eq!(
                 layout.bind_info(0).err(),
                 Some(HeapLayoutError::NullAddress),
