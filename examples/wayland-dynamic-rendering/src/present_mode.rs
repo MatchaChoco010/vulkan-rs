@@ -13,26 +13,26 @@ const PRESENT_MODES: [(&str, vk::PresentModeKHR); 4] = [
 
 /// The present mode that `VULKAN_EXAMPLE_PRESENT_MODE` asks for, `FIFO` when it is not
 /// set. An error for a value that is not one of [`PRESENT_MODES`].
-fn requested_present_mode() -> Result<vk::PresentModeKHR> {
+pub fn requested_present_mode() -> Result<vk::PresentModeKHR> {
     let requested = parsed_var("VULKAN_EXAMPLE_PRESENT_MODE", |value| {
         one_of(value, &PRESENT_MODES)
     })?;
     Ok(requested.unwrap_or(vk::PresentModeKHR::FIFO))
 }
 
-/// The present mode for the swapchain, following `VULKAN_EXAMPLE_PRESENT_MODE`.
+/// The present mode for the swapchain: `wanted` if the surface supports it, else `FIFO`.
 ///
 /// `IMMEDIATE` presents without waiting for vertical blank and may tear; `FIFO_RELAXED`
 /// tears only when a frame is late. `FIFO` is the only mode every surface supports.
 pub unsafe fn choose_present_mode(
     gpu: &Gpu,
     surface: vk::SurfaceKHR,
+    wanted: vk::PresentModeKHR,
 ) -> Result<vk::PresentModeKHR> {
     let supported = unsafe {
         gpu.instance
             .get_physical_device_surface_present_modes_khr(gpu.physical_device, surface)
     }?;
-    let wanted = requested_present_mode()?;
     if supported.contains(&wanted) {
         Ok(wanted)
     } else {

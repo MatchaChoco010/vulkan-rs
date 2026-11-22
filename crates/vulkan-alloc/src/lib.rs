@@ -105,6 +105,8 @@
 //! - import memory. Memory whose size and layout are decided elsewhere, such as a
 //!   dma-buf received from another process, is allocated with `vkAllocateMemory`
 //!   directly. Memory to be exported can come from the allocator.
+//! - allocate tile memory (`VK_QCOM_tile_memory_heap`), which has requirements of its
+//!   own and is also allocated with `vkAllocateMemory` directly.
 //!
 //! # Mapping
 //!

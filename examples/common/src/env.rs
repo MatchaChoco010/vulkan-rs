@@ -5,7 +5,16 @@ use std::env::VarError;
 /// A value that `parse` rejects, the empty one included, is an error that names the
 /// variable, never a silent default.
 pub fn parsed_var<T>(name: &str, parse: impl FnOnce(&str) -> Result<T>) -> Result<Option<T>> {
-    match std::env::var(name) {
+    parse_var(name, std::env::var(name), parse)
+}
+
+/// [`parsed_var`] for the `value` that `std::env::var(name)` returned.
+fn parse_var<T>(
+    name: &str,
+    value: Result<String, VarError>,
+    parse: impl FnOnce(&str) -> Result<T>,
+) -> Result<Option<T>> {
+    match value {
         Err(VarError::NotPresent) => Ok(None),
         Err(VarError::NotUnicode(value)) => bail!("{name}={value:?} is not valid Unicode"),
         Ok(value) => parse(&value)
@@ -59,6 +68,39 @@ mod tests {
         }
         values.retain(|value| !names.contains(&value.as_str()));
         values
+    }
+
+    #[test]
+    fn an_unset_variable_is_none_and_a_set_one_is_parsed_or_an_error() {
+        let parse = |value: Result<String, VarError>| {
+            parse_var("VULKAN_EXAMPLE_TEST", value, |value| {
+                one_of(value, &CHOICES)
+            })
+        };
+        assert_eq!(parse(Err(VarError::NotPresent)).unwrap(), None);
+        for (name, value) in CHOICES {
+            assert_eq!(parse(Ok(name.to_owned())).unwrap(), Some(value));
+        }
+        for value in ["", "FIFO"] {
+            let error = format!("{:#}", parse(Ok(value.to_owned())).unwrap_err());
+            assert!(
+                error.contains("VULKAN_EXAMPLE_TEST"),
+                "{error:?} does not name the variable"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_value_that_is_not_unicode_is_an_error() {
+        let value = std::os::unix::ffi::OsStringExt::from_vec(vec![b'f', 0xff]);
+        let parsed = parse_var(
+            "VULKAN_EXAMPLE_TEST",
+            Err(VarError::NotUnicode(value)),
+            |_| Ok(()),
+        );
+        let error = format!("{:#}", parsed.unwrap_err());
+        assert!(error.contains("VULKAN_EXAMPLE_TEST"), "{error:?}");
     }
 
     #[test]

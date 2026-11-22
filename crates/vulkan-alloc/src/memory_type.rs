@@ -6,10 +6,20 @@ use vulkan::vk;
 /// every required flag. Among them it takes the lowest-indexed one with every preferred
 /// flag, or else the one with the most preferred flags.
 ///
-/// Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` are considered only
-/// when the location names one of these two flags as required or preferred, which only
-/// [`MemoryLocation::Custom`] can do: allocating from such a type is valid only if the
-/// device was created with the `deviceCoherentMemory` feature.
+/// Two kinds of memory types are considered only when the location names their flag as
+/// required or preferred, which only [`MemoryLocation::Custom`] can do:
+///
+/// - types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`, when the location names
+///   one of these two flags. Allocating from such a type is valid only if the device was
+///   created with the `deviceCoherentMemory` feature.
+/// - types with `PROTECTED`, when the location names `PROTECTED`. Allocating from such a
+///   type is valid only if the device was created with the `protectedMemory` feature,
+///   and protected resources, and only those, may be bound to it. Require the flag for
+///   a protected resource, so that no other type can be chosen.
+///
+/// Memory types of a heap with `VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM` are never chosen.
+/// Tile memory has its own requirements and is allocated with `vkAllocateMemory`
+/// directly.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryLocation {
     /// Memory for resources only the device accesses: requires and prefers
@@ -87,8 +97,11 @@ impl MemoryLocation {
     }
 }
 
-const NEEDS_DEVICE_COHERENT_MEMORY: u32 = vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD.as_raw()
-    | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD.as_raw();
+const FLAGS_A_LOCATION_HAS_TO_NAME: [vk::MemoryPropertyFlags; 2] = [
+    vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD
+        .union(vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD),
+    vk::MemoryPropertyFlags::PROTECTED,
+];
 
 pub(crate) fn memory_type_flags(
     properties: &vk::PhysicalDeviceMemoryProperties,
@@ -116,12 +129,22 @@ pub(crate) fn find_memory_type_index(
         if memory_type_bits & type_bit == 0 {
             continue;
         }
-        let flags = properties.memory_types[index as usize].property_flags;
+        let memory_type = properties.memory_types[index as usize];
+        let flags = memory_type.property_flags;
         if !flags.contains(required) {
             continue;
         }
-        if flags.as_raw() & NEEDS_DEVICE_COHERENT_MEMORY != 0
-            && (required.as_raw() | preferred.as_raw()) & NEEDS_DEVICE_COHERENT_MEMORY == 0
+        if properties
+            .memory_heaps
+            .get(memory_type.heap_index as usize)
+            .is_some_and(|heap| heap.flags.contains(vk::MemoryHeapFlags::TILE_MEMORY_QCOM))
+        {
+            continue;
+        }
+        let named = required.union(preferred);
+        if FLAGS_A_LOCATION_HAS_TO_NAME
+            .iter()
+            .any(|&group| flags.intersects(group) && !named.intersects(group))
         {
             continue;
         }
@@ -375,6 +398,201 @@ pub(crate) mod tests {
             }
         }
         assert!(left_out > 100 && taken > 100);
+    }
+
+    #[test]
+    fn protected_memory_types_are_chosen_only_when_the_location_names_them() {
+        let protected = vk::MemoryPropertyFlags::PROTECTED;
+        let kinds = [
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT,
+            protected,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL | protected,
+        ];
+        let locations = [
+            MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu,
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::empty(),
+                vk::MemoryPropertyFlags::empty(),
+            ),
+            MemoryLocation::custom(protected, vk::MemoryPropertyFlags::DEVICE_LOCAL),
+            MemoryLocation::custom(vk::MemoryPropertyFlags::DEVICE_LOCAL, protected),
+        ];
+        let documented_choice =
+            |flags: &[vk::MemoryPropertyFlags],
+             memory_type_bits: u32,
+             location: MemoryLocation,
+             consider_unnamed_protected_types: bool| {
+                let (required, preferred) = (location.required_flags(), location.preferred_flags());
+                let named = required.contains(protected) || preferred.contains(protected);
+                let candidates = (0..flags.len())
+                    .filter(|&index| memory_type_bits & (1 << index) != 0)
+                    .filter(|&index| flags[index].contains(required))
+                    .filter(|&index| {
+                        consider_unnamed_protected_types
+                            || named
+                            || !flags[index].contains(protected)
+                    })
+                    .collect::<Vec<_>>();
+                let score =
+                    |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+                candidates
+                    .iter()
+                    .copied()
+                    .find(|&index| flags[index].contains(preferred))
+                    .or_else(|| {
+                        let best = candidates.iter().copied().map(score).max()?;
+                        candidates
+                            .iter()
+                            .copied()
+                            .find(|&index| score(index) == best)
+                    })
+                    .map(|index| index as u32)
+            };
+
+        let mut seed = 0xda94_2042_e4dd_58b5_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut left_out = 0;
+        let mut taken = 0;
+        for _ in 0..4000 {
+            let flags = (0..1 + next() % 8)
+                .map(|_| kinds[(next() % kinds.len() as u64) as usize])
+                .collect::<Vec<_>>();
+            let properties = memory_properties(&flags);
+            let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
+            for location in locations {
+                let chosen = find_memory_type_index(
+                    &properties,
+                    memory_type_bits,
+                    location.required_flags(),
+                    location.preferred_flags(),
+                );
+                assert_eq!(
+                    chosen,
+                    documented_choice(&flags, memory_type_bits, location, false),
+                    "types {flags:?}, allowed {memory_type_bits:#b}, {location:?}"
+                );
+                if chosen.is_some_and(|index| flags[index as usize].contains(protected)) {
+                    taken += 1;
+                }
+                if chosen != documented_choice(&flags, memory_type_bits, location, true) {
+                    left_out += 1;
+                }
+            }
+        }
+        assert!(left_out > 100 && taken > 100);
+    }
+
+    #[test]
+    fn memory_types_of_tile_memory_heaps_are_never_chosen() {
+        let kinds = [
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ];
+        let locations = [
+            MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu,
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::empty(),
+                vk::MemoryPropertyFlags::empty(),
+            ),
+        ];
+        let heap_flags = [
+            vk::MemoryHeapFlags::empty(),
+            vk::MemoryHeapFlags::DEVICE_LOCAL,
+            vk::MemoryHeapFlags::TILE_MEMORY_QCOM,
+            vk::MemoryHeapFlags::DEVICE_LOCAL | vk::MemoryHeapFlags::TILE_MEMORY_QCOM,
+        ];
+        let documented_choice = |flags: &[vk::MemoryPropertyFlags],
+                                 in_tile_memory: &[bool],
+                                 memory_type_bits: u32,
+                                 location: MemoryLocation| {
+            let (required, preferred) = (location.required_flags(), location.preferred_flags());
+            let candidates = (0..flags.len())
+                .filter(|&index| memory_type_bits & (1 << index) != 0)
+                .filter(|&index| flags[index].contains(required))
+                .filter(|&index| !in_tile_memory[index])
+                .collect::<Vec<_>>();
+            let score = |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+            candidates
+                .iter()
+                .copied()
+                .find(|&index| flags[index].contains(preferred))
+                .or_else(|| {
+                    let best = candidates.iter().copied().map(score).max()?;
+                    candidates
+                        .iter()
+                        .copied()
+                        .find(|&index| score(index) == best)
+                })
+                .map(|index| index as u32)
+        };
+
+        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut left_out = 0;
+        let mut chosen_count = 0;
+        for _ in 0..4000 {
+            let flags = (0..1 + next() % 8)
+                .map(|_| kinds[(next() % kinds.len() as u64) as usize])
+                .collect::<Vec<_>>();
+            let mut properties = memory_properties(&flags);
+            properties.memory_heap_count = heap_flags.len() as u32;
+            for (heap, flags) in heap_flags.into_iter().enumerate() {
+                properties.memory_heaps[heap].flags = flags;
+            }
+            let mut in_tile_memory = Vec::new();
+            for memory_type in &mut properties.memory_types[..flags.len()] {
+                memory_type.heap_index = match next() % 6 {
+                    0 => u32::MAX,
+                    heap => (heap % 4) as u32,
+                };
+                in_tile_memory.push(matches!(memory_type.heap_index, 2 | 3));
+            }
+            let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
+            for location in locations {
+                let chosen = find_memory_type_index(
+                    &properties,
+                    memory_type_bits,
+                    location.required_flags(),
+                    location.preferred_flags(),
+                );
+                assert_eq!(
+                    chosen,
+                    documented_choice(&flags, &in_tile_memory, memory_type_bits, location),
+                    "types {flags:?} in tile memory {in_tile_memory:?}, \
+                     allowed {memory_type_bits:#b}, {location:?}"
+                );
+                chosen_count += usize::from(chosen.is_some());
+                let no_tile_memory = vec![false; flags.len()];
+                if chosen != documented_choice(&flags, &no_tile_memory, memory_type_bits, location)
+                {
+                    left_out += 1;
+                }
+            }
+        }
+        assert!(left_out > 100 && chosen_count > 100);
     }
 
     #[test]

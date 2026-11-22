@@ -6,14 +6,15 @@
 //! needs no barrier of its own. The render pass, the framebuffers and the pipeline,
 //! whose viewport is fixed, depend on the swapchain and are recreated with it.
 //!
-//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1.
+//! - `VULKAN_EXAMPLE_FRAMES`: exit after this many frames, at least 1. Any other value is
+//!   an error.
 //!
 //! `examples/wayland-dynamic-rendering` draws the same triangle without a render pass.
 
 mod gpu;
 mod pipeline;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use vulkan::vk;
 use vulkan_alloc::Allocator;
 use vulkan_example_common::device::Gpu;
@@ -40,7 +41,7 @@ const VERTICES: [Vertex; 3] = [
 ];
 
 fn main() -> Result<()> {
-    window::run::<App>("vulkan wayland triangle")
+    window::run::<App>("vulkan wayland triangle", ())
 }
 
 struct App {
@@ -57,7 +58,9 @@ struct App {
 }
 
 impl Renderer for App {
-    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D) -> Result<Self> {
+    type Settings = ();
+
+    unsafe fn new(window: WaylandWindow, window_extent: vk::Extent2D, _: &()) -> Result<Self> {
         unsafe {
             let (gpu, surface) = gpu::create_gpu(window)?;
             let device = &gpu.device;
@@ -204,8 +207,7 @@ impl App {
     }
 }
 
-/// 8-bit BGRA in whatever color space the surface pairs it with, or else the first
-/// format the surface offers.
+/// The format for the swapchain from what the surface offers, see [`pick_surface_format`].
 unsafe fn choose_surface_format(
     gpu: &Gpu,
     surface: vk::SurfaceKHR,
@@ -214,9 +216,74 @@ unsafe fn choose_surface_format(
         gpu.instance
             .get_physical_device_surface_formats_khr(gpu.physical_device, surface)
     }?;
-    Ok(formats
+    pick_surface_format(&formats)
+}
+
+/// 8-bit BGRA in whatever color space the surface pairs it with, or else the first
+/// format the surface offers. An error when it offers none.
+fn pick_surface_format(formats: &[vk::SurfaceFormatKHR]) -> Result<vk::SurfaceFormatKHR> {
+    formats
         .iter()
-        .copied()
         .find(|format| format.format == vk::Format::B8G8R8A8_UNORM)
-        .unwrap_or(formats[0]))
+        .or(formats.first())
+        .copied()
+        .context("the surface offers no format")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FORMATS: [vk::Format; 4] = [
+        vk::Format::B8G8R8A8_UNORM,
+        vk::Format::R8G8B8A8_UNORM,
+        vk::Format::B8G8R8A8_SRGB,
+        vk::Format::R16G16B16A16_SFLOAT,
+    ];
+    const COLOR_SPACES: [vk::ColorSpaceKHR; 2] = [
+        vk::ColorSpaceKHR::SRGB_NONLINEAR,
+        vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
+    ];
+
+    fn pair(format: vk::SurfaceFormatKHR) -> (vk::Format, vk::ColorSpaceKHR) {
+        (format.format, format.color_space)
+    }
+
+    /// Pseudo-random lists of up to six formats, the empty list among them.
+    fn format_lists() -> impl Iterator<Item = Vec<vk::SurfaceFormatKHR>> {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move |bound: usize| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as usize % bound
+        };
+        (0..500).map(move |_| {
+            (0..next(7))
+                .map(|_| vk::SurfaceFormatKHR {
+                    format: FORMATS[next(FORMATS.len())],
+                    color_space: COLOR_SPACES[next(COLOR_SPACES.len())],
+                })
+                .collect()
+        })
+    }
+
+    #[test]
+    fn picks_bgra_from_any_list_and_fails_only_on_an_empty_one() {
+        for formats in format_lists() {
+            let listed = formats.iter().copied().map(pair).collect::<Vec<_>>();
+            let picked = pick_surface_format(&formats).map(pair);
+            let Some(&first) = formats.first() else {
+                assert!(picked.is_err(), "an empty list gave {:?}", picked.ok());
+                continue;
+            };
+            let picked = picked.unwrap();
+            let expected = formats
+                .iter()
+                .copied()
+                .find(|format| format.format == vk::Format::B8G8R8A8_UNORM)
+                .unwrap_or(first);
+            assert_eq!(picked, pair(expected), "from {listed:?}");
+        }
+    }
 }
