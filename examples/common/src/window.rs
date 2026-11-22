@@ -174,12 +174,14 @@ impl<R: Renderer> Session<R> {
         }
     }
 
-    /// Whether there is a renderer and nothing has failed. After a failure the renderer
-    /// may be half torn down, so the session only destroys it.
+    /// Whether there is a renderer, also after a failure: its window has to be kept until
+    /// the session has destroyed it.
     fn has_renderer(&self) -> bool {
         self.renderer.is_some()
     }
 
+    /// Whether there is a renderer and nothing has failed. After a failure the renderer
+    /// may be half torn down, so the session only destroys it.
     fn is_running(&self) -> bool {
         self.renderer.is_some() && self.error.is_none()
     }
