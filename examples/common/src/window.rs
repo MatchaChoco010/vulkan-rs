@@ -105,7 +105,9 @@ impl<R: Renderer> ApplicationHandler for Runner<'_, R> {
             // which the order of the fields of `Runner` ensures.
             unsafe { R::new(wayland, extent) }
         });
-        if self.session.is_running() {
+        // A renderer exists only if it was just made from this window, which has to
+        // outlive it: with a window kept, `resumed` returns above.
+        if self.session.has_renderer() {
             self.window = Some(window);
         }
         flow.apply(event_loop);
@@ -172,13 +174,25 @@ impl<R: Renderer> Session<R> {
         }
     }
 
+    /// Whether there is a renderer, also after a failure: its window has to be kept until
+    /// the session has destroyed it.
+    fn has_renderer(&self) -> bool {
+        self.renderer.is_some()
+    }
+
     /// Whether there is a renderer and nothing has failed. After a failure the renderer
     /// may be half torn down, so the session only destroys it.
     fn is_running(&self) -> bool {
         self.renderer.is_some() && self.error.is_none()
     }
 
+    /// Creates the renderer with `create`, unless a step has failed or there is a
+    /// renderer already: a second `Resumed` must not replace the renderer whose window
+    /// is kept, nor start over after a failure.
     fn start(&mut self, create: impl FnOnce() -> Result<R>) -> Flow {
+        if self.error.is_some() || self.renderer.is_some() {
+            return Flow::Exit;
+        }
         match create() {
             Ok(renderer) => {
                 self.renderer = Some(renderer);
@@ -491,6 +505,35 @@ mod tests {
             assert_eq!(session.redraw(EXTENT), Flow::Exit, "frame {max_frames}");
             assert!(session.finish(Ok(())).is_ok());
         }
+    }
+
+    #[test]
+    fn a_second_start_creates_nothing_after_a_failure_or_a_renderer() {
+        let script = Script {
+            failing: None,
+            outdated: false,
+            max_frames: None,
+        };
+        let created = Cell::new(0);
+        let create = || {
+            created.set(created.get() + 1);
+            Fake::new(script, Rc::default(), Rc::default())
+        };
+
+        let mut failed = Session::<Fake>::new(None);
+        assert_eq!(
+            failed.fail(anyhow!("the window could not be created")),
+            Flow::Exit
+        );
+        assert_eq!(failed.start(create), Flow::Exit);
+        assert_eq!(created.get(), 0, "a renderer was created after a failure");
+        assert!(!failed.has_renderer());
+
+        let mut running = Session::<Fake>::new(None);
+        assert_eq!(running.start(create), Flow::Continue);
+        assert_eq!(running.start(create), Flow::Exit);
+        assert_eq!(created.get(), 1, "a second renderer was created");
+        assert!(running.has_renderer());
     }
 
     #[test]
