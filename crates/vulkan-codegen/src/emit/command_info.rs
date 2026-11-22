@@ -74,7 +74,7 @@ fn result_codes(model: &Model<'_>, codes: &[String]) -> String {
         .join(", ")
 }
 
-fn result_code(model: &Model<'_>, code: &str) -> String {
+pub(super) fn result_code(model: &Model<'_>, code: &str) -> String {
     let field = model
         .get_enum("VkResult")
         .fields
