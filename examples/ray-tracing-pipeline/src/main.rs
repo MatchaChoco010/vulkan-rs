@@ -114,7 +114,6 @@ unsafe fn run() -> Result<()> {
             "resource heap",
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             layout.alignment,
         )?;
         write_descriptors(device, &mut heap, &slots, &scene.top_level, &output)?;

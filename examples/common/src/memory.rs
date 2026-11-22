@@ -242,20 +242,30 @@ impl MappedBuffer {
     }
 }
 
-/// Like [`create_aligned_buffer`], mapped for as long as the buffer lives. The memory
-/// has to be host-coherent, so that neither side has to flush or invalidate it.
+/// Like [`create_aligned_buffer`] in `CpuToGpu` memory, mapped for as long as the
+/// buffer lives. The memory is host-coherent, so that neither side has to flush or
+/// invalidate it: a buffer that is neither sparse nor protected can always be bound to
+/// a host-visible and host-coherent memory type, and `CpuToGpu` takes the first such
+/// type. `GpuToCpu` memory may not be coherent; read it back with [`read_buffer`]
+/// instead.
 pub unsafe fn create_mapped_buffer(
     device: &Device,
     allocator: &mut Allocator,
     name: &str,
     size: u64,
     usage: vk::BufferUsageFlags,
-    location: MemoryLocation,
     alignment: u64,
 ) -> Result<MappedBuffer> {
     unsafe {
-        let buffer =
-            create_aligned_buffer(device, allocator, name, size, usage, location, alignment)?;
+        let buffer = create_aligned_buffer(
+            device,
+            allocator,
+            name,
+            size,
+            usage,
+            MemoryLocation::CpuToGpu,
+            alignment,
+        )?;
         match map_coherent(allocator, &buffer.allocation) {
             Ok(bytes) => Ok(MappedBuffer {
                 buffer: buffer.buffer,

@@ -137,7 +137,6 @@ unsafe fn run() -> Result<()> {
             "resource heap",
             layout.size,
             vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             layout.alignment,
         )?;
 
@@ -265,7 +264,6 @@ unsafe fn create_storage_buffer<T: bytemuck::Pod>(
             name,
             data.len() as u64,
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-            MemoryLocation::CpuToGpu,
             alignment,
         )?;
         buffer.bytes().copy_from_slice(data);
