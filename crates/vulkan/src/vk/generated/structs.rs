@@ -10425,8 +10425,10 @@ impl<'a> AccelerationStructureBuildGeometryInfoKHR<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_geometries`](Self::p_geometries) to a null pointer and leaves
     /// [`geometry_count`](Self::geometry_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_geometries`](Self::p_geometries) is not null when the setter is called and the pointers
+    /// of the other arrays that share the count are null, the count is set to 0, whatever stored
+    /// it.
     ///
     /// # Panics
     ///
@@ -10462,8 +10464,10 @@ impl<'a> AccelerationStructureBuildGeometryInfoKHR<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`pp_geometries`](Self::pp_geometries) to a null pointer and leaves
     /// [`geometry_count`](Self::geometry_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`pp_geometries`](Self::pp_geometries) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -11639,8 +11643,10 @@ impl<'a> AccelerationStructureGeometryMicromapDataKHR<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_usage_counts`](Self::p_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`p_usage_counts`](Self::p_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -11677,8 +11683,10 @@ impl<'a> AccelerationStructureGeometryMicromapDataKHR<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`pp_usage_counts`](Self::pp_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`pp_usage_counts`](Self::pp_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -12863,8 +12871,10 @@ impl<'a> AccelerationStructureTrianglesDisplacementMicromapNV<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_usage_counts`](Self::p_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`p_usage_counts`](Self::p_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -12901,8 +12911,10 @@ impl<'a> AccelerationStructureTrianglesDisplacementMicromapNV<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`pp_usage_counts`](Self::pp_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`pp_usage_counts`](Self::pp_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -13050,8 +13062,10 @@ impl<'a> AccelerationStructureTrianglesOpacityMicromapEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_usage_counts`](Self::p_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`p_usage_counts`](Self::p_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -13088,8 +13102,10 @@ impl<'a> AccelerationStructureTrianglesOpacityMicromapEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`pp_usage_counts`](Self::pp_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`pp_usage_counts`](Self::pp_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -15775,8 +15791,9 @@ impl<'a> BindDescriptorSetsInfo<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_dynamic_offsets`](Self::p_dynamic_offsets) to a null pointer and leaves
-    /// [`dynamic_offset_count`](Self::dynamic_offset_count) as it is. Only if the array was set
-    /// before, it sets the count back to 0.
+    /// [`dynamic_offset_count`](Self::dynamic_offset_count) as it is. The exception is an empty
+    /// slice that takes an array away: if [`p_dynamic_offsets`](Self::p_dynamic_offsets) is not
+    /// null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -25886,8 +25903,10 @@ impl<'a> D3D12FenceSubmitInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_wait_semaphore_values`](Self::p_wait_semaphore_values) to a null pointer
-    /// and leaves [`wait_semaphore_values_count`](Self::wait_semaphore_values_count) as it is. Only
-    /// if the array was set before, it sets the count back to 0.
+    /// and leaves [`wait_semaphore_values_count`](Self::wait_semaphore_values_count) as it is. The
+    /// exception is an empty slice that takes an array away: if
+    /// [`p_wait_semaphore_values`](Self::p_wait_semaphore_values) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -25921,7 +25940,9 @@ impl<'a> D3D12FenceSubmitInfoKHR<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_signal_semaphore_values`](Self::p_signal_semaphore_values) to a null
     /// pointer and leaves [`signal_semaphore_values_count`](Self::signal_semaphore_values_count) as
-    /// it is. Only if the array was set before, it sets the count back to 0.
+    /// it is. The exception is an empty slice that takes an array away: if
+    /// [`p_signal_semaphore_values`](Self::p_signal_semaphore_values) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -26978,8 +26999,9 @@ impl<'a> DataGraphPipelinePropertyQueryResultARM<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_data`](Self::p_data) to a null pointer and leaves
-    /// [`data_size`](Self::data_size) as it is. Only if the array was set before, it sets the count
-    /// back to 0.
+    /// [`data_size`](Self::data_size) as it is. The exception is an empty slice that takes an array
+    /// away: if [`p_data`](Self::p_data) is not null when the setter is called, the count is set to
+    /// 0, whatever stored it.
     pub fn data(mut self, value: &'a mut [u8]) -> Self {
         if value.is_empty() {
             if !self.p_data.is_null() {
@@ -27565,8 +27587,9 @@ impl<'a> DataGraphPipelineShaderModuleCreateInfoARM<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_constants`](Self::p_constants) to a null pointer and leaves
-    /// [`constant_count`](Self::constant_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`constant_count`](Self::constant_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_constants`](Self::p_constants) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -31332,8 +31355,9 @@ impl<'a> DescriptorSetLayoutBinding<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_immutable_samplers`](Self::p_immutable_samplers) to a null pointer and
-    /// leaves [`descriptor_count`](Self::descriptor_count) as it is. Only if the array was set
-    /// before, it sets the count back to 0.
+    /// leaves [`descriptor_count`](Self::descriptor_count) as it is. The exception is an empty
+    /// slice that takes an array away: if [`p_immutable_samplers`](Self::p_immutable_samplers) is
+    /// not null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -32771,8 +32795,9 @@ impl<'a> DeviceFaultDebugInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_vendor_binary_data`](Self::p_vendor_binary_data) to a null pointer and
-    /// leaves [`vendor_binary_size`](Self::vendor_binary_size) as it is. Only if the array was set
-    /// before, it sets the count back to 0.
+    /// leaves [`vendor_binary_size`](Self::vendor_binary_size) as it is. The exception is an empty
+    /// slice that takes an array away: if [`p_vendor_binary_data`](Self::p_vendor_binary_data) is
+    /// not null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -33084,8 +33109,9 @@ impl<'a> DeviceFaultShaderAbortMessageInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_message_data`](Self::p_message_data) to a null pointer and leaves
-    /// [`message_data_size`](Self::message_data_size) as it is. Only if the array was set before,
-    /// it sets the count back to 0.
+    /// [`message_data_size`](Self::message_data_size) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_message_data`](Self::p_message_data) is not null when the
+    /// setter is called, the count is set to 0, whatever stored it.
     pub fn message_data(mut self, value: &'a mut [u8]) -> Self {
         if value.is_empty() {
             if !self.p_message_data.is_null() {
@@ -37558,7 +37584,9 @@ impl<'a> DrmFormatModifierPropertiesList2EXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_drm_format_modifier_properties`](Self::p_drm_format_modifier_properties)
     /// to a null pointer and leaves [`drm_format_modifier_count`](Self::drm_format_modifier_count)
-    /// as it is. Only if the array was set before, it sets the count back to 0.
+    /// as it is. The exception is an empty slice that takes an array away: if
+    /// [`p_drm_format_modifier_properties`](Self::p_drm_format_modifier_properties) is not null
+    /// when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -37654,7 +37682,9 @@ impl<'a> DrmFormatModifierPropertiesListEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_drm_format_modifier_properties`](Self::p_drm_format_modifier_properties)
     /// to a null pointer and leaves [`drm_format_modifier_count`](Self::drm_format_modifier_count)
-    /// as it is. Only if the array was set before, it sets the count back to 0.
+    /// as it is. The exception is an empty slice that takes an array away: if
+    /// [`p_drm_format_modifier_properties`](Self::p_drm_format_modifier_properties) is not null
+    /// when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -37833,8 +37863,9 @@ impl<'a> ExecutionGraphPipelineCreateInfoAMDX<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_stages`](Self::p_stages) to a null pointer and leaves
-    /// [`stage_count`](Self::stage_count) as it is. Only if the array was set before, it sets the
-    /// count back to 0.
+    /// [`stage_count`](Self::stage_count) as it is. The exception is an empty slice that takes an
+    /// array away: if [`p_stages`](Self::p_stages) is not null when the setter is called, the count
+    /// is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -41192,8 +41223,9 @@ impl<'a> FrameBoundaryEXT<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_images`](Self::p_images) to a null pointer and leaves
-    /// [`image_count`](Self::image_count) as it is. Only if the array was set before, it sets the
-    /// count back to 0.
+    /// [`image_count`](Self::image_count) as it is. The exception is an empty slice that takes an
+    /// array away: if [`p_images`](Self::p_images) is not null when the setter is called, the count
+    /// is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -41221,8 +41253,9 @@ impl<'a> FrameBoundaryEXT<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_buffers`](Self::p_buffers) to a null pointer and leaves
-    /// [`buffer_count`](Self::buffer_count) as it is. Only if the array was set before, it sets the
-    /// count back to 0.
+    /// [`buffer_count`](Self::buffer_count) as it is. The exception is an empty slice that takes an
+    /// array away: if [`p_buffers`](Self::p_buffers) is not null when the setter is called, the
+    /// count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -41255,8 +41288,9 @@ impl<'a> FrameBoundaryEXT<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_tag`](Self::p_tag) to a null pointer and leaves
-    /// [`tag_size`](Self::tag_size) as it is. Only if the array was set before, it sets the count
-    /// back to 0.
+    /// [`tag_size`](Self::tag_size) as it is. The exception is an empty slice that takes an array
+    /// away: if [`p_tag`](Self::p_tag) is not null when the setter is called, the count is set to
+    /// 0, whatever stored it.
     pub fn tag(mut self, value: &'a [u8]) -> Self {
         if value.is_empty() {
             if !self.p_tag.is_null() {
@@ -42809,8 +42843,9 @@ impl<'a> GetLatencyMarkerInfoNV<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_timings`](Self::p_timings) to a null pointer and leaves
-    /// [`timing_count`](Self::timing_count) as it is. Only if the array was set before, it sets the
-    /// count back to 0.
+    /// [`timing_count`](Self::timing_count) as it is. The exception is an empty slice that takes an
+    /// array away: if [`p_timings`](Self::p_timings) is not null when the setter is called, the
+    /// count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -43579,8 +43614,9 @@ impl<'a> GraphicsPipelineCreateInfo<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_stages`](Self::p_stages) to a null pointer and leaves
-    /// [`stage_count`](Self::stage_count) as it is. Only if the array was set before, it sets the
-    /// count back to 0.
+    /// [`stage_count`](Self::stage_count) as it is. The exception is an empty slice that takes an
+    /// array away: if [`p_stages`](Self::p_stages) is not null when the setter is called, the count
+    /// is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -50658,8 +50694,10 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_set_layout_infos`](Self::p_set_layout_infos) to a null pointer and
     /// leaves [`shader_count`](Self::shader_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_set_layout_infos`](Self::p_set_layout_infos) is not null when the setter is called and
+    /// the pointers of the other arrays that share the count are null, the count is set to 0,
+    /// whatever stored it.
     ///
     /// # Panics
     ///
@@ -51301,8 +51339,9 @@ impl<'a> LatencySurfaceCapabilitiesNV<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_present_modes`](Self::p_present_modes) to a null pointer and leaves
-    /// [`present_mode_count`](Self::present_mode_count) as it is. Only if the array was set before,
-    /// it sets the count back to 0.
+    /// [`present_mode_count`](Self::present_mode_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_present_modes`](Self::p_present_modes) is not null when the
+    /// setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -54350,8 +54389,10 @@ impl<'a> MicromapBuildInfoEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_usage_counts`](Self::p_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`p_usage_counts`](Self::p_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -54388,8 +54429,10 @@ impl<'a> MicromapBuildInfoEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`pp_usage_counts`](Self::pp_usage_counts) to a null pointer and leaves
     /// [`usage_counts_count`](Self::usage_counts_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`pp_usage_counts`](Self::pp_usage_counts) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -72202,8 +72245,9 @@ impl<'a> PhysicalDeviceHostImageCopyProperties<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_copy_src_layouts`](Self::p_copy_src_layouts) to a null pointer and
-    /// leaves [`copy_src_layout_count`](Self::copy_src_layout_count) as it is. Only if the array
-    /// was set before, it sets the count back to 0.
+    /// leaves [`copy_src_layout_count`](Self::copy_src_layout_count) as it is. The exception is an
+    /// empty slice that takes an array away: if [`p_copy_src_layouts`](Self::p_copy_src_layouts) is
+    /// not null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -72234,8 +72278,9 @@ impl<'a> PhysicalDeviceHostImageCopyProperties<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_copy_dst_layouts`](Self::p_copy_dst_layouts) to a null pointer and
-    /// leaves [`copy_dst_layout_count`](Self::copy_dst_layout_count) as it is. Only if the array
-    /// was set before, it sets the count back to 0.
+    /// leaves [`copy_dst_layout_count`](Self::copy_dst_layout_count) as it is. The exception is an
+    /// empty slice that takes an array away: if [`p_copy_dst_layouts`](Self::p_copy_dst_layouts) is
+    /// not null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -74473,8 +74518,9 @@ impl<'a> PhysicalDeviceLayeredApiPropertiesListKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_layered_apis`](Self::p_layered_apis) to a null pointer and leaves
-    /// [`layered_api_count`](Self::layered_api_count) as it is. Only if the array was set before,
-    /// it sets the count back to 0.
+    /// [`layered_api_count`](Self::layered_api_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_layered_apis`](Self::p_layered_apis) is not null when the
+    /// setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -98459,8 +98505,9 @@ impl<'a> PhysicalDeviceVulkan14Properties<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_copy_src_layouts`](Self::p_copy_src_layouts) to a null pointer and
-    /// leaves [`copy_src_layout_count`](Self::copy_src_layout_count) as it is. Only if the array
-    /// was set before, it sets the count back to 0.
+    /// leaves [`copy_src_layout_count`](Self::copy_src_layout_count) as it is. The exception is an
+    /// empty slice that takes an array away: if [`p_copy_src_layouts`](Self::p_copy_src_layouts) is
+    /// not null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -98491,8 +98538,9 @@ impl<'a> PhysicalDeviceVulkan14Properties<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_copy_dst_layouts`](Self::p_copy_dst_layouts) to a null pointer and
-    /// leaves [`copy_dst_layout_count`](Self::copy_dst_layout_count) as it is. Only if the array
-    /// was set before, it sets the count back to 0.
+    /// leaves [`copy_dst_layout_count`](Self::copy_dst_layout_count) as it is. The exception is an
+    /// empty slice that takes an array away: if [`p_copy_dst_layouts`](Self::p_copy_dst_layouts) is
+    /// not null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -99295,8 +99343,9 @@ impl<'a> PipelineBinaryHandlesInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_pipeline_binaries`](Self::p_pipeline_binaries) to a null pointer and
-    /// leaves [`pipeline_binary_count`](Self::pipeline_binary_count) as it is. Only if the array
-    /// was set before, it sets the count back to 0.
+    /// leaves [`pipeline_binary_count`](Self::pipeline_binary_count) as it is. The exception is an
+    /// empty slice that takes an array away: if [`p_pipeline_binaries`](Self::p_pipeline_binaries)
+    /// is not null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -100060,8 +100109,9 @@ impl<'a> PipelineColorBlendStateCreateInfo<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_attachments`](Self::p_attachments) to a null pointer and leaves
-    /// [`attachment_count`](Self::attachment_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`attachment_count`](Self::attachment_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_attachments`](Self::p_attachments) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -100325,8 +100375,10 @@ impl<'a> PipelineCoverageModulationStateCreateInfoNV<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_coverage_modulation_table`](Self::p_coverage_modulation_table) to a null
     /// pointer and leaves
-    /// [`coverage_modulation_table_count`](Self::coverage_modulation_table_count) as it is. Only if
-    /// the array was set before, it sets the count back to 0.
+    /// [`coverage_modulation_table_count`](Self::coverage_modulation_table_count) as it is. The
+    /// exception is an empty slice that takes an array away: if
+    /// [`p_coverage_modulation_table`](Self::p_coverage_modulation_table) is not null when the
+    /// setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -101264,8 +101316,9 @@ impl<'a> PipelineExecutableInternalRepresentationKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_data`](Self::p_data) to a null pointer and leaves
-    /// [`data_size`](Self::data_size) as it is. Only if the array was set before, it sets the count
-    /// back to 0.
+    /// [`data_size`](Self::data_size) as it is. The exception is an empty slice that takes an array
+    /// away: if [`p_data`](Self::p_data) is not null when the setter is called, the count is set to
+    /// 0, whatever stored it.
     pub fn data(mut self, value: &'a mut [u8]) -> Self {
         if value.is_empty() {
             if !self.p_data.is_null() {
@@ -104454,8 +104507,9 @@ impl<'a> PipelineViewportStateCreateInfo<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_viewports`](Self::p_viewports) to a null pointer and leaves
-    /// [`viewport_count`](Self::viewport_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`viewport_count`](Self::viewport_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_viewports`](Self::p_viewports) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -104486,8 +104540,9 @@ impl<'a> PipelineViewportStateCreateInfo<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_scissors`](Self::p_scissors) to a null pointer and leaves
-    /// [`scissor_count`](Self::scissor_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`scissor_count`](Self::scissor_count) as it is. The exception is an empty slice that takes
+    /// an array away: if [`p_scissors`](Self::p_scissors) is not null when the setter is called,
+    /// the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -104675,8 +104730,9 @@ impl<'a> PipelineViewportWScalingStateCreateInfoNV<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_viewport_w_scalings`](Self::p_viewport_w_scalings) to a null pointer and
-    /// leaves [`viewport_count`](Self::viewport_count) as it is. Only if the array was set before,
-    /// it sets the count back to 0.
+    /// leaves [`viewport_count`](Self::viewport_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_viewport_w_scalings`](Self::p_viewport_w_scalings) is not
+    /// null when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -104832,8 +104888,9 @@ impl<'a> PresentId2KHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_present_ids`](Self::p_present_ids) to a null pointer and leaves
-    /// [`swapchain_count`](Self::swapchain_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`swapchain_count`](Self::swapchain_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_present_ids`](Self::p_present_ids) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -104924,8 +104981,9 @@ impl<'a> PresentIdKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_present_ids`](Self::p_present_ids) to a null pointer and leaves
-    /// [`swapchain_count`](Self::swapchain_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`swapchain_count`](Self::swapchain_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_present_ids`](Self::p_present_ids) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -105098,8 +105156,9 @@ impl<'a> PresentInfoKHR<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_results`](Self::p_results) to a null pointer and leaves
     /// [`swapchain_count`](Self::swapchain_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_results`](Self::p_results) is not null when the setter is called and the pointers of the
+    /// other arrays that share the count are null, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -105196,8 +105255,9 @@ impl<'a> PresentRegionKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_rectangles`](Self::p_rectangles) to a null pointer and leaves
-    /// [`rectangle_count`](Self::rectangle_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`rectangle_count`](Self::rectangle_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_rectangles`](Self::p_rectangles) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -105273,8 +105333,9 @@ impl<'a> PresentRegionsKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_regions`](Self::p_regions) to a null pointer and leaves
-    /// [`swapchain_count`](Self::swapchain_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`swapchain_count`](Self::swapchain_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_regions`](Self::p_regions) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -105450,8 +105511,9 @@ impl<'a> PresentTimesInfoGOOGLE<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_times`](Self::p_times) to a null pointer and leaves
-    /// [`swapchain_count`](Self::swapchain_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`swapchain_count`](Self::swapchain_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_times`](Self::p_times) is not null when the setter is called,
+    /// the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -105732,8 +105794,9 @@ impl<'a> PresentTimingsInfoEXT<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_timing_infos`](Self::p_timing_infos) to a null pointer and leaves
-    /// [`swapchain_count`](Self::swapchain_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`swapchain_count`](Self::swapchain_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_timing_infos`](Self::p_timing_infos) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -111313,7 +111376,9 @@ impl<'a> RenderingInputAttachmentIndexInfo<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_color_attachment_input_indices`](Self::p_color_attachment_input_indices)
     /// to a null pointer and leaves [`color_attachment_count`](Self::color_attachment_count) as it
-    /// is. Only if the array was set before, it sets the count back to 0.
+    /// is. The exception is an empty slice that takes an array away: if
+    /// [`p_color_attachment_input_indices`](Self::p_color_attachment_input_indices) is not null
+    /// when the setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -114287,8 +114352,9 @@ impl<'a> ShaderCreateInfoEXT<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_set_layouts`](Self::p_set_layouts) to a null pointer and leaves
-    /// [`set_layout_count`](Self::set_layout_count) as it is. Only if the array was set before, it
-    /// sets the count back to 0.
+    /// [`set_layout_count`](Self::set_layout_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_set_layouts`](Self::p_set_layouts) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -114319,8 +114385,10 @@ impl<'a> ShaderCreateInfoEXT<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_push_constant_ranges`](Self::p_push_constant_ranges) to a null pointer
-    /// and leaves [`push_constant_range_count`](Self::push_constant_range_count) as it is. Only if
-    /// the array was set before, it sets the count back to 0.
+    /// and leaves [`push_constant_range_count`](Self::push_constant_range_count) as it is. The
+    /// exception is an empty slice that takes an array away: if
+    /// [`p_push_constant_ranges`](Self::p_push_constant_ranges) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -116911,8 +116979,10 @@ impl<'a> SubpassDescription<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_resolve_attachments`](Self::p_resolve_attachments) to a null pointer and
     /// leaves [`color_attachment_count`](Self::color_attachment_count) as it is, and it is not
-    /// compared with the other arrays that share the count. Only if this array was set before and
-    /// none of the others is set, it sets the count back to 0.
+    /// compared with the other arrays that share the count. The exception is an empty slice that
+    /// takes an array away: if [`p_resolve_attachments`](Self::p_resolve_attachments) is not null
+    /// when the setter is called and the pointers of the other arrays that share the count are
+    /// null, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -117117,8 +117187,10 @@ impl<'a> SubpassDescription2<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_resolve_attachments`](Self::p_resolve_attachments) to a null pointer and
     /// leaves [`color_attachment_count`](Self::color_attachment_count) as it is, and it is not
-    /// compared with the other arrays that share the count. Only if this array was set before and
-    /// none of the others is set, it sets the count back to 0.
+    /// compared with the other arrays that share the count. The exception is an empty slice that
+    /// takes an array away: if [`p_resolve_attachments`](Self::p_resolve_attachments) is not null
+    /// when the setter is called and the pointers of the other arrays that share the count are
+    /// null, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -118735,8 +118807,9 @@ impl<'a> SurfacePresentModeCompatibilityKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_present_modes`](Self::p_present_modes) to a null pointer and leaves
-    /// [`present_mode_count`](Self::present_mode_count) as it is. Only if the array was set before,
-    /// it sets the count back to 0.
+    /// [`present_mode_count`](Self::present_mode_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_present_modes`](Self::p_present_modes) is not null when the
+    /// setter is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -120012,8 +120085,10 @@ impl<'a> SwapchainTimeDomainPropertiesEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_time_domains`](Self::p_time_domains) to a null pointer and leaves
     /// [`time_domain_count`](Self::time_domain_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`p_time_domains`](Self::p_time_domains) is not null when the setter is called and the
+    /// pointers of the other arrays that share the count are null, the count is set to 0, whatever
+    /// stored it.
     ///
     /// # Panics
     ///
@@ -120049,8 +120124,10 @@ impl<'a> SwapchainTimeDomainPropertiesEXT<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_time_domain_ids`](Self::p_time_domain_ids) to a null pointer and leaves
     /// [`time_domain_count`](Self::time_domain_count) as it is, and it is not compared with the
-    /// other arrays that share the count. Only if this array was set before and none of the others
-    /// is set, it sets the count back to 0.
+    /// other arrays that share the count. The exception is an empty slice that takes an array away:
+    /// if [`p_time_domain_ids`](Self::p_time_domain_ids) is not null when the setter is called and
+    /// the pointers of the other arrays that share the count are null, the count is set to 0,
+    /// whatever stored it.
     ///
     /// # Panics
     ///
@@ -120341,8 +120418,10 @@ impl<'a> TensorCopyARM<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_src_offset`](Self::p_src_offset) to a null pointer and leaves
     /// [`dimension_count`](Self::dimension_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_src_offset`](Self::p_src_offset) is not null when the setter is called and the pointers
+    /// of the other arrays that share the count are null, the count is set to 0, whatever stored
+    /// it.
     ///
     /// # Panics
     ///
@@ -120378,8 +120457,10 @@ impl<'a> TensorCopyARM<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_dst_offset`](Self::p_dst_offset) to a null pointer and leaves
     /// [`dimension_count`](Self::dimension_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_dst_offset`](Self::p_dst_offset) is not null when the setter is called and the pointers
+    /// of the other arrays that share the count are null, the count is set to 0, whatever stored
+    /// it.
     ///
     /// # Panics
     ///
@@ -120415,8 +120496,9 @@ impl<'a> TensorCopyARM<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_extent`](Self::p_extent) to a null pointer and leaves
     /// [`dimension_count`](Self::dimension_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_extent`](Self::p_extent) is not null when the setter is called and the pointers of the
+    /// other arrays that share the count are null, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -120748,8 +120830,9 @@ impl<'a> TensorDescriptionARM<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_strides`](Self::p_strides) to a null pointer and leaves
     /// [`dimension_count`](Self::dimension_count) as it is, and it is not compared with the other
-    /// arrays that share the count. Only if this array was set before and none of the others is
-    /// set, it sets the count back to 0.
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_strides`](Self::p_strides) is not null when the setter is called and the pointers of the
+    /// other arrays that share the count are null, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -121854,8 +121937,10 @@ impl<'a> TimelineSemaphoreSubmitInfo<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_wait_semaphore_values`](Self::p_wait_semaphore_values) to a null pointer
-    /// and leaves [`wait_semaphore_value_count`](Self::wait_semaphore_value_count) as it is. Only
-    /// if the array was set before, it sets the count back to 0.
+    /// and leaves [`wait_semaphore_value_count`](Self::wait_semaphore_value_count) as it is. The
+    /// exception is an empty slice that takes an array away: if
+    /// [`p_wait_semaphore_values`](Self::p_wait_semaphore_values) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -121889,7 +121974,9 @@ impl<'a> TimelineSemaphoreSubmitInfo<'a> {
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_signal_semaphore_values`](Self::p_signal_semaphore_values) to a null
     /// pointer and leaves [`signal_semaphore_value_count`](Self::signal_semaphore_value_count) as
-    /// it is. Only if the array was set before, it sets the count back to 0.
+    /// it is. The exception is an empty slice that takes an array away: if
+    /// [`p_signal_semaphore_values`](Self::p_signal_semaphore_values) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -126643,8 +126730,10 @@ impl<'a> VideoEncodeAV1SessionParametersCreateInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_std_operating_points`](Self::p_std_operating_points) to a null pointer
-    /// and leaves [`std_operating_point_count`](Self::std_operating_point_count) as it is. Only if
-    /// the array was set before, it sets the count back to 0.
+    /// and leaves [`std_operating_point_count`](Self::std_operating_point_count) as it is. The
+    /// exception is an empty slice that takes an array away: if
+    /// [`p_std_operating_points`](Self::p_std_operating_points) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -128080,8 +128169,9 @@ impl<'a> VideoEncodeH264SessionParametersAddInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_std_sp_ss`](Self::p_std_sp_ss) to a null pointer and leaves
-    /// [`std_sps_count`](Self::std_sps_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`std_sps_count`](Self::std_sps_count) as it is. The exception is an empty slice that takes
+    /// an array away: if [`p_std_sp_ss`](Self::p_std_sp_ss) is not null when the setter is called,
+    /// the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -128112,8 +128202,9 @@ impl<'a> VideoEncodeH264SessionParametersAddInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_std_pp_ss`](Self::p_std_pp_ss) to a null pointer and leaves
-    /// [`std_pps_count`](Self::std_pps_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`std_pps_count`](Self::std_pps_count) as it is. The exception is an empty slice that takes
+    /// an array away: if [`p_std_pp_ss`](Self::p_std_pp_ss) is not null when the setter is called,
+    /// the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -129628,8 +129719,9 @@ impl<'a> VideoEncodeH265SessionParametersAddInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_std_vp_ss`](Self::p_std_vp_ss) to a null pointer and leaves
-    /// [`std_vps_count`](Self::std_vps_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`std_vps_count`](Self::std_vps_count) as it is. The exception is an empty slice that takes
+    /// an array away: if [`p_std_vp_ss`](Self::p_std_vp_ss) is not null when the setter is called,
+    /// the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -129660,8 +129752,9 @@ impl<'a> VideoEncodeH265SessionParametersAddInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_std_sp_ss`](Self::p_std_sp_ss) to a null pointer and leaves
-    /// [`std_sps_count`](Self::std_sps_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`std_sps_count`](Self::std_sps_count) as it is. The exception is an empty slice that takes
+    /// an array away: if [`p_std_sp_ss`](Self::p_std_sp_ss) is not null when the setter is called,
+    /// the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///
@@ -129692,8 +129785,9 @@ impl<'a> VideoEncodeH265SessionParametersAddInfoKHR<'a> {
     ///
     /// An empty slice stands for an array that is absent, which the registry allows for this
     /// member: it sets [`p_std_pp_ss`](Self::p_std_pp_ss) to a null pointer and leaves
-    /// [`std_pps_count`](Self::std_pps_count) as it is. Only if the array was set before, it sets
-    /// the count back to 0.
+    /// [`std_pps_count`](Self::std_pps_count) as it is. The exception is an empty slice that takes
+    /// an array away: if [`p_std_pp_ss`](Self::p_std_pp_ss) is not null when the setter is called,
+    /// the count is set to 0, whatever stored it.
     ///
     /// # Panics
     ///

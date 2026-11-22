@@ -56,7 +56,12 @@
 //! Structs that can hold pointers carry a lifetime `'a`, and their setters take references
 //! and slices with that lifetime, so the struct cannot outlive the data it points to. A
 //! setter for an array also sets the member that holds its length; when several arrays
-//! share one length member, the setters panic if the lengths differ. A setter also panics
+//! share one length member, the setters panic if the lengths differ. For an array whose
+//! pointer the registry marks as optional, an empty slice stands for an absent array: the
+//! pointer is set to null, the length member is left as it is, and the slice is not
+//! compared with the arrays that share the member. Only when the pointer was not null
+//! before, and no other array that shares the length member is set, such an empty slice
+//! sets the length member to 0. A setter also panics
 //! if the slice has more elements than the type of the length member can count, such as
 //! more than 255 for a `uint8_t` member. `VkBool32` members
 //! take `bool`, and strings take [`&CStr`](core::ffi::CStr) or, in arrays,

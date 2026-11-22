@@ -119,19 +119,19 @@ impl<'s> CountedArrays<'s> {
             .iter()
             .map(|other| format!(" && self.{}.is_null()", field_name(&other.name)))
             .collect::<String>();
-        let (compared, reset) = if others.is_empty() {
-            ("", "if the array was set before".to_string())
+        let (compared, others_are_null) = if others.is_empty() {
+            ("", "")
         } else {
             (
                 ", and it is not compared with the other arrays that share the count",
-                "if this array was set before and none of the others is set".to_string(),
+                " and the pointers of the other arrays that share the count are null",
             )
         };
         let mut setter = setter;
         setter.doc = std::mem::take(&mut setter.doc).text_after_the_first_block(format!(
-            "An empty slice stands for an array that is absent, which the registry allows for this member: it sets {} to a null pointer and leaves {} as it is{compared}. Only {reset}, it sets the count back to 0.",
-            field_link(&m.name),
-            field_link(&count.name)
+            "An empty slice stands for an array that is absent, which the registry allows for this member: it sets {pointer} to a null pointer and leaves {} as it is{compared}. The exception is an empty slice that takes an array away: if {pointer} is not null when the setter is called{others_are_null}, the count is set to 0, whatever stored it.",
+            field_link(&count.name),
+            pointer = field_link(&m.name)
         ));
         setter.assignments = format!(
             "if value.is_empty() {{ if !self.{field}.is_null(){no_other_is_set} {{ self.{count_field} = 0; }} self.{field} = {}; }} else {{ {} }}",

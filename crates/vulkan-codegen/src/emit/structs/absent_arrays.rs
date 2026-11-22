@@ -58,14 +58,14 @@ fn an_empty_slice_makes_an_optional_array_absent() {
         doc_of(&out, "pub fn alone("),
         [
             "Sets [`p_alone`](Self::p_alone) to the start of a slice of elements and [`alone_count`](Self::alone_count) to its length.",
-            "An empty slice stands for an array that is absent, which the registry allows for this member: it sets [`p_alone`](Self::p_alone) to a null pointer and leaves [`alone_count`](Self::alone_count) as it is. Only if the array was set before, it sets the count back to 0.",
+            "An empty slice stands for an array that is absent, which the registry allows for this member: it sets [`p_alone`](Self::p_alone) to a null pointer and leaves [`alone_count`](Self::alone_count) as it is. The exception is an empty slice that takes an array away: if [`p_alone`](Self::p_alone) is not null when the setter is called, the count is set to 0, whatever stored it.",
             "# Panics",
             "Panics if the slice has more elements than `aloneCount`, a `uint32_t`, can count.",
         ]
     );
     assert_eq!(
         doc_of(&out, "pub fn optional(")[1],
-        "An empty slice stands for an array that is absent, which the registry allows for this member: it sets [`p_optional`](Self::p_optional) to a null pointer and leaves [`pair_count`](Self::pair_count) as it is, and it is not compared with the other arrays that share the count. Only if this array was set before and none of the others is set, it sets the count back to 0."
+        "An empty slice stands for an array that is absent, which the registry allows for this member: it sets [`p_optional`](Self::p_optional) to a null pointer and leaves [`pair_count`](Self::pair_count) as it is, and it is not compared with the other arrays that share the count. The exception is an empty slice that takes an array away: if [`p_optional`](Self::p_optional) is not null when the setter is called and the pointers of the other arrays that share the count are null, the count is set to 0, whatever stored it."
     );
 }
 

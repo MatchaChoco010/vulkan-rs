@@ -92,6 +92,29 @@ fn an_optional_array_that_is_set_again_to_an_empty_slice_takes_its_count_back() 
 }
 
 #[test]
+fn taking_an_array_away_resets_a_count_that_the_count_setter_stored_after_it() {
+    let samplers = [vk::Sampler::null(); 2];
+    let binding = vk::DescriptorSetLayoutBinding::default()
+        .immutable_samplers(&samplers)
+        .descriptor_count(1);
+    assert_eq!(binding.descriptor_count, 1);
+    assert_eq!(binding.p_immutable_samplers, samplers.as_ptr());
+    let binding = binding.immutable_samplers(&[]);
+    assert_eq!(
+        binding.descriptor_count, 0,
+        "the setter sees a pointer that is not null and cannot tell who stored the count"
+    );
+    assert!(binding.p_immutable_samplers.is_null());
+
+    let binding = binding.descriptor_count(1).immutable_samplers(&[]);
+    assert_eq!(
+        binding.descriptor_count, 1,
+        "with a null pointer, an empty slice leaves the count that the count setter stored"
+    );
+    assert!(binding.p_immutable_samplers.is_null());
+}
+
+#[test]
 fn an_optional_array_that_is_taken_away_leaves_the_count_to_the_arrays_that_share_it() {
     let colors = [vk::AttachmentReference::default(); 2];
     let resolves = [vk::AttachmentReference::default(); 2];
