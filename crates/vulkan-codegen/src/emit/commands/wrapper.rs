@@ -306,6 +306,23 @@ impl Call<'_> {
         )
     }
 
+    fn every_other_code_is_an_error(&self) -> String {
+        let cfg = self.model.cfg(self.c.protect.as_deref());
+        let link = |code: &String| self.model.link(&cfg, code);
+        let listed = if self.c.error_codes.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " The registry lists {} as the error codes of the command.",
+                codes(self.model, &cfg, &self.c.error_codes)
+            )
+        };
+        format!(
+            "Returns the result code of the command if it is any code other than {}, the success codes that the registry lists for the command, whether the code is negative or not.{listed}",
+            join_and(self.c.success_codes.iter().map(link).collect())
+        )
+    }
+
     fn has_success_codes_besides_success(&self) -> bool {
         self.c.success_codes.iter().any(|code| code != "VK_SUCCESS")
     }
@@ -444,8 +461,9 @@ impl Call<'_> {
                 ),
             )
             .note(format!(
-                "{written} and whether the command reported `VK_SUBOPTIMAL_KHR`, or `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`."
-            ));
+                "{written} and whether the command reported `VK_SUBOPTIMAL_KHR`, or `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`. Any other result is returned as the error."
+            ))
+            .errors(self.every_other_code_is_an_error());
         }
         if self.has_success_codes_besides_success() {
             return Returned::new(

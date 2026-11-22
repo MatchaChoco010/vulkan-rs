@@ -926,6 +926,144 @@ mod tests {
         );
     }
 
+    fn acquiring(error_codes: &[&str]) -> Registry {
+        let acquire = only(result_command(
+            "vkTakeNextFrameNV",
+            &[
+                "VK_SUCCESS",
+                "VK_TIMEOUT",
+                "VK_NOT_READY",
+                "VK_SUBOPTIMAL_KHR",
+            ],
+            vec![
+                field("device", "VkDevice"),
+                field("swapchain", "VkSwapchainKHR"),
+                field("pImageIndex", "uint32_t*"),
+            ],
+        ));
+        with_error_codes(acquire, error_codes)
+    }
+
+    fn section<'a>(doc: &'a [String], title: &str) -> &'a str {
+        let heading = doc
+            .iter()
+            .position(|block| block == &format!("# {title}"))
+            .unwrap_or_else(|| panic!("no section {title} in {doc:?}"));
+        &doc[heading + 1]
+    }
+
+    const EVERY_OTHER_CODE_IS_AN_ERROR: &str = "Returns the result code of the command if it is any code other than [`VK_SUCCESS`](VkResult::SUCCESS), [`VK_TIMEOUT`](VkResult::TIMEOUT), [`VK_NOT_READY`](VkResult::NOT_READY) and [`VK_SUBOPTIMAL_KHR`](VkResult::SUBOPTIMAL_KHR), the success codes that the registry lists for the command, whether the code is negative or not.";
+
+    #[test]
+    fn a_wrapper_that_returns_every_unlisted_code_as_an_error_documents_it() {
+        for (error_codes, listed) in [
+            (&[][..], String::new()),
+            (
+                &["VK_ERROR_DEVICE_LOST"][..],
+                " The registry lists [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST) as the error codes of the command."
+                    .to_string(),
+            ),
+            (
+                &["VK_ERROR_OUT_OF_HOST_MEMORY", "VK_ERROR_DEVICE_LOST"][..],
+                " The registry lists [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY) or [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST) as the error codes of the command."
+                    .to_string(),
+            ),
+        ] {
+            let ir = acquiring(error_codes);
+            let model = Model::new(&ir);
+            let out = wrapper::wrapper(&model, &ir.commands[0], Dispatch::Device);
+            assert!(squash(&out).contains("error => Err(error),"), "{out}");
+            let doc = crate::emit::doc_of(&out, "pub unsafe fn take_next_frame_nv(");
+            assert_eq!(
+                section(&doc, "Errors"),
+                format!("{EVERY_OTHER_CODE_IS_AN_ERROR}{listed}"),
+                "{error_codes:?}"
+            );
+            assert!(
+                doc.iter().any(|block| block.contains(
+                    "or `None` if the command returned `VK_TIMEOUT` or `VK_NOT_READY`. Any other result is returned as the error."
+                )),
+                "{doc:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_that_return_every_unlisted_code_as_an_error_document_it() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut acquiring = BTreeSet::new();
+        let mut keeping_partial_output = BTreeSet::new();
+        for c in &model.ir.commands {
+            if creates_a_dispatching_handle(c) {
+                continue;
+            }
+            let out = wrapper::wrapper(&model, c, model.dispatch(c));
+            let code = squash(&out);
+            let words = out
+                .replace("///", "")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let errors = words
+                .split_once("# Errors ")
+                .map_or("", |(_, errors)| errors)
+                .split(" # ")
+                .next()
+                .unwrap_or_default();
+            let returns_every_unlisted_code = code.contains("error => Err(error)");
+            let returns_every_code_but_success = code.contains(
+                "if result == VkResult::SUCCESS { Ok(values) } else { Err((values, result)) }",
+            );
+            assert_eq!(
+                returns_every_unlisted_code,
+                errors.starts_with("Returns the result code of the command if it is any code other than ")
+                    && errors.contains(", the success codes that the registry lists for the command, whether the code is negative or not."),
+                "{}: {errors}",
+                c.name
+            );
+            assert_eq!(
+                returns_every_unlisted_code,
+                words.contains("Any other result is returned as the error."),
+                "{}: {words}",
+                c.name
+            );
+            assert_eq!(
+                returns_every_code_but_success,
+                errors.starts_with("Returns the result code of the command, together with the elements, if it is not `VK_SUCCESS`: ")
+                    && words.contains("Any result other than `VK_SUCCESS` is returned as the error, together with the same elements."),
+                "{}: {words}",
+                c.name
+            );
+            if returns_every_unlisted_code {
+                for success in &c.success_codes {
+                    assert!(
+                        errors.contains(&format!("[`{success}`]")),
+                        "{}: {success} is missing from {errors}",
+                        c.name
+                    );
+                }
+                acquiring.insert(c.name.as_str());
+            }
+            if returns_every_code_but_success {
+                keeping_partial_output.insert(c.name.as_str());
+            }
+            let takes_other_codes_as_successes = !returns_every_unlisted_code
+                && !returns_every_code_but_success
+                && code.contains("crate::vk::Result<");
+            assert_eq!(
+                takes_other_codes_as_successes,
+                errors.starts_with("Returns the result code of the command if it is an error"),
+                "{}: {errors}",
+                c.name
+            );
+        }
+        assert_eq!(
+            acquiring,
+            BTreeSet::from(["vkAcquireNextImage2KHR", "vkAcquireNextImageKHR"])
+        );
+        assert!(keeping_partial_output.contains("vkCreateGraphicsPipelines"));
+    }
+
     #[test]
     fn keeping_partial_output_follows_the_result_codes_not_the_command_name() {
         for code in [
