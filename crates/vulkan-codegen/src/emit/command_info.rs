@@ -1,7 +1,7 @@
 use super::extensions::api_version_expr;
 use super::{header, w};
 use crate::model::Model;
-use crate::naming::command_name;
+use crate::naming::command_const_name;
 use vulkan_registry::Command;
 
 pub(crate) fn emit(model: &Model<'_>) -> String {
@@ -30,7 +30,7 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
 }
 
 fn const_name(c: &Command) -> String {
-    command_name(&c.name).to_ascii_uppercase()
+    command_const_name(&c.name)
 }
 
 fn info(model: &Model<'_>, c: &Command) -> String {

@@ -158,6 +158,57 @@ mod tests {
     }
 
     #[test]
+    fn keyword_named_members_parameters_and_commands_generate_rust_that_parses() {
+        use crate::test_support::{RUST_KEYWORDS, command, field, registry, structure};
+        use std::collections::BTreeSet;
+        use vulkan_registry::{Enum, Handle};
+
+        let mut ir = registry();
+        ir.enums.push(Enum {
+            name: "VkFormat".to_string(),
+            bit_width: 32,
+            ..Default::default()
+        });
+        ir.handles.push(Handle {
+            name: "VkDevice".to_string(),
+            object_type: "VK_OBJECT_TYPE_DEVICE".to_string(),
+            dispatchable: true,
+            ..Default::default()
+        });
+        let mut command_names = BTreeSet::new();
+        for (i, keyword) in RUST_KEYWORDS.iter().enumerate() {
+            ir.structs.push(structure(
+                &format!("VkKeywordMember{i}"),
+                vec![field(keyword, "uint32_t")],
+            ));
+            let mut c = command(
+                &format!("vkKeywordParameter{i}"),
+                vec![field("device", "VkDevice"), field(keyword, "uint32_t")],
+            );
+            c.device = true;
+            ir.commands.push(c);
+            let mut chars = keyword.chars();
+            let first = chars.next().expect("keywords are not empty");
+            command_names.insert(format!(
+                "vk{}{}",
+                first.to_ascii_uppercase(),
+                chars.as_str()
+            ));
+        }
+        for name in command_names {
+            let mut c = command(&name, vec![field("device", "VkDevice")]);
+            c.device = true;
+            ir.commands.push(c);
+        }
+        for file in generate(&ir, &Docs::default()) {
+            if file.path.ends_with(".rs") {
+                syn::parse_file(&file.contents)
+                    .unwrap_or_else(|error| panic!("{} does not parse: {error}", file.path));
+            }
+        }
+    }
+
+    #[test]
     fn the_bindings_root_declares_every_module_and_reexports_those_with_items() {
         let root = bindings_root();
         assert!(root.starts_with("mod bitmasks;\nmod command_info;\n"));

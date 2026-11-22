@@ -1,6 +1,7 @@
 use crate::model::{Cfg, Model};
 use crate::naming::{
-    command_name, const_name, enum_variant_name, extension_name_const, flag_bit_name, type_name,
+    command_name, const_name, enum_variant_name, extension_name_const, flag_bit_name,
+    func_pointer_name, type_name,
 };
 use std::collections::BTreeMap;
 
@@ -60,7 +61,11 @@ impl Links {
             links.add_type(&f.name, &f.aliases, model.cfg(f.protect.as_deref()));
         }
         for fp in &ir.func_pointers {
-            links.add(&fp.name, fp.name.clone(), model.cfg(fp.protect.as_deref()));
+            links.add(
+                &fp.name,
+                func_pointer_name(&fp.name),
+                model.cfg(fp.protect.as_deref()),
+            );
         }
         for e in &ir.enums {
             let cfg = model.cfg(e.protect.as_deref());

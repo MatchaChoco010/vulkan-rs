@@ -9,3 +9,7 @@ publish = false
 
 [dependencies]
 vulkan-registry.workspace = true
+
+[dev-dependencies]
+proptest = { version = "1", default-features = false, features = ["std"] }
+syn = { version = "2", features = ["full"] }
