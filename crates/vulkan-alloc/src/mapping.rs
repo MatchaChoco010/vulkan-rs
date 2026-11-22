@@ -41,10 +41,10 @@ impl<'a> MappedAllocation<'a> {
     /// alive.
     ///
     /// Accesses through it fall under the safety conditions of [`Allocator::map`]: it
-    /// must not write while a slice from [`MappedAllocation::as_bytes`] or
-    /// [`MappedAllocation::byte_range`] is in use, and must not be used at all while a
-    /// slice from [`MappedAllocation::as_bytes_mut`] or
-    /// [`MappedAllocation::byte_range_mut`] is in use.
+    /// must not write the bytes of a slice from [`MappedAllocation::as_bytes`] or
+    /// [`MappedAllocation::byte_range`] while that slice is in use, and must not access
+    /// the bytes of a slice from [`MappedAllocation::as_bytes_mut`] or
+    /// [`MappedAllocation::byte_range_mut`] while that slice is in use.
     pub fn as_ptr(&self) -> *mut c_void {
         self.ptr.as_ptr().cast()
     }

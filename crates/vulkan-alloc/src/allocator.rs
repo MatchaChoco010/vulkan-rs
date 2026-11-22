@@ -17,9 +17,10 @@ const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
 
 /// The parameters of [`Allocator::new`].
 ///
-/// [`AllocatorCreateDesc::new`] takes the memory properties and the limits from the
-/// physical device and sets [`AllocatorCreateDesc::block_size`] to 64 MiB. The fields
-/// are public and can be changed afterwards.
+/// [`AllocatorCreateDesc::new`] takes the memory properties and the
+/// `nonCoherentAtomSize` limit that are passed to it and sets
+/// [`AllocatorCreateDesc::block_size`] to 64 MiB. The fields are public and can be
+/// changed afterwards.
 pub struct AllocatorCreateDesc<'a> {
     /// The device to allocate from. The allocator keeps a clone of it.
     pub device: &'a Device,
@@ -159,9 +160,9 @@ impl Allocator {
     ///   [`AllocationCreateDesc::linear`] is `true` and a non-linear resource if it is
     ///   `false`. The allocator places allocations of the same kind next to each other
     ///   without the `bufferImageGranularity` padding that a resource of the other kind
-    ///   needs, so a misstated kind makes the resource alias its neighbours. Objects
-    ///   that the specification calls neither linear nor non-linear, such as video
-    ///   session memory, may be bound to an allocation of either kind.
+    ///   needs, so a misstated kind makes the resource alias its neighbours. Memory
+    ///   bound to other objects, such as a video session or a data graph pipeline
+    ///   session, may come from an allocation of either kind.
     pub unsafe fn allocate(
         &mut self,
         desc: AllocationCreateDesc<'_>,
