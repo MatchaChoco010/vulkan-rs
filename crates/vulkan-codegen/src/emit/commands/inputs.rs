@@ -430,12 +430,12 @@ impl Planner<'_> {
     fn assert_computed_len(&mut self, p: &Field) {
         let name = argument_name(p);
         let len = p.len.as_deref().unwrap_or_default();
-        let Some(needed) = self.computed_len(len) else {
-            self.notes.push(format!(
-                "An empty `{name}` is passed as a null pointer, because no parameter passes its length."
-            ));
-            return;
-        };
+        let needed = self.computed_len(len).unwrap_or_else(|| {
+            panic!(
+                "{}: the wrappers cannot evaluate `{len}`, the length that the registry gives for {}: they read integers, the names of parameters that are passed as numbers, `+`, `*`, `/` and parentheses",
+                self.c.name, p.name
+            )
+        });
         let message = format!(
             "{}: `{name}` must be empty or have at least `{len}` elements",
             self.c.name

@@ -759,7 +759,7 @@ mod tests {
                     "const uint32_t*",
                     "(samples + 31) / 32",
                 )),
-                counted("pVersionData", "const uint8_t*", "2*VK_UUID_SIZE"),
+                counted("pVersionData", "const uint8_t*", "2*samples"),
                 field("wordCount", "uint32_t"),
                 optional(counted("pWords", "const uint32_t*", "wordCount")),
             ],
@@ -769,7 +769,7 @@ mod tests {
             &Docs::default(),
             "vkCmdSetSampleMaskEXT",
             &["vkCmdSetMasksNV"],
-            "if let Some(x) = sample_mask.as_ref() { assert!(x.is_empty() || (u128::from(samples) + 31) / 32 <= x.len() as u128, \"vkCmdSetSampleMaskEXT: `sample_mask` must be empty or have at least `(samples + 31) / 32` elements\"); } let word_count_len: usize = [words.as_ref().map(|x| x.len())].into_iter().flatten().next().unwrap_or(0); self.cmd_set_sample_mask_ext_raw(command_buffer, samples, sample_mask.map_or(core::ptr::null(), |x| if x.is_empty() { core::ptr::null() } else { x.as_ptr() }), if version_data.is_empty() { core::ptr::null() } else { version_data.as_ptr() }, len_as_count(word_count_len, \"vkCmdSetSampleMaskEXT\", \"wordCount\"), words.map_or(core::ptr::null(), |x| x.as_ptr()))",
+            "if let Some(x) = sample_mask.as_ref() { assert!(x.is_empty() || (u128::from(samples) + 31) / 32 <= x.len() as u128, \"vkCmdSetSampleMaskEXT: `sample_mask` must be empty or have at least `(samples + 31) / 32` elements\"); } assert!(version_data.is_empty() || 2*u128::from(samples) <= version_data.len() as u128, \"vkCmdSetSampleMaskEXT: `version_data` must be empty or have at least `2*samples` elements\"); let word_count_len: usize = [words.as_ref().map(|x| x.len())].into_iter().flatten().next().unwrap_or(0); self.cmd_set_sample_mask_ext_raw(command_buffer, samples, sample_mask.map_or(core::ptr::null(), |x| if x.is_empty() { core::ptr::null() } else { x.as_ptr() }), if version_data.is_empty() { core::ptr::null() } else { version_data.as_ptr() }, len_as_count(word_count_len, \"vkCmdSetSampleMaskEXT\", \"wordCount\"), words.map_or(core::ptr::null(), |x| x.as_ptr()))",
         );
         let documented = emit(&Model::new(&ir))
             .split_whitespace()
@@ -777,14 +777,51 @@ mod tests {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
-            documented.contains("An empty `sample_mask` is passed as a null pointer. From a `sample_mask` that is not empty, the command reads `(samples + 31) / 32` elements, an expression of the registry in which each parameter stands for the number that the C API passes for it. An empty `version_data` is passed as a null pointer, because no parameter passes its length."),
+            documented.contains("An empty `sample_mask` is passed as a null pointer. From a `sample_mask` that is not empty, the command reads `(samples + 31) / 32` elements, an expression of the registry in which each parameter stands for the number that the C API passes for it. An empty `version_data` is passed as a null pointer. From a `version_data` that is not empty, the command reads `2*samples` elements, an expression of the registry in which each parameter stands for the number that the C API passes for it."),
             "{documented}"
         );
         assert!(
-            documented.contains("is not enabled. Also panics if `sample_mask` is not empty and has fewer than `(samples + 31) / 32` elements. Also panics if `words` has more elements than `wordCount`, a `uint32_t`, can count."),
+            documented.contains("is not enabled. Also panics if `sample_mask` is not empty and has fewer than `(samples + 31) / 32` elements. Also panics if `version_data` is not empty and has fewer than `2*samples` elements. Also panics if `words` has more elements than `wordCount`, a `uint32_t`, can count."),
             "{documented}"
         );
         assert!(!documented.contains("An empty `words`"), "{documented}");
+    }
+
+    #[test]
+    fn a_length_that_the_wrappers_cannot_evaluate_stops_the_generator() {
+        for len in [
+            "2*VK_UUID_SIZE",
+            "samples - 1",
+            "samples % 32",
+            "(layers + 31) / 32",
+            "pLevels + 1",
+            "wordCount * 2",
+            "ratio * 2",
+            "latexmath:[\\lceil{samples \\over 32}\\rceil]",
+        ] {
+            let mut ir = base();
+            ir.commands.push(device(command(
+                "vkCmdSetSampleMaskEXT",
+                vec![
+                    field("commandBuffer", "VkCommandBuffer"),
+                    field("samples", "uint32_t"),
+                    field("ratio", "float"),
+                    field("pLevels", "const uint32_t*"),
+                    field("wordCount", "uint32_t"),
+                    counted("pWords", "const uint32_t*", "wordCount"),
+                    optional(counted("pSampleMask", "const uint32_t*", len)),
+                ],
+            )));
+            let message = crate::test_support::catch_quietly(|| generate(&ir))
+                .expect_err("the length cannot be evaluated");
+            assert_eq!(
+                message,
+                format!(
+                    "vkCmdSetSampleMaskEXT: the wrappers cannot evaluate `{len}`, the length that the registry gives for pSampleMask: they read integers, the names of parameters that are passed as numbers, `+`, `*`, `/` and parentheses"
+                ),
+                "{len}"
+            );
+        }
     }
 
     #[test]
