@@ -109,79 +109,23 @@ impl Allocator {
 
     pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), AllocationError> {
         let memory_type = memory_type_mut(&mut self.memory_types, &allocation)?;
-        let block = memory_type.block_mut(&allocation)?;
-        if block.persistent.remove(&allocation.allocation_id) {
-            block.unmark_mapped(allocation.allocation_id)?;
-            block.map_count -= 1;
-            if block.map_count == 0 {
-                unsafe { self.device.unmap_memory(block.memory) };
-                block.mapped_ptr = None;
-            }
-        }
-        if block.is_allocation_mapped(allocation.allocation_id) {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        block
-            .suballocator
-            .free(allocation.allocation_id)
-            .ok_or(AllocationError::InvalidAllocation)?;
-        block.names.remove(&allocation.allocation_id);
-        if block.is_empty()
-            && let Some(block) = memory_type
-                .blocks
-                .get_mut(allocation.block_index)
-                .and_then(Option::take)
-        {
-            unsafe { self.device.free_memory(block.memory, None) };
-        }
-        Ok(())
+        unsafe { memory_type.free(&self.device, &allocation) }
     }
 
     pub unsafe fn map_memory(
         &mut self,
         allocation: &Allocation,
     ) -> Result<*mut c_void, AllocationError> {
-        let flags = self.allocation_memory_flags(allocation)?;
-        if !flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        let device = &self.device;
-        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
-        let offset =
-            usize::try_from(allocation.offset()).map_err(|_| AllocationError::InvalidAllocation)?;
-        if block.mapped_ptr.is_none() {
-            let ptr = unsafe {
-                device.map_memory(
-                    allocation.memory(),
-                    0,
-                    block.size,
-                    vk::MemoryMapFlags::empty(),
-                )
-            }?;
-            let Some(ptr) = NonNull::new(ptr) else {
-                unsafe {
-                    device.unmap_memory(allocation.memory());
-                }
-                return Err(AllocationError::InvalidAllocation);
-            };
-            block.mapped_ptr = Some(ptr);
-        }
-        let ptr = block.mapped_ptr.ok_or(AllocationError::InvalidAllocation)?;
-        let map_count = block
-            .map_count
-            .checked_add(1)
-            .ok_or(AllocationError::OutOfMemory)?;
-        block.mark_mapped(allocation.allocation_id)?;
-        block.map_count = map_count;
-        Ok(unsafe { ptr.as_ptr().cast::<u8>().add(offset).cast() })
+        Ok(unsafe { self.map_host_visible(allocation) }?
+            .as_ptr()
+            .cast())
     }
 
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
     ) -> Result<MappedAllocation<'b>, AllocationError> {
-        let ptr = NonNull::new(unsafe { self.map_memory(allocation) }?.cast::<u8>())
-            .ok_or(AllocationError::InvalidAllocation)?;
+        let ptr = unsafe { self.map_host_visible(allocation) }?;
         Ok(MappedAllocation {
             allocator: self,
             allocation,
@@ -193,41 +137,18 @@ impl Allocator {
         &mut self,
         allocation: &Allocation,
     ) -> Result<NonNull<u8>, AllocationError> {
-        if let Some(pointer) = self.persistent_ptr(allocation) {
-            return Ok(pointer);
-        }
-        let pointer = unsafe { self.map_memory(allocation) }?;
-        memory_type_mut(&mut self.memory_types, allocation)?
-            .block_mut(allocation)?
-            .persistent
-            .insert(allocation.allocation_id);
-        NonNull::new(pointer.cast::<u8>()).ok_or(AllocationError::InvalidAllocation)
+        self.ensure_host_visible(allocation)?;
+        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
+        unsafe { block.map_persistent(&self.device, allocation) }
     }
 
     pub fn persistent_ptr(&self, allocation: &Allocation) -> Option<NonNull<u8>> {
-        let block = self.block(allocation).ok()?;
-        if !block.persistent.contains(&allocation.allocation_id) {
-            return None;
-        }
-        let offset = usize::try_from(allocation.offset()).ok()?;
-        let base = block.mapped_ptr?.cast::<u8>();
-        Some(unsafe { base.add(offset) })
+        self.block(allocation).ok()?.persistent_ptr(allocation)
     }
 
     pub unsafe fn unmap_memory(&mut self, allocation: &Allocation) -> Result<(), AllocationError> {
         let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
-        if block.map_count == 0 {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        block.unmark_mapped(allocation.allocation_id)?;
-        block.map_count -= 1;
-        if block.map_count == 0 {
-            unsafe {
-                self.device.unmap_memory(allocation.memory());
-            }
-            block.mapped_ptr = None;
-        }
-        Ok(())
+        unsafe { block.unmap(&self.device, allocation.allocation_id) }
     }
 
     pub fn memory_type_flags(&self, memory_type_index: u32) -> Option<vk::MemoryPropertyFlags> {
@@ -435,6 +356,26 @@ impl Allocator {
             allocate_info = allocate_info.push_next(&mut export_info);
         }
         Ok(unsafe { self.device.allocate_memory(&allocate_info, None) }?)
+    }
+
+    unsafe fn map_host_visible(
+        &mut self,
+        allocation: &Allocation,
+    ) -> Result<NonNull<u8>, AllocationError> {
+        self.ensure_host_visible(allocation)?;
+        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
+        unsafe { block.map(&self.device, allocation) }
+    }
+
+    fn ensure_host_visible(&self, allocation: &Allocation) -> Result<(), AllocationError> {
+        if self
+            .allocation_memory_flags(allocation)?
+            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+        {
+            Ok(())
+        } else {
+            Err(AllocationError::InvalidAllocation)
+        }
     }
 
     fn block(&self, allocation: &Allocation) -> Result<&MemoryBlock, AllocationError> {

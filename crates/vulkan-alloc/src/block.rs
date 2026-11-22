@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
-use vulkan::vk;
+use vulkan::{Device, vk};
 
 use crate::allocation::{Allocation, AllocationResourceClass, AllocationScheme};
 use crate::error::AllocationError;
@@ -66,6 +66,24 @@ impl MemoryTypeAllocator {
             .ok_or(AllocationError::InvalidAllocation)?;
         block.validate_allocation(allocation)?;
         Ok(block)
+    }
+
+    pub(crate) unsafe fn free(
+        &mut self,
+        device: &Device,
+        allocation: &Allocation,
+    ) -> Result<(), AllocationError> {
+        let block = self.block_mut(allocation)?;
+        unsafe { block.free_allocation(device, allocation.allocation_id) }?;
+        if block.is_empty()
+            && let Some(block) = self
+                .blocks
+                .get_mut(allocation.block_index)
+                .and_then(Option::take)
+        {
+            unsafe { device.free_memory(block.memory, None) };
+        }
+        Ok(())
     }
 
     pub(crate) fn stats(&self) -> MemoryTypeStats {
@@ -209,6 +227,96 @@ impl MemoryBlock {
         if end > self.size {
             return Err(AllocationError::InvalidAllocation);
         }
+        Ok(())
+    }
+
+    pub(crate) unsafe fn map(
+        &mut self,
+        device: &Device,
+        allocation: &Allocation,
+    ) -> Result<NonNull<u8>, AllocationError> {
+        let offset =
+            usize::try_from(allocation.offset).map_err(|_| AllocationError::InvalidAllocation)?;
+        let base = match self.mapped_ptr {
+            Some(base) => base,
+            None => unsafe { self.map_whole_block(device) }?,
+        };
+        let map_count = self
+            .map_count
+            .checked_add(1)
+            .ok_or(AllocationError::OutOfMemory)?;
+        self.mark_mapped(allocation.allocation_id)?;
+        self.map_count = map_count;
+        Ok(unsafe { base.cast::<u8>().add(offset) })
+    }
+
+    unsafe fn map_whole_block(
+        &mut self,
+        device: &Device,
+    ) -> Result<NonNull<c_void>, AllocationError> {
+        let ptr =
+            unsafe { device.map_memory(self.memory, 0, self.size, vk::MemoryMapFlags::empty()) }?;
+        let Some(ptr) = NonNull::new(ptr) else {
+            unsafe { device.unmap_memory(self.memory) };
+            return Err(AllocationError::InvalidAllocation);
+        };
+        self.mapped_ptr = Some(ptr);
+        Ok(ptr)
+    }
+
+    pub(crate) unsafe fn map_persistent(
+        &mut self,
+        device: &Device,
+        allocation: &Allocation,
+    ) -> Result<NonNull<u8>, AllocationError> {
+        if let Some(ptr) = self.persistent_ptr(allocation) {
+            return Ok(ptr);
+        }
+        let ptr = unsafe { self.map(device, allocation) }?;
+        self.persistent.insert(allocation.allocation_id);
+        Ok(ptr)
+    }
+
+    pub(crate) fn persistent_ptr(&self, allocation: &Allocation) -> Option<NonNull<u8>> {
+        if !self.persistent.contains(&allocation.allocation_id) {
+            return None;
+        }
+        let offset = usize::try_from(allocation.offset).ok()?;
+        Some(unsafe { self.mapped_ptr?.cast::<u8>().add(offset) })
+    }
+
+    pub(crate) unsafe fn unmap(
+        &mut self,
+        device: &Device,
+        allocation_id: u64,
+    ) -> Result<(), AllocationError> {
+        if self.map_count == 0 {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        self.unmark_mapped(allocation_id)?;
+        self.map_count -= 1;
+        if self.map_count == 0 {
+            unsafe { device.unmap_memory(self.memory) };
+            self.mapped_ptr = None;
+        }
+        Ok(())
+    }
+
+    unsafe fn free_allocation(
+        &mut self,
+        device: &Device,
+        allocation_id: u64,
+    ) -> Result<(), AllocationError> {
+        if self.persistent.remove(&allocation_id) {
+            unsafe { self.unmap(device, allocation_id) }?;
+        }
+        if self.is_allocation_mapped(allocation_id) {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        self.suballocator
+            .free(allocation_id)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        self.names.remove(&allocation_id);
         Ok(())
     }
 
