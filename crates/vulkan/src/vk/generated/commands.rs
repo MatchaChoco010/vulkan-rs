@@ -13976,7 +13976,11 @@ impl crate::Instance {
     /// [`vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM.html)
     /// through
     /// [`Self::get_physical_device_queue_family_data_graph_engine_operation_properties_arm_raw`],
-    /// which describes the parameters. The command is provided by
+    /// which describes the parameters. `properties` is passed as a pointer to a
+    /// [`VkBaseOutStructure`](BaseOutStructure), which stands for any structure that begins with
+    /// `sType` and `pNext`: the command takes it as the structure that its `sType` names, so `T`
+    /// has to be a structure that the specification allows for `pProperties`. The command is
+    /// provided by
     /// [`VK_ARM_data_graph_instruction_set_tosa`](ARM_DATA_GRAPH_INSTRUCTION_SET_TOSA_NAME) or
     /// [`VK_ARM_data_graph_optical_flow`](ARM_DATA_GRAPH_OPTICAL_FLOW_NAME).
     ///
@@ -13999,19 +14003,21 @@ impl crate::Instance {
     /// loaded: the loader returned no pointer for it, for example because the version or the
     /// extension that provides it is not enabled.
     #[doc(alias = "vkGetPhysicalDeviceQueueFamilyDataGraphEngineOperationPropertiesARM")]
-    pub unsafe fn get_physical_device_queue_family_data_graph_engine_operation_properties_arm(
+    pub unsafe fn get_physical_device_queue_family_data_graph_engine_operation_properties_arm<
+        T: TaggedStructure,
+    >(
         &self,
         physical_device: PhysicalDevice,
         queue_family_index: u32,
         queue_family_data_graph_properties: &QueueFamilyDataGraphPropertiesARM<'_>,
-        properties: &mut BaseOutStructure<'_>,
+        properties: &mut T,
     ) -> crate::vk::Result<()> {
         unsafe {
             self.get_physical_device_queue_family_data_graph_engine_operation_properties_arm_raw(
                 physical_device,
                 queue_family_index,
                 core::ptr::from_ref(queue_family_data_graph_properties),
-                core::ptr::from_mut(&mut *properties),
+                core::ptr::from_mut(&mut *properties).cast(),
             )
             .into_result()
         }
@@ -64575,8 +64581,12 @@ impl crate::Device {
     ///
     /// Calls the C command
     /// [`vkGetPipelinePropertiesEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPipelinePropertiesEXT.html)
-    /// through [`Self::get_pipeline_properties_ext_raw`], which describes the parameters. The
-    /// command is provided by [`VK_EXT_pipeline_properties`](EXT_PIPELINE_PROPERTIES_NAME).
+    /// through [`Self::get_pipeline_properties_ext_raw`], which describes the parameters.
+    /// `pipeline_properties` is passed as a pointer to a [`VkBaseOutStructure`](BaseOutStructure),
+    /// which stands for any structure that begins with `sType` and `pNext`: the command takes it as
+    /// the structure that its `sType` names, so `T` has to be a structure that the specification
+    /// allows for `pPipelineProperties`. The command is provided by
+    /// [`VK_EXT_pipeline_properties`](EXT_PIPELINE_PROPERTIES_NAME).
     ///
     /// # Errors
     ///
@@ -64594,15 +64604,15 @@ impl crate::Device {
     /// Panics if `vkGetPipelinePropertiesEXT` is not loaded: the loader returned no pointer for it,
     /// for example because the version or the extension that provides it is not enabled.
     #[doc(alias = "vkGetPipelinePropertiesEXT")]
-    pub unsafe fn get_pipeline_properties_ext(
+    pub unsafe fn get_pipeline_properties_ext<T: TaggedStructure>(
         &self,
         pipeline_info: &PipelineInfoKHR<'_>,
-        pipeline_properties: &mut BaseOutStructure<'_>,
+        pipeline_properties: &mut T,
     ) -> crate::vk::Result<()> {
         unsafe {
             self.get_pipeline_properties_ext_raw(
                 core::ptr::from_ref(pipeline_info),
-                core::ptr::from_mut(&mut *pipeline_properties),
+                core::ptr::from_mut(&mut *pipeline_properties).cast(),
             )
             .into_result()
         }
@@ -65338,7 +65348,12 @@ impl crate::Device {
     /// [`vkGetShaderBinaryDataEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetShaderBinaryDataEXT.html)
     /// through [`Self::get_shader_binary_data_ext_raw`], which describes the parameters. Asks the
     /// command for the number of elements and then for the elements, again for as long as it
-    /// reports `VK_INCOMPLETE`, and returns what it writes to `pData`. The command is provided by
+    /// reports `VK_INCOMPLETE`, and returns what it writes to `pData`. The command requires `pData`
+    /// to be aligned to 16 bytes, so the wrapper lets it write at such an address and then moves
+    /// the bytes to the start of the returned vector, which does not have to be aligned to 16 bytes
+    /// itself. Binary shader code that is passed to [`ShaderCreateInfoEXT::code`] has to be aligned
+    /// to 16 bytes as well, so copy the bytes to memory with that alignment unless the vector
+    /// happens to have it. The command is provided by
     /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
     ///
     /// # Errors
@@ -65367,17 +65382,20 @@ impl crate::Device {
                 let mut count: usize = 0;
                 self.get_shader_binary_data_ext_raw(shader, &mut count, core::ptr::null_mut())
                     .into_result()?;
-                let mut values: Vec<u8> = alloc::vec![0u8; count];
+                let mut values: Vec<u8> = alloc::vec![0u8; count.saturating_add(15)];
+                let padding = values.as_ptr().addr().wrapping_neg() % 16;
                 let result = self.get_shader_binary_data_ext_raw(
                     shader,
                     &mut count,
-                    values.as_mut_ptr().cast(),
+                    values.as_mut_ptr().add(padding).cast(),
                 );
                 if result == VkResult::INCOMPLETE {
                     continue;
                 }
                 result.into_result()?;
-                values.truncate(count);
+                let written = count.min(values.len() - 15);
+                values.copy_within(padding..padding + written, 0);
+                values.truncate(written);
                 return Ok(values);
             }
         }

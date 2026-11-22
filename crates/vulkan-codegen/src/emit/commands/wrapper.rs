@@ -6,6 +6,7 @@ use super::{
 use crate::docs::{Doc, join_and, join_or};
 use crate::emit::command_info::result_code;
 use crate::emit::{arrow, assert_distinct_names};
+use crate::model::AlignedOutput;
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
 use crate::naming::command_name;
 use std::collections::BTreeSet;
@@ -16,7 +17,8 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     let params = dispatch.explicit_params(c);
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
-    assert_distinct_names(&c.name, bound_names(c, params, &shape, &inputs));
+    let aligned = aligned_output(model, c, params, &shape);
+    assert_distinct_names(&c.name, bound_names(c, params, &shape, &inputs, aligned));
     let call = Call {
         model,
         c,
@@ -31,7 +33,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     } = match &shape {
         Shape::PassThrough => call.passes_through(),
         Shape::ReturnsValue { out } => call.returns_value(*out),
-        Shape::Enumerates { count, data } => call.enumerates(*count, *data),
+        Shape::Enumerates { count, data } => call.enumerates(*count, *data, aligned),
         Shape::FillsOnePerInput { count, out } => {
             let len = inputs.slice_len_local(*count).unwrap_or_else(|| {
                 panic!(
@@ -72,12 +74,13 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         &inputs.narrowed_counts,
     );
     format!(
-        "{doc}{cfg}pub unsafe fn {name}(&self{signature}){arrow} {{
+        "{doc}{cfg}pub unsafe fn {name}{generics}(&self{signature}){arrow} {{
             unsafe {{
                 {checks}{statements}}}
         }}\n",
         doc = doc.render(),
         name = command_name(&c.name),
+        generics = inputs.generics(),
         signature = inputs.signature(),
         arrow = arrow(&ty),
         checks = inputs.checks,
@@ -86,12 +89,53 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
 
 const FIXED_BINDINGS: &[&str] = &["x", "element", "entry", "error"];
 
+const ALIGNED_BINDINGS: &[&str] = &["padding", "written"];
+
+fn aligned_output(
+    model: &Model<'_>,
+    c: &Command,
+    params: &[Field],
+    shape: &Shape,
+) -> Option<&'static AlignedOutput> {
+    let listed = model.aligned_outputs(c);
+    let output = match listed.as_slice() {
+        [] => return None,
+        [output] => *output,
+        _ => panic!(
+            "{}: more than one parameter is listed as memory that has to be aligned",
+            c.name
+        ),
+    };
+    let allocates_the_bytes = matches!(
+        shape,
+        Shape::Enumerates { data, .. } if params[*data].name == output.parameter
+    );
+    assert!(
+        allocates_the_bytes,
+        "{}: `{}` is listed as memory that has to be aligned to {} bytes ({}), but the wrapper does not allocate it: only an enumeration that returns the bytes does",
+        c.name, output.parameter, output.alignment, output.stated_by
+    );
+    Some(output)
+}
+
 fn bound_names(
     c: &Command,
     params: &[Field],
     shape: &Shape,
     inputs: &Inputs,
+    aligned: Option<&AlignedOutput>,
 ) -> Vec<(String, String)> {
+    let aligned = aligned.into_iter().flat_map(|output| {
+        ALIGNED_BINDINGS.iter().map(|name| {
+            (
+                format!(
+                    "the local `{name}` that places the C parameter `{}` at an aligned address",
+                    output.parameter
+                ),
+                name.to_string(),
+            )
+        })
+    });
     let result = (c.return_ty == "VkResult").then(|| {
         (
             "the local `result` that holds the result code of the command".to_string(),
@@ -109,6 +153,7 @@ fn bound_names(
         .iter()
         .cloned()
         .chain(shape_locals(shape, params))
+        .chain(aligned)
         .chain(result)
         .chain(fixed)
         .collect()
@@ -123,7 +168,8 @@ pub(super) fn checked_names(
     let params = dispatch.explicit_params(c);
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
-    bound_names(c, params, &shape, &inputs)
+    let aligned = aligned_output(model, c, params, &shape);
+    bound_names(c, params, &shape, &inputs, aligned)
         .into_iter()
         .map(|(_, name)| name.trim_start_matches("r#").to_string())
         .collect()
@@ -237,6 +283,14 @@ fn deferred_outputs(model: &Model<'_>, c: &Command, params: &[Field]) -> Option<
 
 fn codes(model: &Model<'_>, cfg: &Cfg, codes: &[String]) -> String {
     join_or(codes.iter().map(|code| model.link(cfg, code)).collect())
+}
+
+struct Placement {
+    allocated: String,
+    place: String,
+    pointer: String,
+    keep: String,
+    note: String,
 }
 
 struct Returned {
@@ -487,7 +541,7 @@ impl Call<'_> {
         .note(format!("{written}."))
     }
 
-    fn enumerates(&self, count: usize, data: usize) -> Returned {
+    fn enumerates(&self, count: usize, data: usize, aligned: Option<&AlignedOutput>) -> Returned {
         let p = &self.params[data];
         let (element, init, cast) = if p.ty == "void" {
             ("u8".to_string(), "0u8".to_string(), ".cast()")
@@ -501,10 +555,23 @@ impl Call<'_> {
             _ => "count as usize",
         };
         let query = self.raw(&[(count, "&mut count"), (data, "core::ptr::null_mut()")]);
-        let fill = self.raw(&[
-            (count, "&mut count"),
-            (data, &format!("values.as_mut_ptr(){cast}")),
-        ]);
+        let Placement {
+            allocated,
+            place,
+            pointer,
+            keep,
+            note: placement,
+        } = match aligned {
+            Some(output) => self.aligned_placement(p, &element, len, cast, output),
+            None => Placement {
+                allocated: len.to_string(),
+                place: String::new(),
+                pointer: format!("values.as_mut_ptr(){cast}"),
+                keep: format!("values.truncate({len});"),
+                note: String::new(),
+            },
+        };
+        let fill = self.raw(&[(count, "&mut count"), (data, &pointer)]);
         if self.returns_result() {
             let listed_errors = self.listed_errors();
             return Returned::new(
@@ -513,18 +580,18 @@ impl Call<'_> {
                     "loop {{
                         let mut count: {count_ty} = 0;
                         {}?;
-                        let mut values: Vec<{element}> = alloc::vec![{init}; {len}];
-                        let result = {fill};
+                        let mut values: Vec<{element}> = alloc::vec![{init}; {allocated}];
+                        {place}let result = {fill};
                         if result == VkResult::INCOMPLETE {{ continue; }}
                         {listed_errors}result.into_result()?;
-                        values.truncate({len});
+                        {keep}
                         return Ok(values);
                     }}",
                     self.result_of(&query)
                 ),
             )
             .note(format!(
-                "Asks the command for the number of elements and then for the elements, again for as long as it reports `VK_INCOMPLETE`, and returns what it writes to `{}`.",
+                "Asks the command for the number of elements and then for the elements, again for as long as it reports `VK_INCOMPLETE`, and returns what it writes to `{}`.{placement}",
                 p.name
             ));
         }
@@ -533,16 +600,52 @@ impl Call<'_> {
             format!(
                 "let mut count: {count_ty} = 0;
                 {query};
-                let mut values: Vec<{element}> = alloc::vec![{init}; {len}];
-                {fill};
-                values.truncate({len});
+                let mut values: Vec<{element}> = alloc::vec![{init}; {allocated}];
+                {place}{fill};
+                {keep}
                 values"
             ),
         )
         .note(format!(
-            "Asks the command for the number of elements and then for the elements, and returns what it writes to `{}`.",
+            "Asks the command for the number of elements and then for the elements, and returns what it writes to `{}`.{placement}",
             p.name
         ))
+    }
+
+    fn aligned_placement(
+        &self,
+        p: &Field,
+        element: &str,
+        len: &str,
+        cast: &str,
+        output: &AlignedOutput,
+    ) -> Placement {
+        let alignment = output.alignment;
+        assert_eq!(
+            element, "u8",
+            "{}: `{}` is listed as memory that has to be aligned to {alignment} bytes, and the wrapper aligns only bytes",
+            self.c.name, p.name
+        );
+        let len = if len.contains(' ') {
+            format!("({len})")
+        } else {
+            len.to_string()
+        };
+        Placement {
+            allocated: format!("{len}.saturating_add({})", alignment - 1),
+            place: format!("let padding = values.as_ptr().addr().wrapping_neg() % {alignment};\n"),
+            pointer: format!("values.as_mut_ptr().add(padding){cast}"),
+            keep: format!(
+                "let written = {len}.min(values.len() - {});
+                values.copy_within(padding..padding + written, 0);
+                values.truncate(written);",
+                alignment - 1
+            ),
+            note: format!(
+                " The command requires `{}` to be aligned to {alignment} bytes, so the wrapper lets it write at such an address and then moves the bytes to the start of the returned vector, which does not have to be aligned to {alignment} bytes itself. {}",
+                p.name, output.use_of_the_bytes
+            ),
+        }
     }
 
     fn fills_vector(&self, out: usize, len: &str) -> Returned {

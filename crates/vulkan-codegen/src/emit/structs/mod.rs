@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod absent_arrays;
 mod bit_fields;
 mod defaults;
 mod setters;
