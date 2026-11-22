@@ -1,5 +1,5 @@
 use super::{CType, Model, POINTER_TYPEDEFS, is_platform_type};
-use crate::naming::{const_name, type_name};
+use crate::naming::{const_name, func_pointer_name, type_name};
 use std::collections::BTreeSet;
 use vulkan_registry::Field;
 
@@ -77,8 +77,11 @@ impl<'a> Model<'a> {
         if is_generated_or_hand_declared {
             return type_name(name);
         }
+        if self.is_func_pointer(name) {
+            return func_pointer_name(name);
+        }
         assert!(
-            self.is_func_pointer(name) || is_platform_type(name),
+            is_platform_type(name),
             "unknown C type `{name}`: declare it in crates/vulkan/src/vk/platform.rs and add it \
              to the platform types in vulkan-codegen"
         );

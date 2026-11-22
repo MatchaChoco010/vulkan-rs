@@ -1,7 +1,7 @@
 use super::{arrow, header, w};
 use crate::docs::{Block, Doc};
 use crate::model::{CType, Cfg, Model};
-use crate::naming::field_name;
+use crate::naming::{field_name, func_pointer_name};
 
 pub(crate) fn emit(model: &Model<'_>) -> String {
     let mut out = header(&[]);
@@ -29,7 +29,7 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         out.push_str(&doc.render());
         out.push_str(&alias(
             &cfg,
-            &fp.name,
+            &func_pointer_name(&fp.name),
             &params,
             &model.return_ty(&fp.return_ty),
         ));
@@ -49,7 +49,7 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         out.push_str(&doc.render());
         out.push_str(&alias(
             &cfg,
-            &format!("PFN_{}", c.name),
+            &func_pointer_name(&format!("PFN_{}", c.name)),
             &params,
             &model.return_ty(&c.return_ty),
         ));
