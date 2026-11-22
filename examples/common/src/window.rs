@@ -172,8 +172,10 @@ impl<R: Renderer> Session<R> {
         }
     }
 
+    /// Whether there is a renderer and nothing has failed. After a failure the renderer
+    /// may be half torn down, so the session only destroys it.
     fn is_running(&self) -> bool {
-        self.renderer.is_some()
+        self.renderer.is_some() && self.error.is_none()
     }
 
     fn start(&mut self, create: impl FnOnce() -> Result<R>) -> Flow {
@@ -187,6 +189,9 @@ impl<R: Renderer> Session<R> {
     }
 
     fn resize(&mut self, extent: vk::Extent2D) -> Flow {
+        if self.error.is_some() {
+            return Flow::Exit;
+        }
         let Some(renderer) = self.renderer.as_mut() else {
             return Flow::Continue;
         };
@@ -200,6 +205,9 @@ impl<R: Renderer> Session<R> {
 
     /// `extent` is the size of the window, for a swapchain that turns out outdated.
     fn redraw(&mut self, extent: vk::Extent2D) -> Flow {
+        if self.error.is_some() {
+            return Flow::Exit;
+        }
         let Some(renderer) = self.renderer.as_mut() else {
             return Flow::Continue;
         };
@@ -218,11 +226,11 @@ impl<R: Renderer> Session<R> {
         }
     }
 
-    /// Keeps the first error and prints any later one, which would get lost otherwise.
+    /// Prints the error at once, so that it reaches stderr even if the process does not
+    /// get to return it, and keeps the first one for [`Session::finish`].
     fn fail(&mut self, error: anyhow::Error) -> Flow {
-        if self.error.is_some() {
-            eprintln!("{error:#}");
-        } else {
+        eprintln!("{error:#}");
+        if self.error.is_none() {
             self.error = Some(error);
         }
         Flow::Exit
@@ -235,7 +243,7 @@ impl<R: Renderer> Session<R> {
             Some(renderer) => unsafe { renderer.destroy() },
             None => Ok(()),
         };
-        outcome([self.error.take().map_or(Ok(()), Err), event_loop, destroyed])
+        first_error([self.error.take().map_or(Ok(()), Err), event_loop, destroyed])
     }
 }
 
@@ -252,7 +260,7 @@ impl<R: Renderer> Drop for Session<R> {
 
 /// The first error of `results` in their order, after printing the later ones; success
 /// only when every one of them succeeded.
-fn outcome(results: impl IntoIterator<Item = Result<()>>) -> Result<()> {
+pub fn first_error(results: impl IntoIterator<Item = Result<()>>) -> Result<()> {
     let mut first = Ok(());
     for result in results {
         match (&first, result) {
@@ -321,21 +329,31 @@ mod tests {
         draws: u32,
         recreations: u32,
         failed: Rc<Cell<Option<Step>>>,
+        calls_after_failure: Rc<Cell<u32>>,
     }
 
     impl Fake {
-        fn new(script: Script, failed: Rc<Cell<Option<Step>>>) -> Result<Self> {
+        fn new(
+            script: Script,
+            failed: Rc<Cell<Option<Step>>>,
+            calls_after_failure: Rc<Cell<u32>>,
+        ) -> Result<Self> {
             let fake = Fake {
                 script,
                 draws: 0,
                 recreations: 0,
                 failed,
+                calls_after_failure,
             };
             fake.check(Step::Create, 0)?;
             Ok(fake)
         }
 
         fn check(&self, step: Step, call: u32) -> Result<()> {
+            if self.failed.get().is_some() && step != Step::Destroy {
+                self.calls_after_failure
+                    .set(self.calls_after_failure.get() + 1);
+            }
             if self.script.failing == Some((step, call)) {
                 self.failed.set(Some(step));
                 bail!("{step:?} failed");
@@ -371,12 +389,15 @@ mod tests {
     }
 
     /// Runs a session the way the event loop drives it: a redraw, a resize, a redraw,
-    /// and so on, until a step asks to exit. Returns how the run ended and the step
-    /// that failed, if one did.
+    /// and so on. The events go on after a step asks to exit, since winit finishes the
+    /// iteration of the loop first, and a resize in it is followed by a redraw. Returns
+    /// how the run ended and the step that failed, if one did.
     fn run_script(script: Script, event_loop: Result<()>) -> (Result<()>, Option<Step>) {
         let failed = Rc::new(Cell::new(None));
+        let calls_after_failure = Rc::new(Cell::new(0));
         let mut session = Session::<Fake>::new(script.max_frames);
-        let mut flow = session.start(|| Fake::new(script, failed.clone()));
+        let mut flow =
+            session.start(|| Fake::new(script, failed.clone(), calls_after_failure.clone()));
         for event in 0..12 {
             if failed.get().is_some() {
                 assert_eq!(
@@ -384,9 +405,7 @@ mod tests {
                     Flow::Exit,
                     "{script:?}: a failed step must end the loop"
                 );
-            }
-            if flow == Flow::Exit {
-                break;
+                assert!(!session.is_running(), "{script:?}: the session still runs");
             }
             flow = if event % 3 == 1 {
                 session.resize(EXTENT)
@@ -394,6 +413,11 @@ mod tests {
                 session.redraw(EXTENT)
             };
         }
+        assert_eq!(
+            calls_after_failure.get(),
+            0,
+            "{script:?}: the renderer drew or recreated its swapchain after a failure"
+        );
         (session.finish(event_loop), failed.get())
     }
 
@@ -459,7 +483,7 @@ mod tests {
                 max_frames: Some(max_frames),
             };
             let mut session = Session::<Fake>::new(script.max_frames);
-            let flow = session.start(|| Fake::new(script, Rc::default()));
+            let flow = session.start(|| Fake::new(script, Rc::default(), Rc::default()));
             assert_eq!(flow, Flow::Continue);
             for frame in 1..max_frames {
                 assert_eq!(session.redraw(EXTENT), Flow::Continue, "frame {frame}");
@@ -479,7 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn outcome_is_the_first_error_of_any_combination() {
+    fn first_error_is_the_first_error_of_any_combination() {
         for bits in 0..8u32 {
             let results = (0..3).map(|index| {
                 if bits & (1 << index) != 0 {
@@ -490,7 +514,7 @@ mod tests {
             });
             let expected = (bits != 0).then(|| bits.trailing_zeros().to_string());
             assert_eq!(
-                outcome(results).err().map(|error| error.to_string()),
+                first_error(results).err().map(|error| error.to_string()),
                 expected,
                 "failing results {bits:03b}"
             );
