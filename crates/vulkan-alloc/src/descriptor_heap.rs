@@ -82,7 +82,8 @@ pub enum HeapLayoutError {
         /// What the address must be a multiple of.
         alignment: u64,
     },
-    /// An index does not fit in `u32` or a byte offset or size does not fit in `u64`.
+    /// An index does not fit in `u32`, or a byte offset, a size or the least common
+    /// multiple of two descriptor alignments does not fit in `u64`.
     Overflow,
     /// The size of a descriptor type is not a multiple of its alignment, so descriptors
     /// indexed in units of their size cannot all be aligned.
@@ -714,26 +715,25 @@ mod tests {
 
             let mut plan = ResourceHeapPlan::new(&properties);
             let uniform = plan.uniform(1);
-            let layout = plan.finish();
+            let mut after_one_byte = ResourceHeapPlan::new(&properties);
+            after_one_byte.plan.cursor = 1;
+            let layout = after_one_byte.finish();
             match both {
                 None => {
                     overflowing += 1;
                     assert_eq!(uniform, Err(HeapLayoutError::Overflow), "{context}");
                     assert_eq!(layout, Err(HeapLayoutError::Overflow), "{context}");
+                    assert_eq!(plan.finish(), Err(HeapLayoutError::Overflow), "{context}");
                 }
                 Some(both) => {
                     fitting += 1;
-                    if let Ok(slots) = uniform {
-                        assert!(slots.stride.is_multiple_of(both), "{context}");
-                        assert!(slots.stride >= 32, "{context}");
-                    } else {
-                        assert_eq!(uniform, Err(HeapLayoutError::Overflow), "{context}");
-                    }
-                    if let Ok(layout) = layout {
-                        assert!(layout.reserved_offset.is_multiple_of(both), "{context}");
-                    } else {
-                        assert_eq!(layout, Err(HeapLayoutError::Overflow), "{context}");
-                    }
+                    let stride = 32_u64.checked_next_multiple_of(both);
+                    assert_eq!(uniform.map(|slots| slots.stride).ok(), stride, "{context}");
+                    assert_eq!(
+                        layout.map(|layout| layout.reserved_offset),
+                        Ok(both),
+                        "{context}"
+                    );
                 }
             }
         }
