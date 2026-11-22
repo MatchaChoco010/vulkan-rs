@@ -95,6 +95,28 @@ pub(crate) struct MemoryBlock {
 }
 
 impl MemoryBlock {
+    pub(crate) fn new(
+        memory: vk::DeviceMemory,
+        size: u64,
+        resource_class: AllocationResourceClass,
+        dedicated: bool,
+        memory_allocate_flags: vk::MemoryAllocateFlags,
+    ) -> Self {
+        Self {
+            memory,
+            size,
+            resource_class,
+            dedicated,
+            memory_allocate_flags,
+            suballocator: TlsfSuballocator::new(size),
+            mapped_ptr: None,
+            map_count: 0,
+            mapped_allocations: HashMap::new(),
+            names: HashMap::new(),
+            persistent: HashSet::new(),
+        }
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.suballocator.is_wholly_free(self.size)
     }
@@ -193,19 +215,13 @@ mod tests {
 
     #[test]
     fn memory_block_tracks_mapped_allocations_individually() {
-        let mut block = MemoryBlock {
-            memory: vk::DeviceMemory(31),
-            size: 1024,
-            resource_class: AllocationResourceClass::Unknown,
-            dedicated: false,
-            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-            suballocator: TlsfSuballocator::new(1024),
-            mapped_ptr: None,
-            map_count: 0,
-            mapped_allocations: HashMap::new(),
-            names: HashMap::new(),
-            persistent: HashSet::new(),
-        };
+        let mut block = MemoryBlock::new(
+            vk::DeviceMemory(31),
+            1024,
+            AllocationResourceClass::Unknown,
+            false,
+            vk::MemoryAllocateFlags::empty(),
+        );
 
         block.mark_mapped(1).unwrap();
         block.mark_mapped(1).unwrap();
@@ -228,19 +244,13 @@ mod tests {
 
     #[test]
     fn memory_block_validates_allocation_identity() {
-        let mut block = MemoryBlock {
-            memory: vk::DeviceMemory(32),
-            size: 1024,
-            resource_class: AllocationResourceClass::Optimal,
-            dedicated: false,
-            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-            suballocator: TlsfSuballocator::new(1024),
-            mapped_ptr: None,
-            map_count: 0,
-            mapped_allocations: HashMap::new(),
-            names: HashMap::new(),
-            persistent: HashSet::new(),
-        };
+        let mut block = MemoryBlock::new(
+            vk::DeviceMemory(32),
+            1024,
+            AllocationResourceClass::Optimal,
+            false,
+            vk::MemoryAllocateFlags::empty(),
+        );
         let suballocation = block.suballocator.allocate(128, 64).unwrap();
         let make_allocation = || Allocation {
             memory_type_index: 0,
@@ -288,32 +298,20 @@ mod tests {
         let memory_type = MemoryTypeAllocator {
             memory_type_index: 7,
             blocks: vec![
-                Some(MemoryBlock {
-                    memory: vk::DeviceMemory(11),
-                    size: 1024,
-                    resource_class: AllocationResourceClass::Unknown,
-                    dedicated: false,
-                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                    suballocator: TlsfSuballocator::new(1024),
-                    mapped_ptr: None,
-                    map_count: 0,
-                    mapped_allocations: HashMap::new(),
-                    names: HashMap::new(),
-                    persistent: HashSet::new(),
-                }),
-                Some(MemoryBlock {
-                    memory: vk::DeviceMemory(12),
-                    size: 2048,
-                    resource_class: AllocationResourceClass::Unknown,
-                    dedicated: false,
-                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                    suballocator: TlsfSuballocator::new(2048),
-                    mapped_ptr: None,
-                    map_count: 0,
-                    mapped_allocations: HashMap::new(),
-                    names: HashMap::new(),
-                    persistent: HashSet::new(),
-                }),
+                Some(MemoryBlock::new(
+                    vk::DeviceMemory(11),
+                    1024,
+                    AllocationResourceClass::Unknown,
+                    false,
+                    vk::MemoryAllocateFlags::empty(),
+                )),
+                Some(MemoryBlock::new(
+                    vk::DeviceMemory(12),
+                    2048,
+                    AllocationResourceClass::Unknown,
+                    false,
+                    vk::MemoryAllocateFlags::empty(),
+                )),
             ],
         };
         let mut memory_type = memory_type;
@@ -344,19 +342,13 @@ mod tests {
             memory_type_index: 5,
             blocks: vec![
                 None,
-                Some(MemoryBlock {
-                    memory: vk::DeviceMemory(51),
-                    size: 1024,
-                    resource_class: AllocationResourceClass::Linear,
-                    dedicated: false,
-                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                    suballocator: TlsfSuballocator::new(1024),
-                    mapped_ptr: None,
-                    map_count: 0,
-                    mapped_allocations: HashMap::new(),
-                    names: HashMap::new(),
-                    persistent: HashSet::new(),
-                }),
+                Some(MemoryBlock::new(
+                    vk::DeviceMemory(51),
+                    1024,
+                    AllocationResourceClass::Linear,
+                    false,
+                    vk::MemoryAllocateFlags::empty(),
+                )),
             ],
         };
         let mut properties = vk::PhysicalDeviceMemoryProperties {
@@ -377,19 +369,13 @@ mod tests {
 
     #[test]
     fn block_snapshot_reports_fragmented_regions() {
-        let mut block = MemoryBlock {
-            memory: vk::DeviceMemory(41),
-            size: 1024,
-            resource_class: AllocationResourceClass::Linear,
-            dedicated: false,
-            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-            suballocator: TlsfSuballocator::new(1024),
-            mapped_ptr: None,
-            map_count: 0,
-            mapped_allocations: HashMap::new(),
-            names: HashMap::new(),
-            persistent: HashSet::new(),
-        };
+        let mut block = MemoryBlock::new(
+            vk::DeviceMemory(41),
+            1024,
+            AllocationResourceClass::Linear,
+            false,
+            vk::MemoryAllocateFlags::empty(),
+        );
         let a = block.suballocator.allocate(256, 1).unwrap();
         let b = block.suballocator.allocate(256, 1).unwrap();
         let c = block.suballocator.allocate(256, 1).unwrap();

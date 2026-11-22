@@ -117,12 +117,9 @@ pub(crate) fn snapshot_from_memory_types(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
-
     use super::*;
     use crate::block::MemoryBlock;
     use crate::memory_type::tests::memory_properties;
-    use crate::suballocator::TlsfSuballocator;
 
     #[test]
     fn allocator_stats_aggregate_non_empty_memory_types() {
@@ -133,35 +130,23 @@ mod tests {
             },
             MemoryTypeAllocator {
                 memory_type_index: 1,
-                blocks: vec![Some(MemoryBlock {
-                    memory: vk::DeviceMemory(21),
-                    size: 1024,
-                    resource_class: AllocationResourceClass::Linear,
-                    dedicated: false,
-                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                    suballocator: TlsfSuballocator::new(1024),
-                    mapped_ptr: None,
-                    map_count: 0,
-                    mapped_allocations: HashMap::new(),
-                    names: HashMap::new(),
-                    persistent: HashSet::new(),
-                })],
+                blocks: vec![Some(MemoryBlock::new(
+                    vk::DeviceMemory(21),
+                    1024,
+                    AllocationResourceClass::Linear,
+                    false,
+                    vk::MemoryAllocateFlags::empty(),
+                ))],
             },
             MemoryTypeAllocator {
                 memory_type_index: 2,
-                blocks: vec![Some(MemoryBlock {
-                    memory: vk::DeviceMemory(22),
-                    size: 2048,
-                    resource_class: AllocationResourceClass::Optimal,
-                    dedicated: false,
-                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                    suballocator: TlsfSuballocator::new(2048),
-                    mapped_ptr: None,
-                    map_count: 0,
-                    mapped_allocations: HashMap::new(),
-                    names: HashMap::new(),
-                    persistent: HashSet::new(),
-                })],
+                blocks: vec![Some(MemoryBlock::new(
+                    vk::DeviceMemory(22),
+                    2048,
+                    AllocationResourceClass::Optimal,
+                    false,
+                    vk::MemoryAllocateFlags::empty(),
+                ))],
             },
         ];
         let a = memory_types[1].blocks[0]
@@ -204,19 +189,13 @@ mod tests {
             },
             MemoryTypeAllocator {
                 memory_type_index: 1,
-                blocks: vec![Some(MemoryBlock {
-                    memory: vk::DeviceMemory(42),
-                    size: 1024,
-                    resource_class: AllocationResourceClass::Optimal,
-                    dedicated: true,
-                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                    suballocator: TlsfSuballocator::new(1024),
-                    mapped_ptr: None,
-                    map_count: 0,
-                    mapped_allocations: HashMap::new(),
-                    names: HashMap::new(),
-                    persistent: HashSet::new(),
-                })],
+                blocks: vec![Some(MemoryBlock::new(
+                    vk::DeviceMemory(42),
+                    1024,
+                    AllocationResourceClass::Optimal,
+                    true,
+                    vk::MemoryAllocateFlags::empty(),
+                ))],
             },
         ];
         let allocation = memory_types[1].blocks[0]

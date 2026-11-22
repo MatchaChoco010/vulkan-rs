@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
@@ -13,7 +12,6 @@ use crate::report::{
     AllocatorSnapshot, AllocatorStats, LiveAllocation, MemoryRegionState,
     snapshot_from_memory_types, stats_from_memory_types,
 };
-use crate::suballocator::TlsfSuballocator;
 
 const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
 
@@ -389,19 +387,13 @@ impl Allocator {
         };
         let memory =
             unsafe { self.allocate_device_memory(block_size, memory_type_index, request) }?;
-        let mut block = MemoryBlock {
+        let mut block = MemoryBlock::new(
             memory,
-            size: block_size,
+            block_size,
             resource_class,
-            dedicated: request.needs_own_block(),
-            memory_allocate_flags: request.memory_allocate_flags,
-            suballocator: TlsfSuballocator::new(block_size),
-            mapped_ptr: None,
-            map_count: 0,
-            mapped_allocations: HashMap::new(),
-            names: HashMap::new(),
-            persistent: HashSet::new(),
-        };
+            request.needs_own_block(),
+            request.memory_allocate_flags,
+        );
         let Some(suballocation) = block
             .suballocator
             .allocate(requirements.size, requirements.alignment.max(1))
