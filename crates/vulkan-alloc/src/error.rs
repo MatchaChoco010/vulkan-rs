@@ -56,6 +56,10 @@ impl From<vk::VkResult> for AllocationError {
 /// ```no_run
 /// use vulkan_alloc::{Allocation, Allocator, FreeError};
 ///
+/// /// # Safety
+/// ///
+/// /// As for `Allocator::free`, and no pointer returned by `Allocator::map_memory`
+/// /// for the allocation may be used afterwards.
 /// unsafe fn unmap_and_free(
 ///     allocator: &mut Allocator,
 ///     allocation: Allocation,
@@ -72,7 +76,10 @@ impl From<vk::VkResult> for AllocationError {
 /// }
 /// ```
 ///
-/// It converts into [`AllocationError`] with `?`, which drops the allocation.
+/// It converts into [`AllocationError`] with `?`. The conversion drops the allocation,
+/// which leaves its range allocated and mapped as it was until
+/// [`Allocator::free_all`](crate::Allocator::free_all) (see the
+/// [crate documentation](crate#leaks)).
 #[derive(Debug, PartialEq, Eq)]
 pub struct FreeError {
     /// The allocation that was passed to [`Allocator::free`](crate::Allocator::free).
@@ -83,7 +90,7 @@ pub struct FreeError {
 
 impl fmt::Display for FreeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "allocation was not freed: {}", self.error)
+        f.write_str("the allocation was not freed")
     }
 }
 

@@ -210,9 +210,9 @@ impl Allocator {
     /// that was not released with [`Allocator::unmap_memory`].
     ///
     /// Nothing is freed or unmapped when an error is returned, and
-    /// [`FreeError::allocation`] hands the allocation back: release its mappings with
-    /// [`Allocator::unmap_memory`] and free it again, or pass it to the allocator that
-    /// made it.
+    /// [`FreeError::allocation`] hands the allocation back: release its
+    /// [`Allocator::map_memory`] references with [`Allocator::unmap_memory`] and free it
+    /// again, or pass it to the allocator that made it.
     ///
     /// # Safety
     ///
@@ -221,7 +221,7 @@ impl Allocator {
     ///   accesses a resource bound to the allocation may be pending, because the range
     ///   can be handed out again and its `VkDeviceMemory` can be freed.
     /// - Resources bound to the allocation, and pointers obtained by mapping it, must
-    ///   not be used afterwards.
+    ///   not be used after it was freed.
     pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), FreeError> {
         let freed = match memory_type_mut(&mut self.memory_types, &allocation) {
             Ok(memory_type) => unsafe { memory_type.free(&self.device, &allocation) },
@@ -300,7 +300,7 @@ impl Allocator {
     /// allocation has [`Allocation::size`] bytes.
     ///
     /// The pointer borrows nothing, so it can be stored next to the resource it belongs
-    /// to. It stays valid until the allocation is passed to [`Allocator::free`], which
+    /// to. It stays valid until [`Allocator::free`] frees the allocation, which
     /// releases the mapping, or until [`Allocator::free_all`]. Calling this again for
     /// the same allocation returns the same pointer without taking another reference.
     /// [`Allocator::unmap_memory`] does not release this mapping.
