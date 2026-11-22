@@ -1,5 +1,6 @@
 use super::{
-    MARKER_DOC, MethodNames, field_link, marker_field, member_doc, thread_safety_impls, type_doc,
+    MARKER_DOC, MethodNames, field_link, marker_field, member_doc, member_origin,
+    thread_safety_impls, type_doc,
 };
 use crate::emit::{Borrow, assert_distinct_names, w};
 use crate::model::{CType, Model, is_opaque};
@@ -76,9 +77,9 @@ fn constructor(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Str
     let field = field_name(&m.name);
     let short_name = pointer_setter_name(&m.name);
     let name = if names.is_taken(&short_name) {
-        names.claim(&field)
+        names.claim(&field, &member_origin(m))
     } else {
-        names.claim(&short_name)
+        names.claim(&short_name, &member_origin(m))
     };
     let borrows_one_value = ty.depth() == 1 && !ty.is_array() && !is_opaque(&ty.base);
     let (value_ty, value) = if borrows_one_value {

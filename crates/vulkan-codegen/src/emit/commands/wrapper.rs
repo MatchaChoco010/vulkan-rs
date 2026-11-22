@@ -4,8 +4,8 @@ use super::{
     argument_name, called, can_defer, not_loaded, provided, raw_name, with_deferred_safety,
 };
 use crate::docs::{Doc, join_and, join_or};
-use crate::emit::arrow;
 use crate::emit::command_info::result_code;
+use crate::emit::{arrow, assert_distinct_names};
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
 use crate::naming::command_name;
 use std::collections::BTreeSet;
@@ -16,6 +16,14 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     let params = dispatch.explicit_params(c);
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
+    assert_distinct_names(
+        &c.name,
+        inputs
+            .names
+            .iter()
+            .cloned()
+            .chain(shape_locals(&shape, params)),
+    );
     let call = Call {
         model,
         c,
@@ -81,6 +89,26 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         arrow = arrow(&ty),
         checks = inputs.checks,
     )
+}
+
+fn shape_locals(shape: &Shape, params: &[Field]) -> Vec<(String, String)> {
+    let local = |name: &str, out: usize| {
+        (
+            format!(
+                "the local `{name}` that receives the C parameter `{}`",
+                params[out].name
+            ),
+            name.to_string(),
+        )
+    };
+    match shape {
+        Shape::PassThrough => Vec::new(),
+        Shape::ReturnsValue { out } => vec![local("value", *out)],
+        Shape::Enumerates { count, data } => vec![local("count", *count), local("values", *data)],
+        Shape::FillsOnePerInput { out, .. } | Shape::FillsStructMemberCount { out, .. } => {
+            vec![local("values", *out)]
+        }
+    }
 }
 
 fn doc(

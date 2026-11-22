@@ -1,4 +1,4 @@
-use super::MethodNames;
+use super::{MethodNames, member_origin};
 use crate::docs::Doc;
 use crate::model::{CType, Model};
 use crate::naming::{field_name, type_name};
@@ -72,8 +72,9 @@ pub(super) fn accessors(
     bit: &Bit<'_>,
     names: &mut MethodNames<'_>,
 ) -> String {
-    let setter = names.claim(&field_name(&bit.member.name));
-    let getter = format!("get_{}", setter.trim_start_matches("r#"));
+    let origin = member_origin(bit.member);
+    let setter = names.claim(&field_name(&bit.member.name), &origin);
+    let getter = names.claim(&format!("get_{}", setter.trim_start_matches("r#")), &origin);
     let mask = u32::MAX >> (STORAGE_UNIT_BITS - bit.width);
     let (shl, shr) = match bit.shift {
         0 => (String::new(), String::new()),

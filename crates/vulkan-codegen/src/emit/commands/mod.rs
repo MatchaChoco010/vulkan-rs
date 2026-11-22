@@ -4,7 +4,7 @@ mod shape;
 mod wrapper;
 
 use super::func_pointers::parameter_item;
-use super::{arrow, header, parameter_names, w};
+use super::{arrow, assert_distinct_names, header, parameter_names, w};
 use crate::docs::{Block, Doc};
 use crate::model::{CType, Cfg, Dispatch, Model};
 use crate::naming::{command_name, field_name, pointer_setter_name};
@@ -18,6 +18,21 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         out.push_str(&dispatch_tables::table(model, dispatch));
     }
     for dispatch in Dispatch::ALL {
+        let raw_methods = commands(model, dispatch).map(|c| {
+            (
+                format!("the raw method of the C command `{}`", c.name),
+                raw_name(c),
+            )
+        });
+        let wrapper_methods = commands(model, dispatch)
+            .filter(|c| !creates_a_dispatching_handle(c))
+            .map(|c| {
+                (
+                    format!("the wrapper of the C command `{}`", c.name),
+                    command_name(&c.name),
+                )
+            });
+        assert_distinct_names(&dispatch.wrapper(), raw_methods.chain(wrapper_methods));
         let raw_commands = commands(model, dispatch)
             .map(|c| raw_command(model, c, dispatch))
             .collect::<String>();

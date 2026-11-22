@@ -122,7 +122,203 @@ fn commands_of_one_table_with_the_same_rust_name_stop_the_generator() {
         c.device = true;
         ir.commands.push(c);
     }
+    crate::emit::commands::emit(&Model::new(&ir));
+}
+
+#[test]
+#[should_panic(
+    expected = "the CommandInfo constants: the C command `vkFooBar` and the C command `vkFoo_Bar` both become the Rust name `FOO_BAR`"
+)]
+fn commands_of_different_tables_with_the_same_constant_name_stop_the_generator() {
+    let mut ir = base();
+    let mut device_command = command("vkFooBar", vec![field("device", "VkDevice")]);
+    device_command.device = true;
+    ir.commands.push(device_command);
+    ir.commands.push(command("vkFoo_Bar", Vec::new()));
     generate(&ir);
+}
+
+#[test]
+#[should_panic(
+    expected = "crate::Device: the raw method of the C command `vkFoo` and the wrapper of the C command `vkFooRaw` both become the Rust name `foo_raw`"
+)]
+fn a_wrapper_named_like_the_raw_method_of_another_command_stops_the_generator() {
+    let mut ir = base();
+    for name in ["vkFoo", "vkFooRaw"] {
+        let mut c = command(name, vec![field("device", "VkDevice")]);
+        c.device = true;
+        ir.commands.push(c);
+    }
+    generate(&ir);
+}
+
+#[test]
+#[should_panic(
+    expected = "vkCollide: the C parameter `value` and the local `value` that receives the C parameter `pValue` both become the Rust name `value`"
+)]
+fn an_input_named_like_the_local_that_receives_the_returned_value_stops_the_generator() {
+    generate(&with_command(vec![
+        field("value", "uint32_t"),
+        field("pValue", "uint32_t*"),
+    ]));
+}
+
+#[test]
+#[should_panic(
+    expected = "vkCollide: the C parameter `count` and the local `count` that receives the C parameter `pItemCount` both become the Rust name `count`"
+)]
+fn an_input_named_like_the_count_local_of_an_enumeration_stops_the_generator() {
+    generate(&with_command(vec![
+        field("count", "uint32_t"),
+        field("pItemCount", "uint32_t*"),
+        counted("pItems", "VkItem*", "pItemCount"),
+    ]));
+}
+
+#[test]
+#[should_panic(
+    expected = "vkCollide: the C parameter `values` and the local `values` that receives the C parameter `pItems` both become the Rust name `values`"
+)]
+fn an_input_named_like_the_values_local_of_an_enumeration_stops_the_generator() {
+    generate(&with_command(vec![
+        field("values", "uint32_t"),
+        field("pItemCount", "uint32_t*"),
+        counted("pItems", "VkItem*", "pItemCount"),
+    ]));
+}
+
+#[test]
+#[should_panic(
+    expected = "vkCollide: the C parameter `values` and the local `values` that receives the C parameter `pItems` both become the Rust name `values`"
+)]
+fn an_input_named_like_the_values_local_of_a_filled_vector_stops_the_generator() {
+    generate(&with_command(vec![
+        field("values", "uint32_t"),
+        field("itemCount", "uint32_t"),
+        counted("pInfos", "const VkItem*", "itemCount"),
+        counted("pItems", "VkItem*", "itemCount"),
+    ]));
+}
+
+#[test]
+fn inputs_named_like_locals_that_a_wrapper_does_not_declare_generate() {
+    generate(&with_command(vec![field("value", "uint32_t")]));
+    generate(&with_command(vec![
+        field("values", "uint32_t"),
+        field("count", "uint32_t"),
+    ]));
+    generate(&with_command(vec![
+        field("value", "uint32_t"),
+        field("pItemCount", "uint32_t*"),
+        counted("pItems", "VkItem*", "pItemCount"),
+    ]));
+}
+
+#[test]
+#[should_panic(
+    expected = "VkCollide: the methods of the C member `getFlags` and of the C member `flags` are both named `get_flags`"
+)]
+fn a_member_named_like_the_getter_of_a_bit_field_stops_the_generator() {
+    let mut flags = field("flags", "uint32_t");
+    flags.bit_field_width = Some(8);
+    generate(&with_struct(structure(
+        "VkCollide",
+        vec![field("getFlags", "uint32_t"), flags],
+    )));
+}
+
+#[test]
+#[should_panic(
+    expected = "VkCollide: the methods of the C member `pushNext` and of the `pNext` chain are both named `push_next`"
+)]
+fn a_member_named_like_push_next_stops_the_generator() {
+    let mut ir = with_struct(crate::test_support::tagged(
+        "VkCollide",
+        "VK_STRUCTURE_TYPE_COLLIDE",
+        vec![field("pushNext", "uint32_t")],
+    ));
+    ir.enums
+        .iter_mut()
+        .find(|e| e.name == "VkStructureType")
+        .expect("VkStructureType")
+        .fields
+        .push(vulkan_registry::EnumField {
+            name: "VK_STRUCTURE_TYPE_COLLIDE".to_string(),
+            value: "1".to_string(),
+            ..Default::default()
+        });
+    generate(&ir);
+}
+
+#[test]
+#[should_panic(
+    expected = "VkCollide: the methods of the C member `pInfo` and of the C member `infoPtrs` are both named `info_ptrs`"
+)]
+fn members_whose_setters_share_a_name_are_both_named_when_generation_stops() {
+    generate(&with_struct(structure(
+        "VkCollide",
+        vec![
+            field("info", "uint32_t"),
+            field("pInfo", "const VkItem*"),
+            field("infoPtrs", "uint32_t"),
+        ],
+    )));
+}
+
+#[derive(Default)]
+struct LetBindings(Vec<String>);
+
+impl<'ast> syn::visit::Visit<'ast> for LetBindings {
+    fn visit_local(&mut self, local: &'ast syn::Local) {
+        let mut pattern = &local.pat;
+        if let syn::Pat::Type(typed) = pattern {
+            pattern = &typed.pat;
+        }
+        if let syn::Pat::Ident(ident) = pattern {
+            self.0.push(ident.ident.to_string());
+        }
+        syn::visit::visit_local(self, local);
+    }
+}
+
+#[test]
+fn no_wrapper_of_the_registry_binds_a_local_with_the_name_of_one_of_its_parameters() {
+    let source = crate::emit::commands::emit(&Model::with_docs(Registry::get(), Docs::get()));
+    let file = syn::parse_file(&source).expect("the generated commands parse");
+    let mut functions = 0;
+    for item in &file.items {
+        let syn::Item::Impl(block) = item else {
+            continue;
+        };
+        for member in &block.items {
+            let syn::ImplItem::Fn(function) = member else {
+                continue;
+            };
+            functions += 1;
+            let parameters = function
+                .sig
+                .inputs
+                .iter()
+                .filter_map(|input| match input {
+                    syn::FnArg::Typed(typed) => match &*typed.pat {
+                        syn::Pat::Ident(ident) => Some(ident.ident.to_string()),
+                        _ => None,
+                    },
+                    syn::FnArg::Receiver(_) => None,
+                })
+                .collect::<Vec<_>>();
+            let mut bindings = LetBindings::default();
+            syn::visit::Visit::visit_block(&mut bindings, &function.block);
+            for binding in bindings.0 {
+                assert!(
+                    !parameters.contains(&binding),
+                    "{}: the local `{binding}` hides the parameter of the same name",
+                    function.sig.ident
+                );
+            }
+        }
+    }
+    assert!(functions > 1000, "only {functions} methods were checked");
 }
 
 #[test]
