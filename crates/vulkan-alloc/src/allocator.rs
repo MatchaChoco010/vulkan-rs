@@ -26,7 +26,9 @@ pub struct AllocatorCreateDesc<'a> {
     pub device: &'a Device,
     /// The memory properties of the physical device that [`AllocatorCreateDesc::device`]
     /// was created from. Memory types are chosen from them. A `memory_type_count` above
-    /// [`vk::MAX_MEMORY_TYPES`] is treated as [`vk::MAX_MEMORY_TYPES`].
+    /// [`vk::MAX_MEMORY_TYPES`] is treated as [`vk::MAX_MEMORY_TYPES`]. Only the heaps
+    /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) are read: a memory type
+    /// whose `heap_index` is not below it is not in a tile memory heap.
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     /// The `nonCoherentAtomSize` limit of the physical device.
     ///
