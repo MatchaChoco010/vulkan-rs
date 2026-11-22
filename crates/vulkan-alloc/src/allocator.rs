@@ -119,8 +119,9 @@ impl Allocator {
     /// every preferred flag, or else the one with the most preferred flags (the lowest
     /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
     /// are left out unless the required or preferred flags of the location include one
-    /// of these two flags (see [`MemoryLocation`](crate::MemoryLocation)). Only the
-    /// chosen memory type is tried.
+    /// of these two flags, and memory types with `PROTECTED` are left out unless those
+    /// flags include `PROTECTED` (see [`MemoryLocation`](crate::MemoryLocation)). Only
+    /// the chosen memory type is tried.
     ///
     /// The allocation is placed in an existing shared block of that type when one has
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
@@ -148,7 +149,8 @@ impl Allocator {
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
     ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
     ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
-    ///   `deviceCoherentMemory` feature; non-empty
+    ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
+    ///   `protectedMemory` feature; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
     ///   type; a block must not be larger than the memory heap of the chosen type; and
@@ -161,6 +163,10 @@ impl Allocator {
     ///   support dedicated allocations (Vulkan 1.1 or `VK_KHR_dedicated_allocation`).
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
+    /// - The resources bound to the returned allocation must be protected resources if
+    ///   its memory type has `PROTECTED`, and must not be if it does not
+    ///   ([`Allocator::allocation_memory_flags`] tells). A location that only prefers
+    ///   `PROTECTED` can be given either; require the flag for a protected resource.
     /// - Every resource bound to the returned allocation must be a linear resource if
     ///   [`AllocationCreateDesc::linear`] is `true` and a non-linear resource if it is
     ///   `false`. The allocator places allocations of the same kind next to each other
