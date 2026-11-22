@@ -53,16 +53,16 @@ mod tests {
     use super::*;
     use crate::pipeline::{FRAGMENT_SHADER, VERTEX_SHADER};
     use std::collections::BTreeSet;
-    use vulkan_example_common::device::enables_shader_draw_parameters;
+    use vulkan_example_common::device::enables_draw_parameters;
     use vulkan_example_common::shader::{
         CAPABILITY_DRAW_PARAMETERS, CAPABILITY_SHADER, spirv_capabilities,
     };
 
     #[test]
-    fn the_device_enables_what_the_shaders_declare_and_nothing_more() {
+    fn the_device_allows_draw_parameters_exactly_when_a_shader_declares_it() {
         let queues = [vk::DeviceQueueCreateInfo::default()];
         let info = device_create_info(&queues);
-        let draw_parameters_enabled = unsafe { enables_shader_draw_parameters(&info) };
+        let draw_parameters_enabled = unsafe { enables_draw_parameters(&info) };
         let mut supported = BTreeSet::from([CAPABILITY_SHADER]);
         if draw_parameters_enabled {
             supported.insert(CAPABILITY_DRAW_PARAMETERS);
@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(
             draw_parameters_enabled,
             declared.contains(&CAPABILITY_DRAW_PARAMETERS),
-            "shaderDrawParameters is enabled exactly when a shader declares DrawParameters"
+            "the device allows DrawParameters exactly when a shader declares it"
         );
     }
 }

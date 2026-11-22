@@ -16,8 +16,9 @@ pub fn spirv_words(bytes: &[u8]) -> Result<Vec<u32>> {
 
 /// The SPIR-V capability `Shader`, which every Vulkan device supports.
 pub const CAPABILITY_SHADER: u32 = 1;
-/// The SPIR-V capability `DrawParameters`, which needs the device feature
-/// `shaderDrawParameters`.
+/// The SPIR-V capability `DrawParameters`, which a device allows when the feature
+/// `shaderDrawParameters` or the extension `VK_KHR_shader_draw_parameters` is enabled
+/// (see [`crate::device::enables_draw_parameters`]).
 pub const CAPABILITY_DRAW_PARAMETERS: u32 = 4427;
 
 const SPIRV_MAGIC: u32 = 0x0723_0203;
