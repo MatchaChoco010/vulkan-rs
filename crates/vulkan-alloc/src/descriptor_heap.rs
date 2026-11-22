@@ -507,11 +507,12 @@ impl SamplerHeapPlan {
     /// range is the larger of `minSamplerHeapReservedRange` and
     /// `minSamplerHeapReservedRangeWithEmbedded`.
     ///
-    /// The implementation stores the embedded sampler descriptors in the reserved range
-    /// of the bound sampler heap, so while any bound shader uses an embedded sampler
-    /// through a descriptor mapping, the specification requires the reserved range size
-    /// of the sampler heap to be at least `minSamplerHeapReservedRangeWithEmbedded`. It
-    /// must also be at least `minSamplerHeapReservedRange` whenever the heap is bound.
+    /// The implementation may store the embedded sampler descriptors in the reserved
+    /// range of the bound sampler heap, so while any bound shader uses an embedded
+    /// sampler through a descriptor mapping (a mapping whose `pEmbeddedSampler` is not
+    /// null), the specification requires the reserved range size of the sampler heap to
+    /// be at least `minSamplerHeapReservedRangeWithEmbedded`. It must also be at least
+    /// `minSamplerHeapReservedRange` whenever the heap is bound.
     ///
     /// ```
     /// use vulkan::vk;
