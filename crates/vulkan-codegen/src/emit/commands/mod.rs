@@ -960,12 +960,12 @@ mod tests {
             (&[][..], String::new()),
             (
                 &["VK_ERROR_DEVICE_LOST"][..],
-                " The registry lists [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST) as the error codes of the command."
+                " The registry lists [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST) as the error code of the command."
                     .to_string(),
             ),
             (
                 &["VK_ERROR_OUT_OF_HOST_MEMORY", "VK_ERROR_DEVICE_LOST"][..],
-                " The registry lists [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY) or [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST) as the error codes of the command."
+                " The registry lists [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY) and [`VK_ERROR_DEVICE_LOST`](VkResult::ERROR_DEVICE_LOST) as the error codes of the command."
                     .to_string(),
             ),
         ] {
@@ -1042,6 +1042,24 @@ mod tests {
                         c.name
                     );
                 }
+                let listed = match c.error_codes.as_slice() {
+                    [] => String::new(),
+                    [only] => format!(
+                        " The registry lists {} as the error code of the command.",
+                        model.link(&model.cfg(c.protect.as_deref()), only)
+                    ),
+                    [.., second_to_last, last] => format!(
+                        "[`{second_to_last}`]({}) and [`{last}`]({}) as the error codes of the command.",
+                        result_code(&model, second_to_last),
+                        result_code(&model, last)
+                    ),
+                };
+                assert!(
+                    errors.ends_with(&listed),
+                    "{}: {errors} does not end with {listed}",
+                    c.name
+                );
+                assert!(c.error_codes.len() >= 3, "{}", c.name);
                 acquiring.insert(c.name.as_str());
             }
             if returns_every_code_but_success {

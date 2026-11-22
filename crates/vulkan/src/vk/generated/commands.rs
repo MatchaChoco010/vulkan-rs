@@ -44631,7 +44631,7 @@ impl crate::Device {
     /// [`VK_ERROR_OUT_OF_DATE_KHR`](VkResult::ERROR_OUT_OF_DATE_KHR),
     /// [`VK_ERROR_SURFACE_LOST_KHR`](VkResult::ERROR_SURFACE_LOST_KHR),
     /// [`VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT`](VkResult::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT),
-    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
+    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) and
     /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) as the error codes of the
     /// command.
     ///
@@ -44679,7 +44679,7 @@ impl crate::Device {
     /// [`VK_ERROR_OUT_OF_DATE_KHR`](VkResult::ERROR_OUT_OF_DATE_KHR),
     /// [`VK_ERROR_SURFACE_LOST_KHR`](VkResult::ERROR_SURFACE_LOST_KHR),
     /// [`VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT`](VkResult::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT),
-    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
+    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) and
     /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) as the error codes of the
     /// command.
     ///

@@ -309,13 +309,11 @@ impl Call<'_> {
     fn every_other_code_is_an_error(&self) -> String {
         let cfg = self.model.cfg(self.c.protect.as_deref());
         let link = |code: &String| self.model.link(&cfg, code);
-        let listed = if self.c.error_codes.is_empty() {
-            String::new()
-        } else {
-            format!(
-                " The registry lists {} as the error codes of the command.",
-                codes(self.model, &cfg, &self.c.error_codes)
-            )
+        let errors = join_and(self.c.error_codes.iter().map(link).collect());
+        let listed = match self.c.error_codes.len() {
+            0 => String::new(),
+            1 => format!(" The registry lists {errors} as the error code of the command."),
+            _ => format!(" The registry lists {errors} as the error codes of the command."),
         };
         format!(
             "Returns the result code of the command if it is any code other than {}, the success codes that the registry lists for the command, whether the code is negative or not.{listed}",
