@@ -19,6 +19,7 @@ pub struct MappedAllocation<'a> {
     allocator: &'a mut Allocator,
     allocation: &'a Allocation,
     ptr: NonNull<u8>,
+    len: usize,
 }
 
 impl<'a> MappedAllocation<'a> {
@@ -26,11 +27,13 @@ impl<'a> MappedAllocation<'a> {
         allocator: &'a mut Allocator,
         allocation: &'a Allocation,
         ptr: NonNull<u8>,
+        len: usize,
     ) -> Self {
         Self {
             allocator,
             allocation,
             ptr,
+            len,
         }
     }
 
@@ -47,7 +50,7 @@ impl<'a> MappedAllocation<'a> {
     /// While the slice is in use, neither the device nor any other host pointer may
     /// write these bytes.
     pub unsafe fn as_bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.allocation.size() as usize) }
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
 
     /// All bytes of the allocation, writable.
@@ -57,9 +60,7 @@ impl<'a> MappedAllocation<'a> {
     /// While the slice is in use, neither the device nor any other host pointer may
     /// read or write these bytes.
     pub unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
-        unsafe {
-            std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.allocation.size() as usize)
-        }
+        unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
     }
 
     /// The bytes `offset..offset + size` of the allocation, or `None` if the range does
