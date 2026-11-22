@@ -231,7 +231,7 @@ fn can_defer(model: &Model<'_>, c: &Command) -> bool {
         .any(|code| model.result_code(code) == "VK_OPERATION_DEFERRED_KHR")
 }
 
-const DEFERRED_SAFETY: &str = "If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can read and write the memory that the arguments point to until the deferred operation is complete: that memory, including the slices and the structures and arrays that they point to, has to stay allocated and unchanged until then, and what the command writes must not be read before.";
+const DEFERRED_SAFETY: &str = "If the command is deferred, that is, it returns `VK_OPERATION_DEFERRED_KHR`, the implementation can access the arguments until the deferred operation is complete. Until then, the memory that the arguments point to, including the slices and the structures and arrays that they point to, has to stay allocated and unchanged, and what the command writes must not be read; the arguments that the command requires to be externally synchronized must not be accessed; and the Vulkan objects passed to it must not be passed to any other command as externally synchronized parameters.";
 
 fn creates_a_dispatching_handle(c: &Command) -> bool {
     c.params.last().is_some_and(|p| {
@@ -1221,19 +1221,66 @@ mod tests {
 
     #[test]
     fn deferrable_commands_document_how_long_the_memory_has_to_live() {
-        let out = emit(&Model::new(&deferrable_creation()));
-        let documented = out
-            .lines()
-            .filter(|line| line.contains("VK_OPERATION_DEFERRED_KHR"))
-            .count();
+        let ir = deferrable_creation();
+        let model = Model::new(&ir);
+        let c = &ir.commands[0];
+        let lifetime =
+            "the implementation can access the arguments until the deferred operation is complete";
+        let words = |text: String| text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let raw = words(raw_command(&model, c, Dispatch::Device).replace("///", ""));
+        let wrapper = words(wrapper::wrapper(&model, c, Dispatch::Device).replace("///", ""));
+        for (what, text) in [("raw command", &raw), ("wrapper", &wrapper)] {
+            assert_eq!(text.matches(lifetime).count(), 1, "{what}: {text}");
+            assert!(
+                text.contains(
+                    "must not be passed to any other command as externally synchronized parameters"
+                ),
+                "{what}: {text}"
+            );
+        }
         assert!(
-            out.contains("until the deferred operation is complete"),
-            "{out}"
+            wrapper.contains("What `pipelines` holds depends on the result: after `VK_SUCCESS`, the created handles; after `VK_OPERATION_DEFERRED_KHR`, nothing that may be read before the deferred operation is complete"),
+            "{wrapper}"
         );
-        assert!(
-            documented >= 2,
-            "the raw command and the wrapper document deferral"
-        );
+        let not_deferrable = only(result_command(
+            "vkCreateComputePipelines",
+            &["VK_SUCCESS"],
+            vec![
+                field("device", "VkDevice"),
+                field("createInfoCount", "uint32_t"),
+                counted("pSources", "const VkBuffer*", "createInfoCount"),
+                counted("pPipelines", "VkPipeline*", "createInfoCount"),
+            ],
+        ));
+        assert!(!words(emit(&Model::new(&not_deferrable))).contains("deferred operation"));
+    }
+
+    fn raw_call_arguments<'a>(out: &'a str, raw: &str) -> Vec<&'a str> {
+        let start = out
+            .find(&format!("self.{raw}("))
+            .unwrap_or_else(|| panic!("no call of {raw} in {out}"))
+            + raw.len()
+            + "self.(".len();
+        let mut depth = 0;
+        let mut arguments = Vec::new();
+        let mut from = start;
+        for (offset, c) in out[start..].char_indices() {
+            match c {
+                '(' | '[' | '{' | '<' => depth += 1,
+                ')' if depth == 0 => {
+                    arguments.push(out[from..start + offset].trim());
+                    break;
+                }
+                ')' | ']' | '}' | '>' => depth -= 1,
+                ',' if depth == 0 => {
+                    arguments.push(out[from..start + offset].trim());
+                    from = start + offset + 1;
+                }
+                _ => {}
+            }
+        }
+        arguments.retain(|argument| !argument.is_empty());
+        arguments
     }
 
     #[test]
@@ -1262,11 +1309,48 @@ mod tests {
                     &statement[..statement.len().min(80)]
                 );
             }
-            assert!(
-                !out.contains("for ("),
-                "{}: the wrapper builds arrays of its own",
-                c.name
-            );
+            let params = model.dispatch(c).explicit_params(c);
+            let arguments = params.iter().map(argument_name).collect::<BTreeSet<_>>();
+            let vocabulary = [
+                "as",
+                "as_mut",
+                "as_mut_ptr",
+                "as_ptr",
+                "core",
+                "ptr",
+                "null",
+                "null_mut",
+                "map_or",
+                "from_ref",
+                "from_mut",
+                "x",
+                "mut",
+                "u32",
+                "usize",
+                "Bool32",
+                "self",
+                "handle",
+            ];
+            let passed = raw_call_arguments(&out, &raw_name(c));
+            assert_eq!(passed.len(), params.len(), "{}: {passed:?}", c.name);
+            for argument in passed {
+                for word in argument
+                    .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .filter(|word| !word.is_empty())
+                {
+                    let caller_owned = arguments.contains(word)
+                        || word.strip_suffix("_len").is_some_and(|count| {
+                            arguments.contains(count)
+                                || params.iter().any(|p| argument_name(p) == count)
+                        })
+                        || vocabulary.contains(&word);
+                    assert!(
+                        caller_owned,
+                        "{}: the argument `{argument}` passes `{word}`, which is not an argument of the wrapper",
+                        c.name
+                    );
+                }
+            }
         }
         assert_eq!(
             deferrable,

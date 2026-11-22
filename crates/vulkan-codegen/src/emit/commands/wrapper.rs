@@ -1,7 +1,9 @@
 use super::inputs::Inputs;
 use super::shape::Shape;
-use super::{argument_name, called, not_loaded, provided, raw_name, with_deferred_safety};
-use crate::docs::{Doc, join_or};
+use super::{
+    argument_name, called, can_defer, not_loaded, provided, raw_name, with_deferred_safety,
+};
+use crate::docs::{Doc, join_and, join_or};
 use crate::emit::arrow;
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
 use crate::naming::command_name;
@@ -40,6 +42,10 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
             let owner = argument_name(&params[*info]);
             call.fills_vector(*out, &format!("{owner}.{member} as usize"))
         }
+    };
+    let note = match deferred_outputs(model, c, params) {
+        Some(outputs) => format!("{note} {outputs}"),
+        None => note,
     };
     let note = if inputs.has_slices_of_slices {
         format!(
@@ -107,6 +113,24 @@ fn doc(
         )
         .section("Panics", format!("{}{lengths}", not_loaded(c)))
         .alias(&c.name)
+}
+
+fn deferred_outputs(model: &Model<'_>, c: &Command, params: &[Field]) -> Option<String> {
+    if !can_defer(model, c) {
+        return None;
+    }
+    let outputs = params
+        .iter()
+        .filter(|p| CType::of(p).pointers == [false] && p.len.is_some() && model.is_handle(&p.ty))
+        .map(|p| format!("`{}`", argument_name(p)))
+        .collect::<Vec<_>>();
+    if outputs.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "What {} holds depends on the result: after `VK_SUCCESS`, the created handles; after `VK_OPERATION_DEFERRED_KHR`, nothing that may be read before the deferred operation is complete, and then what the result of the deferred operation says; after any other result, null handles for the elements that the command could not create, and valid handles, which have to be destroyed, for the others.",
+        join_and(outputs)
+    ))
 }
 
 fn codes(model: &Model<'_>, cfg: &Cfg, codes: &[String]) -> String {
