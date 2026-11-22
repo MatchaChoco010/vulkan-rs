@@ -43,9 +43,10 @@ fn attribute_entries(list: &str) -> Vec<String> {
 
 fn column_count(cols: &str) -> Option<usize> {
     let cols = cols.replace(' ', "");
-    if !cols.is_empty() && cols.bytes().all(|b| b.is_ascii_digit()) {
-        let count = cols.parse::<usize>().ok()?;
-        return (count > 0 && count.to_string() == cols).then_some(count);
+    if let Ok(count) = cols.parse::<usize>()
+        && count.to_string() == cols
+    {
+        return Some(count);
     }
     let mut count = 0;
     for column in cols.split([',', ';']) {
@@ -275,7 +276,8 @@ pub(crate) fn read(text: &str) -> Option<Table> {
                 let (key, value) = entry.split_once('=').unwrap_or((&entry, ""));
                 let options = match key.trim() {
                     "cols" => {
-                        columns = Some(column_count(value.trim().trim_matches('"'))?);
+                        columns = Some(column_count(value.trim().trim_matches('"'))?)
+                            .filter(|count| *count > 0);
                         continue;
                     }
                     "format" if value.trim().trim_matches('"') != "psv" => return None,
@@ -633,8 +635,22 @@ mod tests {
     fn a_single_number_of_columns_spreads_the_columns_equally() {
         assert_eq!(column_count("3"), Some(3));
         assert_eq!(column_count(" 2 "), Some(2));
-        assert_eq!(column_count("0"), None);
-        assert_eq!(column_count("03"), None);
+        assert_eq!(column_count("0"), Some(0));
+        assert_eq!(column_count("03"), Some(1));
+        assert_eq!(column_count("007"), Some(1));
+        let one_column = table(&["[cols=\"03\"]", "|===", "|a|b", "|==="]);
+        assert_eq!(
+            one_column.rows,
+            vec![vec![lines(&["a"])], vec![lines(&["b"])]]
+        );
+        let unspecified = table(&["[cols=\"0\"]", "|===", "|a|b", "|c|d", "|==="]);
+        assert_eq!(
+            unspecified.rows,
+            vec![
+                vec![lines(&["a"]), lines(&["b"])],
+                vec![lines(&["c"]), lines(&["d"])]
+            ]
+        );
         let table = table(&[
             "[cols=\"2\",options=\"header\"]",
             "|===",
