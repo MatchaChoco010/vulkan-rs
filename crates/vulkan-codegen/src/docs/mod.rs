@@ -399,6 +399,13 @@ mod tests {
                     file: "chapters/shades.adoc".to_string(),
                     ..Default::default()
                 },
+                DocPage {
+                    name: "VkTintFlagBits".to_string(),
+                    kind: "enums".to_string(),
+                    desc: "Tints of a color".to_string(),
+                    file: "chapters/tints.adoc".to_string(),
+                    ..Default::default()
+                },
             ],
             tables: vec![
                 table(
@@ -489,6 +496,32 @@ mod tests {
                         "|===",
                     ],
                 ),
+                table(
+                    None,
+                    "chapters/tints.adoc",
+                    &[
+                        ".Uses of Tints",
+                        "[options=\"header\"]",
+                        "|===",
+                        "|Tint |Use",
+                        "|ename:VK_TINT_WARM_BIT |sunsets",
+                        "|ename:VK_TINT_COOL_BIT |shadows",
+                        "|===",
+                    ],
+                ),
+                table(
+                    None,
+                    "chapters/shades.adoc",
+                    &[
+                        ".Shades and Tints",
+                        "[options=\"header\"]",
+                        "|===",
+                        "|Value |Use",
+                        "|ename:VK_SHADE_TINTED |sometimes",
+                        "|ename:VK_TINT_WARM_BIT |often",
+                        "|===",
+                    ],
+                ),
             ],
         }
     }
@@ -535,6 +568,7 @@ mod tests {
                 "VK_SHADE_MIXED",
                 "VK_SHADE_BARE",
                 "VK_SHADE_FOREIGN",
+                "VK_SHADE_TINTED",
             ]
             .iter()
             .enumerate()
@@ -546,7 +580,56 @@ mod tests {
             .collect(),
             ..Default::default()
         });
+        ir.bitmasks.push(vulkan_registry::Bitmask {
+            name: "VkTintFlagBits".to_string(),
+            flags_name: "VkTintFlags".to_string(),
+            bit_width: 32,
+            fields: vec![
+                EnumField {
+                    name: "VK_TINT_WARM_BIT".to_string(),
+                    value: "1".to_string(),
+                    ..Default::default()
+                },
+                EnumField {
+                    name: "VK_TINT_COLD_BIT".to_string(),
+                    aliases: vec!["VK_TINT_COOL_BIT".to_string()],
+                    value: "2".to_string(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
         ir
+    }
+
+    #[test]
+    fn a_table_outside_reference_pages_describes_the_values_of_one_bitmask_and_their_aliases() {
+        let (ir, docs) = (ir(), docs());
+        let model = Model::with_docs(&ir, &docs);
+        for (value, usage) in [
+            ("VK_TINT_WARM_BIT", "sunsets"),
+            ("VK_TINT_COOL_BIT", "shadows"),
+        ] {
+            assert_eq!(
+                model.tabulated(&Cfg::default(), "VkTintFlagBits", value),
+                Some(vec![
+                    Block::Text(format!(
+                        "`{value}` in the table “Uses of Tints” of the specification:"
+                    )),
+                    Block::list([format!("Use: {usage}")]),
+                ])
+            );
+        }
+        assert_eq!(
+            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_TINTED"),
+            None,
+            "a table that also has rows for the values of a bitmask does not describe the value"
+        );
+        assert_eq!(
+            model.tabulated(&Cfg::default(), "VkTintFlagBits", "VK_TINT_COLD_BIT"),
+            None,
+            "the table has no row for the value"
+        );
     }
 
     #[test]

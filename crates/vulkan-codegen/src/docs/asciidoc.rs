@@ -812,8 +812,247 @@ mod tests {
         })
     }
 
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    enum Rendering {
+        Code,
+        Strong,
+        ReferencePage,
+        Normative,
+    }
+
+    const WORD: &str = "[A-Za-z0-9_]{1,3}";
+
+    fn specified_macros() -> Vec<(&'static str, String, Rendering)> {
+        let word_or_stars = "[A-Za-z0-9_*]{1,4}".to_string();
+        let mut macros = vec![
+            (
+                "pname",
+                format!("{WORD}((\\.|->){WORD}){{0,2}}"),
+                Rendering::Code,
+            ),
+            (
+                "code",
+                format!("{WORD}([.*]{WORD}){{0,2}}\\*{{0,2}}"),
+                Rendering::Code,
+            ),
+            (
+                "reflink",
+                "[-A-Za-z0-9_]{1,4}".to_string(),
+                Rendering::ReferencePage,
+            ),
+        ];
+        for name in ["ptext", "stext", "ftext", "etext"] {
+            macros.push((name, word_or_stars.clone(), Rendering::Code));
+        }
+        for name in [
+            "sname", "fname", "dname", "tname", "slink", "elink", "tlink", "basetype", "ename",
+            "flink", "dlink", "apiext",
+        ] {
+            macros.push((name, WORD.to_string(), Rendering::Code));
+        }
+        for name in STRONG_MACROS {
+            macros.push((name, WORD.to_string(), Rendering::Strong));
+        }
+        for name in NORMATIVE_WORDS {
+            macros.push((name, "[A-Za-z0-9_]{0,3}".to_string(), Rendering::Normative));
+        }
+        macros
+    }
+
+    fn macro_use() -> impl Strategy<Value = (&'static str, String, Rendering)> {
+        proptest::sample::select(specified_macros()).prop_flat_map(|(name, argument, rendering)| {
+            let argument = proptest::string::string_regex(&argument).expect("a regular expression");
+            (Just(name), argument, Just(rendering))
+        })
+    }
+
+    #[test]
+    fn the_macros_with_generated_arguments_are_the_macros_that_the_converter_knows() {
+        let generated = specified_macros()
+            .iter()
+            .map(|(name, _, _)| *name)
+            .collect::<std::collections::BTreeSet<_>>();
+        let known = NORMATIVE_WORDS
+            .iter()
+            .chain(CODE_MACROS)
+            .chain(STRONG_MACROS)
+            .chain(LINK_MACROS.iter().map(|(name, _)| name))
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(generated, known);
+        let mut reached = BTreeMap::<(Rendering, &str), usize>::new();
+        let uses = crate::test_support::deterministic_values(macro_use(), 1024);
+        for (_, argument, rendering) in &uses {
+            for (case, holds) in [
+                ("any argument", true),
+                ("an empty argument", argument.is_empty()),
+                ("a path", argument.contains('.') || argument.contains("->")),
+                ("a star", argument.contains('*')),
+                ("a hyphen", argument.contains('-')),
+            ] {
+                *reached.entry((*rendering, case)).or_default() += usize::from(holds);
+            }
+        }
+        for (case, at_least) in [
+            ((Rendering::Code, "any argument"), 300),
+            ((Rendering::Code, "a path"), 30),
+            ((Rendering::Code, "a star"), 60),
+            ((Rendering::Strong, "any argument"), 30),
+            ((Rendering::ReferencePage, "any argument"), 20),
+            ((Rendering::ReferencePage, "a hyphen"), 5),
+            ((Rendering::Normative, "any argument"), 100),
+            ((Rendering::Normative, "an empty argument"), 20),
+        ] {
+            let uses = reached.get(&case).copied().unwrap_or(0);
+            assert!(
+                uses >= at_least,
+                "only {uses} of 1024 generated macros are {case:?}: {reached:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_macro_without_an_argument_stays_text() {
+        let macros = CODE_MACROS
+            .iter()
+            .chain(STRONG_MACROS)
+            .chain(LINK_MACROS.iter().map(|(name, _)| name));
+        for name in macros {
+            for text in [
+                format!("{name}: x"),
+                format!("a {name}:"),
+                format!("({name}:)"),
+            ] {
+                assert_eq!(markdown(&text), text);
+            }
+        }
+    }
+
+    #[test]
+    fn attribute_names_have_letters_digits_underscores_and_hyphens() {
+        for name in ["max-size", "max_size", "a1", "-", "_", "0"] {
+            assert_eq!(
+                convert(&format!("a {{{name}}} b")),
+                Err(Unsupported::Attribute(name.to_string()))
+            );
+        }
+        for text in [
+            "a {} b",
+            "a {x y} b",
+            "a {x.y} b",
+            "a {x b",
+            "a {x",
+            "a {",
+            "{}",
+            "}{",
+        ] {
+            assert_eq!(markdown(text), text);
+        }
+        assert_eq!(markdown("{times}{times} {{times}}"), "×× {×}");
+    }
+
+    #[test]
+    fn only_a_plus_between_a_space_and_the_end_of_a_line_is_a_line_break() {
+        assert_eq!(markdown("first +\nsecond"), "first \nsecond");
+        assert_eq!(markdown("a b\nc x\nd"), "a b\nc x\nd");
+        assert_eq!(markdown("a+\nb and a +b\nc"), "a+\nb and a +b\nc");
+    }
+
+    #[test]
+    fn subscripts_and_superscripts_have_text_without_spaces() {
+        assert_eq!(markdown("a~i~ and b^2^"), "a<sub>i</sub> and b<sup>2</sup>");
+        assert_eq!(markdown("a ~~ b ^^ c"), "a \\~\\~ b ^^ c");
+        assert_eq!(markdown("x~ y~ and x^ y^"), "x\\~ y\\~ and x^ y^");
+    }
+
+    #[test]
+    fn a_mark_closes_after_text_and_a_single_mark_only_before_the_end_of_a_word() {
+        assert_eq!(markdown("*a *b* c"), "**a \\*b** c");
+        assert_eq!(markdown("*a * b* c"), "**a \\* b** c");
+        assert_eq!(markdown("*a*b c* d"), "**a\\*b c** d");
+        assert_eq!(markdown("**a **b** c"), "**a \\*\\*b** c");
+        assert_eq!(markdown("**a**b"), "**a**b");
+        assert_eq!(markdown("* a* and ** a**"), "\\* a\\* and \\*\\* a\\*\\*");
+    }
+
+    #[test]
+    fn a_plus_that_no_later_plus_can_close_stays_text() {
+        assert_eq!(markdown("a +x + y"), "a +x + y");
+        assert_eq!(markdown("a +x+y z"), "a +x+y z");
+        assert_eq!(markdown("a +x y"), "a +x y");
+        assert_eq!(markdown("a + x+ y"), "a + x+ y");
+    }
+
+    #[test]
+    fn math_is_not_searched_for_attributes() {
+        assert_eq!(markdown("x latexmath:[a{b}] y"), "x `a{b}` y");
+        assert_eq!(markdown("latexmath:[a[i] + {b}] y"), "`a[i] + {b}` y");
+        assert_eq!(
+            markdown("{times} latexmath:[{times}] {times} latexmath:[a_{i}] {times}"),
+            "× `{times}` × `a_{i}` ×"
+        );
+        assert_eq!(
+            convert("latexmath:[{a} b"),
+            Err(Unsupported::Unterminated("latexmath"))
+        );
+        assert_eq!(
+            convert("a latexmath:[b"),
+            Err(Unsupported::Unterminated("latexmath"))
+        );
+    }
+
     proptest! {
         #![proptest_config(crate::test_support::proptest_config(1024))]
+
+        #[test]
+        fn a_macro_takes_the_argument_that_the_macro_of_the_specification_takes(
+            before in proptest::sample::select(&["", "a ", "(", "x, ", "-"][..]),
+            (name, argument, rendering) in macro_use(),
+            after in proptest::sample::select(&["", " x", ", x", ") x", ": x", ". x", "."][..]),
+        ) {
+            let rendered = match rendering {
+                Rendering::Code => format!("`{argument}`"),
+                Rendering::Strong => format!("**{argument}**"),
+                Rendering::ReferencePage => {
+                    format!("[`{argument}`](https://example.org/{argument}.html)")
+                }
+                Rendering::Normative => format!("{name}{argument}"),
+            };
+            let source = format!("{before}{name}:{argument}{after}");
+            prop_assert_eq!(
+                convert(&source),
+                Ok(format!("{before}{rendered}{after}")),
+                "{:?}", source
+            );
+        }
+
+        #[test]
+        fn a_url_without_a_label_is_linked_without_the_punctuation_after_it(
+            (scheme, address) in proptest::sample::select(
+                &[("https:", "https:"), ("http:", "http:"), ("link:https:", "https:")][..]
+            ),
+            path in "[a-z0-9/_#-]{1,6}",
+            punctuation in "[.,;)]{0,3}",
+            rest in proptest::sample::select(&["", " d", "\nd"][..]),
+        ) {
+            let source = format!("at {scheme}//a.b/{path}{punctuation}{rest}");
+            prop_assert_eq!(
+                convert(&source),
+                Ok(format!("at <{address}//a.b/{path}>{punctuation}{rest}")),
+                "{:?}", source
+            );
+        }
+
+        #[test]
+        fn a_role_span_keeps_only_its_text_whatever_the_role_is(
+            role in proptest::sample::select(&["eq", "a", "small", ".big", "x-y_z"][..]),
+            marks in proptest::sample::select(&["#", "##"][..]),
+            text in "[a-z]{1,3}( [a-z]{1,3}){0,1}",
+            after in proptest::sample::select(&["", " b", ". b"][..]),
+        ) {
+            let source = format!("a [{role}]{marks}{text}{marks}{after}");
+            prop_assert_eq!(convert(&source), Ok(format!("a {text}{after}")), "{:?}", source);
+        }
 
         #[test]
         fn markup_around_non_ascii_text_keeps_the_text(

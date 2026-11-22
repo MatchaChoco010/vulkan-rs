@@ -439,6 +439,26 @@ mod tests {
     }
 
     #[test]
+    fn a_list_item_starts_with_stars_a_blank_and_text() {
+        for stars in 0..6 {
+            for blank in ["", " ", "  ", "\t"] {
+                for text in ["a", "a b", "*a*", "**a**", ""] {
+                    if text.starts_with('*') && blank.is_empty() {
+                        continue;
+                    }
+                    let line = format!("{}{blank}{text}", "*".repeat(stars));
+                    let item = (stars > 0 && !blank.is_empty() && !text.is_empty())
+                        .then_some((stars, text));
+                    assert_eq!(list_item(&line), item, "{line:?}");
+                }
+            }
+        }
+        for line in ["**a** b", " ** a", " a", "** \t "] {
+            assert_eq!(list_item(line), None, "{line:?}");
+        }
+    }
+
+    #[test]
     fn nested_items_follow_their_markers() {
         assert_eq!(
             parts(&[
