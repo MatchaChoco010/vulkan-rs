@@ -557,6 +557,7 @@ impl MemoryBlock {
 }
 
 fn pointer_at(base: NonNull<c_void>, offset: usize) -> Option<NonNull<u8>> {
+    base.as_ptr().addr().checked_add(offset)?;
     NonNull::new(base.as_ptr().cast::<u8>().wrapping_add(offset))
 }
 
@@ -564,6 +565,56 @@ fn pointer_at(base: NonNull<c_void>, offset: usize) -> Option<NonNull<u8>> {
 mod tests {
     use super::*;
     use crate::report::{MemoryRegionSnapshot, snapshot_from_memory_types};
+
+    #[test]
+    fn pointer_at_is_the_base_plus_the_offset_exactly_when_the_sum_is_a_non_null_address() {
+        let mut values = vec![
+            0,
+            1,
+            2,
+            0x30,
+            0x31,
+            4096,
+            usize::MAX / 2,
+            isize::MAX as usize,
+            isize::MAX as usize + 1,
+            usize::MAX - 4096,
+            usize::MAX - 2,
+            usize::MAX - 1,
+            usize::MAX,
+        ];
+        let mut state = 0x2545_F491_4F6C_DD1D_u64;
+        for _ in 0..64 {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            values.push(state as usize);
+        }
+        let mut pairs = Vec::new();
+        for &base in &values {
+            for &offset in &values {
+                pairs.push((base, offset));
+            }
+            if base != 0 {
+                for delta in [0, 1, 2] {
+                    pairs.push((base, (usize::MAX - base).wrapping_add(delta)));
+                }
+            }
+        }
+        for (base, offset) in pairs {
+            let Some(base_ptr) = NonNull::new(std::ptr::without_provenance_mut::<c_void>(base))
+            else {
+                continue;
+            };
+            let expected = base.checked_add(offset).filter(|&address| address != 0);
+            assert_eq!(
+                pointer_at(base_ptr, offset).map(|ptr| ptr.as_ptr().addr()),
+                expected,
+                "base {base:#x} offset {offset:#x}: the pointer must be base + offset when that \
+                 fits in usize, and None otherwise"
+            );
+        }
+    }
 
     #[test]
     fn memory_block_tracks_mapped_allocations_individually() {
