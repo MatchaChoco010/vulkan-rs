@@ -275,3 +275,63 @@ fn allocations_of_another_allocator_with_the_same_layout_are_rejected() {
         assert_eq!(second_device.misuse(), Vec::<String>::new(), "seed {seed}");
     }
 }
+
+#[test]
+fn byte_ranges_outside_the_allocation_are_none() {
+    let fake = FakeDevice::new();
+    let mut allocator = fake.allocator();
+    let mut random = Random::new(0x2545_f491_4f6c_dd1d);
+    unsafe {
+        let _neighbour = allocator.allocate(desc(100, 1, HOST_COHERENT)).unwrap();
+        let allocation = allocator.allocate(desc(1000, 1, HOST_COHERENT)).unwrap();
+        let length = allocation.size() as usize;
+        let mut mapped = allocator.map(&allocation).unwrap();
+        let base = mapped.as_ptr() as usize;
+
+        let interesting = [
+            0,
+            1,
+            length - 1,
+            length,
+            length + 1,
+            usize::MAX - 1,
+            usize::MAX,
+        ];
+        let mut cases = Vec::new();
+        for offset in interesting {
+            for size in interesting {
+                cases.push((offset, size));
+            }
+        }
+        for _ in 0..2000 {
+            let bound = if random.below(4) == 0 {
+                u64::MAX
+            } else {
+                2 * length as u64
+            };
+            cases.push((random.below(bound) as usize, random.below(bound) as usize));
+        }
+
+        for (offset, size) in cases {
+            let inside = offset.checked_add(size).is_some_and(|end| end <= length);
+            let expected = inside.then(|| (base + offset, size));
+            assert_eq!(
+                mapped
+                    .byte_range(offset, size)
+                    .map(|bytes| (bytes.as_ptr() as usize, bytes.len())),
+                expected,
+                "byte_range({offset}, {size}) of {length} bytes"
+            );
+            assert_eq!(
+                mapped
+                    .byte_range_mut(offset, size)
+                    .map(|bytes| (bytes.as_ptr() as usize, bytes.len())),
+                expected,
+                "byte_range_mut({offset}, {size}) of {length} bytes"
+            );
+        }
+        drop(mapped);
+        allocator.free_all();
+    }
+    assert_eq!(fake.misuse(), Vec::<String>::new());
+}

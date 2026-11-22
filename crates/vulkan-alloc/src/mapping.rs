@@ -62,43 +62,20 @@ impl<'a> MappedAllocation<'a> {
         }
     }
 
-    /// The bytes `offset..offset + size` of the allocation.
-    ///
-    /// The safety conditions of [`Allocator::map`] cover the returned slice.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the range does not lie inside the allocation. Use
-    /// [`MappedAllocation::try_byte_range`] when the range comes from untrusted input.
-    pub fn byte_range(&self, offset: usize, size: usize) -> &[u8] {
-        self.try_byte_range(offset, size)
-            .expect("mapped byte range exceeds allocation size")
-    }
-
-    /// The bytes `offset..offset + size` of the allocation, writable.
-    ///
-    /// The safety conditions of [`Allocator::map`] cover the returned slice.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the range does not lie inside the allocation. Use
-    /// [`MappedAllocation::try_byte_range_mut`] when the range comes from untrusted
-    /// input.
-    pub fn byte_range_mut(&mut self, offset: usize, size: usize) -> &mut [u8] {
-        self.try_byte_range_mut(offset, size)
-            .expect("mapped byte range exceeds allocation size")
-    }
-
     /// The bytes `offset..offset + size` of the allocation, or `None` if the range does
-    /// not lie inside the allocation.
-    pub fn try_byte_range(&self, offset: usize, size: usize) -> Option<&[u8]> {
+    /// not lie inside the [`Allocation::size`] bytes of the allocation.
+    ///
+    /// The safety conditions of [`Allocator::map`] cover the returned slice.
+    pub fn byte_range(&self, offset: usize, size: usize) -> Option<&[u8]> {
         let end = offset.checked_add(size)?;
         unsafe { self.as_bytes() }.get(offset..end)
     }
 
     /// The bytes `offset..offset + size` of the allocation, writable, or `None` if the
-    /// range does not lie inside the allocation.
-    pub fn try_byte_range_mut(&mut self, offset: usize, size: usize) -> Option<&mut [u8]> {
+    /// range does not lie inside the [`Allocation::size`] bytes of the allocation.
+    ///
+    /// The safety conditions of [`Allocator::map`] cover the returned slice.
+    pub fn byte_range_mut(&mut self, offset: usize, size: usize) -> Option<&mut [u8]> {
         let end = offset.checked_add(size)?;
         unsafe { self.as_bytes_mut() }.get_mut(offset..end)
     }

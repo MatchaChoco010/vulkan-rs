@@ -119,7 +119,7 @@ pub unsafe fn write_buffer(allocator: &mut Allocator, buffer: &Buffer, bytes: &[
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
         let mut mapped = allocator.map(&buffer.allocation)?;
         mapped
-            .try_byte_range_mut(0, bytes.len())
+            .byte_range_mut(0, bytes.len())
             .context("the data is larger than the buffer")?
             .copy_from_slice(bytes);
         if !coherent {
@@ -140,7 +140,10 @@ pub unsafe fn read_buffer(allocator: &mut Allocator, buffer: &Buffer) -> Result<
         if !coherent {
             mapped.invalidate()?;
         }
-        Ok(mapped.byte_range(0, buffer.size as usize).to_vec())
+        Ok(mapped
+            .byte_range(0, buffer.size as usize)
+            .context("the buffer is larger than its allocation")?
+            .to_vec())
     }
 }
 
