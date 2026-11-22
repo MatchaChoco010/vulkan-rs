@@ -254,7 +254,7 @@ impl DescriptorHeapLayout {
         &self,
         address: vk::DeviceAddress,
     ) -> Result<vk::BindHeapInfoEXT<'static>, HeapLayoutError> {
-        if !address.is_multiple_of(self.alignment) {
+        if !address.is_multiple_of(self.alignment.max(1)) {
             return Err(HeapLayoutError::Misaligned {
                 address,
                 alignment: self.alignment,
@@ -918,5 +918,61 @@ mod tests {
                 alignment: 4096
             })
         );
+    }
+
+    #[test]
+    fn bind_info_accepts_exactly_the_multiples_of_the_alignment_with_0_as_1() {
+        let alignments = [0, 1, 2, 3, 16, 24, 4096, 65536, 1 << 63, u64::MAX];
+        let addresses = [
+            0,
+            1,
+            2,
+            3,
+            16,
+            24,
+            48,
+            0x1_0000,
+            0x1_0040,
+            0xdead_beef,
+            1 << 63,
+            u64::MAX - 1,
+            u64::MAX,
+        ];
+        let mut accepted = 0;
+        let mut rejected = 0;
+        for alignment in alignments {
+            let layout = DescriptorHeapLayout {
+                size: 0x2_0000,
+                alignment,
+                reserved_offset: 0x1_f000,
+                reserved_size: 0x1000,
+            };
+            for address in addresses {
+                let context = format!("address {address:#x}, alignment {alignment}");
+                match layout.bind_info(address) {
+                    Ok(bind) => {
+                        accepted += 1;
+                        assert!(address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert_eq!(bind.heap_range.address, address, "{context}");
+                        assert_eq!(bind.heap_range.size, layout.size, "{context}");
+                        assert_eq!(
+                            bind.reserved_range_offset, layout.reserved_offset,
+                            "{context}"
+                        );
+                        assert_eq!(bind.reserved_range_size, layout.reserved_size, "{context}");
+                    }
+                    Err(error) => {
+                        rejected += 1;
+                        assert!(!address.is_multiple_of(alignment.max(1)), "{context}");
+                        assert_eq!(
+                            error,
+                            HeapLayoutError::Misaligned { address, alignment },
+                            "{context}"
+                        );
+                    }
+                }
+            }
+        }
+        assert!(accepted > 20 && rejected > 20);
     }
 }
