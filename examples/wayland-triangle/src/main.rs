@@ -166,17 +166,18 @@ impl Renderer for App {
         }
     }
 
-    unsafe fn destroy(mut self) {
+    unsafe fn destroy(mut self) -> Result<()> {
         unsafe {
-            let _ = self.gpu.device.device_wait_idle();
+            let idle = self.gpu.device.device_wait_idle();
             self.destroy_swapchain_resources();
             let device = &self.gpu.device;
             device.destroy_pipeline_layout(self.pipeline_layout, None);
             self.frame.destroy(device);
-            let _ = self.vertex_buffer.destroy(device, &mut self.allocator);
+            let freed = self.vertex_buffer.destroy(device, &mut self.allocator);
             drop(self.allocator);
             self.gpu.instance.destroy_surface_khr(self.surface, None);
             self.gpu.destroy();
+            window::first_error([idle.map_err(anyhow::Error::from), freed])
         }
     }
 }
