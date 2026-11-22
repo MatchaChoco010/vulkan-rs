@@ -45256,9 +45256,9 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkBuildAccelerationStructuresKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkBuildAccelerationStructuresKHR.html)
     /// through [`Self::build_acceleration_structures_khr_raw`], which describes the parameters.
-    /// Each slice of slices is passed as an array of pointers to the inner slices. Returns the
-    /// result code of the command when it is not an error, which the registry lists as
-    /// [`VK_SUCCESS`](VkResult::SUCCESS),
+    /// Each slice of slices is passed as an array of pointers to the inner slices, with a null
+    /// pointer for `None`. Returns the result code of the command when it is not an error, which
+    /// the registry lists as [`VK_SUCCESS`](VkResult::SUCCESS),
     /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR) or
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
@@ -45287,7 +45287,7 @@ impl crate::Device {
         &self,
         deferred_operation: DeferredOperationKHR,
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
-        build_range_infos: &[&[AccelerationStructureBuildRangeInfoKHR]],
+        build_range_infos: &[Option<&[AccelerationStructureBuildRangeInfoKHR]>],
     ) -> crate::vk::Result<VkResult> {
         unsafe {
             let info_count_len: usize = infos.len();
@@ -45297,15 +45297,17 @@ impl crate::Device {
                 "vkBuildAccelerationStructuresKHR: `build_range_infos` must have the same length as the other arrays sharing `infoCount`"
             );
             for (element, entry) in infos.iter().zip(build_range_infos.iter()) {
-                assert_eq!(
-                    entry.len(),
-                    element.geometry_count as usize,
-                    "vkBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
-                );
+                if let Some(entry) = entry {
+                    assert_eq!(
+                        entry.len(),
+                        element.geometry_count as usize,
+                        "vkBuildAccelerationStructuresKHR: each `build_range_infos` entry that is not `None` must have `geometry_count` elements"
+                    );
+                }
             }
             let build_range_infos_pointers = build_range_infos
                 .iter()
-                .map(|entry| entry.as_ptr())
+                .map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr()))
                 .collect::<Vec<_>>();
             let result = self.build_acceleration_structures_khr_raw(
                 deferred_operation,
@@ -46870,8 +46872,9 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdBuildAccelerationStructuresIndirectKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBuildAccelerationStructuresIndirectKHR.html)
     /// through [`Self::cmd_build_acceleration_structures_indirect_khr_raw`], which describes the
-    /// parameters. Each slice of slices is passed as an array of pointers to the inner slices. The
-    /// command is provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    /// parameters. Each slice of slices is passed as an array of pointers to the inner slices, with
+    /// a null pointer for `None`. The command is provided by
+    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
     /// # Safety
     ///
@@ -46891,7 +46894,7 @@ impl crate::Device {
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
         indirect_device_addresses: &[DeviceAddress],
         indirect_strides: &[u32],
-        max_primitive_counts: &[&[u32]],
+        max_primitive_counts: &[Option<&[u32]>],
     ) {
         unsafe {
             let info_count_len: usize = infos.len();
@@ -46911,15 +46914,17 @@ impl crate::Device {
                 "vkCmdBuildAccelerationStructuresIndirectKHR: `max_primitive_counts` must have the same length as the other arrays sharing `infoCount`"
             );
             for (element, entry) in infos.iter().zip(max_primitive_counts.iter()) {
-                assert_eq!(
-                    entry.len(),
-                    element.geometry_count as usize,
-                    "vkCmdBuildAccelerationStructuresIndirectKHR: each `max_primitive_counts` entry must have `geometry_count` elements"
-                );
+                if let Some(entry) = entry {
+                    assert_eq!(
+                        entry.len(),
+                        element.geometry_count as usize,
+                        "vkCmdBuildAccelerationStructuresIndirectKHR: each `max_primitive_counts` entry that is not `None` must have `geometry_count` elements"
+                    );
+                }
             }
             let max_primitive_counts_pointers = max_primitive_counts
                 .iter()
-                .map(|entry| entry.as_ptr())
+                .map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr()))
                 .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_indirect_khr_raw(
                 command_buffer,
@@ -46936,8 +46941,9 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdBuildAccelerationStructuresKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBuildAccelerationStructuresKHR.html)
     /// through [`Self::cmd_build_acceleration_structures_khr_raw`], which describes the parameters.
-    /// Each slice of slices is passed as an array of pointers to the inner slices. The command is
-    /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    /// Each slice of slices is passed as an array of pointers to the inner slices, with a null
+    /// pointer for `None`. The command is provided by
+    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
     /// # Safety
     ///
@@ -46955,7 +46961,7 @@ impl crate::Device {
         &self,
         command_buffer: CommandBuffer,
         infos: &[AccelerationStructureBuildGeometryInfoKHR<'_>],
-        build_range_infos: &[&[AccelerationStructureBuildRangeInfoKHR]],
+        build_range_infos: &[Option<&[AccelerationStructureBuildRangeInfoKHR]>],
     ) {
         unsafe {
             let info_count_len: usize = infos.len();
@@ -46965,15 +46971,17 @@ impl crate::Device {
                 "vkCmdBuildAccelerationStructuresKHR: `build_range_infos` must have the same length as the other arrays sharing `infoCount`"
             );
             for (element, entry) in infos.iter().zip(build_range_infos.iter()) {
-                assert_eq!(
-                    entry.len(),
-                    element.geometry_count as usize,
-                    "vkCmdBuildAccelerationStructuresKHR: each `build_range_infos` entry must have `geometry_count` elements"
-                );
+                if let Some(entry) = entry {
+                    assert_eq!(
+                        entry.len(),
+                        element.geometry_count as usize,
+                        "vkCmdBuildAccelerationStructuresKHR: each `build_range_infos` entry that is not `None` must have `geometry_count` elements"
+                    );
+                }
             }
             let build_range_infos_pointers = build_range_infos
                 .iter()
-                .map(|entry| entry.as_ptr())
+                .map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr()))
                 .collect::<Vec<_>>();
             self.cmd_build_acceleration_structures_khr_raw(
                 command_buffer,

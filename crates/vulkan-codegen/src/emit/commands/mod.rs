@@ -877,22 +877,22 @@ mod tests {
         let (ir, docs) = widgets();
         let out = generate_with_docs(&ir, &docs);
         assert!(out.contains(
-            "pub unsafe fn cmd_assemble_widgets_nv(&self, command_buffer: CommandBuffer, batches: &[WidgetBatchNV], first_indices: &[u32], parts: &[&[WidgetPartNV]], limits: &[&[u32]]) {"
+            "pub unsafe fn cmd_assemble_widgets_nv(&self, command_buffer: CommandBuffer, batches: &[WidgetBatchNV], first_indices: &[u32], parts: &[Option<&[WidgetPartNV]>], limits: &[Option<&[u32]>]) {"
         ));
         assert!(out.contains("let batch_count_len: usize = batches.len();"));
         assert!(out.contains("assert_eq!(parts.len(), batch_count_len,"));
         assert!(out.contains("assert_eq!(limits.len(), batch_count_len,"));
         assert!(out.contains(
-            "for (element, entry) in batches.iter().zip(parts.iter()) { assert_eq!(entry.len(), element.part_count as usize, \"vkCmdAssembleWidgetsNV: each `parts` entry must have `part_count` elements\"); }"
+            "for (element, entry) in batches.iter().zip(parts.iter()) { if let Some(entry) = entry { assert_eq!(entry.len(), element.part_count as usize, \"vkCmdAssembleWidgetsNV: each `parts` entry that is not `None` must have `part_count` elements\"); } }"
         ));
         assert!(out.contains(
-            "let parts_pointers = parts.iter().map(|entry| entry.as_ptr()).collect::<Vec<_>>();"
+            "let parts_pointers = parts.iter().map(|entry| entry.map_or(core::ptr::null(), |entry| entry.as_ptr())).collect::<Vec<_>>();"
         ));
         assert!(out.contains(
             "self.cmd_assemble_widgets_nv_raw(command_buffer, batch_count_len as u32, batches.as_ptr(), first_indices.as_ptr(), parts_pointers.as_ptr(), limits_pointers.as_ptr())"
         ));
         assert!(out.contains(
-            "pub unsafe fn join_widgets_nv(&self, deferred_operation: DeferredOperationKHR, batches: &[WidgetBatchNV], parts: &[&[WidgetPartNV]]) -> crate::vk::Result<VkResult> {"
+            "pub unsafe fn join_widgets_nv(&self, deferred_operation: DeferredOperationKHR, batches: &[WidgetBatchNV], parts: &[Option<&[WidgetPartNV]>]) -> crate::vk::Result<VkResult> {"
         ));
         assert!(out.contains(
             "let result = self.join_widgets_nv_raw(deferred_operation, batch_count_len as u32, batches.as_ptr(), parts_pointers.as_ptr()); result.into_result()?; Ok(result)"
@@ -905,14 +905,14 @@ mod tests {
                 "vkCmdBuildAccelerationStructuresKHR",
                 "vkCmdBuildAccelerationStructuresIndirectKHR",
             ],
-            "parts: &[&[WidgetPartNV]]",
+            "parts: &[Option<&[WidgetPartNV]>]",
         );
         assert_generated_alike_under_other_names(
             &ir,
             &docs,
             "vkJoinWidgetsNV",
             &["vkBuildAccelerationStructuresKHR"],
-            "parts: &[&[WidgetPartNV]]",
+            "parts: &[Option<&[WidgetPartNV]>]",
         );
     }
 
@@ -952,7 +952,7 @@ mod tests {
                 }
             }
         }
-        assert!(generate_with_docs(&ir, &docs).contains("parts: &[&[WidgetPartNV]]"));
+        assert!(generate_with_docs(&ir, &docs).contains("parts: &[Option<&[WidgetPartNV]>]"));
     }
 
     #[test]
@@ -989,7 +989,7 @@ mod tests {
             ),
             ("may not write the value", "-> crate::vk::Result<Option<("),
             ("keeps partial output", "-> core::result::Result<Vec<"),
-            ("takes slices of slices", ": &[&["),
+            ("takes slices of slices", ": &[Option<&["),
         ];
         let mut found = BTreeMap::<&'static str, BTreeSet<String>>::new();
         for c in &model.ir.commands {
