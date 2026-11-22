@@ -244,3 +244,48 @@ jobs:
           name: example-output-recent-lavapipe
           path: target/example-output/
           if-no-files-found: ignore
+
+  # The user-facing crates on a 32-bit target: `usize` is narrower than `vk::DeviceSize`,
+  # and the i386 C ABI aligns 64-bit members of structs to 4 bytes.
+  test-i686:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_BUILD_TARGET: i686-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # gcc-multilib: links the test binaries and builds the C side of the layout test
+      # (crates/vulkan/tests/layout.rs) with -m32. libvulkan-dev:i386: the `linked` feature.
+      - name: Install the 32-bit C toolchain, lavapipe and the Vulkan loader
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            gcc-multilib libvulkan1:i386 libvulkan-dev:i386 mesa-vulkan-drivers:i386
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          rustup target add "$CARGO_BUILD_TARGET"
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test -p vulkan -p vulkan-alloc --all-features
+
+      - name: Test without default features
+        run: cargo test -p vulkan --no-default-features
+
+      - name: Report what the device tests skipped
+        run: |
+          {
+            echo "### Device tests (i686)"
+            echo '```'
+            cargo test -p vulkan -p vulkan-alloc --all-features --test device -- --nocapture --test-threads=1 2>&1 \
+              | grep -E "device test on|skipping|test result" \
+              | sed -E 's/^test [a-z_0-9:]+ \.\.\. //' | sort | uniq -c
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
