@@ -22,7 +22,8 @@ git submodule update --init
 
 # Checks out the newest `vulkan-sdk-*` tag in third_party/vulkan and the
 # matching Vulkan-Docs tag in third_party/vulkan-docs, sets the workspace
-# version in Cargo.toml to "<semver>+<SDK tag>" and runs ./tools/generate-vulkan.
+# version in Cargo.toml and the Markdown files to "<semver>+<SDK tag>" and runs
+# ./tools/generate-vulkan.
 ./tools/update-vulkan-headers
 
 cargo test --workspace --all-features

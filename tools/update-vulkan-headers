@@ -9,7 +9,9 @@ Steps:
 3. Check out the revision of the specification that those headers were generated from in
    `third_party/vulkan-docs`: the Vulkan-Docs tag `v<header version>`.
 4. Set the workspace version to `<semver>+<tag>`, bumping the minor version because new
-   headers can rename or remove provisional items (see README.md "Versioning").
+   headers can rename or remove provisional items (see README.md "Versioning"), and
+   rewrite the versions and SDK tags named in the Markdown files to match.
+   `cargo test -p source-lint` fails when they differ.
 5. Run `tools/generate-vulkan`.
 
 Nothing is committed. Review the diff, run the checks, then commit.
@@ -31,6 +33,8 @@ HEADERS = ROOT / "third_party" / "vulkan"
 DOCS = ROOT / "third_party" / "vulkan-docs"
 MANIFEST = ROOT / "Cargo.toml"
 SDK_TAG = re.compile(r"^vulkan-sdk-(\d+)\.(\d+)\.(\d+)\.(\d+)$")
+VERSION_MENTION = re.compile(r"((?:\d+\.)*\d+\+)?vulkan-sdk-\d+(?:\.\d+)*")
+SKIPPED_DIRECTORIES = {"third_party", "target"}
 VERSION_LINE = re.compile(r'^version = "(\d+)\.(\d+)\.(\d+)\+(vulkan-sdk-[0-9.]+)"$', re.M)
 HEADER_VERSION = re.compile(r"<name>VK_HEADER_VERSION</name> (\d+)</type>")
 HEADER_VERSION_COMPLETE = re.compile(
@@ -90,6 +94,27 @@ def set_version(old: tuple[int, int, int, str], new_semver: str, new_tag: str) -
     MANIFEST.write_text(text)
 
 
+def markdown_files() -> list[Path]:
+    """The files that `crates/source-lint` checks the versions of."""
+    files = []
+    for directory, subdirectories, names in os.walk(ROOT):
+        subdirectories[:] = [
+            name for name in subdirectories if name not in SKIPPED_DIRECTORIES and not name.startswith(".")
+        ]
+        files.extend(Path(directory) / name for name in names if name.endswith(".md"))
+    return sorted(files)
+
+
+def set_markdown_versions(version: str) -> None:
+    tag = version.split("+", 1)[1]
+    for path in markdown_files():
+        text = path.read_text()
+        updated = VERSION_MENTION.sub(lambda match: version if match.group(1) else tag, text)
+        if updated != text:
+            path.write_text(updated)
+            print(f"updated the version in {path.relative_to(ROOT)}")
+
+
 def write_github_output(values: dict[str, str]) -> None:
     path = os.environ.get("GITHUB_OUTPUT")
     if not path:
@@ -144,6 +169,7 @@ def main() -> int:
     major, minor, patch, _ = old
     new_semver = f"{major}.{minor}.{patch}" if args.no_bump else f"{major}.{minor + 1}.0"
     set_version(old, new_semver, new_tag)
+    set_markdown_versions(f"{new_semver}+{new_tag}")
     subprocess.run([str(ROOT / "tools" / "generate-vulkan")], cwd=ROOT, check=True)
     # Refresh the version recorded for the workspace crates in Cargo.lock.
     subprocess.run(["cargo", "metadata", "--format-version", "1"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
