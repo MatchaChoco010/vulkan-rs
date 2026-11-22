@@ -6,7 +6,7 @@ Pure Rust Vulkan bindings generated from Khronos Vulkan-Headers.
 
 Workspace crate versions use Rust semver before `+` and record the
 Vulkan-Headers SDK tag after `+`, for example
-`0.2.0+vulkan-sdk-1.4.350.0`.
+`0.4.0+vulkan-sdk-1.4.363.0`.
 
 The SDK tag identifies which Vulkan headers were used. The semver part
 identifies compatibility of this Rust API. Updating Vulkan-Headers should bump
