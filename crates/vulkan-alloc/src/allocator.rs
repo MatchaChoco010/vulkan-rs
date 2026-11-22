@@ -248,8 +248,9 @@ impl Allocator {
     /// # Errors
     ///
     /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation, if its memory type is not `HOST_VISIBLE`, or if `vkMapMemory`
-    ///   returns a null pointer.
+    ///   allocation, if its memory type is not `HOST_VISIBLE`, if `vkMapMemory` returns
+    ///   a null pointer, or if the address of the allocation (the address of the mapped
+    ///   block plus [`Allocation::offset`]) cannot be represented as a non-null pointer.
     /// - [`AllocationError::Vulkan`] if `vkMapMemory` fails.
     ///
     /// # Safety
