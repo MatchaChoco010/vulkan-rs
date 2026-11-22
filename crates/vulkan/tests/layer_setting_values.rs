@@ -1,7 +1,7 @@
 use core::ffi::{c_char, c_void};
 use vulkan::vk;
 
-fn assert_counts_values<T>(ty: vk::LayerSettingTypeEXT, values: &[T]) {
+fn assert_counts_values<T: vk::LayerSettingValue>(ty: vk::LayerSettingTypeEXT, values: &[T]) {
     for len in 0..=values.len() {
         let values = &values[..len];
         let setting = vk::LayerSettingEXT::default().ty(ty).values(values);
@@ -62,11 +62,13 @@ fn a_bool32_layer_setting_holds_one_value_for_one_bool32() {
 fn the_string_pointer_type_has_the_layout_of_a_c_string_pointer() {
     assert_eq!(size_of::<vk::CStrPtr<'_>>(), size_of::<*const c_char>());
     assert_eq!(align_of::<vk::CStrPtr<'_>>(), align_of::<*const c_char>());
-    let names: [vk::CStrPtr<'_>; 2] = [c"error".into(), c"warn".into()];
+    let (error, warn) = (c"error", c"warn");
+    let names: [vk::CStrPtr<'_>; 2] = [error.into(), warn.into()];
     let setting = vk::LayerSettingEXT::default()
         .ty(vk::LayerSettingTypeEXT::STRING)
         .values(&names);
     let pointers =
         unsafe { core::slice::from_raw_parts(setting.p_values.cast::<*const c_char>(), 2) };
-    assert_eq!(pointers, [c"error".as_ptr(), c"warn".as_ptr()]);
+    assert_eq!(pointers, [error.as_ptr(), warn.as_ptr()]);
+    assert_eq!(pointers, [names[0].as_ptr(), names[1].as_ptr()]);
 }

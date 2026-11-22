@@ -51356,10 +51356,12 @@ impl<'a> LayerSettingEXT<'a> {
     /// - [`LayerSettingTypeEXT::STRING`] stands for [`CStrPtr`], or `*const c_char`, a pointer to a
     ///   NUL-terminated string
     ///
+    /// [`LayerSettingValue`] is implemented for these types and for no other.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `valueCount`, a `uint32_t`, can count.
-    pub fn values<T>(mut self, value: &'a [T]) -> Self {
+    pub fn values<T: LayerSettingValue>(mut self, value: &'a [T]) -> Self {
         self.value_count = len_as_count(value.len(), "VkLayerSettingEXT::pValues", "valueCount");
         self.p_values = value.as_ptr().cast();
         self

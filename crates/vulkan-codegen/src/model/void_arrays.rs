@@ -9,12 +9,14 @@ pub(crate) enum VoidArrayLength {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TypedValues {
+    pub(crate) value_trait: &'static str,
     pub(crate) type_member: &'static str,
     pub(crate) type_enum: &'static str,
     pub(crate) value_types: &'static [(&'static str, &'static str)],
 }
 
 const LAYER_SETTING_VALUES: TypedValues = TypedValues {
+    value_trait: "LayerSettingValue",
     type_member: "type",
     type_enum: "VkLayerSettingTypeEXT",
     value_types: &[
@@ -168,39 +170,151 @@ mod tests {
     }
 
     #[test]
-    fn the_void_arrays_of_the_registry_whose_length_does_not_end_in_size_are_the_known_ones() {
-        let arrays = void_arrays_of_the_registry();
-        assert!(arrays.len() >= 39, "{}", arrays.len());
-        let not_ending_in_size = arrays
-            .iter()
+    fn the_void_arrays_of_the_registry_are_the_ones_whose_unit_the_specification_was_read_for() {
+        let arrays = void_arrays_of_the_registry()
+            .into_iter()
             .filter_map(|(owner, array)| {
-                let len = void_array_len(array)?;
-                let length = void_array_length(owner, array);
-                (!len.ends_with("Size")).then(|| {
-                    let unit = match length {
-                        VoidArrayLength::Bytes => "bytes",
-                        VoidArrayLength::Values(_) => "values",
-                    };
-                    (*owner, array.name.as_str(), len, unit)
-                })
+                let unit = match void_array_length(owner, array) {
+                    VoidArrayLength::Bytes => "bytes",
+                    VoidArrayLength::Values(_) => "values",
+                };
+                Some((owner, array.name.as_str(), void_array_len(array)?, unit))
             })
             .collect::<BTreeSet<_>>();
         assert_eq!(
-            not_ending_in_size,
+            arrays,
             BTreeSet::from([
+                ("VkCuModuleCreateInfoNVX", "pData", "dataSize", "bytes"),
+                ("VkCudaModuleCreateInfoNV", "pData", "dataSize", "bytes"),
+                (
+                    "VkDataGraphPipelinePropertyQueryResultARM",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
+                ("VkDebugMarkerObjectTagInfoEXT", "pTag", "tagSize", "bytes"),
+                ("VkDebugUtilsObjectTagInfoEXT", "pTag", "tagSize", "bytes"),
+                (
+                    "VkDeviceFaultDebugInfoKHR",
+                    "pVendorBinaryData",
+                    "vendorBinarySize",
+                    "bytes"
+                ),
+                (
+                    "VkDeviceFaultShaderAbortMessageInfoKHR",
+                    "pMessageData",
+                    "messageDataSize",
+                    "bytes"
+                ),
+                ("VkFrameBoundaryEXT", "pTag", "tagSize", "bytes"),
+                (
+                    "VkHdrVividDynamicMetadataHUAWEI",
+                    "pDynamicMetadata",
+                    "dynamicMetadataSize",
+                    "bytes"
+                ),
                 ("VkHostAddressRangeConstEXT", "address", "size", "bytes"),
                 ("VkHostAddressRangeEXT", "address", "size", "bytes"),
                 ("VkLayerSettingEXT", "pValues", "valueCount", "values"),
+                ("VkPipelineBinaryDataKHR", "pData", "dataSize", "bytes"),
+                (
+                    "VkPipelineCacheCreateInfo",
+                    "pInitialData",
+                    "initialDataSize",
+                    "bytes"
+                ),
+                (
+                    "VkPipelineExecutableInternalRepresentationKHR",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
                 ("VkPushConstantsInfo", "pValues", "size", "bytes"),
+                ("VkShaderCreateInfoEXT", "pCode", "codeSize", "bytes"),
+                ("VkSpecializationInfo", "pData", "dataSize", "bytes"),
+                (
+                    "VkValidationCacheCreateInfoEXT",
+                    "pInitialData",
+                    "initialDataSize",
+                    "bytes"
+                ),
+                (
+                    "VkWriteDescriptorSetInlineUniformBlock",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
                 ("vkCmdPushConstants", "pValues", "size", "bytes"),
+                ("vkCmdUpdateBuffer", "pData", "dataSize", "bytes"),
+                ("vkCmdUpdateMemoryKHR", "pData", "dataSize", "bytes"),
+                (
+                    "vkGetAccelerationStructureHandleNV",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
+                (
+                    "vkGetCudaModuleCacheNV",
+                    "pCacheData",
+                    "pCacheSize",
+                    "bytes"
+                ),
+                ("vkGetDescriptorEXT", "pDescriptor", "dataSize", "bytes"),
+                (
+                    "vkGetEncodedVideoSessionParametersKHR",
+                    "pData",
+                    "pDataSize",
+                    "bytes"
+                ),
                 (
                     "vkGetGpaSessionResultsAMD",
                     "pData",
                     "pSizeInBytes",
                     "bytes"
                 ),
+                (
+                    "vkGetPipelineBinaryDataKHR",
+                    "pPipelineBinaryData",
+                    "pPipelineBinaryDataSize",
+                    "bytes"
+                ),
+                ("vkGetPipelineCacheData", "pData", "pDataSize", "bytes"),
+                ("vkGetQueryPoolResults", "pData", "dataSize", "bytes"),
+                (
+                    "vkGetRayTracingCaptureReplayShaderGroupHandlesKHR",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
+                (
+                    "vkGetRayTracingShaderGroupHandlesKHR",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
+                (
+                    "vkGetRayTracingShaderGroupHandlesNV",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
+                ("vkGetShaderBinaryDataEXT", "pData", "pDataSize", "bytes"),
+                ("vkGetShaderInfoAMD", "pInfo", "pInfoSize", "bytes"),
+                ("vkGetValidationCacheDataEXT", "pData", "pDataSize", "bytes"),
+                (
+                    "vkWriteAccelerationStructuresPropertiesKHR",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
+                (
+                    "vkWriteMicromapsPropertiesEXT",
+                    "pData",
+                    "dataSize",
+                    "bytes"
+                ),
             ]),
-            "check in the specification what the length of a new array counts"
+            "the `void` arrays of the registry changed: read in the specification whether the length of a new array counts bytes or values, list an array counted in values in COUNTED_IN_VALUES, and then list the array here"
         );
     }
 
