@@ -29,20 +29,33 @@ pub fn check_crates(workspace_root: &Path) -> Report {
             "{} does not exist",
             root_module.display()
         );
-        let mut pending = vec![(root_module, true)];
-        while let Some((file, public)) = pending.pop() {
+        let mut pending = vec![(
+            root_module,
+            DocComments::OnPublicApi {
+                module_is_public: true,
+            },
+        )];
+        while let Some((file, doc_comments)) = pending.pop() {
+            let public = doc_comments
+                == DocComments::OnPublicApi {
+                    module_is_public: true,
+                };
             module_is_public.insert(file.clone(), public);
             if public {
                 report
                     .public_modules
                     .insert(relative(workspace_root, &file));
             }
-            let doc_comments = DocComments::OnPublicApi {
-                module_is_public: public,
-            };
             for child in check_file(workspace_root, &file, doc_comments, &mut report) {
+                let child_doc_comments = if child.test_only {
+                    DocComments::InTestModule
+                } else {
+                    DocComments::OnPublicApi {
+                        module_is_public: child.public,
+                    }
+                };
                 match child_module_file(&file, &child) {
-                    Some(child_file) => pending.push((child_file, child.public)),
+                    Some(child_file) => pending.push((child_file, child_doc_comments)),
                     None => report.violations.push(format!(
                         "{}: no source file for the module `{}`",
                         relative(workspace_root, &file).display(),
@@ -258,6 +271,46 @@ mod tests {
                 format!("crates/vulkan/src/open/hidden.rs:1: {rule}"),
                 format!("crates/vulkan/src/orphan.rs:1: {rule}"),
             ]
+        );
+    }
+
+    #[test]
+    fn the_files_of_test_modules_are_not_public_api() {
+        let workspace = Workspace::new(
+            "test-modules",
+            &[
+                (
+                    "crates/vulkan/src/lib.rs",
+                    "#[cfg(test)]\npub mod tests;\npub mod checked;\n",
+                ),
+                (
+                    "crates/vulkan/src/tests.rs",
+                    "//! Tests.\npub mod deeper;\n/// Helper.\npub fn helper() {}\n",
+                ),
+                ("crates/vulkan/src/tests/deeper.rs", DOCUMENTED),
+                (
+                    "crates/vulkan/src/checked.rs",
+                    "#![cfg(all(test, unix))]\n//! Checked.\n/// Item.\npub fn f() {}\n",
+                ),
+            ],
+        );
+        let rule = "doc comments are allowed only on the public API";
+        assert_eq!(
+            workspace.violations(),
+            [
+                format!("crates/vulkan/src/checked.rs:2: inner doc comment: {rule}"),
+                format!("crates/vulkan/src/checked.rs:3: outer doc comment: {rule}"),
+                format!("crates/vulkan/src/tests.rs:1: inner doc comment: {rule}"),
+                format!("crates/vulkan/src/tests.rs:3: outer doc comment: {rule}"),
+                format!("crates/vulkan/src/tests/deeper.rs:1: inner doc comment: {rule}"),
+                format!("crates/vulkan/src/tests/deeper.rs:2: outer doc comment: {rule}"),
+            ]
+        );
+        assert!(
+            !check_crates(&workspace.root)
+                .public_modules
+                .contains(Path::new("crates/vulkan/src/tests.rs")),
+            "a test module was reported as a public module"
         );
     }
 
