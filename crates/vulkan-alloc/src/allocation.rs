@@ -33,8 +33,9 @@ pub struct AllocationCreateDesc<'a> {
     /// Whether the resource is linear: `true` for buffers and for images created with
     /// [`vk::ImageTiling::LINEAR`], `false` for other images.
     ///
-    /// Linear and non-linear allocations never share a block, which keeps them out of
-    /// each other's `bufferImageGranularity` pages.
+    /// Linear and non-linear allocations never share a `VkDeviceMemory`, which keeps
+    /// them out of each other's `bufferImageGranularity` pages. Bind only resources of
+    /// the kind stated here to the allocation.
     pub linear: bool,
     /// Flags for `VkMemoryAllocateFlagsInfo`, chained to the `vkAllocateMemory` call
     /// when not empty. A buffer created with
@@ -135,12 +136,12 @@ impl Allocation {
 
 /// The kind of resource a block holds, as reported by
 /// [`MemoryBlockSnapshot::resource_class`](crate::MemoryBlockSnapshot::resource_class).
-/// Allocations of different classes never share a block.
+///
+/// Allocations of different classes never share a `VkDeviceMemory`, so the
+/// `bufferImageGranularity` limit, which applies between a linear and a non-linear
+/// resource in the same memory object, never applies between two allocations.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AllocationResourceClass {
-    /// Resources whose tiling is not known. [`Allocator::allocate`](crate::Allocator::allocate)
-    /// does not create blocks of this class.
-    Unknown,
     /// Allocations made with [`AllocationCreateDesc::linear`] set to `true`.
     Linear,
     /// Allocations made with [`AllocationCreateDesc::linear`] set to `false`.

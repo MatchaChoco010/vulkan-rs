@@ -32,19 +32,14 @@ pub struct AllocatorCreateDesc<'a> {
     /// aligned to it, and flushed and invalidated ranges are rounded to it. 0 is treated
     /// as 1.
     pub non_coherent_atom_size: u64,
-    /// The `bufferImageGranularity` limit of the physical device. 0 is treated as 1.
-    ///
-    /// [`Allocator::allocate`] keeps linear and non-linear allocations in separate
-    /// blocks, so neighbouring allocations in a block never need this granularity
-    /// between them.
-    pub buffer_image_granularity: u64,
     /// The size in bytes of each shared `VkDeviceMemory` block. An allocation larger than
     /// this gets a block of its own size. 0 is treated as 1.
     pub block_size: u64,
 }
 
 impl<'a> AllocatorCreateDesc<'a> {
-    /// Describes an allocator for `device`, with the limits taken from
+    /// Describes an allocator for `device`, with
+    /// [`AllocatorCreateDesc::non_coherent_atom_size`] taken from
     /// `physical_device_properties.limits` and a [`AllocatorCreateDesc::block_size`] of
     /// 64 MiB.
     ///
@@ -59,7 +54,6 @@ impl<'a> AllocatorCreateDesc<'a> {
             device,
             memory_properties,
             non_coherent_atom_size: physical_device_properties.limits.non_coherent_atom_size,
-            buffer_image_granularity: physical_device_properties.limits.buffer_image_granularity,
             block_size: DEFAULT_BLOCK_SIZE,
         }
     }
@@ -86,7 +80,6 @@ pub struct Allocator {
     device: Device,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
     non_coherent_atom_size: u64,
-    buffer_image_granularity: u64,
     block_size: u64,
     memory_types: Vec<MemoryTypeAllocator>,
 }
@@ -104,7 +97,6 @@ impl Allocator {
             device: desc.device.clone(),
             memory_properties: desc.memory_properties,
             non_coherent_atom_size: desc.non_coherent_atom_size.max(1),
-            buffer_image_granularity: desc.buffer_image_granularity.max(1),
             block_size: desc.block_size.max(1),
             memory_types,
         }
@@ -174,8 +166,7 @@ impl Allocator {
             desc.location.preferred_flags(),
         )
         .ok_or(AllocationError::NoCompatibleMemoryType)?;
-        let requirements =
-            self.adjusted_requirements(memory_type_index, desc.requirements, resource_class)?;
+        let requirements = self.adjusted_requirements(memory_type_index, desc.requirements)?;
         let allocation = unsafe {
             self.allocate_from_type(
                 memory_type_index,
@@ -563,18 +554,12 @@ impl Allocator {
         &self,
         memory_type_index: u32,
         mut requirements: vk::MemoryRequirements,
-        resource_class: AllocationResourceClass,
     ) -> Result<vk::MemoryRequirements, AllocationError> {
         let flags = self
             .memory_type_flags(memory_type_index)
             .ok_or(AllocationError::NoCompatibleMemoryType)?;
-        requirements.alignment = effective_alignment(
-            flags,
-            requirements.alignment,
-            self.non_coherent_atom_size,
-            self.buffer_image_granularity,
-            resource_class,
-        );
+        requirements.alignment =
+            effective_alignment(flags, requirements.alignment, self.non_coherent_atom_size);
         Ok(requirements)
     }
 }

@@ -559,7 +559,7 @@ mod tests {
         let mut block = MemoryBlock::new(
             vk::DeviceMemory(31),
             1024,
-            AllocationResourceClass::Unknown,
+            AllocationResourceClass::Linear,
             false,
             vk::MemoryAllocateFlags::empty(),
         );
@@ -649,14 +649,14 @@ mod tests {
                 Some(MemoryBlock::new(
                     vk::DeviceMemory(11),
                     1024,
-                    AllocationResourceClass::Unknown,
+                    AllocationResourceClass::Linear,
                     false,
                     vk::MemoryAllocateFlags::empty(),
                 )),
                 Some(MemoryBlock::new(
                     vk::DeviceMemory(12),
                     2048,
-                    AllocationResourceClass::Unknown,
+                    AllocationResourceClass::Linear,
                     false,
                     vk::MemoryAllocateFlags::empty(),
                 )),
