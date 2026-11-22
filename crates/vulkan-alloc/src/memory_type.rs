@@ -18,6 +18,7 @@ use vulkan::vk;
 ///   a protected resource, so that no other type can be chosen.
 ///
 /// Memory types of a heap with `VK_MEMORY_HEAP_TILE_MEMORY_BIT_QCOM` are never chosen.
+/// Only heaps below `memory_heap_count` count as such heaps.
 /// Tile memory has its own requirements and is allocated with `vkAllocateMemory`
 /// directly.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -116,6 +117,16 @@ pub(crate) fn memory_type_flags(
         .map(|memory_type| memory_type.property_flags)
 }
 
+pub(crate) fn memory_heap(
+    properties: &vk::PhysicalDeviceMemoryProperties,
+    heap_index: u32,
+) -> Option<&vk::MemoryHeap> {
+    if heap_index >= properties.memory_heap_count {
+        return None;
+    }
+    properties.memory_heaps.get(heap_index as usize)
+}
+
 pub(crate) fn find_memory_type_index(
     properties: &vk::PhysicalDeviceMemoryProperties,
     memory_type_bits: u32,
@@ -134,9 +145,7 @@ pub(crate) fn find_memory_type_index(
         if !flags.contains(required) {
             continue;
         }
-        if properties
-            .memory_heaps
-            .get(memory_type.heap_index as usize)
+        if memory_heap(properties, memory_type.heap_index)
             .is_some_and(|heap| heap.flags.contains(vk::MemoryHeapFlags::TILE_MEMORY_QCOM))
         {
             continue;
@@ -593,6 +602,105 @@ pub(crate) mod tests {
             }
         }
         assert!(left_out > 100 && chosen_count > 100);
+    }
+
+    #[test]
+    fn a_type_is_left_out_exactly_when_its_heap_is_a_reported_tile_memory_heap() {
+        let locations = [
+            MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu,
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::empty(),
+                vk::MemoryPropertyFlags::empty(),
+            ),
+        ];
+        let kinds = [
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ];
+        let heap_counts = (0..=vk::MAX_MEMORY_HEAPS as u32)
+            .chain([17, 32, 1000, u32::MAX])
+            .collect::<Vec<_>>();
+        let mut seed = 0x6a09_e667_f3bc_c909_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut left_out_inside = 0;
+        let mut kept_outside = 0;
+        for _ in 0..6000 {
+            let flags = (0..1 + next() % 8)
+                .map(|_| kinds[(next() % kinds.len() as u64) as usize])
+                .collect::<Vec<_>>();
+            let mut properties = memory_properties(&flags);
+            properties.memory_heap_count =
+                heap_counts[(next() % heap_counts.len() as u64) as usize];
+            for heap in &mut properties.memory_heaps {
+                if next() % 2 == 0 {
+                    heap.flags = vk::MemoryHeapFlags::TILE_MEMORY_QCOM;
+                }
+            }
+            let reported_heaps = properties
+                .memory_heap_count
+                .min(vk::MAX_MEMORY_HEAPS as u32);
+            let mut in_tile_memory = Vec::new();
+            for memory_type in &mut properties.memory_types[..flags.len()] {
+                memory_type.heap_index = match next() % 8 {
+                    0 => u32::MAX,
+                    _ => (next() % (vk::MAX_MEMORY_HEAPS as u64 + 4)) as u32,
+                };
+                let heap = memory_type.heap_index;
+                let tile_flag = properties
+                    .memory_heaps
+                    .get(heap as usize)
+                    .is_some_and(|heap| heap.flags.contains(vk::MemoryHeapFlags::TILE_MEMORY_QCOM));
+                in_tile_memory.push(heap < reported_heaps && tile_flag);
+                left_out_inside += usize::from(heap < reported_heaps && tile_flag);
+                kept_outside += usize::from(heap >= reported_heaps && tile_flag);
+            }
+            let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
+            for location in locations {
+                let (required, preferred) = (location.required_flags(), location.preferred_flags());
+                let candidates = (0..flags.len())
+                    .filter(|&index| memory_type_bits & (1 << index) != 0)
+                    .filter(|&index| flags[index].contains(required))
+                    .filter(|&index| !in_tile_memory[index])
+                    .collect::<Vec<_>>();
+                let score =
+                    |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+                let documented = candidates
+                    .iter()
+                    .copied()
+                    .find(|&index| flags[index].contains(preferred))
+                    .or_else(|| {
+                        let best = candidates.iter().copied().map(score).max()?;
+                        candidates
+                            .iter()
+                            .copied()
+                            .find(|&index| score(index) == best)
+                    })
+                    .map(|index| index as u32);
+                assert_eq!(
+                    find_memory_type_index(&properties, memory_type_bits, required, preferred),
+                    documented,
+                    "heap count {}, heaps of the types {:?}, types in tile memory {in_tile_memory:?}, \
+                     allowed {memory_type_bits:#b}, {location:?}: only a heap below the heap count \
+                     with TILE_MEMORY_QCOM may leave a type out",
+                    properties.memory_heap_count,
+                    properties.memory_types[..flags.len()]
+                        .iter()
+                        .map(|memory_type| memory_type.heap_index)
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+        assert!(left_out_inside > 1000 && kept_outside > 1000);
     }
 
     #[test]

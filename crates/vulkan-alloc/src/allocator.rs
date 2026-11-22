@@ -7,7 +7,9 @@ use crate::allocation::{Allocation, AllocationCreateDesc, AllocationResourceClas
 use crate::block::{BlockRequest, MemoryBlock, MemoryTypeAllocator};
 use crate::error::{AllocationError, FreeError};
 use crate::mapping::MappedAllocation;
-use crate::memory_type::{effective_alignment, find_memory_type_index, memory_type_flags};
+use crate::memory_type::{
+    effective_alignment, find_memory_type_index, memory_heap, memory_type_flags,
+};
 use crate::report::{
     AllocatorSnapshot, AllocatorStats, LiveAllocation, snapshot_from_memory_types,
     stats_from_memory_types,
@@ -26,7 +28,11 @@ pub struct AllocatorCreateDesc<'a> {
     pub device: &'a Device,
     /// The memory properties of the physical device that [`AllocatorCreateDesc::device`]
     /// was created from. Memory types are chosen from them. A `memory_type_count` above
-    /// [`vk::MAX_MEMORY_TYPES`] is treated as [`vk::MAX_MEMORY_TYPES`].
+    /// [`vk::MAX_MEMORY_TYPES`] is treated as [`vk::MAX_MEMORY_TYPES`]. Only the heaps
+    /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) are read, both to leave
+    /// out the memory types of tile memory heaps and to limit the size of shared blocks
+    /// (see [`AllocatorCreateDesc::block_size`]): a memory type whose `heap_index` is not
+    /// below it has no heap.
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     /// The `nonCoherentAtomSize` limit of the physical device.
     ///
@@ -594,17 +600,11 @@ impl Allocator {
     }
 
     fn shared_block_size(&self, memory_type_index: u32) -> u64 {
-        let heap_count = self
-            .memory_properties
-            .memory_heap_count
-            .min(vk::MAX_MEMORY_HEAPS as u32);
         let heap_size = self
             .memory_properties
             .memory_types
             .get(memory_type_index as usize)
-            .map(|memory_type| memory_type.heap_index)
-            .filter(|&heap_index| heap_index < heap_count)
-            .and_then(|heap_index| self.memory_properties.memory_heaps.get(heap_index as usize))
+            .and_then(|memory_type| memory_heap(&self.memory_properties, memory_type.heap_index))
             .map(|heap| heap.size)
             .filter(|&size| size != 0);
         heap_size.map_or(self.block_size, |heap_size| self.block_size.min(heap_size))
