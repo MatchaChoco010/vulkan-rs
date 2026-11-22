@@ -1044,9 +1044,22 @@ mod tests {
             "1. first",
             "12. twelfth",
             ". first",
+            "include::file.adoc[]",
+            "image::picture.svg[]",
+            "++++",
+            "....",
         ] {
             assert_eq!(cell(&[block, "text"]), Cell::Unsupported, "{block}");
         }
+        assert_eq!(
+            cell(&["text", "++++", "x", "++++"]),
+            Cell::Unsupported,
+            "a passthrough block that no `[latexmath]` line introduces"
+        );
+        assert_eq!(
+            cell(&["[latexmath]", "++++", "x +", " y", "++++", "text"]),
+            lines(&["latexmath:[x + y]\ntext"])
+        );
     }
 
     #[test]

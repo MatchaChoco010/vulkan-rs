@@ -328,6 +328,56 @@ mod tests {
     }
 
     #[test]
+    fn a_listed_member_that_is_not_a_counted_array_of_input_stops_the_generator() {
+        const CORRECT: &str = "correct the list of memory that the specification requires to be aligned, which takes this one from VUID-VkShaderCreateInfoEXT-pCode-08492 and VUID-VkShaderCreateInfoEXT-pCode-08493";
+        let size = || field("codeSize", "size_t");
+        for (members, message) in [
+            (
+                vec![size(), counted("pBinary", "const void*", "codeSize")],
+                "VkShaderCreateInfoEXT has no member `pCode`".to_string(),
+            ),
+            (
+                vec![size(), field("pCode", "const void*")],
+                "VkShaderCreateInfoEXT::pCode is a `const void*`, not a pointer to an array of a stated length that the C API reads".to_string(),
+            ),
+            (
+                vec![size(), counted("pCode", "void*", "codeSize")],
+                "VkShaderCreateInfoEXT::pCode is a `void*`, not a pointer to an array of a stated length that the C API reads".to_string(),
+            ),
+            (
+                vec![size(), counted("pCode", "const void* const*", "codeSize")],
+                "VkShaderCreateInfoEXT::pCode is a `const void* const*`, not a pointer to an array of a stated length that the C API reads".to_string(),
+            ),
+        ] {
+            let mut ir = registry_with(vec![shader_binary_data(LISTED)]);
+            ir.structs.push(crate::test_support::structure(
+                "VkShaderCreateInfoEXT",
+                members,
+            ));
+            assert_eq!(
+                catch_quietly(|| assert_listed_aligned_memory_exists(&ir)),
+                Err(format!("{message}: {CORRECT}"))
+            );
+            let s = &ir.structs[0];
+            if let Some(code) = s.members.iter().find(|m| m.name == "pCode") {
+                assert_eq!(
+                    catch_quietly(|| aligned_input(s, code).is_some()),
+                    Err(format!("{message}: {CORRECT}"))
+                );
+            }
+        }
+        let mut ir = registry_with(vec![shader_binary_data(LISTED)]);
+        ir.structs.push(crate::test_support::structure(
+            "VkShaderCreateInfoEXT",
+            vec![size(), counted("pCode", "const void*", "codeSize")],
+        ));
+        assert_listed_aligned_memory_exists(&ir);
+        let s = &ir.structs[0];
+        assert_eq!(aligned_input(s, &s.members[1]), Some(&ALIGNED_INPUTS[0]));
+        assert_eq!(aligned_input(s, &s.members[0]), None);
+    }
+
+    #[test]
     fn everything_listed_is_in_the_registry() {
         assert_listed_aligned_memory_exists(Registry::get());
         for output in ALIGNED_OUTPUTS {
