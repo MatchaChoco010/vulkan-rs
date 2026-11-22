@@ -45,6 +45,29 @@ pub(crate) struct MemoryTypeAllocator {
 }
 
 impl MemoryTypeAllocator {
+    pub(crate) fn block(&self, allocation: &Allocation) -> Result<&MemoryBlock, AllocationError> {
+        let block = self
+            .blocks
+            .get(allocation.block_index)
+            .and_then(Option::as_ref)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        block.validate_allocation(allocation)?;
+        Ok(block)
+    }
+
+    pub(crate) fn block_mut(
+        &mut self,
+        allocation: &Allocation,
+    ) -> Result<&mut MemoryBlock, AllocationError> {
+        let block = self
+            .blocks
+            .get_mut(allocation.block_index)
+            .and_then(Option::as_mut)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        block.validate_allocation(allocation)?;
+        Ok(block)
+    }
+
     pub(crate) fn stats(&self) -> MemoryTypeStats {
         let mut stats = MemoryTypeStats {
             memory_type_index: self.memory_type_index,
@@ -161,7 +184,7 @@ impl MemoryBlock {
         &self,
         allocation: &Allocation,
     ) -> Result<(), AllocationError> {
-        if self.resource_class != allocation.resource_class {
+        if self.memory != allocation.memory || self.resource_class != allocation.resource_class {
             return Err(AllocationError::InvalidAllocation);
         }
         if self
@@ -282,6 +305,13 @@ mod tests {
         wrong_size.size += 64;
         assert_eq!(
             block.validate_allocation(&wrong_size),
+            Err(AllocationError::InvalidAllocation)
+        );
+
+        let mut wrong_memory = make_allocation();
+        wrong_memory.memory = vk::DeviceMemory(33);
+        assert_eq!(
+            block.validate_allocation(&wrong_memory),
             Err(AllocationError::InvalidAllocation)
         );
 

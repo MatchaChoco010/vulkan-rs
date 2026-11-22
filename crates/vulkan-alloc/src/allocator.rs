@@ -68,10 +68,6 @@ impl Allocator {
         }
     }
 
-    fn device(&self) -> Device {
-        self.device.clone()
-    }
-
     pub unsafe fn allocate(
         &mut self,
         desc: AllocationCreateDesc<'_>,
@@ -103,7 +99,8 @@ impl Allocator {
             )
         }?;
         if let Some(name) = desc.name
-            && let Ok(block) = self.block_mut(&allocation)
+            && let Ok(memory_type) = memory_type_mut(&mut self.memory_types, &allocation)
+            && let Ok(block) = memory_type.block_mut(&allocation)
         {
             block.names.insert(allocation.allocation_id, name.into());
         }
@@ -111,51 +108,31 @@ impl Allocator {
     }
 
     pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), AllocationError> {
-        let device = self.device();
-        let memory = {
-            let memory_type = self
-                .memory_types
-                .get_mut(allocation.memory_type_index as usize)
-                .ok_or(AllocationError::InvalidAllocation)?;
-            let slot = memory_type
+        let memory_type = memory_type_mut(&mut self.memory_types, &allocation)?;
+        let block = memory_type.block_mut(&allocation)?;
+        if block.persistent.remove(&allocation.allocation_id) {
+            block.unmark_mapped(allocation.allocation_id)?;
+            block.map_count -= 1;
+            if block.map_count == 0 {
+                unsafe { self.device.unmap_memory(block.memory) };
+                block.mapped_ptr = None;
+            }
+        }
+        if block.is_allocation_mapped(allocation.allocation_id) {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        block
+            .suballocator
+            .free(allocation.allocation_id)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        block.names.remove(&allocation.allocation_id);
+        if block.is_empty()
+            && let Some(block) = memory_type
                 .blocks
                 .get_mut(allocation.block_index)
-                .ok_or(AllocationError::InvalidAllocation)?;
-            let block = slot.as_mut().ok_or(AllocationError::InvalidAllocation)?;
-            if block.memory != allocation.memory {
-                return Err(AllocationError::InvalidAllocation);
-            }
-            block.validate_allocation(&allocation)?;
-            if block.persistent.remove(&allocation.allocation_id) {
-                block.unmark_mapped(allocation.allocation_id)?;
-                block.map_count -= 1;
-                if block.map_count == 0 {
-                    unsafe { device.unmap_memory(block.memory) };
-                    block.mapped_ptr = None;
-                }
-            }
-            if block.is_allocation_mapped(allocation.allocation_id) {
-                return Err(AllocationError::InvalidAllocation);
-            }
-            block
-                .suballocator
-                .free(allocation.allocation_id)
-                .ok_or(AllocationError::InvalidAllocation)?;
-            block.names.remove(&allocation.allocation_id);
-            if block.is_empty() {
-                Some(
-                    slot.take()
-                        .expect("block exists after successful free")
-                        .memory,
-                )
-            } else {
-                None
-            }
-        };
-        if let Some(memory) = memory {
-            unsafe {
-                device.free_memory(memory, None);
-            }
+                .and_then(Option::take)
+        {
+            unsafe { self.device.free_memory(block.memory, None) };
         }
         Ok(())
     }
@@ -164,12 +141,12 @@ impl Allocator {
         &mut self,
         allocation: &Allocation,
     ) -> Result<*mut c_void, AllocationError> {
-        let device = self.device();
         let flags = self.allocation_memory_flags(allocation)?;
         if !flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
             return Err(AllocationError::InvalidAllocation);
         }
-        let block = self.block_mut(allocation)?;
+        let device = &self.device;
+        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
         let offset =
             usize::try_from(allocation.offset()).map_err(|_| AllocationError::InvalidAllocation)?;
         if block.mapped_ptr.is_none() {
@@ -220,7 +197,8 @@ impl Allocator {
             return Ok(pointer);
         }
         let pointer = unsafe { self.map_memory(allocation) }?;
-        self.block_mut(allocation)?
+        memory_type_mut(&mut self.memory_types, allocation)?
+            .block_mut(allocation)?
             .persistent
             .insert(allocation.allocation_id);
         NonNull::new(pointer.cast::<u8>()).ok_or(AllocationError::InvalidAllocation)
@@ -237,8 +215,7 @@ impl Allocator {
     }
 
     pub unsafe fn unmap_memory(&mut self, allocation: &Allocation) -> Result<(), AllocationError> {
-        let device = self.device();
-        let block = self.block_mut(allocation)?;
+        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
         if block.map_count == 0 {
             return Err(AllocationError::InvalidAllocation);
         }
@@ -246,7 +223,7 @@ impl Allocator {
         block.map_count -= 1;
         if block.map_count == 0 {
             unsafe {
-                device.unmap_memory(allocation.memory());
+                self.device.unmap_memory(allocation.memory());
             }
             block.mapped_ptr = None;
         }
@@ -271,7 +248,7 @@ impl Allocator {
 
     pub unsafe fn flush_allocation(&self, allocation: &Allocation) -> Result<(), AllocationError> {
         let range = self.mapped_range(allocation)?;
-        Ok(unsafe { self.device().flush_mapped_memory_ranges(&[range]) }?)
+        Ok(unsafe { self.device.flush_mapped_memory_ranges(&[range]) }?)
     }
 
     pub unsafe fn invalidate_allocation(
@@ -279,7 +256,7 @@ impl Allocator {
         allocation: &Allocation,
     ) -> Result<(), AllocationError> {
         let range = self.mapped_range(allocation)?;
-        Ok(unsafe { self.device().invalidate_mapped_memory_ranges(&[range]) }?)
+        Ok(unsafe { self.device.invalidate_mapped_memory_ranges(&[range]) }?)
     }
 
     pub fn stats(&self) -> AllocatorStats {
@@ -327,10 +304,9 @@ impl Allocator {
 
     pub unsafe fn free_all(&mut self) -> usize {
         let live = self.live_allocation_count();
-        let device = self.device();
         for memory_type in &mut self.memory_types {
             for block in memory_type.blocks.drain(..).flatten() {
-                unsafe { device.free_memory(block.memory, None) };
+                unsafe { self.device.free_memory(block.memory, None) };
             }
         }
         live
@@ -399,7 +375,7 @@ impl Allocator {
             .allocate(requirements.size, requirements.alignment.max(1))
         else {
             unsafe {
-                self.device().free_memory(memory, None);
+                self.device.free_memory(memory, None);
             }
             return Err(AllocationError::OutOfMemory);
         };
@@ -462,37 +438,10 @@ impl Allocator {
     }
 
     fn block(&self, allocation: &Allocation) -> Result<&MemoryBlock, AllocationError> {
-        let memory_type = self
-            .memory_types
+        self.memory_types
             .get(allocation.memory_type_index as usize)
-            .ok_or(AllocationError::InvalidAllocation)?;
-        let block = memory_type
-            .blocks
-            .get(allocation.block_index)
-            .ok_or(AllocationError::InvalidAllocation)?;
-        let block = block.as_ref().ok_or(AllocationError::InvalidAllocation)?;
-        if block.memory != allocation.memory {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        block.validate_allocation(allocation)?;
-        Ok(block)
-    }
-
-    fn block_mut(&mut self, allocation: &Allocation) -> Result<&mut MemoryBlock, AllocationError> {
-        let memory_type = self
-            .memory_types
-            .get_mut(allocation.memory_type_index as usize)
-            .ok_or(AllocationError::InvalidAllocation)?;
-        let block = memory_type
-            .blocks
-            .get_mut(allocation.block_index)
-            .ok_or(AllocationError::InvalidAllocation)?;
-        let block = block.as_mut().ok_or(AllocationError::InvalidAllocation)?;
-        if block.memory != allocation.memory {
-            return Err(AllocationError::InvalidAllocation);
-        }
-        block.validate_allocation(allocation)?;
-        Ok(block)
+            .ok_or(AllocationError::InvalidAllocation)?
+            .block(allocation)
     }
 
     fn mapped_range(
@@ -541,6 +490,15 @@ impl Allocator {
         );
         Ok(requirements)
     }
+}
+
+fn memory_type_mut<'a>(
+    memory_types: &'a mut [MemoryTypeAllocator],
+    allocation: &Allocation,
+) -> Result<&'a mut MemoryTypeAllocator, AllocationError> {
+    memory_types
+        .get_mut(allocation.memory_type_index as usize)
+        .ok_or(AllocationError::InvalidAllocation)
 }
 
 impl Drop for Allocator {
