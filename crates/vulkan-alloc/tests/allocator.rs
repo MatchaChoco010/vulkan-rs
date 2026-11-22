@@ -5,7 +5,11 @@ use std::collections::HashMap;
 use fake_device::{
     DEVICE_LOCAL, FakeDevice, HOST_COHERENT, HOST_NON_COHERENT, MemoryObject, Random, desc,
 };
-use vulkan_alloc::{Allocation, AllocationError, Allocator, FreeError, MemoryRegionState};
+use vulkan::vk;
+use vulkan_alloc::{
+    Allocation, AllocationCreateDesc, AllocationError, AllocationResourceClass, AllocationScheme,
+    Allocator, FreeError, MemoryRegionState,
+};
 
 fn assert_device_holds_what_the_allocator_reports(allocator: &Allocator, fake: &FakeDevice) {
     let mut reported = HashMap::new();
@@ -334,4 +338,83 @@ fn byte_ranges_outside_the_allocation_are_none() {
         allocator.free_all();
     }
     assert_eq!(fake.misuse(), Vec::<String>::new());
+}
+
+#[test]
+fn linear_and_non_linear_allocations_never_share_a_memory_object() {
+    let mut random = Random::new(0x0123_4567_89ab_cdef);
+    for round in 0..50 {
+        let fake = FakeDevice::new();
+        let mut allocator = fake.allocator();
+        let mut live: Vec<(Allocation, bool)> = Vec::new();
+        unsafe {
+            for step in 0..200 {
+                if live.is_empty() || random.below(3) != 0 {
+                    let linear = random.below(2) == 0;
+                    let memory_type =
+                        [DEVICE_LOCAL, HOST_COHERENT, HOST_NON_COHERENT][random.below(3) as usize];
+                    let flags = if random.below(4) == 0 {
+                        vk::MemoryAllocateFlags::DEVICE_ADDRESS
+                    } else {
+                        vk::MemoryAllocateFlags::empty()
+                    };
+                    let export = if random.below(8) == 0 {
+                        vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT
+                    } else {
+                        vk::ExternalMemoryHandleTypeFlags::empty()
+                    };
+                    let scheme = match (random.below(8), linear) {
+                        (0, true) => AllocationScheme::DedicatedBuffer(vk::Buffer(step + 1)),
+                        (0, false) => AllocationScheme::DedicatedImage(vk::Image(step + 1)),
+                        _ => AllocationScheme::GpuAllocatorManaged,
+                    };
+                    let allocation = allocator
+                        .allocate(AllocationCreateDesc {
+                            linear,
+                            memory_allocate_flags: flags,
+                            export_handle_types: export,
+                            allocation_scheme: scheme,
+                            ..desc(1 + random.below(1500), 1 << random.below(9), memory_type)
+                        })
+                        .unwrap();
+                    live.push((allocation, linear));
+                } else {
+                    let index = random.below(live.len() as u64) as usize;
+                    let (allocation, _) = live.swap_remove(index);
+                    allocator.free(allocation).unwrap();
+                }
+
+                let mut kinds: HashMap<vk::DeviceMemory, bool> = HashMap::new();
+                for (allocation, linear) in &live {
+                    let kind = *kinds.entry(allocation.memory()).or_insert(*linear);
+                    assert_eq!(
+                        kind,
+                        *linear,
+                        "round {round}, step {step}: {:?} holds linear and non-linear allocations",
+                        allocation.memory()
+                    );
+                }
+                let snapshot = allocator.snapshot();
+                let blocks = snapshot
+                    .memory_types
+                    .iter()
+                    .flat_map(|memory_type| &memory_type.blocks)
+                    .collect::<Vec<_>>();
+                assert_eq!(blocks.len(), kinds.len(), "round {round}, step {step}");
+                for block in blocks {
+                    let linear = match block.resource_class {
+                        AllocationResourceClass::Linear => true,
+                        AllocationResourceClass::Optimal => false,
+                    };
+                    assert_eq!(
+                        kinds.get(&block.memory),
+                        Some(&linear),
+                        "round {round}, step {step}"
+                    );
+                }
+            }
+            allocator.free_all();
+        }
+        assert_eq!(fake.misuse(), Vec::<String>::new(), "round {round}");
+    }
 }

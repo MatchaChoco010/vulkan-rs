@@ -15,6 +15,7 @@ pub const HOST_NON_COHERENT: u32 = 2;
 
 pub const BLOCK_SIZE: u64 = 4096;
 pub const NON_COHERENT_ATOM_SIZE: u64 = 64;
+pub const LARGEST_BACKED_MEMORY: u64 = 1 << 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MemoryObject {
@@ -85,7 +86,6 @@ impl FakeDevice {
             device: &self.device,
             memory_properties: Self::memory_properties(),
             non_coherent_atom_size: NON_COHERENT_ATOM_SIZE,
-            buffer_image_granularity: 1,
             block_size: BLOCK_SIZE,
         })
     }
@@ -276,6 +276,11 @@ unsafe extern "system" fn map_memory(
         Some(entry) if offset != 0 || size != entry.object.size => Some(format!(
             "vkMapMemory of {memory:?} with offset {offset} and size {size}"
         )),
+        Some(entry) if entry.object.size > LARGEST_BACKED_MEMORY => {
+            entry.object.mapped = true;
+            unsafe { pp_data.write(std::ptr::NonNull::<u8>::dangling().as_ptr().cast()) };
+            None
+        }
         Some(entry) => {
             entry.object.mapped = true;
             let storage = entry

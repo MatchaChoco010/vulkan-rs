@@ -17,14 +17,16 @@ const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
 
 /// The parameters of [`Allocator::new`].
 ///
-/// [`AllocatorCreateDesc::new`] fills every field from the physical device. The fields
-/// are public and can be changed afterwards, for example
-/// [`AllocatorCreateDesc::block_size`].
+/// [`AllocatorCreateDesc::new`] takes the memory properties and the
+/// `nonCoherentAtomSize` limit that are passed to it and sets
+/// [`AllocatorCreateDesc::block_size`] to 64 MiB. The fields are public and can be
+/// changed afterwards.
 pub struct AllocatorCreateDesc<'a> {
     /// The device to allocate from. The allocator keeps a clone of it.
     pub device: &'a Device,
     /// The memory properties of the physical device that [`AllocatorCreateDesc::device`]
-    /// was created from. Memory types are chosen from them.
+    /// was created from. Memory types are chosen from them. A `memory_type_count` above
+    /// [`vk::MAX_MEMORY_TYPES`] is treated as [`vk::MAX_MEMORY_TYPES`].
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     /// The `nonCoherentAtomSize` limit of the physical device.
     ///
@@ -32,19 +34,14 @@ pub struct AllocatorCreateDesc<'a> {
     /// aligned to it, and flushed and invalidated ranges are rounded to it. 0 is treated
     /// as 1.
     pub non_coherent_atom_size: u64,
-    /// The `bufferImageGranularity` limit of the physical device. 0 is treated as 1.
-    ///
-    /// [`Allocator::allocate`] keeps linear and non-linear allocations in separate
-    /// blocks, so neighbouring allocations in a block never need this granularity
-    /// between them.
-    pub buffer_image_granularity: u64,
     /// The size in bytes of each shared `VkDeviceMemory` block. An allocation larger than
     /// this gets a block of its own size. 0 is treated as 1.
     pub block_size: u64,
 }
 
 impl<'a> AllocatorCreateDesc<'a> {
-    /// Describes an allocator for `device`, with the limits taken from
+    /// Describes an allocator for `device`, with
+    /// [`AllocatorCreateDesc::non_coherent_atom_size`] taken from
     /// `physical_device_properties.limits` and a [`AllocatorCreateDesc::block_size`] of
     /// 64 MiB.
     ///
@@ -59,7 +56,6 @@ impl<'a> AllocatorCreateDesc<'a> {
             device,
             memory_properties,
             non_coherent_atom_size: physical_device_properties.limits.non_coherent_atom_size,
-            buffer_image_granularity: physical_device_properties.limits.buffer_image_granularity,
             block_size: DEFAULT_BLOCK_SIZE,
         }
     }
@@ -86,7 +82,6 @@ pub struct Allocator {
     device: Device,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
     non_coherent_atom_size: u64,
-    buffer_image_granularity: u64,
     block_size: u64,
     memory_types: Vec<MemoryTypeAllocator>,
 }
@@ -97,14 +92,17 @@ impl Allocator {
     /// Creates an allocator. No memory is allocated until the first
     /// [`Allocator::allocate`], and no Vulkan call is made here.
     pub fn new(desc: AllocatorCreateDesc<'_>) -> Self {
-        let memory_types = (0..desc.memory_properties.memory_type_count)
+        let mut memory_properties = desc.memory_properties;
+        memory_properties.memory_type_count = memory_properties
+            .memory_type_count
+            .min(vk::MAX_MEMORY_TYPES as u32);
+        let memory_types = (0..memory_properties.memory_type_count)
             .map(MemoryTypeAllocator::new)
             .collect();
         Self {
             device: desc.device.clone(),
-            memory_properties: desc.memory_properties,
+            memory_properties,
             non_coherent_atom_size: desc.non_coherent_atom_size.max(1),
-            buffer_image_granularity: desc.buffer_image_granularity.max(1),
             block_size: desc.block_size.max(1),
             memory_types,
         }
@@ -119,7 +117,11 @@ impl Allocator {
     /// `desc.requirements.memory_type_bits` that have every flag
     /// [`AllocationCreateDesc::location`] requires: the lowest-indexed one that also has
     /// every preferred flag, or else the one with the most preferred flags (the lowest
-    /// index on a tie). Only that memory type is tried.
+    /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
+    /// are left out unless the required or preferred flags of the location include one
+    /// of these two flags, and memory types with `PROTECTED` are left out unless those
+    /// flags include `PROTECTED` (see [`MemoryLocation`](crate::MemoryLocation)). Only
+    /// the chosen memory type is tried.
     ///
     /// The allocation is placed in an existing shared block of that type when one has
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
@@ -131,7 +133,7 @@ impl Allocator {
     /// # Errors
     ///
     /// - [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
-    ///   required flags.
+    ///   required flags, not counting the types that are left out as described above.
     /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0.
     /// - [`AllocationError::Vulkan`] if `vkAllocateMemory` fails, for example with
     ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
@@ -145,7 +147,10 @@ impl Allocator {
     ///   device.
     /// - The `vkAllocateMemory` call made from `desc` must be valid. In particular:
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
-    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); non-empty
+    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
+    ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
+    ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
+    ///   `protectedMemory` feature; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
     ///   type; a block must not be larger than the memory heap of the chosen type; and
@@ -158,6 +163,17 @@ impl Allocator {
     ///   support dedicated allocations (Vulkan 1.1 or `VK_KHR_dedicated_allocation`).
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
+    /// - The resources bound to the returned allocation must be protected resources if
+    ///   its memory type has `PROTECTED`, and must not be if it does not
+    ///   ([`Allocator::allocation_memory_flags`] tells). A location that only prefers
+    ///   `PROTECTED` can be given either; require the flag for a protected resource.
+    /// - Every resource bound to the returned allocation must be a linear resource if
+    ///   [`AllocationCreateDesc::linear`] is `true` and a non-linear resource if it is
+    ///   `false`. The allocator places allocations of the same kind next to each other
+    ///   without the `bufferImageGranularity` padding that a resource of the other kind
+    ///   needs, so a misstated kind makes the resource alias its neighbours. Memory
+    ///   bound to other objects, such as a video session or a data graph pipeline
+    ///   session, may come from an allocation of either kind.
     pub unsafe fn allocate(
         &mut self,
         desc: AllocationCreateDesc<'_>,
@@ -174,8 +190,7 @@ impl Allocator {
             desc.location.preferred_flags(),
         )
         .ok_or(AllocationError::NoCompatibleMemoryType)?;
-        let requirements =
-            self.adjusted_requirements(memory_type_index, desc.requirements, resource_class)?;
+        let requirements = self.adjusted_requirements(memory_type_index, desc.requirements)?;
         let allocation = unsafe {
             self.allocate_from_type(
                 memory_type_index,
@@ -242,8 +257,9 @@ impl Allocator {
     /// # Errors
     ///
     /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation, if its memory type is not `HOST_VISIBLE`, or if `vkMapMemory`
-    ///   returns a null pointer.
+    ///   allocation, if its memory type is not `HOST_VISIBLE`, if `vkMapMemory` returns
+    ///   a null pointer, or if the address of the allocation (the address of the mapped
+    ///   block plus [`Allocation::offset`]) cannot be represented as a non-null pointer.
     /// - [`AllocationError::Vulkan`] if `vkMapMemory` fails.
     ///
     /// # Safety
@@ -276,7 +292,10 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// The same as [`Allocator::map_memory`].
+    /// The same as [`Allocator::map_memory`], and
+    /// [`AllocationError::InvalidAllocation`] if the allocation is larger than
+    /// [`isize::MAX`] bytes, which no slice can cover. Nothing is mapped in that case;
+    /// [`Allocator::map_memory`] has no such limit.
     ///
     /// # Safety
     ///
@@ -284,16 +303,21 @@ impl Allocator {
     /// - [`Allocation::memory`] must not be mapped or unmapped other than through this
     ///   allocator.
     /// - While the guard is alive, neither the device nor a pointer from
-    ///   [`Allocator::map_memory`] or [`Allocator::map_persistent`] may access the
-    ///   allocation's bytes in a way that conflicts with the slices the guard hands out,
-    ///   including through its safe methods: no writes while a shared slice is in use,
-    ///   and no access at all while a mutable slice is in use.
+    ///   [`Allocator::map_memory`], [`Allocator::map_persistent`] or
+    ///   [`MappedAllocation::as_ptr`] may access the allocation's bytes in a way that
+    ///   conflicts with the slices the guard hands out, including through its safe
+    ///   methods: no writes while a shared slice is in use, and no access at all while a
+    ///   mutable slice is in use.
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
     ) -> Result<MappedAllocation<'b>, AllocationError> {
+        let len = usize::try_from(allocation.size)
+            .ok()
+            .filter(|&len| isize::try_from(len).is_ok())
+            .ok_or(AllocationError::InvalidAllocation)?;
         let ptr = unsafe { self.map_host_visible(allocation) }?;
-        Ok(MappedAllocation::new(self, allocation, ptr))
+        Ok(MappedAllocation::new(self, allocation, ptr, len))
     }
 
     /// Maps the allocation until it is freed and returns a pointer to its first byte. The
@@ -563,18 +587,12 @@ impl Allocator {
         &self,
         memory_type_index: u32,
         mut requirements: vk::MemoryRequirements,
-        resource_class: AllocationResourceClass,
     ) -> Result<vk::MemoryRequirements, AllocationError> {
         let flags = self
             .memory_type_flags(memory_type_index)
             .ok_or(AllocationError::NoCompatibleMemoryType)?;
-        requirements.alignment = effective_alignment(
-            flags,
-            requirements.alignment,
-            self.non_coherent_atom_size,
-            self.buffer_image_granularity,
-            resource_class,
-        );
+        requirements.alignment =
+            effective_alignment(flags, requirements.alignment, self.non_coherent_atom_size);
         Ok(requirements)
     }
 }
@@ -618,4 +636,73 @@ fn block_mut<'a>(
     allocation: &Allocation,
 ) -> Result<&'a mut MemoryBlock, AllocationError> {
     memory_type_mut(memory_types, allocation)?.block_mut(allocation)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::c_char;
+
+    use super::*;
+    use crate::allocation::AllocationScheme;
+    use crate::memory_type::MemoryLocation;
+
+    unsafe extern "system" fn no_commands(
+        _device: vk::Device,
+        _name: *const c_char,
+    ) -> vk::PFN_vkVoidFunction {
+        None
+    }
+
+    fn device_without_commands() -> Device {
+        let handle = vk::Device::null();
+        Device::from_raw(handle, unsafe {
+            vk::DeviceFn::load(Some(no_commands), handle)
+        })
+    }
+
+    #[test]
+    fn a_memory_type_count_of_any_size_gives_at_most_the_types_vulkan_can_report() {
+        let device = device_without_commands();
+        for count in [0, 1, 3, 31, 32, 33, 1000, 1 << 20, u32::MAX] {
+            let mut allocator = Allocator::new(AllocatorCreateDesc {
+                device: &device,
+                memory_properties: vk::PhysicalDeviceMemoryProperties {
+                    memory_type_count: count,
+                    ..Default::default()
+                },
+                non_coherent_atom_size: 1,
+                block_size: 4096,
+            });
+            let expected = count.min(vk::MAX_MEMORY_TYPES as u32);
+            assert_eq!(allocator.memory_types.len(), expected as usize, "{count}");
+            for index in [0, 1, 2, 30, 31, 32, 33, 1000, u32::MAX] {
+                assert_eq!(
+                    allocator.memory_type_flags(index).is_some(),
+                    index < expected,
+                    "type {index} of {count}"
+                );
+            }
+            let not_allowed = unsafe {
+                allocator.allocate(AllocationCreateDesc {
+                    name: None,
+                    requirements: vk::MemoryRequirements {
+                        size: 64,
+                        alignment: 1,
+                        memory_type_bits: 0,
+                    },
+                    location: MemoryLocation::GpuOnly,
+                    linear: true,
+                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+                    export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+                    allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                })
+            };
+            assert_eq!(
+                not_allowed,
+                Err(AllocationError::NoCompatibleMemoryType),
+                "{count}"
+            );
+            assert!(allocator.snapshot().memory_types.is_empty(), "{count}");
+        }
+    }
 }

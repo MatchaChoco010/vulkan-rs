@@ -1,12 +1,21 @@
 use vulkan::vk;
 
-use crate::allocation::AllocationResourceClass;
-
 /// The memory property flags an allocation's memory type must have and should have.
 ///
 /// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
 /// every required flag. Among them it takes the lowest-indexed one with every preferred
 /// flag, or else the one with the most preferred flags.
+///
+/// Two kinds of memory types are considered only when the location names their flag as
+/// required or preferred, which only [`MemoryLocation::Custom`] can do:
+///
+/// - types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`, when the location names
+///   one of these two flags. Allocating from such a type is valid only if the device was
+///   created with the `deviceCoherentMemory` feature.
+/// - types with `PROTECTED`, when the location names `PROTECTED`. Allocating from such a
+///   type is valid only if the device was created with the `protectedMemory` feature,
+///   and protected resources, and only those, may be bound to it. Require the flag for
+///   a protected resource, so that no other type can be chosen.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryLocation {
     /// Memory for resources only the device accesses: requires and prefers
@@ -84,6 +93,12 @@ impl MemoryLocation {
     }
 }
 
+const FLAGS_A_LOCATION_HAS_TO_NAME: [vk::MemoryPropertyFlags; 2] = [
+    vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD
+        .union(vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD),
+    vk::MemoryPropertyFlags::PROTECTED,
+];
+
 pub(crate) fn memory_type_flags(
     properties: &vk::PhysicalDeviceMemoryProperties,
     memory_type_index: u32,
@@ -114,6 +129,13 @@ pub(crate) fn find_memory_type_index(
         if !flags.contains(required) {
             continue;
         }
+        let named = required.union(preferred);
+        if FLAGS_A_LOCATION_HAS_TO_NAME
+            .iter()
+            .any(|&group| flags.intersects(group) && !named.intersects(group))
+        {
+            continue;
+        }
         let score = (flags.as_raw() & preferred.as_raw()).count_ones();
         if best.is_none() || score > best_score {
             best = Some(index);
@@ -130,17 +152,12 @@ pub(crate) fn effective_alignment(
     flags: vk::MemoryPropertyFlags,
     requested_alignment: u64,
     non_coherent_atom_size: u64,
-    buffer_image_granularity: u64,
-    resource_class: AllocationResourceClass,
 ) -> u64 {
     let mut alignment = requested_alignment.max(1);
     if flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
         && !flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT)
     {
         alignment = alignment.max(non_coherent_atom_size.max(1));
-    }
-    if resource_class == AllocationResourceClass::Unknown {
-        alignment = alignment.max(buffer_image_granularity.max(1));
     }
     alignment
 }
@@ -265,6 +282,204 @@ pub(crate) mod tests {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         );
         assert_eq!(index, None);
+    }
+
+    #[test]
+    fn device_coherent_memory_types_are_chosen_only_when_the_location_names_them() {
+        let amd = [
+            vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+            vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD
+                | vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+        ];
+        let plain = [
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ];
+        let mut kinds = plain.to_vec();
+        for flags in plain {
+            kinds.extend(amd.map(|amd| flags | amd));
+        }
+        let locations = [
+            MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu,
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::empty(),
+                vk::MemoryPropertyFlags::empty(),
+            ),
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::HOST_VISIBLE,
+                vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+            ),
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::HOST_VISIBLE
+                    | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD,
+                vk::MemoryPropertyFlags::empty(),
+            ),
+        ];
+        let amd_flags = vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD.as_raw()
+            | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD.as_raw();
+        let is_amd = |flags: vk::MemoryPropertyFlags| flags.as_raw() & amd_flags != 0;
+        let documented_choice = |flags: &[vk::MemoryPropertyFlags],
+                                 memory_type_bits: u32,
+                                 location: MemoryLocation,
+                                 consider_unnamed_amd_types: bool| {
+            let (required, preferred) = (location.required_flags(), location.preferred_flags());
+            let named = is_amd(required) || is_amd(preferred);
+            let candidates = (0..flags.len())
+                .filter(|&index| memory_type_bits & (1 << index) != 0)
+                .filter(|&index| flags[index].contains(required))
+                .filter(|&index| consider_unnamed_amd_types || named || !is_amd(flags[index]))
+                .collect::<Vec<_>>();
+            let score = |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+            candidates
+                .iter()
+                .copied()
+                .find(|&index| flags[index].contains(preferred))
+                .or_else(|| {
+                    let best = candidates.iter().copied().map(score).max()?;
+                    candidates
+                        .iter()
+                        .copied()
+                        .find(|&index| score(index) == best)
+                })
+                .map(|index| index as u32)
+        };
+
+        let mut seed = 0x853c_49e6_748f_ea9b_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut left_out = 0;
+        let mut taken = 0;
+        for _ in 0..4000 {
+            let flags = (0..1 + next() % 8)
+                .map(|_| kinds[(next() % kinds.len() as u64) as usize])
+                .collect::<Vec<_>>();
+            let properties = memory_properties(&flags);
+            let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
+            for location in locations {
+                let chosen = find_memory_type_index(
+                    &properties,
+                    memory_type_bits,
+                    location.required_flags(),
+                    location.preferred_flags(),
+                );
+                assert_eq!(
+                    chosen,
+                    documented_choice(&flags, memory_type_bits, location, false),
+                    "types {flags:?}, allowed {memory_type_bits:#b}, {location:?}"
+                );
+                if chosen.is_some_and(|index| is_amd(flags[index as usize])) {
+                    taken += 1;
+                }
+                if chosen != documented_choice(&flags, memory_type_bits, location, true) {
+                    left_out += 1;
+                }
+            }
+        }
+        assert!(left_out > 100 && taken > 100);
+    }
+
+    #[test]
+    fn protected_memory_types_are_chosen_only_when_the_location_names_them() {
+        let protected = vk::MemoryPropertyFlags::PROTECTED;
+        let kinds = [
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT,
+            protected,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL | protected,
+        ];
+        let locations = [
+            MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu,
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::empty(),
+                vk::MemoryPropertyFlags::empty(),
+            ),
+            MemoryLocation::custom(protected, vk::MemoryPropertyFlags::DEVICE_LOCAL),
+            MemoryLocation::custom(vk::MemoryPropertyFlags::DEVICE_LOCAL, protected),
+        ];
+        let documented_choice =
+            |flags: &[vk::MemoryPropertyFlags],
+             memory_type_bits: u32,
+             location: MemoryLocation,
+             consider_unnamed_protected_types: bool| {
+                let (required, preferred) = (location.required_flags(), location.preferred_flags());
+                let named = required.contains(protected) || preferred.contains(protected);
+                let candidates = (0..flags.len())
+                    .filter(|&index| memory_type_bits & (1 << index) != 0)
+                    .filter(|&index| flags[index].contains(required))
+                    .filter(|&index| {
+                        consider_unnamed_protected_types
+                            || named
+                            || !flags[index].contains(protected)
+                    })
+                    .collect::<Vec<_>>();
+                let score =
+                    |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+                candidates
+                    .iter()
+                    .copied()
+                    .find(|&index| flags[index].contains(preferred))
+                    .or_else(|| {
+                        let best = candidates.iter().copied().map(score).max()?;
+                        candidates
+                            .iter()
+                            .copied()
+                            .find(|&index| score(index) == best)
+                    })
+                    .map(|index| index as u32)
+            };
+
+        let mut seed = 0xda94_2042_e4dd_58b5_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut left_out = 0;
+        let mut taken = 0;
+        for _ in 0..4000 {
+            let flags = (0..1 + next() % 8)
+                .map(|_| kinds[(next() % kinds.len() as u64) as usize])
+                .collect::<Vec<_>>();
+            let properties = memory_properties(&flags);
+            let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
+            for location in locations {
+                let chosen = find_memory_type_index(
+                    &properties,
+                    memory_type_bits,
+                    location.required_flags(),
+                    location.preferred_flags(),
+                );
+                assert_eq!(
+                    chosen,
+                    documented_choice(&flags, memory_type_bits, location, false),
+                    "types {flags:?}, allowed {memory_type_bits:#b}, {location:?}"
+                );
+                if chosen.is_some_and(|index| flags[index as usize].contains(protected)) {
+                    taken += 1;
+                }
+                if chosen != documented_choice(&flags, memory_type_bits, location, true) {
+                    left_out += 1;
+                }
+            }
+        }
+        assert!(left_out > 100 && taken > 100);
     }
 
     #[test]
@@ -408,31 +623,17 @@ pub(crate) mod tests {
     fn non_coherent_host_visible_allocations_use_atom_alignment() {
         let non_coherent =
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED;
-        assert_eq!(
-            effective_alignment(non_coherent, 16, 256, 1, AllocationResourceClass::Unknown),
-            256
-        );
+        assert_eq!(effective_alignment(non_coherent, 16, 256), 256);
 
         let coherent =
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
-        assert_eq!(
-            effective_alignment(coherent, 16, 256, 1, AllocationResourceClass::Unknown),
-            16
-        );
+        assert_eq!(effective_alignment(coherent, 16, 256), 16);
 
         let device_local = vk::MemoryPropertyFlags::DEVICE_LOCAL;
-        assert_eq!(
-            effective_alignment(device_local, 16, 256, 512, AllocationResourceClass::Optimal),
-            16
-        );
-        assert_eq!(
-            effective_alignment(device_local, 16, 256, 512, AllocationResourceClass::Unknown),
-            512
-        );
+        assert_eq!(effective_alignment(device_local, 16, 256), 16);
 
         let mut allocator = TlsfSuballocator::new(1024);
-        let alignment =
-            effective_alignment(non_coherent, 1, 256, 1, AllocationResourceClass::Unknown);
+        let alignment = effective_alignment(non_coherent, 1, 256);
         let a = allocator.allocate(64, alignment).unwrap();
         let b = allocator.allocate(64, alignment).unwrap();
         assert_eq!(a.offset, 0);
