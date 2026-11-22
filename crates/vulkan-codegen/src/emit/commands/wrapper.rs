@@ -5,6 +5,7 @@ use crate::docs::{Doc, join_or};
 use crate::emit::arrow;
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
 use crate::naming::command_name;
+use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
 
 pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> String {
@@ -177,21 +178,34 @@ impl Call<'_> {
         self.c.success_codes.iter().any(|code| code != "VK_SUCCESS")
     }
 
+    fn success_codes(&self) -> BTreeSet<&str> {
+        self.c
+            .success_codes
+            .iter()
+            .map(|code| self.model.result_code(code))
+            .collect()
+    }
+
+    fn succeeds_with_exactly(&self, codes: &[&str]) -> bool {
+        self.success_codes() == codes.iter().copied().collect()
+    }
+
     fn reports_only_suboptimal(&self) -> bool {
-        self.c.name == "vkQueuePresentKHR"
+        self.succeeds_with_exactly(&["VK_SUCCESS", "VK_SUBOPTIMAL_KHR"])
     }
 
-    fn acquires_a_swapchain_image(&self) -> bool {
-        matches!(
-            self.c.name.as_str(),
-            "vkAcquireNextImageKHR" | "vkAcquireNextImage2KHR"
-        )
+    fn may_not_write_the_value(&self) -> bool {
+        self.succeeds_with_exactly(&[
+            "VK_SUCCESS",
+            "VK_TIMEOUT",
+            "VK_NOT_READY",
+            "VK_SUBOPTIMAL_KHR",
+        ])
     }
 
-    fn creates_pipelines(&self) -> bool {
-        self.c.name.starts_with("vkCreate")
-            && self.c.name.contains("Pipelines")
-            && self.c.params.last().is_some_and(|p| p.ty == "VkPipeline")
+    fn may_create_only_some_elements(&self) -> bool {
+        self.success_codes()
+            .contains("VK_PIPELINE_COMPILE_REQUIRED")
     }
 
     fn passes_through(&self) -> Returned {
@@ -251,7 +265,7 @@ impl Call<'_> {
             )
             .note(format!("{written}."));
         }
-        if self.acquires_a_swapchain_image() {
+        if self.may_not_write_the_value() {
             return Returned::new(
                 format!("crate::vk::Result<Option<({ty}, bool)>>"),
                 format!(
@@ -366,7 +380,7 @@ impl Call<'_> {
             )
             .note(format!("{written}."));
         }
-        if self.creates_pipelines() {
+        if self.may_create_only_some_elements() {
             return Returned::new(
                 format!("core::result::Result<Vec<{element}>, (Vec<{element}>, VkResult)>"),
                 format!(

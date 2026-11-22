@@ -64970,10 +64970,8 @@ impl crate::Device {
     ///
     /// Calls the C command
     /// [`vkGetSwapchainStatusKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetSwapchainStatusKHR.html)
-    /// through [`Self::get_swapchain_status_khr_raw`], which describes the parameters. Returns the
-    /// result code of the command when it is not an error, which the registry lists as
-    /// [`VK_SUCCESS`](VkResult::SUCCESS) or [`VK_SUBOPTIMAL_KHR`](VkResult::SUBOPTIMAL_KHR). The
-    /// command is provided by
+    /// through [`Self::get_swapchain_status_khr_raw`], which describes the parameters. Returns
+    /// whether the command reported `VK_SUBOPTIMAL_KHR`. The command is provided by
     /// [`VK_KHR_shared_presentable_image`](KHR_SHARED_PRESENTABLE_IMAGE_NAME).
     ///
     /// # Errors
@@ -65000,11 +64998,11 @@ impl crate::Device {
     pub unsafe fn get_swapchain_status_khr(
         &self,
         swapchain: SwapchainKHR,
-    ) -> crate::vk::Result<VkResult> {
+    ) -> crate::vk::Result<bool> {
         unsafe {
             let result = self.get_swapchain_status_khr_raw(swapchain);
             result.into_result()?;
-            Ok(result)
+            Ok(result == VkResult::SUBOPTIMAL_KHR)
         }
     }
     /// Obtain the time domains supported by the PE for the swapchain.

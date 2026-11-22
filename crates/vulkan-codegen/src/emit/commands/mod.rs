@@ -154,10 +154,35 @@ mod tests {
     use crate::test_support::{
         command, counted, field, optional, registry, result_command, structure, tagged,
     };
-    use vulkan_registry::{Handle, Registry};
+    use vulkan_registry::{Docs, EnumField, Handle, Registry};
 
     fn base() -> Registry {
         let mut ir = registry();
+        let results = ir.enums.iter_mut().find(|e| e.name == "VkResult").unwrap();
+        for (name, value, aliases) in [
+            ("VK_SUCCESS", "0", &[][..]),
+            ("VK_NOT_READY", "1", &[]),
+            ("VK_TIMEOUT", "2", &[]),
+            ("VK_INCOMPLETE", "5", &[]),
+            ("VK_SUBOPTIMAL_KHR", "1000001003", &[]),
+            ("VK_OPERATION_DEFERRED_KHR", "1000268002", &[]),
+            ("VK_OPERATION_NOT_DEFERRED_KHR", "1000268003", &[]),
+            (
+                "VK_PIPELINE_COMPILE_REQUIRED",
+                "1000297000",
+                &[
+                    "VK_ERROR_PIPELINE_COMPILE_REQUIRED_EXT",
+                    "VK_PIPELINE_COMPILE_REQUIRED_EXT",
+                ],
+            ),
+        ] {
+            results.fields.push(EnumField {
+                name: name.to_string(),
+                aliases: aliases.iter().map(|alias| alias.to_string()).collect(),
+                value: value.to_string(),
+                ..Default::default()
+            });
+        }
         for (name, dispatchable) in [
             ("VkInstance", true),
             ("VkPhysicalDevice", true),
@@ -171,6 +196,7 @@ mod tests {
             ("VkPipeline", false),
             ("VkPipelineCache", false),
             ("VkSurfaceKHR", false),
+            ("VkDeferredOperationKHR", false),
         ] {
             ir.handles.push(Handle {
                 name: name.to_string(),
@@ -189,6 +215,44 @@ mod tests {
 
     fn generate(ir: &Registry) -> String {
         squash(&emit(&Model::new(ir)))
+    }
+
+    fn generate_with_docs(ir: &Registry, docs: &Docs) -> String {
+        squash(&emit(&Model::with_docs(ir, docs)))
+    }
+
+    fn assert_generated_alike_under_other_names(
+        ir: &Registry,
+        docs: &Docs,
+        real: &str,
+        others: &[&str],
+        expected: &str,
+    ) {
+        let out = generate_with_docs(ir, docs);
+        assert!(
+            out.contains(expected),
+            "{real} is not generated as `{expected}`: {out}"
+        );
+        for other in others {
+            let mut renamed_ir = ir.clone();
+            for c in &mut renamed_ir.commands {
+                if c.name == real {
+                    c.name = other.to_string();
+                }
+            }
+            let mut renamed_docs = docs.clone();
+            for page in &mut renamed_docs.pages {
+                if page.name == real {
+                    page.name = other.to_string();
+                }
+            }
+            assert_eq!(
+                generate_with_docs(&renamed_ir, &renamed_docs),
+                out.replace(real, other)
+                    .replace(&command_name(real), &command_name(other)),
+                "{other} carries the registry attributes of {real} but is generated differently"
+            );
+        }
     }
 
     #[test]
@@ -495,5 +559,144 @@ mod tests {
             "pub unsafe fn get_query_pool_results(&self, data: &mut [u8], stride: DeviceSize) -> crate::vk::Result<VkResult> {"
         ));
         assert!(out.contains("data_size_len, data.as_mut_ptr().cast(), stride"));
+    }
+
+    fn only(c: Command) -> Registry {
+        let mut ir = base();
+        ir.structs.push(tagged(
+            "VkPresentInfoKHR",
+            "VK_STRUCTURE_TYPE_PRESENT_INFO_KHR",
+            vec![],
+        ));
+        ir.structs.push(tagged(
+            "VkGraphicsPipelineCreateInfo",
+            "VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO",
+            vec![],
+        ));
+        ir.commands.push(device(c));
+        ir
+    }
+
+    #[test]
+    fn reporting_suboptimal_follows_the_result_codes_not_the_command_name() {
+        for codes in [
+            ["VK_SUCCESS", "VK_SUBOPTIMAL_KHR"],
+            ["VK_SUBOPTIMAL_KHR", "VK_SUCCESS"],
+        ] {
+            let present = only(result_command(
+                "vkQueuePresentKHR",
+                &codes,
+                vec![
+                    field("queue", "VkQueue"),
+                    field("pPresentInfo", "const VkPresentInfoKHR*"),
+                ],
+            ));
+            assert_generated_alike_under_other_names(
+                &present,
+                &Docs::default(),
+                "vkQueuePresentKHR",
+                &["vkQueueShowFramesNV", "vkGetSwapchainStatusKHR"],
+                "pub unsafe fn queue_present_khr(&self, queue: Queue, present_info: &PresentInfoKHR<'_>) -> crate::vk::Result<bool> { unsafe { let result = self.queue_present_khr_raw(queue, core::ptr::from_ref(present_info)); result.into_result()?; Ok(result == VkResult::SUBOPTIMAL_KHR) } }",
+            );
+        }
+        let wait = only(result_command(
+            "vkWaitForPresentKHR",
+            &["VK_SUCCESS", "VK_TIMEOUT", "VK_SUBOPTIMAL_KHR"],
+            vec![
+                field("swapchain", "VkSwapchainKHR"),
+                field("timeout", "uint64_t"),
+            ],
+        ));
+        assert!(
+            generate(&wait).contains(
+                "pub unsafe fn wait_for_present_khr(&self, swapchain: SwapchainKHR, timeout: u64) -> crate::vk::Result<VkResult> {"
+            ),
+            "a command that can also time out reports every success code"
+        );
+    }
+
+    #[test]
+    fn acquiring_follows_the_result_codes_not_the_command_name() {
+        let acquire = only(result_command(
+            "vkAcquireNextImageKHR",
+            &[
+                "VK_SUCCESS",
+                "VK_TIMEOUT",
+                "VK_NOT_READY",
+                "VK_SUBOPTIMAL_KHR",
+            ],
+            vec![
+                field("device", "VkDevice"),
+                field("swapchain", "VkSwapchainKHR"),
+                field("timeout", "uint64_t"),
+                optional(field("semaphore", "VkSemaphore")),
+                optional(field("fence", "VkFence")),
+                field("pImageIndex", "uint32_t*"),
+            ],
+        ));
+        assert_generated_alike_under_other_names(
+            &acquire,
+            &Docs::default(),
+            "vkAcquireNextImageKHR",
+            &["vkTakeNextFrameNV", "vkAcquireNextImage2KHR"],
+            "-> crate::vk::Result<Option<(u32, bool)>> { unsafe { let mut value: u32 = core::mem::zeroed::<u32>(); match self.acquire_next_image_khr_raw(swapchain, timeout, semaphore, fence, &mut value) { VkResult::SUCCESS => Ok(Some((value, false))), VkResult::SUBOPTIMAL_KHR => Ok(Some((value, true))), VkResult::TIMEOUT | VkResult::NOT_READY => Ok(None), error => Err(error), } } }",
+        );
+    }
+
+    #[test]
+    fn keeping_partial_output_follows_the_result_codes_not_the_command_name() {
+        for code in [
+            "VK_PIPELINE_COMPILE_REQUIRED",
+            "VK_PIPELINE_COMPILE_REQUIRED_EXT",
+        ] {
+            let create = only(result_command(
+                "vkCreateGraphicsPipelines",
+                &["VK_SUCCESS", code],
+                vec![
+                    field("device", "VkDevice"),
+                    optional(field("pipelineCache", "VkPipelineCache")),
+                    field("createInfoCount", "uint32_t"),
+                    counted(
+                        "pCreateInfos",
+                        "const VkGraphicsPipelineCreateInfo*",
+                        "createInfoCount",
+                    ),
+                    counted("pPipelines", "VkPipeline*", "createInfoCount"),
+                ],
+            ));
+            assert_generated_alike_under_other_names(
+                &create,
+                &Docs::default(),
+                "vkCreateGraphicsPipelines",
+                &["vkCompileProgramsNV", "vkBuildShaderGroupsEXT"],
+                "-> core::result::Result<Vec<Pipeline>, (Vec<Pipeline>, VkResult)> {",
+            );
+        }
+        let other_handles = only(result_command(
+            "vkCompileProgramsNV",
+            &["VK_SUCCESS", "VK_PIPELINE_COMPILE_REQUIRED"],
+            vec![
+                field("device", "VkDevice"),
+                field("programCount", "uint32_t"),
+                counted("pSources", "const VkBuffer*", "programCount"),
+                counted("pPrograms", "VkFence*", "programCount"),
+            ],
+        ));
+        assert!(generate(&other_handles).contains(
+            "pub unsafe fn compile_programs_nv(&self, sources: &[Buffer]) -> core::result::Result<Vec<Fence>, (Vec<Fence>, VkResult)> {"
+        ));
+        let without_the_code = only(result_command(
+            "vkCreateComputePipelines",
+            &["VK_SUCCESS"],
+            vec![
+                field("device", "VkDevice"),
+                field("createInfoCount", "uint32_t"),
+                counted("pSources", "const VkBuffer*", "createInfoCount"),
+                counted("pPipelines", "VkPipeline*", "createInfoCount"),
+            ],
+        ));
+        assert!(generate(&without_the_code).contains(
+            "pub unsafe fn create_compute_pipelines(&self, sources: &[Buffer]) -> crate::vk::Result<Vec<Pipeline>> {"
+        ));
     }
 }
