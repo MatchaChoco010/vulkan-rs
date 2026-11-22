@@ -128,8 +128,10 @@ impl Allocator {
     /// room and was made for the same [`AllocationCreateDesc::linear`] and
     /// [`AllocationCreateDesc::memory_allocate_flags`]. Otherwise a new block is
     /// allocated with `vkAllocateMemory`: [`AllocatorCreateDesc::block_size`] bytes, or
-    /// the allocation's size if that is larger. Dedicated and exportable allocations
-    /// always get a new `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
+    /// the allocation's size if that is larger. Dedicated allocations, exportable
+    /// allocations and allocations whose [`AllocationCreateDesc::memory_allocate_flags`]
+    /// contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] always get a new
+    /// `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
     ///
     /// # Errors
     ///

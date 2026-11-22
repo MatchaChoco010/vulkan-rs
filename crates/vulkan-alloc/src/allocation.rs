@@ -56,7 +56,11 @@ pub struct AllocationCreateDesc<'a> {
     /// [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`] needs
     /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here.
     ///
-    /// Allocations with different flags never share a block.
+    /// Allocations with different flags never share a block. With
+    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`], the allocation gets a
+    /// `VkDeviceMemory` of its own of exactly `requirements.size` bytes, at offset 0,
+    /// because the implementation zeroes memory only when `vkAllocateMemory` creates it,
+    /// and a range of a shared block may hold the bytes of an earlier allocation.
     pub memory_allocate_flags: vk::MemoryAllocateFlags,
     /// Handle types the memory can be exported as (`VkExportMemoryAllocateInfo`), such
     /// as `DMA_BUF_EXT`. When not empty, the allocation gets a `VkDeviceMemory` of its
@@ -91,7 +95,9 @@ impl fmt::Debug for AllocationCreateDesc<'_> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AllocationScheme {
     /// The allocation is placed in a block shared with other allocations, unless
-    /// [`AllocationCreateDesc::export_handle_types`] is not empty.
+    /// [`AllocationCreateDesc::export_handle_types`] is not empty or
+    /// [`AllocationCreateDesc::memory_allocate_flags`] contains
+    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`].
     GpuAllocatorManaged,
     /// The allocation gets a `VkDeviceMemory` of its own of exactly
     /// `requirements.size` bytes, at offset 0, allocated with a
@@ -123,7 +129,8 @@ pub struct Allocation {
 
 impl Allocation {
     /// The `VkDeviceMemory` that holds the range. Other allocations may share it unless
-    /// this one is dedicated or exportable.
+    /// this one is dedicated, exportable or zero-initialized
+    /// ([`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]).
     pub fn memory(&self) -> vk::DeviceMemory {
         self.memory
     }
