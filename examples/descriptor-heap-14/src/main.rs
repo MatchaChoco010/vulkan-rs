@@ -5,7 +5,6 @@ use glam::{Mat4, Vec3};
 use std::ffi::{CStr, CString, c_void};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::mem::ManuallyDrop;
 use vulkan::{Device, Entry, Instance, vk};
 use vulkan_alloc::descriptor_heap::{
     DescriptorHeapLayout, DescriptorSlots, ResourceHeapPlan, SamplerHeapPlan,
@@ -132,11 +131,14 @@ fn main() -> Result<()> {
             instance.get_physical_device_properties(selection.physical_device);
         let memory_properties =
             instance.get_physical_device_memory_properties(selection.physical_device);
-        let mut allocator = ManuallyDrop::new(Allocator::new(AllocatorCreateDesc::new(
+        let storage_buffer_alignment = physical_properties
+            .limits
+            .min_storage_buffer_offset_alignment;
+        let mut allocator = Allocator::new(AllocatorCreateDesc::new(
             &device,
             memory_properties,
             physical_properties,
-        )));
+        ));
 
         let (vertices, indices) = sphere_mesh(24, 16);
         let instances = instance_data();
@@ -147,13 +149,13 @@ fn main() -> Result<()> {
             &device,
             &mut allocator,
             "descriptor heap resource heap",
-            resource_layout.heap.size,
+            &resource_layout.heap,
         )?;
         let sampler_heap = create_descriptor_heap_buffer(
             &device,
             &mut allocator,
             "descriptor heap sampler heap",
-            sampler_layout.heap.size,
+            &sampler_layout.heap,
         )?;
 
         let vertex_buffer = create_gpu_buffer_from_data(
@@ -163,6 +165,7 @@ fn main() -> Result<()> {
             queue,
             "sphere vertex buffer",
             vk::BufferUsageFlags::VERTEX_BUFFER,
+            1,
             &vertices,
         )?;
         let index_buffer = create_gpu_buffer_from_data(
@@ -172,6 +175,7 @@ fn main() -> Result<()> {
             queue,
             "sphere index buffer",
             vk::BufferUsageFlags::INDEX_BUFFER,
+            1,
             &indices,
         )?;
         let instance_buffer = create_gpu_buffer_from_data(
@@ -183,6 +187,7 @@ fn main() -> Result<()> {
             vk::BufferUsageFlags::VERTEX_BUFFER
                 | vk::BufferUsageFlags::STORAGE_BUFFER
                 | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            storage_buffer_alignment,
             &instances,
         )?;
         let materials = material_data(&resource_layout);
@@ -193,6 +198,7 @@ fn main() -> Result<()> {
             queue,
             "bindless material data",
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            storage_buffer_alignment,
             &materials,
         )?;
 
@@ -224,6 +230,7 @@ fn main() -> Result<()> {
             vk::BufferUsageFlags::TRANSFER_DST,
             MemoryLocation::GpuToCpu,
             vk::MemoryAllocateFlags::empty(),
+            1,
         )?;
 
         write_resource_heap_descriptors(
@@ -404,7 +411,7 @@ fn main() -> Result<()> {
         destroy_buffer(&device, &mut allocator, vertex_buffer)?;
         destroy_buffer(&device, &mut allocator, sampler_heap)?;
         destroy_buffer(&device, &mut allocator, resource_heap)?;
-        ManuallyDrop::drop(&mut allocator);
+        drop(allocator);
         device.destroy_device(None);
         if !debug_messenger.is_null() {
             instance.destroy_debug_utils_messenger_ext(debug_messenger, None);
@@ -653,19 +660,21 @@ unsafe fn create_descriptor_heap_buffer(
     device: &Device,
     allocator: &mut Allocator,
     name: &'static str,
-    size: u64,
+    layout: &DescriptorHeapLayout,
 ) -> Result<BufferAllocation> {
     create_buffer(
         device,
         allocator,
         name,
-        size,
+        layout.size,
         vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
         MemoryLocation::CpuToGpu,
         vk::MemoryAllocateFlags::DEVICE_ADDRESS,
+        layout.alignment,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 unsafe fn create_buffer(
     device: &Device,
     allocator: &mut Allocator,
@@ -674,13 +683,15 @@ unsafe fn create_buffer(
     usage: vk::BufferUsageFlags,
     location: MemoryLocation,
     memory_allocate_flags: vk::MemoryAllocateFlags,
+    alignment: u64,
 ) -> Result<BufferAllocation> {
     let info = vk::BufferCreateInfo::default()
         .size(size)
         .usage(usage)
         .sharing_mode(vk::SharingMode::EXCLUSIVE);
     let buffer = device.create_buffer(&info, None)?;
-    let requirements = device.get_buffer_memory_requirements(buffer);
+    let mut requirements = device.get_buffer_memory_requirements(buffer);
+    requirements.alignment = requirements.alignment.max(alignment);
     let allocation = match allocator.allocate(AllocationCreateDesc {
         name: Some(name),
         requirements,
@@ -688,11 +699,7 @@ unsafe fn create_buffer(
         linear: true,
         memory_allocate_flags,
         export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: if memory_allocate_flags.is_empty() {
-            AllocationScheme::GpuAllocatorManaged
-        } else {
-            AllocationScheme::DedicatedBuffer(buffer)
-        },
+        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
     }) {
         Ok(allocation) => allocation,
         Err(err) => {
@@ -712,6 +719,7 @@ unsafe fn create_buffer(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 unsafe fn create_gpu_buffer_from_data<T: bytemuck::Pod>(
     device: &Device,
     allocator: &mut Allocator,
@@ -719,6 +727,7 @@ unsafe fn create_gpu_buffer_from_data<T: bytemuck::Pod>(
     queue: vk::Queue,
     name: &'static str,
     usage: vk::BufferUsageFlags,
+    alignment: u64,
     values: &[T],
 ) -> Result<BufferAllocation> {
     let size = core::mem::size_of_val(values) as u64;
@@ -734,6 +743,7 @@ unsafe fn create_gpu_buffer_from_data<T: bytemuck::Pod>(
         } else {
             vk::MemoryAllocateFlags::empty()
         },
+        alignment,
     )?;
     let staging = create_buffer(
         device,
@@ -743,6 +753,7 @@ unsafe fn create_gpu_buffer_from_data<T: bytemuck::Pod>(
         vk::BufferUsageFlags::TRANSFER_SRC,
         MemoryLocation::CpuToGpu,
         vk::MemoryAllocateFlags::empty(),
+        1,
     )?;
     write_allocation(allocator, &staging.allocation, values)?;
     upload_buffer_now(
@@ -854,6 +865,7 @@ unsafe fn create_texture_image(
         vk::BufferUsageFlags::TRANSFER_SRC,
         MemoryLocation::CpuToGpu,
         vk::MemoryAllocateFlags::empty(),
+        1,
     )?;
     write_allocation(allocator, &staging.allocation, pixels)?;
     upload_texture_now(device, queue_family, queue, staging.buffer, image.image)?;
