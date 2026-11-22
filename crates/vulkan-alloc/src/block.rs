@@ -239,7 +239,7 @@ pub(crate) struct MemoryBlock {
     mapped_ptr: Option<NonNull<c_void>>,
     mapped_allocations: HashMap<u64, usize>,
     names: HashMap<u64, Box<str>>,
-    persistent: HashSet<u64>,
+    persistently_mapped: HashSet<u64>,
 }
 
 impl MemoryBlock {
@@ -260,7 +260,7 @@ impl MemoryBlock {
             mapped_ptr: None,
             mapped_allocations: HashMap::new(),
             names: HashMap::new(),
-            persistent: HashSet::new(),
+            persistently_mapped: HashSet::new(),
         }
     }
 
@@ -384,12 +384,12 @@ impl MemoryBlock {
             return Ok(ptr);
         }
         let ptr = unsafe { self.map(device, allocation) }?;
-        self.persistent.insert(allocation.allocation_id);
+        self.persistently_mapped.insert(allocation.allocation_id);
         Ok(ptr)
     }
 
     pub(crate) fn persistent_ptr(&self, allocation: &Allocation) -> Option<NonNull<u8>> {
-        if !self.persistent.contains(&allocation.allocation_id) {
+        if !self.persistently_mapped.contains(&allocation.allocation_id) {
             return None;
         }
         let offset = usize::try_from(allocation.offset).ok()?;
@@ -408,7 +408,7 @@ impl MemoryBlock {
     }
 
     fn holds_only_its_persistent_mapping(&self, allocation_id: u64) -> bool {
-        self.persistent.contains(&allocation_id)
+        self.persistently_mapped.contains(&allocation_id)
             && self.mapped_allocations.get(&allocation_id) == Some(&1)
     }
 
@@ -430,7 +430,7 @@ impl MemoryBlock {
         device: &Device,
         allocation_id: u64,
     ) -> Result<(), AllocationError> {
-        if self.persistent.remove(&allocation_id) {
+        if self.persistently_mapped.remove(&allocation_id) {
             unsafe { self.release_mapping(device, allocation_id) }?;
         }
         if self.is_allocation_mapped(allocation_id) {

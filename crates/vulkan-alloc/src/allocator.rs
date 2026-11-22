@@ -96,8 +96,7 @@ impl Allocator {
             )
         }?;
         if let Some(name) = desc.name
-            && let Ok(memory_type) = memory_type_mut(&mut self.memory_types, &allocation)
-            && let Ok(block) = memory_type.block_mut(&allocation)
+            && let Ok(block) = block_mut(&mut self.memory_types, &allocation)
         {
             block.set_name(allocation.allocation_id, name);
         }
@@ -131,7 +130,7 @@ impl Allocator {
         allocation: &Allocation,
     ) -> Result<NonNull<u8>, AllocationError> {
         self.ensure_host_visible(allocation)?;
-        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
+        let block = block_mut(&mut self.memory_types, allocation)?;
         unsafe { block.map_persistent(&self.device, allocation) }
     }
 
@@ -140,7 +139,7 @@ impl Allocator {
     }
 
     pub unsafe fn unmap_memory(&mut self, allocation: &Allocation) -> Result<(), AllocationError> {
-        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
+        let block = block_mut(&mut self.memory_types, allocation)?;
         unsafe { block.unmap(&self.device, allocation.allocation_id) }
     }
 
@@ -248,7 +247,7 @@ impl Allocator {
         allocation: &Allocation,
     ) -> Result<NonNull<u8>, AllocationError> {
         self.ensure_host_visible(allocation)?;
-        let block = memory_type_mut(&mut self.memory_types, allocation)?.block_mut(allocation)?;
+        let block = block_mut(&mut self.memory_types, allocation)?;
         unsafe { block.map(&self.device, allocation) }
     }
 
@@ -298,15 +297,6 @@ impl Allocator {
     }
 }
 
-fn memory_type_mut<'a>(
-    memory_types: &'a mut [MemoryTypeAllocator],
-    allocation: &Allocation,
-) -> Result<&'a mut MemoryTypeAllocator, AllocationError> {
-    memory_types
-        .get_mut(allocation.memory_type_index as usize)
-        .ok_or(AllocationError::InvalidAllocation)
-}
-
 impl Drop for Allocator {
     fn drop(&mut self) {
         let live = self.live_allocations();
@@ -330,4 +320,20 @@ impl Drop for Allocator {
             );
         }
     }
+}
+
+fn memory_type_mut<'a>(
+    memory_types: &'a mut [MemoryTypeAllocator],
+    allocation: &Allocation,
+) -> Result<&'a mut MemoryTypeAllocator, AllocationError> {
+    memory_types
+        .get_mut(allocation.memory_type_index as usize)
+        .ok_or(AllocationError::InvalidAllocation)
+}
+
+fn block_mut<'a>(
+    memory_types: &'a mut [MemoryTypeAllocator],
+    allocation: &Allocation,
+) -> Result<&'a mut MemoryBlock, AllocationError> {
+    memory_type_mut(memory_types, allocation)?.block_mut(allocation)
 }
