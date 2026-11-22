@@ -15,5 +15,5 @@ vulkan = { workspace = true, features = ["std"] }
 vulkan-alloc.workspace = true
 winit = { version = "0.30", default-features = false, features = ["wayland", "rwh_06"], optional = true }
 
-[lints]
-workspace = true
+[lints.clippy]
+missing_safety_doc = "allow"

@@ -14,8 +14,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # Fail instead of skipping when the C headers or a Vulkan device are missing.
+  # Fail instead of skipping when the C headers, the specification sources or a Vulkan
+  # device are missing.
   VULKAN_RS_REQUIRE_LAYOUT_TEST: "1"
+  VULKAN_RS_REQUIRE_DOCS_TEST: "1"
   VULKAN_RS_REQUIRE_DEVICE_TEST: "1"
 
 jobs:
@@ -52,17 +54,31 @@ jobs:
       - name: Format
         run: cargo fmt --check
 
-      # Comments are not allowed in the Rust sources under crates/. This also runs as
-      # part of the workspace tests; it is a step of its own so that it fails early.
-      - name: No comments under crates/
+      # The Rust sources under crates/ have no comments other than doc comments on the
+      # public API of the user-facing crates. This also runs as part of the workspace
+      # tests; it is a step of its own so that it fails early.
+      - name: Comment rules under crates/
         run: cargo test -p source-lint
 
       - name: Generated files are up to date
         run: ./tools/generate-vulkan --check
 
+      # The user-facing crates warn about public items without documentation, which
+      # fails here.
       - name: Clippy
         run: cargo clippy --workspace --all-features --all-targets -- -D warnings
 
+      # Broken links between items fail. The second run has no platform feature enabled,
+      # so it catches a link from an item that always exists to one behind a feature.
+      - name: Documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc --workspace --all-features --no-deps
+          cargo doc -p vulkan -p vulkan-alloc --no-deps
+
+      # Includes the examples in the documentation (doctests) and the comparison of the
+      # generated documentation with the specification sources (crates/vulkan/tests/docs.rs).
       - name: Test
         run: cargo test --workspace --all-features
 
