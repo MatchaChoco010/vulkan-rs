@@ -267,7 +267,7 @@ impl DescriptorHeapLayout {
 #[derive(Debug, Clone)]
 struct Plan {
     cursor: u64,
-    reserved_alignment: u64,
+    reserved_alignment: Option<u64>,
     reserved_size: u64,
     heap_alignment: u64,
     max_size: u64,
@@ -307,9 +307,10 @@ impl Plan {
     }
 
     fn finish(self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
+        let reserved_alignment = self.reserved_alignment.ok_or(HeapLayoutError::Overflow)?;
         let reserved_offset = self
             .cursor
-            .checked_next_multiple_of(self.reserved_alignment.max(1))
+            .checked_next_multiple_of(reserved_alignment.max(1))
             .ok_or(HeapLayoutError::Overflow)?;
         let size = reserved_offset
             .checked_add(self.reserved_size)
@@ -329,7 +330,7 @@ impl Plan {
     }
 }
 
-fn lcm(a: u64, b: u64) -> u64 {
+fn lcm(a: u64, b: u64) -> Option<u64> {
     fn gcd(mut a: u64, mut b: u64) -> u64 {
         while b != 0 {
             (a, b) = (b, a % b);
@@ -337,7 +338,7 @@ fn lcm(a: u64, b: u64) -> u64 {
         a
     }
     let (a, b) = (a.max(1), b.max(1));
-    a / gcd(a, b) * b
+    (a / gcd(a, b)).checked_mul(b)
 }
 
 /// Plans the layout of a resource heap, which holds buffer and image descriptors.
@@ -423,12 +424,14 @@ impl ResourceHeapPlan {
     ///
     /// # Errors
     ///
-    /// - [`HeapLayoutError::Overflow`] if the stride, an index of the run, or its end
-    ///   does not fit.
+    /// - [`HeapLayoutError::Overflow`] if the least common multiple of the two
+    ///   descriptor alignments, the stride, an index of the run, or its end does not
+    ///   fit.
     /// - [`HeapLayoutError::UnalignedDescriptorSize`] if both descriptor sizes are 0 and
     ///   an alignment is larger than 1.
     pub fn uniform(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
-        let alignment = lcm(self.buffer_alignment, self.image_alignment);
+        let alignment =
+            lcm(self.buffer_alignment, self.image_alignment).ok_or(HeapLayoutError::Overflow)?;
         let size = self.buffer_size.max(self.image_size);
         let stride = size
             .checked_next_multiple_of(alignment)
@@ -442,7 +445,8 @@ impl ResourceHeapPlan {
     /// # Errors
     ///
     /// - [`HeapLayoutError::TooLarge`] if the heap is larger than `maxResourceHeapSize`.
-    /// - [`HeapLayoutError::Overflow`] if its size does not fit in `u64`.
+    /// - [`HeapLayoutError::Overflow`] if its size, or the least common multiple of the
+    ///   two descriptor alignments, does not fit in `u64`.
     pub fn finish(self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
         self.plan.finish()
     }
@@ -467,7 +471,7 @@ impl SamplerHeapPlan {
         Self {
             plan: Plan {
                 cursor: 0,
-                reserved_alignment: properties.sampler_descriptor_alignment,
+                reserved_alignment: Some(properties.sampler_descriptor_alignment),
                 reserved_size: properties.min_sampler_heap_reserved_range,
                 heap_alignment: properties.sampler_heap_alignment,
                 max_size: properties.max_sampler_heap_size,
@@ -664,6 +668,76 @@ mod tests {
                 alignment: 32
             })
         );
+    }
+
+    #[test]
+    fn descriptor_alignments_of_any_size_are_laid_out_or_rejected() {
+        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut alignment = |random: u64| match random % 6 {
+            0 => 1 << (next() % 64),
+            1 => next(),
+            2 => next() >> 32,
+            3 => (next() >> 31) | 1,
+            4 => u64::MAX - next() % 4,
+            _ => next() % 64,
+        };
+        let mut overflowing = 0;
+        let mut fitting = 0;
+        for case in 0..4000_u64 {
+            let buffer_alignment = alignment(case);
+            let image_alignment = alignment(case / 6);
+            let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+                .max_resource_heap_size(u64::MAX)
+                .buffer_descriptor_size(16)
+                .image_descriptor_size(32)
+                .buffer_descriptor_alignment(buffer_alignment)
+                .image_descriptor_alignment(image_alignment);
+            let (a, b) = (
+                u128::from(buffer_alignment.max(1)),
+                u128::from(image_alignment.max(1)),
+            );
+            let gcd = {
+                let (mut a, mut b) = (a, b);
+                while b != 0 {
+                    (a, b) = (b, a % b);
+                }
+                a
+            };
+            let both = u64::try_from(a / gcd * b).ok();
+            let context = format!("alignments {buffer_alignment} and {image_alignment}");
+
+            let mut plan = ResourceHeapPlan::new(&properties);
+            let uniform = plan.uniform(1);
+            let layout = plan.finish();
+            match both {
+                None => {
+                    overflowing += 1;
+                    assert_eq!(uniform, Err(HeapLayoutError::Overflow), "{context}");
+                    assert_eq!(layout, Err(HeapLayoutError::Overflow), "{context}");
+                }
+                Some(both) => {
+                    fitting += 1;
+                    if let Ok(slots) = uniform {
+                        assert!(slots.stride.is_multiple_of(both), "{context}");
+                        assert!(slots.stride >= 32, "{context}");
+                    } else {
+                        assert_eq!(uniform, Err(HeapLayoutError::Overflow), "{context}");
+                    }
+                    if let Ok(layout) = layout {
+                        assert!(layout.reserved_offset.is_multiple_of(both), "{context}");
+                    } else {
+                        assert_eq!(layout, Err(HeapLayoutError::Overflow), "{context}");
+                    }
+                }
+            }
+        }
+        assert!(overflowing > 100 && fitting > 100);
     }
 
     #[test]
