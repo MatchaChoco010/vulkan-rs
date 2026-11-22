@@ -128,7 +128,14 @@
 //!   dma-buf received from another process, is allocated with `vkAllocateMemory`
 //!   directly. Memory to be exported can come from the allocator.
 //! - allocate tile memory (`VK_QCOM_tile_memory_heap`), which has requirements of its
-//!   own and is also allocated with `vkAllocateMemory` directly.
+//!   own and is also allocated with `vkAllocateMemory` directly;
+//! - allocate memory on chosen physical devices of a logical device that represents more
+//!   than one physical device. The allocator cannot pass the `deviceMask` of
+//!   `VkMemoryAllocateFlagsInfo`, so [`vulkan::vk::MemoryAllocateFlags::DEVICE_MASK`]
+//!   cannot be used, and memory on chosen physical devices is allocated with
+//!   `vkAllocateMemory` directly. Other allocations on such a device are made as on any
+//!   device, but memory from a heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` cannot be
+//!   mapped (see [Mapping](#mapping)).
 //!
 //! # Mapping
 //!
@@ -145,6 +152,12 @@
 //! All three map the whole `VkDeviceMemory` block once and count mapping references per
 //! allocation; the block is unmapped when the last reference in it is released. Do not
 //! call `vkMapMemory` or `vkUnmapMemory` on [`Allocation::memory`] yourself.
+//!
+//! On a logical device that represents more than one physical device, memory from a
+//! heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` has an instance on every physical
+//! device, and Vulkan does not allow memory with more than one instance to be mapped.
+//! Such allocations can be made and bound to resources, but must not be passed to any
+//! of the mapping functions. The allocator does not check this.
 //!
 //! Memory without `HOST_COHERENT` needs [`Allocator::flush_allocation`] after host
 //! writes and [`Allocator::invalidate_allocation`] before host reads (or

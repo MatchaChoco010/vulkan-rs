@@ -57,6 +57,13 @@ pub struct AllocationCreateDesc<'a> {
     /// [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`] needs
     /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here.
     ///
+    /// The `deviceMask` of the chained structure is always 0, so
+    /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] cannot be used: Vulkan requires a
+    /// `deviceMask` other than 0 when it is set. Memory on chosen physical devices of a
+    /// logical device that represents more than one physical device is allocated with
+    /// `vkAllocateMemory` directly (see the
+    /// [crate documentation](crate#what-the-allocator-does-and-does-not-do)).
+    ///
     /// Allocations with different flags never share a block. With
     /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`], the allocation gets a
     /// `VkDeviceMemory` of its own of exactly `requirements.size` bytes, at offset 0,

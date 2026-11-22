@@ -172,10 +172,15 @@ impl Allocator {
     ///
     /// - The device the allocator was created with must not have been destroyed, and
     ///   [`AllocatorCreateDesc::memory_properties`] must be those of its physical
-    ///   device.
+    ///   device. For a logical device that represents more than one physical device,
+    ///   those of any of them will do: the physical devices of a device group have
+    ///   identical properties.
     /// - The `vkAllocateMemory` call made from `desc` must be valid. In particular:
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
-    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
+    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`) and must
+    ///   not contain [`vk::MemoryAllocateFlags::DEVICE_MASK`], which needs a
+    ///   `deviceMask` the allocator cannot pass (memory on chosen physical devices is
+    ///   allocated with `vkAllocateMemory` directly); a
     ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
     ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
     ///   `protectedMemory` feature; non-empty
@@ -191,6 +196,10 @@ impl Allocator {
     ///   support dedicated allocations (Vulkan 1.1 or `VK_KHR_dedicated_allocation`).
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
+    /// - On a logical device that represents more than one physical device, the returned
+    ///   allocation must not be mapped if its memory type belongs to a heap with
+    ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` (see the safety sections of the mapping
+    ///   functions).
     /// - The resources bound to the returned allocation must be protected resources if
     ///   its memory type has `PROTECTED`, and must not be if it does not
     ///   ([`Allocator::allocation_memory_flags`] tells). A location that only prefers
@@ -295,6 +304,10 @@ impl Allocator {
     /// - The device the allocator was created with must not have been destroyed.
     /// - [`Allocation::memory`] must not be mapped or unmapped other than through this
     ///   allocator.
+    /// - On a logical device that represents more than one physical device, the memory
+    ///   type of the allocation must not belong to a heap with
+    ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`: such memory has an instance on every
+    ///   physical device, and Vulkan does not allow it to be mapped.
     /// - The pointer may only be used for the [`Allocation::size`] bytes it points to,
     ///   and only until the [`Allocator::unmap_memory`] call that releases its reference
     ///   or until [`Allocator::free_all`]. References are counted per allocation, so with
@@ -330,6 +343,10 @@ impl Allocator {
     /// - The device the allocator was created with must not have been destroyed.
     /// - [`Allocation::memory`] must not be mapped or unmapped other than through this
     ///   allocator.
+    /// - On a logical device that represents more than one physical device, the memory
+    ///   type of the allocation must not belong to a heap with
+    ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`: such memory has an instance on every
+    ///   physical device, and Vulkan does not allow it to be mapped.
     /// - While the guard is alive, neither the device nor a pointer from
     ///   [`Allocator::map_memory`], [`Allocator::map_persistent`] or
     ///   [`MappedAllocation::as_ptr`] may access the allocation's bytes in a way that
@@ -366,6 +383,10 @@ impl Allocator {
     /// - The device the allocator was created with must not have been destroyed.
     /// - [`Allocation::memory`] must not be mapped or unmapped other than through this
     ///   allocator.
+    /// - On a logical device that represents more than one physical device, the memory
+    ///   type of the allocation must not belong to a heap with
+    ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`: such memory has an instance on every
+    ///   physical device, and Vulkan does not allow it to be mapped.
     /// - The pointer may only be used for the [`Allocation::size`] bytes it points to,
     ///   and not after the allocation is freed or [`Allocator::free_all`] is called.
     /// - Host access through the pointer must follow Vulkan's rules for host access to
