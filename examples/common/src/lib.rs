@@ -14,3 +14,5 @@ pub mod memory;
 pub mod output;
 pub mod pipeline;
 pub mod shader;
+#[cfg(feature = "window")]
+pub mod window;

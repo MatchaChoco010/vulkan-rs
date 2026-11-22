@@ -1376,8 +1376,10 @@ name = "vulkan-example-common"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "raw-window-handle",
  "vulkan",
  "vulkan-alloc",
+ "winit",
 ]
 
 [[package]]
@@ -1441,10 +1443,9 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "bytemuck",
- "raw-window-handle",
  "vulkan",
  "vulkan-alloc",
- "winit",
+ "vulkan-example-common",
 ]
 
 [[package]]

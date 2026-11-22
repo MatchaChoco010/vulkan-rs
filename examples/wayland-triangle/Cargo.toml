@@ -8,7 +8,6 @@ publish = false
 [dependencies]
 anyhow = "1"
 bytemuck = { version = "1.25", features = ["derive"] }
-raw-window-handle = "0.6"
-winit = { version = "0.30", default-features = false, features = ["wayland", "rwh_06"] }
-vulkan = { workspace = true, features = ["std", "wayland"] }
+vulkan = { workspace = true, features = ["std"] }
 vulkan-alloc.workspace = true
+vulkan-example-common = { path = "../common", features = ["window"] }
