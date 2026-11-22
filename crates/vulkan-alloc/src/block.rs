@@ -129,7 +129,6 @@ pub(crate) struct MemoryBlock {
     pub(crate) memory_allocate_flags: vk::MemoryAllocateFlags,
     pub(crate) suballocator: TlsfSuballocator,
     pub(crate) mapped_ptr: Option<NonNull<c_void>>,
-    pub(crate) map_count: usize,
     pub(crate) mapped_allocations: HashMap<u64, usize>,
     pub(crate) names: HashMap<u64, Box<str>>,
     pub(crate) persistent: HashSet<u64>,
@@ -151,7 +150,6 @@ impl MemoryBlock {
             memory_allocate_flags,
             suballocator: TlsfSuballocator::new(size),
             mapped_ptr: None,
-            map_count: 0,
             mapped_allocations: HashMap::new(),
             names: HashMap::new(),
             persistent: HashSet::new(),
@@ -241,12 +239,7 @@ impl MemoryBlock {
             Some(base) => base,
             None => unsafe { self.map_whole_block(device) }?,
         };
-        let map_count = self
-            .map_count
-            .checked_add(1)
-            .ok_or(AllocationError::OutOfMemory)?;
         self.mark_mapped(allocation.allocation_id)?;
-        self.map_count = map_count;
         Ok(unsafe { base.cast::<u8>().add(offset) })
     }
 
@@ -290,12 +283,8 @@ impl MemoryBlock {
         device: &Device,
         allocation_id: u64,
     ) -> Result<(), AllocationError> {
-        if self.map_count == 0 {
-            return Err(AllocationError::InvalidAllocation);
-        }
         self.unmark_mapped(allocation_id)?;
-        self.map_count -= 1;
-        if self.map_count == 0 {
+        if self.mapped_allocations.is_empty() {
             unsafe { device.unmap_memory(self.memory) };
             self.mapped_ptr = None;
         }
