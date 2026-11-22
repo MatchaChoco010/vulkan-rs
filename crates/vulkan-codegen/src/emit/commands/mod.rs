@@ -298,6 +298,7 @@ mod tests {
     fn every_name_that_a_wrapper_of_the_registry_binds_is_checked_against_its_parameters() {
         let model = Model::with_docs(Registry::get(), Docs::get());
         let mut wrappers = 0;
+        let mut binding_next_to_parameters = 0;
         for dispatch in Dispatch::ALL {
             for c in commands(&model, dispatch).filter(|c| !creates_a_dispatching_handle(c)) {
                 let source = wrapper::wrapper(&model, c, dispatch);
@@ -306,6 +307,12 @@ mod tests {
                 let mut bindings = Bindings::default();
                 syn::visit::Visit::visit_block(&mut bindings, &function.block);
                 let checked = wrapper::checked_names(&model, c, dispatch);
+                let mut parameters = Bindings::default();
+                for input in &function.sig.inputs {
+                    syn::visit::Visit::visit_fn_arg(&mut parameters, input);
+                }
+                binding_next_to_parameters +=
+                    usize::from(!bindings.0.is_empty() && !parameters.0.is_empty());
                 for binding in bindings.0 {
                     assert!(
                         checked.contains(binding.trim_start_matches("r#")),
@@ -313,11 +320,21 @@ mod tests {
                          against the parameters",
                         c.name
                     );
+                    assert!(
+                        !parameters.0.contains(&binding),
+                        "{}: the wrapper binds `{binding}`, which hides its own parameter of \
+                         that name",
+                        c.name
+                    );
                 }
                 wrappers += 1;
             }
         }
         assert!(wrappers > 500, "only {wrappers} wrappers were checked");
+        assert!(
+            binding_next_to_parameters > 100,
+            "only {binding_next_to_parameters} wrappers have parameters and bind names"
+        );
     }
 
     fn base() -> Registry {
