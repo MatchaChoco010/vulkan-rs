@@ -18,8 +18,42 @@ fn check_setter<T: Default + Clone>(name: &str, pointer_set_by: impl Fn(&[T]) ->
     }
 }
 
+fn check_mut_setter<T: Default + Clone>(name: &str, pointer_set_by: impl Fn(&mut [T]) -> *mut T) {
+    assert!(
+        pointer_set_by(&mut []).is_null(),
+        "{name}: an empty slice sets a null pointer"
+    );
+    let mut values = vec![T::default(); 3];
+    let start = values.as_mut_ptr();
+    for len in 1..=values.len() {
+        assert_eq!(
+            pointer_set_by(&mut values[..len]),
+            start,
+            "{name}: a slice of {len} elements sets a pointer to its first element"
+        );
+    }
+}
+
 #[test]
 fn every_slice_setter_without_a_count_member_sets_null_for_an_empty_slice() {
+    check_setter(
+        "StdVideoEncodeAV1PictureInfo::buffer_removal_times",
+        |value| {
+            vk::StdVideoEncodeAV1PictureInfo::default()
+                .buffer_removal_times(value)
+                .p_buffer_removal_times
+        },
+    );
+    check_mut_setter("DeviceFaultInfoEXT::address_infos", |value| {
+        vk::DeviceFaultInfoEXT::default()
+            .address_infos(value)
+            .p_address_infos
+    });
+    check_mut_setter("DeviceFaultInfoEXT::vendor_infos", |value| {
+        vk::DeviceFaultInfoEXT::default()
+            .vendor_infos(value)
+            .p_vendor_infos
+    });
     check_setter("PipelineMultisampleStateCreateInfo::sample_mask", |value| {
         vk::PipelineMultisampleStateCreateInfo::default()
             .sample_mask(value)

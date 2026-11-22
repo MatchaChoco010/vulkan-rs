@@ -81,8 +81,12 @@ fn constructor(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Str
     } else {
         names.claim(&short_name, &member_origin(m))
     };
-    let borrows_one_value = ty.depth() == 1 && !ty.is_array() && !is_opaque(&ty.base);
-    let (value_ty, value) = if borrows_one_value {
+    let is_pointer = ty.depth() == 1 && !ty.is_array();
+    let borrows_a_string = is_pointer && m.null_terminated && ty.base == "char" && ty.outer_const();
+    let borrows_one_value = is_pointer && !borrows_a_string && !is_opaque(&ty.base);
+    let (value_ty, value) = if borrows_a_string {
+        ("&'a CStr".to_string(), "value.as_ptr()".to_string())
+    } else if borrows_one_value {
         let borrow = Borrow::of_pointer(ty.outer_const());
         (
             borrow.reference("'a", &model.base_ty(&ty.base, "'a")),
@@ -91,7 +95,9 @@ fn constructor(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Str
     } else {
         (model.member_ty(m, "'a"), "value".to_string())
     };
-    let how = if borrows_one_value {
+    let how = if borrows_a_string {
+        " pointing to the NUL-terminated string `value`"
+    } else if borrows_one_value {
         " pointing to `value`"
     } else {
         " set to `value`"
