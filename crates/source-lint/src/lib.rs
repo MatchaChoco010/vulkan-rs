@@ -531,6 +531,82 @@ mod tests {
     }
 
     #[test]
+    fn raw_identifier_doc_attributes_follow_the_rules_of_doc_attributes() {
+        assert_allowed(concat!(
+            "#![r#doc = \"The crate.\"]\n",
+            "#[r#doc = \"A function.\"]\n",
+            "pub fn f() {}\n",
+            "#[r#cfg_attr(docsrs, r#doc = \"A conditional attribute.\")]\n",
+            "pub struct S;\n",
+        ));
+        let source = concat!(
+            "#[r#doc = \"A private function.\"]\n",
+            "fn f() {}\n",
+            "pub fn g() {\n",
+            "    #[cfg_attr(all(), r#doc = \"On a statement.\")]\n",
+            "    let a = 1;\n",
+            "}\n",
+        );
+        assert_eq!(
+            violations(source, PUBLIC_MODULE),
+            [
+                (1, Rule::NoDocCommentsOffThePublicApi),
+                (4, Rule::NoDocCommentsInsideCode),
+            ]
+        );
+        assert_eq!(
+            violations(source, DocComments::Forbidden),
+            [
+                (1, Rule::NoDocCommentsOutsideUserFacingSources),
+                (4, Rule::NoDocCommentsOutsideUserFacingSources),
+            ]
+        );
+    }
+
+    #[test]
+    fn raw_identifier_attribute_names_mean_the_same_attributes() {
+        assert_allowed(
+            "/// An exported macro.\n#[r#macro_export]\nmacro_rules! m {\n    () => {};\n}\n",
+        );
+        assert_eq!(
+            check_source("#[r#path = \"elsewhere.rs\"]\npub mod a;\n", PUBLIC_MODULE)
+                .unwrap()
+                .child_modules
+                .into_iter()
+                .map(|module| module.path_attribute)
+                .collect::<Vec<_>>(),
+            [Some("elsewhere.rs".to_string())]
+        );
+    }
+
+    #[test]
+    fn doc_meta_passed_to_a_macro_violates_even_when_the_macro_makes_a_public_item() {
+        let source = concat!(
+            "macro_rules! with {\n",
+            "    ($m:meta) => {\n",
+            "        #[$m]\n",
+            "        pub fn g() {}\n",
+            "    };\n",
+            "}\n",
+            "with!(doc = \"Through a meta argument.\");\n",
+            "with!(\n",
+            "    r#doc = r\"Through a raw identifier.\"\n",
+            ");\n",
+            "pub fn f() {\n",
+            "    with!(doc = \"In a body.\");\n",
+            "}\n",
+        );
+        assert_eq!(
+            violations(source, PUBLIC_MODULE),
+            [
+                (7, Rule::NoDocCommentsOffThePublicApi),
+                (9, Rule::NoDocCommentsOffThePublicApi),
+                (12, Rule::NoDocCommentsInsideCode),
+            ]
+        );
+    }
+
+    #[test]
     fn hidden_and_alias_attributes_are_not_doc_comments() {
         assert_allowed("#[doc(hidden)]\nfn f() {\n    #[doc(alias = \"g\")]\n    struct S;\n}\n");
     }

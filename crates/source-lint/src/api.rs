@@ -117,7 +117,7 @@ fn string_value(attribute: &Attribute, name: &str) -> Option<String> {
     let Meta::NameValue(pair) = &attribute.meta else {
         return None;
     };
-    if !pair.path.is_ident(name) {
+    if !is_named(&pair.path, name) {
         return None;
     }
     match &pair.value {
@@ -306,7 +306,7 @@ impl Walker {
                 let exported = item
                     .attrs
                     .iter()
-                    .any(|attribute| attribute.path().is_ident("macro_export"));
+                    .any(|attribute| is_named(attribute.path(), "macro_export"));
                 self.document_if(exported, &item.attrs);
             }
             _ => {}
