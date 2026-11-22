@@ -65338,7 +65338,12 @@ impl crate::Device {
     /// [`vkGetShaderBinaryDataEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetShaderBinaryDataEXT.html)
     /// through [`Self::get_shader_binary_data_ext_raw`], which describes the parameters. Asks the
     /// command for the number of elements and then for the elements, again for as long as it
-    /// reports `VK_INCOMPLETE`, and returns what it writes to `pData`. The command is provided by
+    /// reports `VK_INCOMPLETE`, and returns what it writes to `pData`. The command requires `pData`
+    /// to be aligned to 16 bytes, so the wrapper lets it write at such an address and then moves
+    /// the bytes to the start of the returned vector, which does not have to be aligned to 16 bytes
+    /// itself. Binary shader code that is passed to [`ShaderCreateInfoEXT::code`] has to be aligned
+    /// to 16 bytes as well, so copy the bytes to memory with that alignment unless the vector
+    /// happens to have it. The command is provided by
     /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
     ///
     /// # Errors
@@ -65367,17 +65372,20 @@ impl crate::Device {
                 let mut count: usize = 0;
                 self.get_shader_binary_data_ext_raw(shader, &mut count, core::ptr::null_mut())
                     .into_result()?;
-                let mut values: Vec<u8> = alloc::vec![0u8; count];
+                let mut values: Vec<u8> = alloc::vec![0u8; count.saturating_add(15)];
+                let padding = values.as_ptr().addr().wrapping_neg() % 16;
                 let result = self.get_shader_binary_data_ext_raw(
                     shader,
                     &mut count,
-                    values.as_mut_ptr().cast(),
+                    values.as_mut_ptr().add(padding).cast(),
                 );
                 if result == VkResult::INCOMPLETE {
                     continue;
                 }
                 result.into_result()?;
-                values.truncate(count);
+                let written = count.min(values.len() - 15);
+                values.copy_within(padding..padding + written, 0);
+                values.truncate(written);
                 return Ok(values);
             }
         }
