@@ -5,6 +5,11 @@ use vulkan::vk;
 /// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
 /// every required flag. Among them it takes the lowest-indexed one with every preferred
 /// flag, or else the one with the most preferred flags.
+///
+/// Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` are considered only
+/// when the location names one of these two flags as required or preferred, which only
+/// [`MemoryLocation::Custom`] can do: allocating from such a type is valid only if the
+/// device was created with the `deviceCoherentMemory` feature.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MemoryLocation {
     /// Memory for resources only the device accesses: requires and prefers
@@ -82,6 +87,9 @@ impl MemoryLocation {
     }
 }
 
+const NEEDS_DEVICE_COHERENT_MEMORY: u32 = vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD.as_raw()
+    | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD.as_raw();
+
 pub(crate) fn memory_type_flags(
     properties: &vk::PhysicalDeviceMemoryProperties,
     memory_type_index: u32,
@@ -110,6 +118,11 @@ pub(crate) fn find_memory_type_index(
         }
         let flags = properties.memory_types[index as usize].property_flags;
         if !flags.contains(required) {
+            continue;
+        }
+        if flags.as_raw() & NEEDS_DEVICE_COHERENT_MEMORY != 0
+            && (required.as_raw() | preferred.as_raw()) & NEEDS_DEVICE_COHERENT_MEMORY == 0
+        {
             continue;
         }
         let score = (flags.as_raw() & preferred.as_raw()).count_ones();
@@ -258,6 +271,110 @@ pub(crate) mod tests {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         );
         assert_eq!(index, None);
+    }
+
+    #[test]
+    fn device_coherent_memory_types_are_chosen_only_when_the_location_names_them() {
+        let amd = [
+            vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+            vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD
+                | vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+        ];
+        let plain = [
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL
+                | vk::MemoryPropertyFlags::HOST_VISIBLE
+                | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ];
+        let mut kinds = plain.to_vec();
+        for flags in plain {
+            kinds.extend(amd.map(|amd| flags | amd));
+        }
+        let locations = [
+            MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu,
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::empty(),
+                vk::MemoryPropertyFlags::empty(),
+            ),
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::HOST_VISIBLE,
+                vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD,
+            ),
+            MemoryLocation::custom(
+                vk::MemoryPropertyFlags::HOST_VISIBLE
+                    | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD,
+                vk::MemoryPropertyFlags::empty(),
+            ),
+        ];
+        let amd_flags = vk::MemoryPropertyFlags::DEVICE_COHERENT_AMD.as_raw()
+            | vk::MemoryPropertyFlags::DEVICE_UNCACHED_AMD.as_raw();
+        let is_amd = |flags: vk::MemoryPropertyFlags| flags.as_raw() & amd_flags != 0;
+        let documented_choice = |flags: &[vk::MemoryPropertyFlags],
+                                 memory_type_bits: u32,
+                                 location: MemoryLocation,
+                                 consider_unnamed_amd_types: bool| {
+            let (required, preferred) = (location.required_flags(), location.preferred_flags());
+            let named = is_amd(required) || is_amd(preferred);
+            let candidates = (0..flags.len())
+                .filter(|&index| memory_type_bits & (1 << index) != 0)
+                .filter(|&index| flags[index].contains(required))
+                .filter(|&index| consider_unnamed_amd_types || named || !is_amd(flags[index]))
+                .collect::<Vec<_>>();
+            let score = |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+            candidates
+                .iter()
+                .copied()
+                .find(|&index| flags[index].contains(preferred))
+                .or_else(|| {
+                    let best = candidates.iter().copied().map(score).max()?;
+                    candidates
+                        .iter()
+                        .copied()
+                        .find(|&index| score(index) == best)
+                })
+                .map(|index| index as u32)
+        };
+
+        let mut seed = 0x853c_49e6_748f_ea9b_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut left_out = 0;
+        let mut taken = 0;
+        for _ in 0..4000 {
+            let flags = (0..1 + next() % 8)
+                .map(|_| kinds[(next() % kinds.len() as u64) as usize])
+                .collect::<Vec<_>>();
+            let properties = memory_properties(&flags);
+            let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
+            for location in locations {
+                let chosen = find_memory_type_index(
+                    &properties,
+                    memory_type_bits,
+                    location.required_flags(),
+                    location.preferred_flags(),
+                );
+                assert_eq!(
+                    chosen,
+                    documented_choice(&flags, memory_type_bits, location, false),
+                    "types {flags:?}, allowed {memory_type_bits:#b}, {location:?}"
+                );
+                if chosen.is_some_and(|index| is_amd(flags[index as usize])) {
+                    taken += 1;
+                }
+                if chosen != documented_choice(&flags, memory_type_bits, location, true) {
+                    left_out += 1;
+                }
+            }
+        }
+        assert!(left_out > 100 && taken > 100);
     }
 
     #[test]
