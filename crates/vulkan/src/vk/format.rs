@@ -41,7 +41,7 @@ pub struct FormatInfo {
     pub block_extent: [u32; 3],
     /// For a packed format, the width in bits of its words: the `nn` of a `_PACKnn` format,
     /// whose components are packed in one word, and of a `_mPACKnn` format such as
-    /// `R10X6G10X6_UNORM_2PACK16`, whose `m` components each fill a word of their own.
+    /// `R10X6G10X6_UNORM_2PACK16`, whose `m` components are each packed in a word of their own.
     pub packed: Option<u32>,
     /// The chroma subsampling of a Y'CbCr format.
     pub chroma: Option<ChromaSubsampling>,

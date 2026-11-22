@@ -671,14 +671,56 @@ fn packed_formats_give_the_width_of_their_words() {
             word.map(|(_, bits)| bits),
             "{name}: the width of the words is the number after PACK"
         );
-        if let Some((count, bits)) = word {
+        let Some((count, bits)) = word else { continue };
+        assert_eq!(
+            info.block_size * 8,
+            count * bits,
+            "{name}: a texel block is the words that the name counts"
+        );
+        if count > 1 {
             assert_eq!(
-                info.block_size * 8,
-                count * bits,
-                "{name}: a texel block is the words that the name counts"
+                info.components.len(),
+                usize::try_from(count).unwrap(),
+                "{name}: each component is packed in a word of its own"
+            );
+        }
+        let named = named_components(name);
+        assert_eq!(
+            info.components
+                .iter()
+                .map(|c| (format!("{:?}", c.name), c.bits))
+                .collect::<Vec<_>>(),
+            named,
+            "{name}: the components are listed in the order of the name, from the most significant bits of a word down or word by word"
+        );
+    }
+}
+
+fn named_components(name: &str) -> Vec<(String, Option<u32>)> {
+    let mut components = Vec::new();
+    for part in name.split('_') {
+        let mut tokens = Vec::new();
+        let mut rest = part;
+        while let Some(letter) = rest.chars().next().filter(char::is_ascii_uppercase) {
+            let digits = rest[1..]
+                .find(|c: char| !c.is_ascii_digit())
+                .map_or(rest.len(), |end| end + 1);
+            let Ok(bits) = rest[1..digits].parse::<u32>() else {
+                break;
+            };
+            tokens.push((letter, bits));
+            rest = &rest[digits..];
+        }
+        if rest.is_empty() && !tokens.is_empty() {
+            components.extend(
+                tokens
+                    .into_iter()
+                    .filter(|(letter, _)| !matches!(letter, 'X' | 'E'))
+                    .map(|(letter, bits)| (letter.to_string(), Some(bits))),
             );
         }
     }
+    components
 }
 
 #[test]
