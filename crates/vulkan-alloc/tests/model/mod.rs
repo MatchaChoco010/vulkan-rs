@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ptr::NonNull;
 
 use proptest::prelude::*;
@@ -288,6 +288,14 @@ impl Request {
 }
 
 pub fn documented_memory_type(world: &World, request: &Request) -> Option<u32> {
+    documented_memory_type_without(world, request, &[])
+}
+
+pub fn documented_memory_type_without(
+    world: &World,
+    request: &Request,
+    left_out: &[u32],
+) -> Option<u32> {
     let (required, preferred) = request.location.documented_flags();
     let named = required.union(preferred);
     let candidates = world
@@ -296,6 +304,7 @@ pub fn documented_memory_type(world: &World, request: &Request) -> Option<u32> {
         .enumerate()
         .filter(|&(index, memory_type)| {
             index < 32
+                && !left_out.contains(&(index as u32))
                 && request.memory_type_bits >> index & 1 == 1
                 && memory_type.flags.contains(required)
                 && !world.is_tile_memory(memory_type)
@@ -915,7 +924,7 @@ pub struct Harness {
     live: Vec<Live>,
     stale: Vec<Allocation>,
     blocks: BTreeMap<u64, Block>,
-    allocation_fails: Option<vk::VkResult>,
+    allocation_fails: VecDeque<vk::VkResult>,
     map_fault: Option<MapFault>,
     synchronization_fails: Option<vk::VkResult>,
     seen_allocation_ids: BTreeSet<u64>,
@@ -985,7 +994,7 @@ impl Harness {
             live: Vec::new(),
             stale: Vec::new(),
             blocks: BTreeMap::new(),
-            allocation_fails: None,
+            allocation_fails: VecDeque::new(),
             map_fault: None,
             synchronization_fails: None,
             seen_allocation_ids: BTreeSet::new(),
@@ -1027,8 +1036,8 @@ impl Harness {
             Op::UseStale(pick, handle_use) => self.use_stale(pick, handle_use)?,
             Op::UseForeign(pick, handle_use) => self.use_foreign(pick, handle_use)?,
             Op::FailNextAllocation(failure) => {
-                self.allocation_fails = Some(failure);
-                self.fake.fail_next_allocation(failure);
+                self.allocation_fails.push_back(failure);
+                self.fake.script_allocations([failure]);
                 self.coverage.step("arm a failing vkAllocateMemory");
             }
             Op::FaultNextMap(fault) => {
@@ -1225,6 +1234,38 @@ impl Harness {
         }
     }
 
+    fn failed_allocation(
+        &mut self,
+        before: &Observation,
+        request: &Request,
+        name: Option<&str>,
+        resource: u64,
+        (allocate_calls, freed, consumed): (usize, &[u64], &[vk::VkResult]),
+        error: AllocationError,
+    ) -> Checked {
+        let calls = self.fake.calls();
+        ensure_eq!(
+            (calls.allocate, calls.free),
+            (
+                before.calls.allocate + allocate_calls,
+                before.calls.free + freed.len()
+            ),
+            "vkAllocateMemory and vkFreeMemory calls of a failed allocation that frees the empty \
+             blocks {freed:?}"
+        );
+        if freed.is_empty() {
+            return self.state_is_as(before, "a failed allocation");
+        }
+        self.twin_fake.script_allocations(consumed.iter().copied());
+        let twin = unsafe { self.twin.allocate(create_desc(request, name, resource)) };
+        ensure_eq!(
+            twin.map(|_| ()),
+            Err(error),
+            "the twin allocator given the same request and the same failures"
+        );
+        Ok(())
+    }
+
     fn allocate(&mut self, request: &Request) -> Checked {
         self.made += 1;
         let resource = 1000 + self.made;
@@ -1269,61 +1310,157 @@ impl Harness {
             }
             return self.nothing_happened_since(&before, "an invalid description");
         }
-        let Some(memory_type) = documented_memory_type(&self.world, request) else {
-            ensure_eq!(
-                result,
-                Err(AllocationError::NoCompatibleMemoryType),
-                "no memory type is allowed and suitable"
-            );
-            self.coverage.step("allocate: no compatible memory type");
-            return self.nothing_happened_since(&before, "a refused allocation");
-        };
-        if self
-            .world
-            .known_heap_size(memory_type)
-            .is_some_and(|heap_size| request.size > heap_size)
-        {
-            ensure_eq!(
-                result,
-                Err(AllocationError::OutOfMemory),
-                "an allocation larger than the memory heap of its type"
-            );
-            self.coverage.step("allocate: larger than the memory heap");
-            return self.nothing_happened_since(&before, "an allocation larger than its heap");
-        }
-
-        let alignment = self.effective_alignment(memory_type, request.alignment);
         let own = request.needs_its_own_memory();
         let allocate_flags = request.allocate_flags();
-        let first_with_room = |empty: bool| {
-            self.blocks
+        let mut left_out = Vec::new();
+        let mut reasons = Vec::new();
+        let mut consumed = Vec::new();
+        let mut freed = Vec::new();
+        let mut allocate_calls = 0;
+        let (memory_type, alignment, holding, empty) = loop {
+            let Some(memory_type) = documented_memory_type_without(&self.world, request, &left_out)
+            else {
+                if left_out.is_empty() {
+                    ensure_eq!(
+                        result,
+                        Err(AllocationError::NoCompatibleMemoryType),
+                        "no memory type is allowed and suitable"
+                    );
+                    self.coverage.step("allocate: no compatible memory type");
+                    return self.nothing_happened_since(&before, "a refused allocation");
+                }
+                ensure_eq!(
+                    result,
+                    Err(AllocationError::OutOfMemory),
+                    "the result when the memory types {left_out:?} are out of memory: {reasons:?}"
+                );
+                self.coverage.step(match reasons[..] {
+                    ["larger than the memory heap"] => "allocate: larger than the memory heap",
+                    ["vkAllocateMemory is out of memory"] => {
+                        "allocate: the device is out of memory"
+                    }
+                    _ => "allocate: every memory type is out of memory",
+                });
+                return self.failed_allocation(
+                    &before,
+                    request,
+                    name.as_deref(),
+                    resource,
+                    (allocate_calls, &freed, &consumed),
+                    AllocationError::OutOfMemory,
+                );
+            };
+            if self
+                .world
+                .known_heap_size(memory_type)
+                .is_some_and(|heap_size| request.size > heap_size)
+            {
+                left_out.push(memory_type);
+                reasons.push("larger than the memory heap");
+                continue;
+            }
+            let alignment = self.effective_alignment(memory_type, request.alignment);
+            let first_with_room = |empty: bool| {
+                self.blocks
+                    .iter()
+                    .filter(|&(&memory, block)| {
+                        !own && !block.own
+                            && block.memory_type == memory_type
+                            && block.allocate_flags == allocate_flags
+                            && self.taken_in(memory).is_empty() == empty
+                            && (empty || block.linear == request.linear)
+                            && gaps(block.size, &self.taken_in(memory))
+                                .into_iter()
+                                .any(|gap| fits(gap, request.size, alignment))
+                    })
+                    .min_by_key(|(_, block)| block.block_index)
+                    .map(|(&memory, _)| memory)
+            };
+            let holding = first_with_room(false);
+            let empty = first_with_room(true);
+            if holding.is_some() || empty.is_some() {
+                break (memory_type, alignment, holding, empty);
+            }
+            allocate_calls += 1;
+            let mut failure = self.allocation_fails.pop_front();
+            consumed.extend(failure);
+            let heap = self.world.memory_types[memory_type as usize].heap;
+            let empty_in_heap = self
+                .blocks
                 .iter()
                 .filter(|&(&memory, block)| {
-                    !own && !block.own
-                        && block.memory_type == memory_type
-                        && block.allocate_flags == allocate_flags
-                        && self.taken_in(memory).is_empty() == empty
-                        && (empty || block.linear == request.linear)
-                        && gaps(block.size, &self.taken_in(memory))
-                            .into_iter()
-                            .any(|gap| fits(gap, request.size, alignment))
+                    self.world.memory_types[block.memory_type as usize].heap == heap
+                        && self.taken_in(memory).is_empty()
                 })
-                .min_by_key(|(_, block)| block.block_index)
                 .map(|(&memory, _)| memory)
+                .collect::<Vec<_>>();
+            if failure == Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY)
+                && !empty_in_heap.is_empty()
+            {
+                for memory in &empty_in_heap {
+                    self.blocks.remove(memory);
+                }
+                freed.extend(empty_in_heap);
+                allocate_calls += 1;
+                failure = self.allocation_fails.pop_front();
+                consumed.extend(failure);
+                self.coverage
+                    .note("allocate: frees the empty blocks of the heap and retries");
+                self.coverage.note(match failure {
+                    None => "allocate: the retry after freeing the empty blocks succeeds",
+                    Some(_) => "allocate: the retry after freeing the empty blocks fails",
+                });
+            }
+            match failure {
+                None => break (memory_type, alignment, None, None),
+                Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY) => {
+                    left_out.push(memory_type);
+                    reasons.push("vkAllocateMemory is out of memory");
+                }
+                Some(failure) => {
+                    ensure_eq!(
+                        result,
+                        Err(AllocationError::Vulkan(failure)),
+                        "the result when vkAllocateMemory fails with {failure:?}"
+                    );
+                    self.coverage.step("allocate: another Vulkan error");
+                    return self.failed_allocation(
+                        &before,
+                        request,
+                        name.as_deref(),
+                        resource,
+                        (allocate_calls, &freed, &consumed),
+                        AllocationError::Vulkan(failure),
+                    );
+                }
+            }
         };
-        let holding = first_with_room(false);
-        let empty = first_with_room(true);
-        let chosen = holding.or(empty);
+        if !left_out.is_empty() {
+            self.coverage
+                .note("allocate: falls back to another memory type");
+        }
+        for reason in &reasons {
+            self.coverage.note(match *reason {
+                "larger than the memory heap" => {
+                    "allocate: falls back past a heap that is too small"
+                }
+                _ => "allocate: falls back past a memory type that is out of memory",
+            });
+        }
 
         let calls = self.fake.calls();
-        let allocation = if let Some(chosen) = chosen {
+        ensure_eq!(
+            (calls.allocate, calls.free),
+            (
+                before.calls.allocate + allocate_calls,
+                before.calls.free + freed.len()
+            ),
+            "vkAllocateMemory and vkFreeMemory calls of an allocation that falls back past \
+             {left_out:?} and frees the empty blocks {freed:?}"
+        );
+        let allocation = if let Some(chosen) = holding.or(empty) {
             let allocation =
                 result.map_err(|error| format!("a shared block has room, but: {error:?}"))?;
-            ensure_eq!(
-                calls.allocate,
-                before.calls.allocate,
-                "vkAllocateMemory calls although a shared block has room"
-            );
             let memory = allocation.memory().0;
             ensure_eq!(
                 memory,
@@ -1353,34 +1490,11 @@ impl Harness {
             } else {
                 self.world.shared_block_size(memory_type).max(request.size)
             };
-            ensure_eq!(
-                calls.allocate,
-                before.calls.allocate + 1,
-                "vkAllocateMemory calls for a request that needs new memory"
-            );
-            if let Some(failure) = self.allocation_fails.take() {
-                if failure == vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY {
-                    ensure_eq!(
-                        result,
-                        Err(AllocationError::OutOfMemory),
-                        "the result when vkAllocateMemory runs out of device memory"
-                    );
-                    self.coverage.step("allocate: the device is out of memory");
-                } else {
-                    ensure_eq!(
-                        result,
-                        Err(AllocationError::Vulkan(failure)),
-                        "the result when vkAllocateMemory fails with {failure:?}"
-                    );
-                    self.coverage.step("allocate: another Vulkan error");
-                }
-                return self.state_is_as(&before, "a failed allocation");
-            }
             let allocation =
                 result.map_err(|error| format!("new memory was allocated, but: {error:?}"))?;
             let memory = allocation.memory();
             ensure!(
-                !before.memory_objects.contains_key(&memory),
+                !before.memory_objects.contains_key(&memory) || freed.contains(&memory.0),
                 "new memory has the handle of existing memory {memory:?}"
             );
             ensure_eq!(
@@ -1517,6 +1631,7 @@ impl Harness {
             "allocation id {allocation_id} was used before"
         );
 
+        self.twin_fake.script_allocations(consumed.iter().copied());
         let twin = unsafe {
             self.twin
                 .allocate(create_desc(request, name.as_deref(), resource))

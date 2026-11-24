@@ -13,9 +13,10 @@ pub enum AllocationError {
     /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) or
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu).
     NoCompatibleMemoryType,
-    /// The device does not have the memory: the request is larger than the memory heap
-    /// of the chosen memory type, or `vkAllocateMemory` returned
-    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] (see
+    /// The device does not have the memory: every memory type the request may use is out
+    /// of memory, because the request is larger than the memory heap of the type, or
+    /// because `vkAllocateMemory` returned [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] for
+    /// the type, also after the empty blocks of that heap were freed (see
     /// [`Allocator::allocate`](crate::Allocator::allocate)).
     OutOfMemory,
     /// The [`AllocationCreateDesc`](crate::AllocationCreateDesc) asks for something the
@@ -31,8 +32,10 @@ pub enum AllocationError {
     /// A Vulkan call (`vkAllocateMemory`, `vkMapMemory`, `vkFlushMappedMemoryRanges` or
     /// `vkInvalidateMappedMemoryRanges`) failed with this result.
     ///
-    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] from `vkAllocateMemory` is reported as
-    /// [`AllocationError::OutOfMemory`] instead; from the other calls it is reported here.
+    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] from `vkAllocateMemory` is not reported
+    /// here: [`Allocator::allocate`](crate::Allocator::allocate) tries another memory type
+    /// then, and returns [`AllocationError::OutOfMemory`] when none is left. From the other
+    /// calls it is reported here.
     Vulkan(vk::VkResult),
     /// The allocation does not fit the operation. Each function lists its cases under
     /// `# Errors`. They are of these kinds:

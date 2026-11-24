@@ -4,7 +4,10 @@ use vulkan::vk;
 ///
 /// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
 /// every required flag. Among them it takes the lowest-indexed one with every preferred
-/// flag, or else the one with the most preferred flags.
+/// flag, or else the one with the most preferred flags. If that memory type is out of
+/// memory, it takes the next one by the same rule among the rest, so the memory of an
+/// allocation always has the required flags, but can lack some of the preferred ones even
+/// when another allowed type has them.
 /// [`Allocation::memory_properties`](crate::Allocation::memory_properties) gives the flags
 /// of the type that was chosen.
 ///
