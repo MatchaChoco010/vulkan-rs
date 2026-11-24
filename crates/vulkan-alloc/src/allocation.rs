@@ -29,8 +29,8 @@ pub struct AllocationCreateDesc<'a> {
     /// treated as 1. A caller may raise `alignment` to a larger power of two, for
     /// example to align a device address. An `alignment` that is neither 0 nor a power
     /// of two is rejected with
-    /// [`AllocationError::InvalidAllocationCreateDesc`](crate::AllocationError::InvalidAllocationCreateDesc). The
-    /// allocator combines `alignment` with other alignments (see
+    /// [`AllocationError::InvalidAllocationCreateDesc`](crate::AllocationError::InvalidAllocationCreateDesc).
+    /// The allocator combines `alignment` with other alignments (see
     /// [`AllocatorCreateDesc::non_coherent_atom_size`](crate::AllocatorCreateDesc::non_coherent_atom_size))
     /// by taking the largest, which is a multiple of each of them.
     pub requirements: vk::MemoryRequirements,
@@ -66,9 +66,8 @@ pub struct AllocationCreateDesc<'a> {
     /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] is refused with
     /// [`AllocationError::InvalidAllocationCreateDesc`](crate::AllocationError::InvalidAllocationCreateDesc):
     /// Vulkan requires a `deviceMask` other than 0 when it is set. Memory on chosen
-    /// physical devices of a
-    /// logical device that represents more than one physical device is allocated with
-    /// `vkAllocateMemory` directly (see the
+    /// physical devices of a logical device that represents more than one physical
+    /// device is allocated with `vkAllocateMemory` directly (see the
     /// [crate documentation](crate#what-the-allocator-does-and-does-not-do)).
     ///
     /// Allocations with different flags never share a block. With
