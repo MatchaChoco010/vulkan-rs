@@ -7,6 +7,7 @@ use std::path::Path;
 use render::Ctx;
 
 const FILL: u8 = 0xaa;
+const FREED: u8 = 0xdd;
 
 struct FilledAllocations;
 
@@ -22,7 +23,10 @@ unsafe impl GlobalAlloc for FilledAllocations {
     }
 
     unsafe fn dealloc(&self, memory: *mut u8, layout: Layout) {
-        unsafe { System.dealloc(memory, layout) }
+        unsafe {
+            memory.write_bytes(FREED, layout.size());
+            System.dealloc(memory, layout)
+        }
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
