@@ -1,4 +1,5 @@
 use super::inputs::Inputs;
+use super::read_outputs::{ReadOutput, read_output};
 use super::shape::Shape;
 use super::{
     argument_name, called, can_defer, not_loaded, provided, raw_name, with_deferred_safety,
@@ -20,9 +21,18 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     let aligned = aligned_output(model, c, params, &shape);
     let alignment = alignment_check(model, c, params);
     let nested = nested_bytes(model, c, params, &shape);
+    let initial = initial_value(model, c, params, &shape);
     assert_distinct_names(
         &c.name,
-        bound_names(c, params, &shape, &inputs, aligned, nested.as_ref()),
+        bound_names(
+            c,
+            params,
+            &shape,
+            &inputs,
+            aligned,
+            nested.as_ref(),
+            initial.as_ref(),
+        ),
     );
     let absent_before = absent_before(c, dispatch);
     assert!(
@@ -36,6 +46,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         params,
         inputs: &inputs,
         absent_before,
+        initial: initial.as_ref(),
     };
     let Returned {
         ty,
@@ -78,6 +89,10 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         Some(array) => format!("{} {note}", array.note()),
         None => note,
     };
+    let note = match &initial {
+        Some(initial) => format!("{note} {}", initial.listed.note(&initial.argument)),
+        None => note,
+    };
     let note = if inputs.notes.is_empty() {
         note
     } else {
@@ -111,10 +126,45 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         doc = doc.render(),
         name = command_name(&c.name),
         generics = inputs.generics(),
-        signature = inputs.signature(),
+        signature = inputs.signature()
+            + &initial.as_ref().map_or_else(String::new, |initial| {
+                format!(", {}: {}", initial.argument, initial.ty)
+            }),
         arrow = arrow(&ty),
         checks = inputs.checks + &alignment.check,
     )
+}
+
+struct InitialValue {
+    listed: &'static ReadOutput,
+    argument: String,
+    ty: String,
+}
+
+fn initial_value(
+    model: &Model<'_>,
+    c: &Command,
+    params: &[Field],
+    shape: &Shape,
+) -> Option<InitialValue> {
+    let listed = read_output(model, c)?;
+    let returned = match shape {
+        Shape::ReturnsValue { out } => Some(&params[*out]),
+        _ => None,
+    };
+    let p = returned
+        .filter(|p| p.name == listed.parameter)
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: the list of values that a command reads before it writes them names `{}`, and the wrapper does not return what the command writes to it",
+                c.name, listed.parameter
+            )
+        });
+    Some(InitialValue {
+        listed,
+        argument: argument_name(p),
+        ty: model.base_ty(&CType::of(p).base, "'static"),
+    })
 }
 
 #[derive(Default)]
@@ -286,7 +336,17 @@ fn bound_names(
     inputs: &Inputs,
     aligned: Option<&AlignedOutput>,
     nested: Option<&NestedBytes>,
+    initial: Option<&InitialValue>,
 ) -> Vec<(String, String)> {
+    let initial = initial.map(|initial| {
+        (
+            format!(
+                "the argument that holds the value of the C parameter `{}` when the command is called",
+                initial.listed.parameter
+            ),
+            initial.argument.clone(),
+        )
+    });
     let nested = nested.into_iter().flat_map(|nested| {
         NESTED_BINDINGS.iter().map(|name| {
             (
@@ -325,6 +385,7 @@ fn bound_names(
         .names
         .iter()
         .cloned()
+        .chain(initial)
         .chain(shape_locals(shape, params))
         .chain(aligned)
         .chain(nested)
@@ -344,10 +405,19 @@ pub(super) fn checked_names(
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
     let aligned = aligned_output(model, c, params, &shape);
     let nested = nested_bytes(model, c, params, &shape);
-    bound_names(c, params, &shape, &inputs, aligned, nested.as_ref())
-        .into_iter()
-        .map(|(_, name)| name.trim_start_matches("r#").to_string())
-        .collect()
+    let initial = initial_value(model, c, params, &shape);
+    bound_names(
+        c,
+        params,
+        &shape,
+        &inputs,
+        aligned,
+        nested.as_ref(),
+        initial.as_ref(),
+    )
+    .into_iter()
+    .map(|(_, name)| name.trim_start_matches("r#").to_string())
+    .collect()
 }
 
 fn shape_locals(shape: &Shape, params: &[Field]) -> Vec<(String, String)> {
@@ -514,6 +584,7 @@ struct Call<'a> {
     params: &'a [Field],
     inputs: &'a Inputs,
     absent_before: Option<(u32, u32)>,
+    initial: Option<&'a InitialValue>,
 }
 
 impl Call<'_> {
@@ -672,6 +743,9 @@ impl Call<'_> {
         } else {
             (storage_ty.as_str(), "value")
         };
+        let init = self
+            .initial
+            .map_or(init, |initial| initial.argument.clone());
         let declaration = format!("let mut value: {storage_ty} = {init};");
         let call = self.raw(&[(out, "&mut value")]);
         let listed_errors = self.listed_errors();
