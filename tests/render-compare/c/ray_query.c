@@ -4,7 +4,9 @@
  * instances carry a custom index, a mask, a shader binding table offset and flags in bit
  * fields; the mask hides the third instance, which would cover the picture. The structures
  * are built on the device from buffers given by device address, with the geometry in a
- * union and the build ranges behind a pointer to pointers.
+ * union and the build ranges behind a pointer to pointers. The scratch buffers are longer
+ * than the build needs by the alignment that the device requires of the scratch address,
+ * and the address is rounded up to it.
  */
 #include "scenarios.h"
 
@@ -61,7 +63,7 @@ static AddressBuffer address_buffer(Ctx *ctx, VkDeviceSize size, VkBufferUsageFl
 
 static Structure structure_build(Ctx *ctx, VkAccelerationStructureTypeKHR type,
                                  const VkAccelerationStructureGeometryKHR *geometry,
-                                 uint32_t primitive_count) {
+                                 uint32_t primitive_count, VkDeviceSize scratch_alignment) {
     LOAD(GetAccelerationStructureBuildSizesKHR);
     LOAD(CreateAccelerationStructureKHR);
     LOAD(CmdBuildAccelerationStructuresKHR);
@@ -90,10 +92,11 @@ static Structure structure_build(Ctx *ctx, VkAccelerationStructureTypeKHR type,
         .type = type,
     };
     CHECK(CreateAccelerationStructureKHR(ctx->device, &create_info, NULL, &result.structure));
-    AddressBuffer scratch = address_buffer(ctx, sizes.buildScratchSize,
+    AddressBuffer scratch = address_buffer(ctx, sizes.buildScratchSize + scratch_alignment,
                                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, NULL);
     build.dstAccelerationStructure = result.structure;
-    build.scratchData.deviceAddress = scratch.address;
+    build.scratchData.deviceAddress =
+        (scratch.address + scratch_alignment - 1) / scratch_alignment * scratch_alignment;
     VkAccelerationStructureBuildRangeInfoKHR range = {.primitiveCount = primitive_count};
     const VkAccelerationStructureBuildRangeInfoKHR *ranges = &range;
     VkCommandBuffer command_buffer = commands_begin(ctx);
@@ -131,6 +134,16 @@ void scenario_ray_query(Ctx *ctx) {
     LOAD(DestroyAccelerationStructureKHR);
     const VkBufferUsageFlags input_usage =
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR structure_properties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR,
+    };
+    VkPhysicalDeviceProperties2 properties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+        .pNext = &structure_properties,
+    };
+    vkGetPhysicalDeviceProperties2(ctx->physical_device, &properties);
+    const VkDeviceSize scratch_alignment =
+        structure_properties.minAccelerationStructureScratchOffsetAlignment;
 
     AddressBuffer vertex_buffer = address_buffer(ctx, sizeof(vertices), input_usage, vertices);
     AddressBuffer index_buffer = address_buffer(ctx, sizeof(indices), input_usage, indices);
@@ -151,7 +164,8 @@ void scenario_ray_query(Ctx *ctx) {
         .flags = VK_GEOMETRY_OPAQUE_BIT_KHR,
     };
     Structure bottom =
-        structure_build(ctx, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, &triangles, 2);
+        structure_build(ctx, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR, &triangles, 2,
+                        scratch_alignment);
     VkAccelerationStructureDeviceAddressInfoKHR bottom_address_info = {
         .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
         .accelerationStructure = bottom.structure,
@@ -179,7 +193,7 @@ void scenario_ray_query(Ctx *ctx) {
     };
     instance_geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
     Structure top = structure_build(ctx, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
-                                    &instance_geometry, COUNT(instances));
+                                    &instance_geometry, COUNT(instances), scratch_alignment);
 
     ImageDesc color_desc =
         image_desc(format, width, height,
