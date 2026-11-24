@@ -33,6 +33,38 @@ pub(crate) const ALIGNED_INPUTS: &[AlignedInput] = &[AlignedInput {
     stated_by: "VUID-VkShaderCreateInfoEXT-pCode-08492 and VUID-VkShaderCreateInfoEXT-pCode-08493",
 }];
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct AlignedSlice {
+    pub(crate) command: &'static str,
+    pub(crate) parameter: &'static str,
+    pub(crate) alignment: usize,
+    pub(crate) wider: Option<WiderAlignment>,
+    pub(crate) stated_by: &'static str,
+    pub(crate) unchecked: &'static str,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct WiderAlignment {
+    pub(crate) flags: &'static str,
+    pub(crate) bits: &'static str,
+    pub(crate) bit: &'static str,
+    pub(crate) alignment: usize,
+}
+
+pub(crate) const ALIGNED_SLICES: &[AlignedSlice] = &[AlignedSlice {
+    command: "vkGetQueryPoolResults",
+    parameter: "pData",
+    alignment: 4,
+    wider: Some(WiderAlignment {
+        flags: "flags",
+        bits: "VkQueryResultFlagBits",
+        bit: "VK_QUERY_RESULT_64_BIT",
+        alignment: 8,
+    }),
+    stated_by: "VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815",
+    unchecked: "For a pool of performance queries, VUID-vkGetQueryPoolResults-queryType-03229 requires the alignment of [`PerformanceCounterResultKHR`] instead, which the wrapper does not check, since it does not know the type of the pool.",
+}];
+
 const CORRECT_THE_LIST: &str =
     "correct the list of memory that the specification requires to be aligned";
 
@@ -71,6 +103,58 @@ impl AlignedOutput {
     }
 }
 
+impl AlignedSlice {
+    fn assert_matches(&self, c: &Command) {
+        let Self {
+            command,
+            parameter,
+            alignment,
+            wider,
+            stated_by,
+            ..
+        } = self;
+        let alignments = [
+            Some(*alignment),
+            wider.as_ref().map(|wider| wider.alignment),
+        ];
+        for alignment in alignments.into_iter().flatten() {
+            assert!(
+                alignment.is_power_of_two(),
+                "{command}::{parameter}: the listed alignment {alignment} is not a power of two"
+            );
+        }
+        let p = c
+            .params
+            .iter()
+            .find(|p| p.name == *parameter)
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} has no parameter `{parameter}`: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+                    c.name
+                )
+            });
+        let ty = CType::of(p);
+        assert!(
+            ty.pointers == [false]
+                && !ty.is_array()
+                && p.len.is_some()
+                && matches!(ty.base.as_str(), "void" | "uint8_t"),
+            "{}::{parameter} is a `{}`, not a pointer to bytes of a stated length that the caller passes: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+            c.name,
+            p.full_ty
+        );
+        if let Some(wider) = wider {
+            let flags = c.params.iter().find(|p| p.name == wider.flags);
+            assert!(
+                flags.is_some_and(|flags| CType::of(flags).depth() == 0),
+                "{} has no parameter `{}` that holds flags: {CORRECT_THE_LIST}, which takes `{parameter}` from {stated_by}",
+                c.name,
+                wider.flags
+            );
+        }
+    }
+}
+
 impl AlignedInput {
     fn assert_matches(&self, s: &Struct) {
         let Self {
@@ -100,6 +184,26 @@ impl AlignedInput {
 impl Model<'_> {
     fn command_behind<'n>(&'n self, name: &'n str) -> &'n str {
         self.command_aliases.get(name).copied().unwrap_or(name)
+    }
+
+    pub(crate) fn aligned_slice(&self, c: &Command) -> Option<&'static AlignedSlice> {
+        let command = self.command_behind(&c.name);
+        let slice = ALIGNED_SLICES
+            .iter()
+            .find(|slice| self.command_behind(slice.command) == command)?;
+        slice.assert_matches(c);
+        let wider = slice.wider.as_ref();
+        if let Some(wider) = wider {
+            let has_the_bit = self.ir.bitmasks.iter().any(|bits| {
+                bits.name == wider.bits && bits.fields.iter().any(|bit| bit.name == wider.bit)
+            });
+            assert!(
+                has_the_bit,
+                "{} has no bit {}: {CORRECT_THE_LIST}, which takes `{}` of {} from {}",
+                wider.bits, wider.bit, slice.parameter, slice.command, slice.stated_by
+            );
+        }
+        Some(slice)
     }
 
     pub(crate) fn aligned_outputs(&self, c: &Command) -> Vec<&'static AlignedOutput> {
@@ -149,6 +253,19 @@ pub(crate) fn assert_listed_aligned_memory_exists(ir: &Registry) {
                 )
             });
         input.assert_matches(s);
+    }
+    for slice in ALIGNED_SLICES {
+        let c = ir
+            .commands
+            .iter()
+            .find(|c| c.name == slice.command)
+            .unwrap_or_else(|| {
+                panic!(
+                    "the registry has no command {}: {CORRECT_THE_LIST}, which takes `{}` from {}",
+                    slice.command, slice.parameter, slice.stated_by
+                )
+            });
+        slice.assert_matches(c);
     }
 }
 
@@ -366,7 +483,7 @@ mod tests {
                 );
             }
         }
-        let mut ir = registry_with(vec![shader_binary_data(LISTED)]);
+        let mut ir = registry_with(vec![shader_binary_data(LISTED), query()]);
         ir.structs.push(crate::test_support::structure(
             "VkShaderCreateInfoEXT",
             vec![size(), counted("pCode", "const void*", "codeSize")],
@@ -386,6 +503,14 @@ mod tests {
                 "{}::{} is listed without its valid usage statement",
                 output.command,
                 output.parameter
+            );
+        }
+        for slice in ALIGNED_SLICES {
+            assert!(
+                slice.stated_by.starts_with("VUID-"),
+                "{}::{} is listed without its valid usage statement",
+                slice.command,
+                slice.parameter
             );
         }
         for input in ALIGNED_INPUTS {
@@ -477,6 +602,44 @@ mod tests {
                 output.alignment
             );
         }
+        for slice in ALIGNED_SLICES {
+            let alignments = [
+                Some(slice.alignment),
+                slice.wider.as_ref().map(|wider| wider.alignment),
+            ];
+            let vuids = slice.stated_by.split(" and ").collect::<Vec<_>>();
+            assert_eq!(
+                vuids.len(),
+                alignments.iter().flatten().count(),
+                "{}",
+                slice.stated_by
+            );
+            for (vuid, alignment) in vuids.into_iter().zip(alignments.into_iter().flatten()) {
+                let statement = valid_usage_statement(&chapters, vuid);
+                assert!(
+                    statement.contains(&format!(
+                        "pname:{} must: be aligned to a multiple of `{alignment}`",
+                        slice.parameter
+                    )),
+                    "{vuid} does not require `{}` to be aligned to {alignment} bytes: {statement}",
+                    slice.parameter
+                );
+                if let Some(wider) = slice
+                    .wider
+                    .as_ref()
+                    .filter(|wider| wider.alignment == alignment)
+                {
+                    assert!(
+                        statement.contains(&format!(
+                            "ename:{} is set in pname:{}",
+                            wider.bit, wider.flags
+                        )),
+                        "{vuid} does not ask for {alignment} bytes when {} is set: {statement}",
+                        wider.bit
+                    );
+                }
+            }
+        }
         for input in ALIGNED_INPUTS {
             for vuid in input.stated_by.split(" and ") {
                 let statement = valid_usage_statement(&chapters, vuid);
@@ -487,6 +650,167 @@ mod tests {
                 );
             }
         }
+    }
+
+    const ALIGNED_RAW_POINTERS: &[&str] =
+        &["VUID-vkGetMemoryHostPointerPropertiesEXT-pHostPointer-01753"];
+
+    #[test]
+    fn every_command_parameter_that_the_specification_requires_to_be_aligned_is_listed() {
+        let Some(chapters) = chapters_of_the_specification() else {
+            return;
+        };
+        let listed = ALIGNED_OUTPUTS
+            .iter()
+            .map(|output| output.stated_by)
+            .chain(
+                ALIGNED_SLICES
+                    .iter()
+                    .flat_map(|slice| [slice.stated_by, slice.unchecked]),
+            )
+            .chain(ALIGNED_RAW_POINTERS.iter().copied())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut found = 0;
+        for (index, _) in chapters.match_indices("[[VUID-vk") {
+            let vuid = &chapters[index + 2..];
+            let vuid = &vuid[..vuid.find("]]").expect("the end of the anchor")];
+            let statement = valid_usage_statement(&chapters, vuid);
+            let aligned = statement.split("pname:").skip(1).any(|after| {
+                let (name, rest) = after.split_once(' ').unwrap_or((after, ""));
+                name.starts_with('p')
+                    && name.chars().all(|c| c.is_ascii_alphanumeric())
+                    && (rest.starts_with("must: be aligned")
+                        || rest.starts_with("must: be a pointer aligned"))
+            });
+            if aligned {
+                found += 1;
+                assert!(
+                    listed.contains(vuid),
+                    "{vuid} requires a parameter to be aligned, and no list of aligned memory names it: {statement}"
+                );
+            }
+        }
+        assert!(
+            found >= 4,
+            "only {found} statements require a parameter to be aligned"
+        );
+    }
+
+    #[test]
+    fn a_listed_slice_is_checked_before_the_call() {
+        let model = Model::with_docs(Registry::get(), vulkan_registry::Docs::get());
+        let out = squash(&commands::emit(&model));
+        assert!(
+            out.contains(
+                "unsafe { let data_size_len: usize = data.len(); assert!(data.as_ptr().addr().is_multiple_of(if flags.contains(QueryResultFlags::_64) { 8 } else { 4 }), \"vkGetQueryPoolResults: `data` has to start at an address aligned to 4 bytes, or to 8 bytes if `flags` contains `VK_QUERY_RESULT_64_BIT` (VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815)\"); let result = self.get_query_pool_results_raw("
+            ),
+            "{}",
+            &out[out.find("pub unsafe fn get_query_pool_results(").unwrap()..][..1200]
+        );
+        let checked = model
+            .ir
+            .commands
+            .iter()
+            .filter(|c| model.aligned_slice(c).is_some())
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(checked, ["vkGetQueryPoolResults"]);
+    }
+
+    fn query() -> Command {
+        let mut c = result_command(
+            "vkGetQueryPoolResults",
+            &["VK_SUCCESS", "VK_NOT_READY"],
+            vec![
+                field("device", "VkDevice"),
+                field("dataSize", "size_t"),
+                counted("pData", "void*", "dataSize"),
+                field("flags", "VkQueryResultFlags"),
+            ],
+        );
+        c.device = true;
+        c
+    }
+
+    #[test]
+    fn a_listed_slice_that_the_registry_changes_stops_the_generator() {
+        const CORRECT: &str =
+            "correct the list of memory that the specification requires to be aligned";
+        let mut renamed = query();
+        renamed.params[2].name = "pResults".to_string();
+        let mut typed = query();
+        typed.params[2] = counted("pData", "uint64_t*", "dataSize");
+        let mut uncounted = query();
+        uncounted.params[2] = field("pData", "void*");
+        let mut without_flags = query();
+        without_flags.params.pop();
+        for (c, message) in [
+            (
+                renamed,
+                format!(
+                    "vkGetQueryPoolResults has no parameter `pData`: {CORRECT}, which takes this one from VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815"
+                ),
+            ),
+            (
+                typed,
+                format!(
+                    "vkGetQueryPoolResults::pData is a `uint64_t*`, not a pointer to bytes of a stated length that the caller passes: {CORRECT}, which takes this one from VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815"
+                ),
+            ),
+            (
+                uncounted,
+                format!(
+                    "vkGetQueryPoolResults::pData is a `void*`, not a pointer to bytes of a stated length that the caller passes: {CORRECT}, which takes this one from VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815"
+                ),
+            ),
+            (
+                without_flags,
+                format!(
+                    "vkGetQueryPoolResults has no parameter `flags` that holds flags: {CORRECT}, which takes `pData` from VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815"
+                ),
+            ),
+        ] {
+            let ir = registry_with(vec![c]);
+            assert_eq!(
+                catch_quietly(|| Model::new(&ir).aligned_slice(&ir.commands[0]).is_some()),
+                Err(message)
+            );
+        }
+        let bits = |name: &str, bit: &str| vulkan_registry::Bitmask {
+            name: name.to_string(),
+            flags_name: name.replace("FlagBits", "Flags"),
+            bit_width: 32,
+            fields: vec![EnumField {
+                name: bit.to_string(),
+                value: "1".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        for bitmasks in [
+            vec![],
+            vec![bits("VkQueryResultFlagBits", "VK_QUERY_RESULT_WAIT_BIT")],
+            vec![
+                bits("VkQueryResultFlagBits", "VK_QUERY_RESULT_WAIT_BIT"),
+                bits("VkOtherFlagBits", "VK_QUERY_RESULT_64_BIT"),
+            ],
+        ] {
+            let mut ir = registry_with(vec![query()]);
+            ir.bitmasks = bitmasks;
+            assert_eq!(
+                catch_quietly(|| Model::new(&ir).aligned_slice(&ir.commands[0]).is_some()),
+                Err(format!(
+                    "VkQueryResultFlagBits has no bit VK_QUERY_RESULT_64_BIT: {CORRECT}, which takes `pData` of vkGetQueryPoolResults from VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815"
+                ))
+            );
+        }
+        let mut ir = registry_with(vec![query()]);
+        ir.bitmasks = vec![bits("VkQueryResultFlagBits", "VK_QUERY_RESULT_64_BIT")];
+        assert_eq!(
+            catch_quietly(|| Model::new(&ir).aligned_slice(&ir.commands[0]).is_some()),
+            Ok(true)
+        );
     }
 
     #[test]

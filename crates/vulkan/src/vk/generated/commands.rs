@@ -64735,7 +64735,14 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkGetQueryPoolResults` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Panics if
+    /// `data` does not start at an address aligned to 4 bytes, or to 8 bytes if `flags` contains
+    /// `VK_QUERY_RESULT_64_BIT`, as VUID-vkGetQueryPoolResults-flags-02828 and
+    /// VUID-vkGetQueryPoolResults-flags-00815 require: a slice of bytes does not guarantee it, so
+    /// borrow it from memory with that alignment. For a pool of performance queries,
+    /// VUID-vkGetQueryPoolResults-queryType-03229 requires the alignment of
+    /// [`PerformanceCounterResultKHR`] instead, which the wrapper does not check, since it does not
+    /// know the type of the pool.
     #[doc(alias = "vkGetQueryPoolResults")]
     pub unsafe fn get_query_pool_results(
         &self,
@@ -64748,6 +64755,16 @@ impl crate::Device {
     ) -> crate::vk::Result<VkResult> {
         unsafe {
             let data_size_len: usize = data.len();
+            assert!(
+                data.as_ptr()
+                    .addr()
+                    .is_multiple_of(if flags.contains(QueryResultFlags::_64) {
+                        8
+                    } else {
+                        4
+                    }),
+                "vkGetQueryPoolResults: `data` has to start at an address aligned to 4 bytes, or to 8 bytes if `flags` contains `VK_QUERY_RESULT_64_BIT` (VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815)"
+            );
             let result = self.get_query_pool_results_raw(
                 query_pool,
                 first_query,

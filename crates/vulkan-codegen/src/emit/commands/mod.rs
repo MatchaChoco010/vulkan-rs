@@ -733,7 +733,7 @@ mod tests {
     fn byte_buffers_hide_their_size_parameter() {
         let mut ir = base();
         ir.commands.push(device(result_command(
-            "vkGetQueryPoolResults",
+            "vkGetBlobResultsNV",
             &["VK_SUCCESS", "VK_NOT_READY"],
             vec![
                 field("device", "VkDevice"),
@@ -744,7 +744,7 @@ mod tests {
         )));
         let out = generate(&ir);
         assert!(out.contains(
-            "pub unsafe fn get_query_pool_results(&self, data: &mut [u8], stride: DeviceSize) -> crate::vk::Result<VkResult> {"
+            "pub unsafe fn get_blob_results_nv(&self, data: &mut [u8], stride: DeviceSize) -> crate::vk::Result<VkResult> {"
         ));
         assert!(out.contains("data_size_len, data.as_mut_ptr().cast(), stride"));
     }
@@ -1837,14 +1837,15 @@ mod tests {
     fn the_embedded_registry_generates_the_same_commands_under_other_command_names() {
         let (ir, docs) = (Registry::get(), Docs::get());
         let model = Model::with_docs(ir, docs);
-        let listed_by_name = |c: &Command| !model.aligned_outputs(c).is_empty();
+        let listed_by_name =
+            |c: &Command| !model.aligned_outputs(c).is_empty() || model.aligned_slice(c).is_some();
         assert_eq!(
             ir.commands
                 .iter()
                 .filter(|c| listed_by_name(c))
                 .map(|c| c.name.as_str())
                 .collect::<Vec<_>>(),
-            ["vkGetShaderBinaryDataEXT"],
+            ["vkGetQueryPoolResults", "vkGetShaderBinaryDataEXT"],
             "the commands that keep their names here, because the generator lists a requirement \
              of the specification under the name of the command"
         );
