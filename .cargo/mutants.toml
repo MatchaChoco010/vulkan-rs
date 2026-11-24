@@ -22,4 +22,9 @@ exclude_re = [
     # Reaching this check takes about 2^32 regions in one block, which is about 160 GiB of
     # host memory.
     "has_room_for_regions",
+    # These make the AsciiDoc converter push "xyzzy" without consuming any input, so it
+    # keeps adding text until it runs out of memory: the memory limit stops it, not the
+    # timeout.
+    'named_macro .* with Ok\(Some\(\(0, "xyzzy"',
+    'markup .* with Ok\(\(0, "xyzzy"',
 ]
