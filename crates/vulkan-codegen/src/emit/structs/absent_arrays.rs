@@ -110,7 +110,7 @@ fn an_optional_array_whose_setter_takes_the_pointer_itself_is_set_as_it_is() {
 }
 
 #[test]
-fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the_pointer_is_optional()
+fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the_pointer_may_be_null()
  {
     let model = Model::new(Registry::get());
     let mut absent_when_empty = BTreeSet::new();
@@ -151,10 +151,10 @@ fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the
             assert_eq!(
                 (sets_null, guards_the_count, leaves_the_count),
                 (nullable, nullable, nullable),
-                "{}::{}, whose pointer the registry marks as {}{}: {out}",
+                "{}::{}, whose pointer the registry {} as optional{}: {out}",
                 s.name,
                 m.name,
-                if m.optional { "optional" } else { "required" },
+                if m.optional { "marks" } else { "does not mark" },
                 if listed {
                     " and the specification allows to be null"
                 } else {

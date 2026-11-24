@@ -315,7 +315,7 @@ mod tests {
             (
                 "ImageCompressionControlEXT",
                 "pub fn fixed_rate_flags(mut self, value: &'a [ImageCompressionFixedRateFlagsEXT]) -> Self {",
-                "self.p_fixed_rate_flags = value.as_ptr().cast_mut(); self }",
+                "self.p_fixed_rate_flags = value.as_ptr().cast_mut(); } self }",
             ),
             (
                 "DataGraphProcessingEngineCreateInfoARM",

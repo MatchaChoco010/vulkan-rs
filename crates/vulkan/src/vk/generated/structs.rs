@@ -1416,47 +1416,77 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     /// Sets [`p_width_in_sbs_minus1`](Self::p_width_in_sbs_minus1) to the start of a slice of
     /// elements and [`tile_cols`](Self::tile_cols) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_width_in_sbs_minus1`](Self::p_width_in_sbs_minus1) to a null pointer and
+    /// leaves [`tile_cols`](Self::tile_cols) as it is, and it is not compared with the other arrays
+    /// that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_width_in_sbs_minus1`](Self::p_width_in_sbs_minus1) is not null when the setter is called
+    /// and the pointers of the other arrays that share the count are null, the count is set to 0,
+    /// whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if another array that shares `TileCols` is already set and the slice has a different
     /// length. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can count.
     pub fn width_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
-        if !self.p_mi_col_starts.is_null() {
-            assert_eq!(
-                self.tile_cols as usize,
+        if value.is_empty() {
+            if !self.p_width_in_sbs_minus1.is_null() && self.p_mi_col_starts.is_null() {
+                self.tile_cols = 0;
+            }
+            self.p_width_in_sbs_minus1 = core::ptr::null();
+        } else {
+            if !self.p_mi_col_starts.is_null() {
+                assert_eq!(
+                    self.tile_cols as usize,
+                    value.len(),
+                    "StdVideoAV1TileInfo::pWidthInSbsMinus1: every array sharing `TileCols` must have the same length"
+                );
+            }
+            self.tile_cols = len_as_count(
                 value.len(),
-                "StdVideoAV1TileInfo::pWidthInSbsMinus1: every array sharing `TileCols` must have the same length"
+                "StdVideoAV1TileInfo::pWidthInSbsMinus1",
+                "TileCols",
             );
+            self.p_width_in_sbs_minus1 = value.as_ptr();
         }
-        self.tile_cols = len_as_count(
-            value.len(),
-            "StdVideoAV1TileInfo::pWidthInSbsMinus1",
-            "TileCols",
-        );
-        self.p_width_in_sbs_minus1 = value.as_ptr();
         self
     }
     /// Sets [`p_height_in_sbs_minus1`](Self::p_height_in_sbs_minus1) to the start of a slice of
     /// elements and [`tile_rows`](Self::tile_rows) to its length.
+    ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_height_in_sbs_minus1`](Self::p_height_in_sbs_minus1) to a null pointer
+    /// and leaves [`tile_rows`](Self::tile_rows) as it is, and it is not compared with the other
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_height_in_sbs_minus1`](Self::p_height_in_sbs_minus1) is not null when the setter is
+    /// called and the pointers of the other arrays that share the count are null, the count is set
+    /// to 0, whatever stored it.
     ///
     /// # Panics
     ///
     /// Panics if another array that shares `TileRows` is already set and the slice has a different
     /// length. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can count.
     pub fn height_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
-        if !self.p_mi_row_starts.is_null() {
-            assert_eq!(
-                self.tile_rows as usize,
+        if value.is_empty() {
+            if !self.p_height_in_sbs_minus1.is_null() && self.p_mi_row_starts.is_null() {
+                self.tile_rows = 0;
+            }
+            self.p_height_in_sbs_minus1 = core::ptr::null();
+        } else {
+            if !self.p_mi_row_starts.is_null() {
+                assert_eq!(
+                    self.tile_rows as usize,
+                    value.len(),
+                    "StdVideoAV1TileInfo::pHeightInSbsMinus1: every array sharing `TileRows` must have the same length"
+                );
+            }
+            self.tile_rows = len_as_count(
                 value.len(),
-                "StdVideoAV1TileInfo::pHeightInSbsMinus1: every array sharing `TileRows` must have the same length"
+                "StdVideoAV1TileInfo::pHeightInSbsMinus1",
+                "TileRows",
             );
+            self.p_height_in_sbs_minus1 = value.as_ptr();
         }
-        self.tile_rows = len_as_count(
-            value.len(),
-            "StdVideoAV1TileInfo::pHeightInSbsMinus1",
-            "TileRows",
-        );
-        self.p_height_in_sbs_minus1 = value.as_ptr();
         self
     }
 }
@@ -26528,16 +26558,29 @@ impl<'a> DataGraphPipelineCreateInfoARM<'a> {
     /// Sets [`p_resource_infos`](Self::p_resource_infos) to the start of a slice of elements and
     /// [`resource_info_count`](Self::resource_info_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_resource_infos`](Self::p_resource_infos) to a null pointer and leaves
+    /// [`resource_info_count`](Self::resource_info_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_resource_infos`](Self::p_resource_infos) is not null when
+    /// the setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `resourceInfoCount`, a `uint32_t`, can count.
     pub fn resource_infos(mut self, value: &'a [DataGraphPipelineResourceInfoARM<'a>]) -> Self {
-        self.resource_info_count = len_as_count(
-            value.len(),
-            "VkDataGraphPipelineCreateInfoARM::pResourceInfos",
-            "resourceInfoCount",
-        );
-        self.p_resource_infos = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_resource_infos.is_null() {
+                self.resource_info_count = 0;
+            }
+            self.p_resource_infos = core::ptr::null();
+        } else {
+            self.resource_info_count = len_as_count(
+                value.len(),
+                "VkDataGraphPipelineCreateInfoARM::pResourceInfos",
+                "resourceInfoCount",
+            );
+            self.p_resource_infos = value.as_ptr();
+        }
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -32553,16 +32596,30 @@ impl<'a> DeviceCreateInfo<'a> {
     /// pointers to NUL-terminated strings and [`enabled_layer_count`](Self::enabled_layer_count) to
     /// its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`pp_enabled_layer_names`](Self::pp_enabled_layer_names) to a null pointer
+    /// and leaves [`enabled_layer_count`](Self::enabled_layer_count) as it is. The exception is an
+    /// empty slice that takes an array away: if
+    /// [`pp_enabled_layer_names`](Self::pp_enabled_layer_names) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `enabledLayerCount`, a `uint32_t`, can count.
     pub fn enabled_layer_names(mut self, value: &'a [CStrPtr<'a>]) -> Self {
-        self.enabled_layer_count = len_as_count(
-            value.len(),
-            "VkDeviceCreateInfo::ppEnabledLayerNames",
-            "enabledLayerCount",
-        );
-        self.pp_enabled_layer_names = value.as_ptr().cast();
+        if value.is_empty() {
+            if !self.pp_enabled_layer_names.is_null() {
+                self.enabled_layer_count = 0;
+            }
+            self.pp_enabled_layer_names = core::ptr::null();
+        } else {
+            self.enabled_layer_count = len_as_count(
+                value.len(),
+                "VkDeviceCreateInfo::ppEnabledLayerNames",
+                "enabledLayerCount",
+            );
+            self.pp_enabled_layer_names = value.as_ptr().cast();
+        }
         self
     }
     /// Sets [`enabled_extension_count`](Self::enabled_extension_count).

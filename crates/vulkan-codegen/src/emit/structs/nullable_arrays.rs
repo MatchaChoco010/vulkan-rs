@@ -11,54 +11,74 @@ pub(super) struct NullableArray {
 
 pub(super) const NULLABLE_ARRAYS: &[NullableArray] = &[
     NullableArray {
+        structure: "StdVideoAV1TileInfo",
+        member: "pHeightInSbsMinus1",
+        stated_by: "the description of StdVideoAV1TileInfo::pHeightInSbsMinus1 for AV1 encode operations as NULL or a pointer to an array of TileRows elements",
+    },
+    NullableArray {
+        structure: "StdVideoAV1TileInfo",
+        member: "pWidthInSbsMinus1",
+        stated_by: "the description of StdVideoAV1TileInfo::pWidthInSbsMinus1 for AV1 encode operations as NULL or a pointer to an array of TileCols elements",
+    },
+    NullableArray {
+        structure: "VkDataGraphPipelineCreateInfoARM",
+        member: "pResourceInfos",
+        stated_by: "VUID-VkDataGraphPipelineCreateInfoARM-resourceInfoCount-12364, by which pResourceInfos has to be NULL if resourceInfoCount is 0",
+    },
+    NullableArray {
         structure: "VkDebugUtilsMessengerCallbackDataEXT",
         member: "pCmdBufLabels",
-        stated_by: "the description of VkDebugUtilsMessengerCallbackDataEXT::pCmdBufLabels, which is NULL or a pointer to an array",
+        stated_by: "the description of VkDebugUtilsMessengerCallbackDataEXT::pCmdBufLabels as NULL or a pointer to an array",
     },
     NullableArray {
         structure: "VkDebugUtilsMessengerCallbackDataEXT",
         member: "pQueueLabels",
-        stated_by: "the description of VkDebugUtilsMessengerCallbackDataEXT::pQueueLabels, which is NULL or a pointer to an array",
+        stated_by: "the description of VkDebugUtilsMessengerCallbackDataEXT::pQueueLabels as NULL or a pointer to an array",
+    },
+    NullableArray {
+        structure: "VkDeviceCreateInfo",
+        member: "ppEnabledLayerNames",
+        stated_by: "VUID-VkDeviceCreateInfo-ppEnabledLayerNames-12385, by which ppEnabledLayerNames has to be NULL",
     },
     NullableArray {
         structure: "VkImageCompressionControlEXT",
         member: "pFixedRateFlags",
-        stated_by: "the description of VkImageCompressionControlEXT::pFixedRateFlags, which is NULL or a pointer to an array",
+        stated_by: "the description of VkImageCompressionControlEXT::pFixedRateFlags as NULL or a pointer to an array",
     },
     NullableArray {
         structure: "VkMutableDescriptorTypeListEXT",
         member: "pDescriptorTypes",
-        stated_by: "the description of VkMutableDescriptorTypeListEXT::pDescriptorTypes, which is NULL or a pointer to an array",
+        stated_by: "the description of VkMutableDescriptorTypeListEXT::pDescriptorTypes as NULL or a pointer to an array",
     },
     NullableArray {
         structure: "VkPastPresentationTimingPropertiesEXT",
         member: "pPresentationTimings",
-        stated_by: "the description of VkPastPresentationTimingPropertiesEXT, which returns the number of available timing records in presentationTimingCount if pPresentationTimings is NULL",
+        stated_by: "the description of VkPastPresentationTimingPropertiesEXT, by which the command returns the number of available timing records in presentationTimingCount if pPresentationTimings is NULL",
     },
     NullableArray {
         structure: "VkPhysicalDeviceGpaPropertiesAMD",
         member: "pPerfBlocks",
-        stated_by: "the description of VkPhysicalDeviceGpaPropertiesAMD, which returns the number of performance blocks in perfBlockCount if pPerfBlocks is NULL",
+        stated_by: "the description of VkPhysicalDeviceGpaPropertiesAMD, by which the number of performance blocks is returned in perfBlockCount if pPerfBlocks is NULL",
     },
     NullableArray {
         structure: "VkPresentInfoKHR",
         member: "pWaitSemaphores",
-        stated_by: "the description of VkPresentInfoKHR::pWaitSemaphores, which is NULL or a pointer to an array",
+        stated_by: "the description of VkPresentInfoKHR::pWaitSemaphores as NULL or a pointer to an array",
     },
     NullableArray {
         structure: "VkRenderingAttachmentLocationInfo",
         member: "pColorAttachmentLocations",
-        stated_by: "the description of VkRenderingAttachmentLocationInfo, for which a NULL pColorAttachmentLocations is equivalent to setting each element to its index within the array",
+        stated_by: "the description of VkRenderingAttachmentLocationInfo, by which a NULL pColorAttachmentLocations is equivalent to setting each element to its index within the array",
     },
     NullableArray {
         structure: "VkVideoDecodeInfoKHR",
         member: "pReferenceSlots",
-        stated_by: "the description of VkVideoDecodeInfoKHR::pReferenceSlots, which is NULL or a pointer to an array",
+        stated_by: "the description of VkVideoDecodeInfoKHR::pReferenceSlots as NULL or a pointer to an array",
     },
     NullableArray {
         structure: "VkVideoEncodeInfoKHR",
         member: "pReferenceSlots",
-        stated_by: "the description of VkVideoEncodeInfoKHR::pReferenceSlots, which is NULL or a pointer to an array",
+        stated_by: "the description of VkVideoEncodeInfoKHR::pReferenceSlots as NULL or a pointer to an array",
     },
 ];
 
@@ -83,9 +103,12 @@ impl NullableArray {
         let ty = CType::of(m);
         assert!(
             ty.depth() > 0 && !ty.is_array() && count_member(s, m).is_some(),
-            "{structure}::{member} is a `{}` with the length {:?}, not a pointer to an array whose length a member stores: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
-            m.full_ty,
-            m.len
+            "{structure}::{member} is {}, not a pointer to an array whose length a member stores: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+            match (ty.is_array(), m.len.as_deref()) {
+                (true, _) => format!("an array of a fixed size of `{}`", m.full_ty),
+                (false, Some(len)) => format!("a `{}` with the length `{len}`", m.full_ty),
+                (false, None) => format!("a `{}` without a length", m.full_ty),
+            }
         );
         assert!(
             !m.optional,
@@ -132,57 +155,85 @@ mod tests {
         registry, structure,
     };
 
-    fn gives_a_meaning_to_null(description: &str, member: &str) -> bool {
-        let text = description.split_whitespace().collect::<Vec<_>>().join(" ");
+    fn statement_about_null<'t>(text: &'t str, markup: &str, member: &str) -> Option<&'t str> {
         [
-            format!("pname:{member} is `NULL` or a pointer "),
-            format!("pname:{member} is `NULL`, "),
-            format!("pname:{member} is not `NULL`"),
+            "is `NULL` or a pointer ",
+            "is `NULL` or is a pointer ",
+            "is `NULL`, ",
+            "is not `NULL`",
+            "must: be `NULL`",
+            "must: equal `NULL`",
         ]
         .iter()
-        .any(|statement| {
+        .find_map(|says| {
+            let statement = format!("{markup}:{member} {says}");
             text.match_indices(statement.as_str())
-                .any(|(at, _)| !text[..at].ends_with(" of "))
+                .find(|(at, _)| !text[..*at].ends_with(" of "))
+                .map(|(at, statement)| &text[at..at + statement.len()])
         })
     }
+
+    fn joined(text: &str) -> String {
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    const WITHOUT_A_DESCRIPTION: &[&str] = &["VkCuLaunchInfoNVX", "VkCuModuleCreateInfoNVX"];
 
     #[test]
     fn the_scan_for_arrays_that_may_be_null_reads_the_ways_the_specification_says_it() {
         for (text, expected) in [
             (
                 "  * pname:pValues is `NULL` or a pointer to an array of\n    values.",
-                true,
+                Some("pname:pValues is `NULL` or a pointer "),
+            ),
+            (
+                "  * pname:pValues is `NULL` or is a pointer to an array",
+                Some("pname:pValues is `NULL` or is a pointer "),
             ),
             (
                 "If pname:pValues is `NULL`, then the number of values is returned.",
-                true,
+                Some("pname:pValues is `NULL`, "),
             ),
             (
                 "the feature is not enabled, and if pname:pValues is `NULL`, it is the same",
-                true,
+                Some("pname:pValues is `NULL`, "),
             ),
             (
                 "and pname:pValues is not\n`NULL`, each element must: be unique",
-                true,
+                Some("pname:pValues is not `NULL`"),
+            ),
+            (
+                "If pname:valueCount is 0, pname:pValues\nmust: equal `NULL`",
+                Some("pname:pValues must: equal `NULL`"),
+            ),
+            (
+                "pname:pValues must: be `NULL`",
+                Some("pname:pValues must: be `NULL`"),
             ),
             (
                 "  * pname:pValues is a pointer to an array of values.",
-                false,
+                None,
             ),
-            ("pname:pValues must: not be `NULL`", false),
-            ("pname:pOthers is `NULL` or a pointer to an array", false),
-            (
-                "If pname:pOthers is `NULL`, pname:pValues is ignored",
-                false,
-            ),
+            ("pname:pValues must: not be `NULL`", None),
+            ("pname:pOthers is `NULL` or a pointer to an array", None),
+            ("If pname:pOthers is `NULL`, pname:pValues is ignored", None),
             (
                 "the pname:pNext member of an element of pname:pValues is not `NULL`",
-                false,
+                None,
             ),
-            ("pname:pValuesOfOthers is not `NULL`", false),
+            ("pname:pValuesOfOthers is not `NULL`", None),
+            ("code:pValues is `NULL` or a pointer to an array", None),
         ] {
-            assert_eq!(gives_a_meaning_to_null(text, "pValues"), expected, "{text}");
+            assert_eq!(
+                statement_about_null(&joined(text), "pname", "pValues"),
+                expected,
+                "{text}"
+            );
         }
+        assert_eq!(
+            statement_about_null("code:pValues is `NULL` or a pointer to", "code", "pValues"),
+            Some("code:pValues is `NULL` or a pointer ")
+        );
         let chapters = "[open,refpage='VkFirst',desc='First',type='structs']\n--\nabout the first\n--\n\n[open,refpage='VkSecond',desc='Second',type='structs']\n--\nabout the second\n";
         assert_eq!(description_in(chapters, "VkFirst"), "about the first");
         assert_eq!(description_in(chapters, "VkSecond"), "about the second\n");
@@ -195,21 +246,37 @@ mod tests {
         let Some(chapters) = chapters_of_the_specification() else {
             return;
         };
+        let all_chapters = joined(&chapters);
         let mut found = Vec::new();
+        let mut without_a_description = Vec::new();
         for s in Registry::get().structs.iter().filter(|s| !s.union) {
-            let description = description_in(&chapters, &s.name);
+            let described_with_the_codec = s.video_std_header.is_some();
+            let description = joined(description_in(&chapters, &s.name));
+            let (text, markup) = if described_with_the_codec {
+                assert!(
+                    description.is_empty(),
+                    "{} of a Vulkan Video Std header has a description of its own now, which this test does not read",
+                    s.name
+                );
+                (&all_chapters, "code")
+            } else {
+                (&description, "pname")
+            };
+            let mut has_such_an_array = false;
             for m in &s.members {
                 let ty = CType::of(m);
                 if ty.depth() == 0 || ty.is_array() || m.optional || count_member(s, m).is_none() {
                     continue;
                 }
+                has_such_an_array = true;
                 let listed = NULLABLE_ARRAYS
                     .iter()
                     .any(|listed| listed.structure == s.name && listed.member == m.name);
+                let statement = statement_about_null(text, markup, &m.name);
                 assert_eq!(
-                    gives_a_meaning_to_null(description, &m.name),
+                    statement.is_some(),
                     listed,
-                    "{}::{}: the registry does not mark the pointer as optional, and the list of arrays that the specification allows to be null {} it",
+                    "{}::{}: the registry does not mark the pointer as optional, the specification says {statement:?} about it, and the list of arrays that the specification allows to be null {} it",
                     s.name,
                     m.name,
                     if listed { "names" } else { "does not name" }
@@ -218,7 +285,14 @@ mod tests {
                     found.push((s.name.as_str(), m.name.as_str()));
                 }
             }
+            if has_such_an_array && text.is_empty() {
+                without_a_description.push(s.name.as_str());
+            }
         }
+        assert_eq!(
+            without_a_description, WITHOUT_A_DESCRIPTION,
+            "the structures with such an array that the specification does not describe"
+        );
         found.sort_unstable();
         assert_eq!(
             found,
@@ -246,7 +320,7 @@ mod tests {
 
     #[test]
     fn a_listed_array_that_the_registry_changes_stops_the_generator() {
-        const CORRECT: &str = "correct the list of arrays that the specification allows to be null although the registry does not mark their pointers as optional, which takes this one from the description of VkPresentInfoKHR::pWaitSemaphores, which is NULL or a pointer to an array";
+        const CORRECT: &str = "correct the list of arrays that the specification allows to be null although the registry does not mark their pointers as optional, which takes this one from the description of VkPresentInfoKHR::pWaitSemaphores as NULL or a pointer to an array";
         let mut renamed = listed();
         renamed.members[1].name = "pSemaphores".to_string();
         let mut uncounted = listed();
@@ -267,25 +341,25 @@ mod tests {
             (
                 uncounted,
                 format!(
-                    "VkPresentInfoKHR::pWaitSemaphores is a `const VkSemaphore*` with the length None, not a pointer to an array whose length a member stores: {CORRECT}"
+                    "VkPresentInfoKHR::pWaitSemaphores is a `const VkSemaphore*` without a length, not a pointer to an array whose length a member stores: {CORRECT}"
                 ),
             ),
             (
                 counted_elsewhere,
                 format!(
-                    "VkPresentInfoKHR::pWaitSemaphores is a `const VkSemaphore*` with the length Some(\"swapchainCount\"), not a pointer to an array whose length a member stores: {CORRECT}"
+                    "VkPresentInfoKHR::pWaitSemaphores is a `const VkSemaphore*` with the length `swapchainCount`, not a pointer to an array whose length a member stores: {CORRECT}"
                 ),
             ),
             (
                 value,
                 format!(
-                    "VkPresentInfoKHR::pWaitSemaphores is a `VkSemaphore` with the length None, not a pointer to an array whose length a member stores: {CORRECT}"
+                    "VkPresentInfoKHR::pWaitSemaphores is a `VkSemaphore` without a length, not a pointer to an array whose length a member stores: {CORRECT}"
                 ),
             ),
             (
                 fixed,
                 format!(
-                    "VkPresentInfoKHR::pWaitSemaphores is a `const VkSemaphore*` with the length Some(\"waitSemaphoreCount\"), not a pointer to an array whose length a member stores: {CORRECT}"
+                    "VkPresentInfoKHR::pWaitSemaphores is an array of a fixed size of `const VkSemaphore*`, not a pointer to an array whose length a member stores: {CORRECT}"
                 ),
             ),
         ] {
@@ -317,7 +391,7 @@ mod tests {
             .expect_err("the registry has none of the listed structures");
         assert!(
             message.starts_with(
-                "the registry has no structure VkDebugUtilsMessengerCallbackDataEXT: correct the list of arrays that the specification allows to be null although the registry does not mark their pointers as optional, which takes `pCmdBufLabels` from "
+                "the registry has no structure StdVideoAV1TileInfo: correct the list of arrays that the specification allows to be null although the registry does not mark their pointers as optional, which takes `pHeightInSbsMinus1` from "
             ),
             "{message}"
         );

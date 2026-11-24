@@ -260,4 +260,33 @@ fn an_empty_slice_is_null_where_the_specification_gives_null_a_meaning() {
     assert!(decode.p_reference_slots.is_null());
     let encode = vk::VideoEncodeInfoKHR::default().reference_slots(&[]);
     assert!(encode.p_reference_slots.is_null());
+
+    let tiles = vk::StdVideoAV1TileInfo::default()
+        .tile_cols(3)
+        .tile_rows(2)
+        .width_in_sbs_minus1(&[])
+        .height_in_sbs_minus1(&[]);
+    assert_eq!((tiles.tile_cols, tiles.tile_rows), (3, 2));
+    assert!(
+        tiles.p_width_in_sbs_minus1.is_null() && tiles.p_height_in_sbs_minus1.is_null(),
+        "NULL leaves the sizes of the 3 columns and 2 rows to the implementation"
+    );
+    let starts = [0_u16, 4, 8];
+    let tiles = vk::StdVideoAV1TileInfo::default()
+        .mi_col_starts(&starts)
+        .width_in_sbs_minus1(&[]);
+    assert_eq!(tiles.tile_cols, 3, "the starts still have three elements");
+    assert!(tiles.p_width_in_sbs_minus1.is_null());
+    let graph = vk::DataGraphPipelineCreateInfoARM::default().resource_infos(&[]);
+    assert_eq!(graph.resource_info_count, 0);
+    assert!(
+        graph.p_resource_infos.is_null(),
+        "pResourceInfos has to be NULL if resourceInfoCount is 0"
+    );
+    let device = vk::DeviceCreateInfo::default().enabled_layer_names(&[]);
+    assert_eq!(device.enabled_layer_count, 0);
+    assert!(
+        device.pp_enabled_layer_names.is_null(),
+        "ppEnabledLayerNames has to be NULL"
+    );
 }
