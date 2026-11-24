@@ -6,6 +6,31 @@ use vulkan::vk;
 /// every required flag. Among them it takes the lowest-indexed one with every preferred
 /// flag, or else the one with the most preferred flags.
 ///
+/// [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] require `HOST_VISIBLE`
+/// and `HOST_COHERENT`, so their memory is always host-coherent: mapped memory can be
+/// written and read without
+/// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) or
+/// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation). If no
+/// memory type allowed by the resource's `memory_type_bits` is host-visible and
+/// host-coherent, [`Allocator::allocate`](crate::Allocator::allocate) fails with
+/// [`AllocationError::NoCompatibleMemoryType`](crate::AllocationError::NoCompatibleMemoryType)
+/// instead of taking memory that is not coherent. The Vulkan specification, describing
+/// `VkMemoryRequirements::memoryTypeBits`, guarantees that the requirements of a buffer
+/// created without `VK_BUFFER_CREATE_SPARSE_BINDING_BIT` and
+/// `VK_BUFFER_CREATE_PROTECTED_BIT`, and of a linear image created without
+/// `VK_IMAGE_CREATE_PROTECTED_BIT`, allow a memory type with both `HOST_VISIBLE` and
+/// `HOST_COHERENT`: "mappable coherent memory can always be attached to these objects".
+/// So for those resources the error does not happen, unless every such allowed type is
+/// one of the types left out below. For other resources, such as images with optimal
+/// tiling, it can.
+///
+/// Memory that is `HOST_CACHED` but not `HOST_COHERENT` can be faster for the host to
+/// read. To use it, give
+/// `MemoryLocation::Custom { required: HOST_VISIBLE, preferred: HOST_VISIBLE | HOST_CACHED }`
+/// and, when [`Allocator::allocation_memory_flags`](crate::Allocator::allocation_memory_flags)
+/// shows that the chosen type is not `HOST_COHERENT`, invalidate before reading and flush
+/// after writing.
+///
 /// Two kinds of memory types are considered only when the location names their flag as
 /// required or preferred, which only [`MemoryLocation::Custom`] can do:
 ///
@@ -28,15 +53,21 @@ pub enum MemoryLocation {
     /// that.
     GpuOnly,
     /// Memory the host writes and the device reads, such as staging and uniform
-    /// buffers: requires `HOST_VISIBLE` and prefers `HOST_VISIBLE | HOST_COHERENT`.
+    /// buffers: requires and prefers `HOST_VISIBLE | HOST_COHERENT`, so the
+    /// lowest-indexed allowed type with both flags is taken. Host writes need no flush.
     CpuToGpu,
-    /// Memory the device writes and the host reads back: requires `HOST_VISIBLE` and
-    /// prefers `HOST_VISIBLE | HOST_CACHED`. The chosen type need not be
-    /// `HOST_COHERENT`; check
-    /// [`Allocator::allocation_memory_flags`](crate::Allocator::allocation_memory_flags)
-    /// to know whether reads need an invalidate first.
+    /// Memory the device writes and the host reads back: requires
+    /// `HOST_VISIBLE | HOST_COHERENT` and prefers
+    /// `HOST_VISIBLE | HOST_COHERENT | HOST_CACHED`, so among the allowed types with the
+    /// required flags, the lowest-indexed one that is also `HOST_CACHED` is taken, or the
+    /// lowest-indexed one if none is. Host reads need no invalidate.
     GpuToCpu,
     /// Explicit flags.
+    ///
+    /// The chosen type is certain to be `HOST_COHERENT` only if `required` contains that
+    /// flag; otherwise check
+    /// [`Allocator::allocation_memory_flags`](crate::Allocator::allocation_memory_flags)
+    /// to know whether mapped writes need a flush and mapped reads an invalidate.
     Custom {
         /// Flags the memory type must have.
         required: vk::MemoryPropertyFlags,
@@ -79,7 +110,9 @@ impl MemoryLocation {
     pub(crate) fn required_flags(self) -> vk::MemoryPropertyFlags {
         match self {
             Self::GpuOnly => vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            Self::CpuToGpu | Self::GpuToCpu => vk::MemoryPropertyFlags::HOST_VISIBLE,
+            Self::CpuToGpu | Self::GpuToCpu => {
+                vk::MemoryPropertyFlags::HOST_VISIBLE.union(vk::MemoryPropertyFlags::HOST_COHERENT)
+            }
             Self::Custom { required, .. } => required,
         }
     }
@@ -90,9 +123,9 @@ impl MemoryLocation {
             Self::CpuToGpu => {
                 vk::MemoryPropertyFlags::HOST_VISIBLE.union(vk::MemoryPropertyFlags::HOST_COHERENT)
             }
-            Self::GpuToCpu => {
-                vk::MemoryPropertyFlags::HOST_VISIBLE.union(vk::MemoryPropertyFlags::HOST_CACHED)
-            }
+            Self::GpuToCpu => vk::MemoryPropertyFlags::HOST_VISIBLE
+                .union(vk::MemoryPropertyFlags::HOST_COHERENT)
+                .union(vk::MemoryPropertyFlags::HOST_CACHED),
             Self::Custom { preferred, .. } => preferred,
         }
     }

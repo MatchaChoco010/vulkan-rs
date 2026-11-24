@@ -8,7 +8,10 @@ use crate::allocation::Allocation;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AllocationError {
     /// No memory type allowed by [`vk::MemoryRequirements::memory_type_bits`] has all the
-    /// flags that the [`MemoryLocation`](crate::MemoryLocation) requires.
+    /// flags that the [`MemoryLocation`](crate::MemoryLocation) requires, such as no
+    /// allowed type being both `HOST_VISIBLE` and `HOST_COHERENT` for
+    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) or
+    /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu).
     NoCompatibleMemoryType,
     /// The request cannot be met inside the allocator, for example because
     /// [`vk::MemoryRequirements::size`] is 0.
