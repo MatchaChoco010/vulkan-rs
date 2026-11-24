@@ -53,13 +53,22 @@
 //! is `index * stride`. The first slot of a run is at `first_index * stride`, so
 //! [`DescriptorSlots::index`] is the number to hand to the shader.
 //!
-//! - [`ResourceHeapPlan::buffers`], [`ResourceHeapPlan::images`] and
-//!   [`SamplerHeapPlan::samplers`] make runs whose stride is the size of their
-//!   descriptor type, the indexing used by shaders that reach descriptors through
-//!   untyped pointers.
+//! - [`ResourceHeapPlan::buffers`], [`ResourceHeapPlan::images`],
+//!   [`ResourceHeapPlan::tensors`] and [`SamplerHeapPlan::samplers`] make runs whose
+//!   stride is the size of their descriptor type, rounded up to its alignment for
+//!   tensors, the indexing used by shaders that reach descriptors through untyped
+//!   pointers.
 //! - [`ResourceHeapPlan::uniform`] makes a run whose slots can each hold an image or a
 //!   buffer descriptor, for mappings such as [`vk::DescriptorSetAndBindingMappingEXT`]
 //!   where the application chooses the stride (`heapIndexStride`).
+//! - [`ResourceHeapPlan::multi_descriptor_images`] makes a run whose slots each hold the
+//!   several adjacent descriptors of an image with a YCbCr conversion or of a subsampled
+//!   image, for a mapping whose `heapArrayStride` is the stride of the run.
+//!
+//! A sampler with a YCbCr conversion is never written into a sampler heap: it is an
+//! embedded sampler of a descriptor mapping, which the implementation may keep in the
+//! reserved range of a heap planned with [`SamplerHeapPlan::with_embedded_samplers`].
+//! Its `samplerYcbcrConversionCount` sampler descriptors therefore take no slots.
 
 use core::fmt;
 use core::ops::Range;
@@ -98,6 +107,11 @@ pub enum HeapLayoutError {
     /// usually means the properties were not filled in by
     /// `vkGetPhysicalDeviceProperties2`.
     ZeroDescriptorSize,
+    /// The number of descriptors that one image takes is 0. The implementation reports at
+    /// least 1 in `combinedImageSamplerDescriptorCount` and
+    /// `subsampledImageDescriptorCount`; 0 usually means the format properties were not
+    /// queried.
+    ZeroDescriptorCount,
     /// The reserved range of a [`DescriptorHeapLayout`] does not lie inside the heap:
     /// `reserved_offset + reserved_size` is larger than `size`.
     ReservedRangeOutsideHeap {
@@ -138,6 +152,7 @@ impl fmt::Display for HeapLayoutError {
                 "descriptor size {size} is not a multiple of its alignment {alignment}"
             ),
             Self::ZeroDescriptorSize => f.write_str("descriptor size is 0"),
+            Self::ZeroDescriptorCount => f.write_str("number of descriptors per image is 0"),
             Self::ReservedRangeOutsideHeap {
                 reserved_offset,
                 reserved_size,
@@ -482,6 +497,8 @@ pub struct ResourceHeapPlan {
     buffer_alignment: u64,
     image_size: u64,
     image_alignment: u64,
+    tensor_size: u64,
+    tensor_alignment: u64,
 }
 
 impl ResourceHeapPlan {
@@ -489,6 +506,9 @@ impl ResourceHeapPlan {
     /// and image descriptor sizes and alignments, `resourceHeapAlignment`,
     /// `maxResourceHeapSize` and `minResourceHeapReservedRange`. A descriptor alignment
     /// of 0 is treated as 1.
+    ///
+    /// The plan has no tensor descriptor size, so [`ResourceHeapPlan::tensors`] fails;
+    /// plan a heap that holds tensor descriptors with [`ResourceHeapPlan::with_tensors`].
     pub fn new(properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>) -> Self {
         Self {
             plan: Plan {
@@ -505,6 +525,50 @@ impl ResourceHeapPlan {
             buffer_alignment: properties.buffer_descriptor_alignment,
             image_size: properties.image_descriptor_size,
             image_alignment: properties.image_descriptor_alignment,
+            tensor_size: 0,
+            tensor_alignment: 0,
+        }
+    }
+
+    /// Starts an empty plan as [`ResourceHeapPlan::new`] does, for a heap that also holds
+    /// tensor descriptors, with `tensorDescriptorSize` and `tensorDescriptorAlignment`
+    /// from `tensor_properties`. A tensor descriptor alignment of 0 is treated as 1.
+    ///
+    /// Tensor descriptors do not change where the reserved range goes: its offset has
+    /// to be a multiple of the buffer and image descriptor alignments only.
+    ///
+    /// ```
+    /// use vulkan::vk;
+    /// use vulkan_alloc::descriptor_heap::{HeapLayoutError, ResourceHeapPlan};
+    ///
+    /// # fn main() -> Result<(), HeapLayoutError> {
+    /// let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+    ///     .max_resource_heap_size(1 << 20)
+    ///     .buffer_descriptor_size(16)
+    ///     .buffer_descriptor_alignment(16)
+    ///     .image_descriptor_size(32)
+    ///     .image_descriptor_alignment(32);
+    /// let tensor_properties = vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM::default()
+    ///     .tensor_descriptor_size(48)
+    ///     .tensor_descriptor_alignment(32);
+    ///
+    /// let mut plan = ResourceHeapPlan::with_tensors(&properties, &tensor_properties);
+    /// plan.buffers(1)?;
+    /// let tensors = plan.tensors(2)?;
+    /// assert_eq!((tensors.stride, tensors.descriptor_size), (64, 48));
+    /// assert_eq!(tensors.offset(0), Some(64));
+    /// assert_eq!(plan.finish()?.reserved_offset, 192);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_tensors(
+        properties: &vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'_>,
+        tensor_properties: &vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM<'_>,
+    ) -> Self {
+        Self {
+            tensor_size: tensor_properties.tensor_descriptor_size,
+            tensor_alignment: tensor_properties.tensor_descriptor_alignment,
+            ..Self::new(properties)
         }
     }
 
@@ -543,13 +607,113 @@ impl ResourceHeapPlan {
     /// - [`HeapLayoutError::Overflow`] if the first index of the run, or the index of one
     ///   of its slots, does not fit in `u32`, or its end does not fit in `u64`. A run of
     ///   0 slots has a first index too: where it starts, in units of the stride.
+    ///
+    /// A slot holds one image descriptor. An image view with a YCbCr conversion and an
+    /// image created with `SUBSAMPLED_EXT` take several adjacent descriptors; place them
+    /// with [`ResourceHeapPlan::multi_descriptor_images`].
     pub fn images(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
-        self.plan.run(
-            count,
-            self.image_size,
-            self.image_size,
-            self.image_alignment,
-        )
+        self.multi_descriptor_images(count, 1)
+    }
+
+    /// Adds a run of `count` slots that each hold `descriptors_per_image` adjacent image
+    /// descriptors, as the descriptor of an image view with a YCbCr conversion or of a
+    /// subsampled image takes.
+    ///
+    /// `descriptors_per_image` is
+    /// [`vk::SamplerYcbcrConversionImageFormatProperties`]`::combined_image_sampler_descriptor_count`
+    /// or [`vk::SubsampledImageFormatPropertiesEXT`]`::subsampled_image_descriptor_count`
+    /// of the format of the image; for a run that holds images of several formats, pass
+    /// the largest, or `maxCombinedImageSamplerDescriptorCount`. The stride and the
+    /// `descriptor_size` of the run are `descriptors_per_image * imageDescriptorSize`,
+    /// the size `vkWriteResourceDescriptorsEXT` needs for such a descriptor; pass the
+    /// stride as the `heapArrayStride` of the mapping. With `descriptors_per_image` 1 this
+    /// is [`ResourceHeapPlan::images`].
+    ///
+    /// ```
+    /// use vulkan::vk;
+    /// use vulkan_alloc::descriptor_heap::{HeapLayoutError, ResourceHeapPlan};
+    ///
+    /// # fn main() -> Result<(), HeapLayoutError> {
+    /// let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+    ///     .max_resource_heap_size(1 << 20)
+    ///     .image_descriptor_size(32)
+    ///     .image_descriptor_alignment(32);
+    /// let ycbcr = vk::SamplerYcbcrConversionImageFormatProperties::default()
+    ///     .combined_image_sampler_descriptor_count(3);
+    ///
+    /// let mut plan = ResourceHeapPlan::new(&properties);
+    /// plan.images(1)?;
+    /// let planes = plan.multi_descriptor_images(2, ycbcr.combined_image_sampler_descriptor_count)?;
+    /// assert_eq!((planes.stride, planes.descriptor_size), (96, 96));
+    /// assert_eq!(planes.offset(0), Some(96));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The first of these that applies:
+    ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `imageDescriptorSize` is 0.
+    /// - [`HeapLayoutError::ZeroDescriptorCount`] if `descriptors_per_image` is 0.
+    /// - [`HeapLayoutError::UnalignedDescriptorSize`] if `imageDescriptorSize` is not a
+    ///   multiple of `imageDescriptorAlignment`.
+    /// - [`HeapLayoutError::Overflow`] if the stride does not fit in `u64`, the first
+    ///   index of the run or the index of one of its slots does not fit in `u32`, or its
+    ///   end does not fit in `u64`. A run of 0 slots has a first index too: where it
+    ///   starts, in units of the stride.
+    pub fn multi_descriptor_images(
+        &mut self,
+        count: u32,
+        descriptors_per_image: u32,
+    ) -> Result<DescriptorSlots, HeapLayoutError> {
+        if self.image_size == 0 {
+            return Err(HeapLayoutError::ZeroDescriptorSize);
+        }
+        if descriptors_per_image == 0 {
+            return Err(HeapLayoutError::ZeroDescriptorCount);
+        }
+        let alignment = self.image_alignment.max(1);
+        if !self.image_size.is_multiple_of(alignment) {
+            return Err(HeapLayoutError::UnalignedDescriptorSize {
+                size: self.image_size,
+                alignment,
+            });
+        }
+        let stride = self
+            .image_size
+            .checked_mul(u64::from(descriptors_per_image))
+            .ok_or(HeapLayoutError::Overflow)?;
+        self.plan.run(count, stride, stride, alignment)
+    }
+
+    /// Adds a run of `count` tensor descriptors.
+    ///
+    /// The stride is `tensorDescriptorSize` rounded up to a multiple of
+    /// `tensorDescriptorAlignment`, the size a shader gives a tensor in a descriptor
+    /// heap; pass it as the `heapArrayStride` of the mapping. The `descriptor_size` of
+    /// the run is `tensorDescriptorSize`.
+    ///
+    /// # Errors
+    ///
+    /// The first of these that applies:
+    ///
+    /// - [`HeapLayoutError::ZeroDescriptorSize`] if `tensorDescriptorSize` is 0, as it is
+    ///   in a plan made by [`ResourceHeapPlan::new`].
+    /// - [`HeapLayoutError::Overflow`] if the stride does not fit in `u64`, the first
+    ///   index of the run or the index of one of its slots does not fit in `u32`, or its
+    ///   end does not fit in `u64`. A run of 0 slots has a first index too: where it
+    ///   starts, in units of the stride.
+    pub fn tensors(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
+        if self.tensor_size == 0 {
+            return Err(HeapLayoutError::ZeroDescriptorSize);
+        }
+        let alignment = self.tensor_alignment.max(1);
+        let stride = self
+            .tensor_size
+            .checked_next_multiple_of(alignment)
+            .ok_or(HeapLayoutError::Overflow)?;
+        self.plan.run(count, stride, self.tensor_size, alignment)
     }
 
     /// Adds a run of `count` slots that can each hold an image descriptor or a buffer
@@ -685,6 +849,10 @@ impl SamplerHeapPlan {
 
     /// Adds a run of `count` sampler descriptors, indexed in units of
     /// `samplerDescriptorSize`.
+    ///
+    /// A slot holds one sampler descriptor written by `vkWriteSamplerDescriptorsEXT`,
+    /// which cannot write a sampler with a YCbCr conversion or a subsampled sampler;
+    /// those are embedded samplers and take no slots.
     ///
     /// # Errors
     ///
