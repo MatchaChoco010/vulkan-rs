@@ -26,6 +26,15 @@ void render_fail(const char *format, ...) {
     exit(1);
 }
 
+void *filled_alloc(size_t size) {
+    void *memory = (malloc)(size);
+    if (memory == NULL) {
+        render_fail("cannot allocate %zu bytes", size);
+    }
+    memset(memory, 0x55, size);
+    return memory;
+}
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT types,
     const VkDebugUtilsMessengerCallbackDataEXT *data, void *user_data) {

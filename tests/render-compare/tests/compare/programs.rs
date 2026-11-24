@@ -86,15 +86,7 @@ fn command(program: &Path, scenario: &str, output: &Path) -> Command {
         .arg(scenario)
         .arg(shader_dir())
         .arg(output)
-        .env_remove("RENDER_COMPARE_CAPTURE_LAYER")
-        .env(
-            "MALLOC_PERTURB_",
-            if program == rust_program() {
-                "170"
-            } else {
-                "85"
-            },
-        );
+        .env_remove("RENDER_COMPARE_CAPTURE_LAYER");
     command
 }
 

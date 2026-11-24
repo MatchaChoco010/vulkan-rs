@@ -12,6 +12,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <vulkan/vulkan.h>
 
 #define CHECK(call)                                                                        \
@@ -116,6 +117,13 @@ typedef struct {
 } Scenario;
 
 void render_fail(const char *format, ...) __attribute__((noreturn, format(printf, 1, 2)));
+
+/* Memory from malloc with every byte set to 0x55, which is what malloc means in the C
+ * program. The Rust program fills what it allocates with 0xaa, so bytes that a program
+ * hands to Vulkan without writing them differ between the two programs instead of being
+ * equal by chance. */
+void *filled_alloc(size_t size);
+#define malloc(size) filled_alloc(size)
 
 void ctx_create(Ctx *ctx, const char *shader_dir, const Scenario *scenario);
 void ctx_destroy(Ctx *ctx);

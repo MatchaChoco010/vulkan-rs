@@ -1,9 +1,49 @@
 mod render;
 mod scenarios;
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::path::Path;
 
 use render::Ctx;
+
+const FILL: u8 = 0xaa;
+
+struct FilledAllocations;
+
+unsafe impl GlobalAlloc for FilledAllocations {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        unsafe {
+            let memory = System.alloc(layout);
+            if !memory.is_null() {
+                memory.write_bytes(FILL, layout.size());
+            }
+            memory
+        }
+    }
+
+    unsafe fn dealloc(&self, memory: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(memory, layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        unsafe { System.alloc_zeroed(layout) }
+    }
+
+    unsafe fn realloc(&self, memory: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        unsafe {
+            let memory = System.realloc(memory, layout, new_size);
+            if !memory.is_null() && new_size > layout.size() {
+                memory
+                    .add(layout.size())
+                    .write_bytes(FILL, new_size - layout.size());
+            }
+            memory
+        }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: FilledAllocations = FilledAllocations;
 
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();
