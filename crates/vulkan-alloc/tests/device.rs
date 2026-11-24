@@ -1170,7 +1170,6 @@ impl<'g> Sequence<'g> {
             if !flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
                 return Ok(());
             }
-            let coherent = flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT);
             self.fills = self.fills.wrapping_add(1);
             let byte = self.fills;
             let len = live.allocation.size() as usize;
@@ -1189,11 +1188,9 @@ impl<'g> Sequence<'g> {
                     );
                 }
                 std::ptr::write_bytes(pointer.as_ptr(), byte, len);
-                if !coherent {
-                    self.allocator
-                        .flush_allocation(&live.allocation)
-                        .map_err(|e| format!("flush_allocation: {e}"))?;
-                }
+                self.allocator
+                    .flush_allocation(&live.allocation)
+                    .map_err(|e| format!("flush_allocation: {e}"))?;
                 self.live[index].persistent = Some(pointer);
                 self.coverage.persistent_fills += 1;
             } else {
@@ -1207,9 +1204,7 @@ impl<'g> Sequence<'g> {
                     mapped.as_bytes().len()
                 );
                 std::ptr::write_bytes(mapped.as_ptr().cast::<u8>(), byte, len);
-                if !coherent {
-                    mapped.flush().map_err(|e| format!("flush: {e}"))?;
-                }
+                mapped.flush().map_err(|e| format!("flush: {e}"))?;
                 drop(mapped);
                 self.coverage.guard_fills += 1;
             }
@@ -1355,20 +1350,13 @@ impl<'g> Sequence<'g> {
                 let Some(byte) = live.contents else {
                     continue;
                 };
-                let flags = self
-                    .allocator
-                    .allocation_memory_flags(&live.allocation)
-                    .map_err(|e| format!("allocation_memory_flags: {e}"))?;
-                let coherent = flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT);
                 let mut mapped = self
                     .allocator
                     .map(&live.allocation)
                     .map_err(|e| format!("map: {e}"))?;
-                if !coherent {
-                    mapped
-                        .invalidate()
-                        .map_err(|e| format!("invalidate: {e}"))?;
-                }
+                mapped
+                    .invalidate()
+                    .map_err(|e| format!("invalidate: {e}"))?;
                 ensure!(
                     holds_only(mapped.as_bytes(), byte),
                     "{:?} no longer holds only the byte {byte}",
