@@ -19,10 +19,13 @@ env:
   VULKAN_RS_REQUIRE_LAYOUT_TEST: "1"
   VULKAN_RS_REQUIRE_DOCS_TEST: "1"
   VULKAN_RS_REQUIRE_DEVICE_TEST: "1"
+  # The packages that make and check the sources. The test-tools job runs their tests,
+  # and the test job those of every other package.
+  TOOL_PACKAGES: source-lint vulkan-codegen vulkan-registry
 
 jobs:
-  # What does not run the tests: the formatting, the rules for comments and versions, the
-  # generated files, the lints and the documentation.
+  # What does not run the tests: the formatting, the generated files, the lints and the
+  # documentation.
   lint:
     runs-on: ubuntu-24.04
     steps:
@@ -64,17 +67,6 @@ jobs:
       - name: Format
         run: cargo fmt --check
 
-      # The Rust sources under crates/ have no comments other than doc comments on the
-      # public API of the user-facing crates. This also runs as part of the workspace
-      # tests; it is a step of its own so that its failure is easy to find.
-      - name: Comment rules under crates/
-        run: cargo test -p source-lint --test crates_follow_the_comment_rules
-
-      # The versions and SDK tags named in the Markdown files (the version example in
-      # README.md) match the workspace version in Cargo.toml.
-      - name: Versions in the Markdown files
-        run: cargo test -p source-lint --test markdown_names_the_workspace_version
-
       - name: Generated files are up to date
         run: ./tools/generate-vulkan --check
 
@@ -91,6 +83,31 @@ jobs:
         run: |
           cargo doc --workspace --all-features --no-deps
           cargo doc -p vulkan -p vulkan-alloc --no-deps
+
+  test-tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # The version, profile and components come from rust-toolchain.toml.
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
+      # The tests of source-lint are the rules that rustfmt and clippy do not have: the
+      # Rust sources under crates/ have no comments other than doc comments on the public
+      # API of the user-facing crates, and the versions and SDK tags named in the Markdown
+      # files match the workspace version in Cargo.toml.
+      - name: Test the lints and the generator
+        run: cargo test --all-features $(printf -- '-p %s ' $TOOL_PACKAGES)
 
   test:
     runs-on: ubuntu-24.04
@@ -127,7 +144,7 @@ jobs:
       # Includes the examples in the documentation (doctests) and the comparison of the
       # generated documentation with the specification sources (crates/vulkan/tests/docs.rs).
       - name: Test
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features $(printf -- '--exclude %s ' $TOOL_PACKAGES)
 
       # A device test skips itself when the driver lacks the extension it exercises.
       # cargo hides the output of passing tests, so list the skips where they can be seen.
