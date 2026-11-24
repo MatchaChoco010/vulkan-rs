@@ -953,6 +953,10 @@ mod tests {
                 "a list that starts with `term:: attached`",
             ),
             (
+                vec!["pname:a is:", "** one", "term:: in the item"],
+                "a list that starts with `term:: in the item`",
+            ),
+            (
                 vec!["pname:a is:", "", "term::: deeper"],
                 "a list that starts with `term::: deeper`",
             ),
@@ -1542,6 +1546,30 @@ mod tests {
             (
                 vec!["  * pname:a is:", "", "    An indented paragraph."],
                 "an indented paragraph after an empty line",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "// a comment", "More."],
+                "a comment after a list continuation and an empty line",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "", "// a comment", "More."],
+                "a comment after a list continuation and an empty line",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "+",
+                    "[NOTE]",
+                    "",
+                    "====",
+                    "A note.",
+                    "====",
+                ],
+                "an empty line between the attributes of a block and the block",
+            ),
+            (
+                vec!["  * pname:a is:", "+", ".Title", "", "", "  ** nested"],
+                "the attributes of a block that does not follow",
             ),
         ] {
             let Some(dumped) = dumped(&source) else {

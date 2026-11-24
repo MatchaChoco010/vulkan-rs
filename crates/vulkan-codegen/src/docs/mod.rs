@@ -836,6 +836,7 @@ mod tests {
             ("a\n?! b\n;\nc", "a?! b;\nc"),
             ("a\n... and more", "a... and more"),
             (".\na", ".\na"),
+            ("  , a\n. b", "  , a. b"),
             ("a\n.b\n,c\n...d\n-\n(\n\"", "a\n.b\n,c\n...d\n-\n(\n\""),
             ("a\n\n.", "a."),
             ("", ""),
