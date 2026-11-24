@@ -19,9 +19,14 @@ env:
   VULKAN_RS_REQUIRE_LAYOUT_TEST: "1"
   VULKAN_RS_REQUIRE_DOCS_TEST: "1"
   VULKAN_RS_REQUIRE_DEVICE_TEST: "1"
+  # The packages that make and check the sources. The test-tools job runs their tests,
+  # and the test job those of every other package.
+  TOOL_PACKAGES: source-lint vulkan-codegen vulkan-registry
 
 jobs:
-  check:
+  # What does not run the tests: the formatting, the generated files, the lints and the
+  # documentation.
+  lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -29,19 +34,23 @@ jobs:
           submodules: true
 
       # tools/generate-vulkan names the bindings after the SDK tag of the submodule
-      # commit, and the checkout above does not fetch tags.
-      - name: Fetch the Vulkan-Headers SDK tags
-        run: git -C third_party/vulkan fetch --quiet --depth=1 origin 'refs/tags/vulkan-sdk-*:refs/tags/vulkan-sdk-*'
-
-      - name: Install lavapipe, the Vulkan loader and the validation layers
+      # commit, and the checkout above does not fetch tags. Only the tags of that commit
+      # are fetched: every other tag would bring its own commit along.
+      - name: Fetch the Vulkan-Headers SDK tags of the submodule commit
         run: |
-          sudo apt-get update
-          # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
-          # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
-          sudo apt-get install --yes --no-install-recommends \
-            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools \
-            libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
-          vulkaninfo --summary
+          commit=$(git -C third_party/vulkan rev-parse HEAD)
+          git -C third_party/vulkan ls-remote --tags origin 'vulkan-sdk-*' \
+            | awk -v commit="$commit" '$1 == commit { sub(/\^\{\}$/, "", $2); print $2 ":" $2 }' \
+            | sort -u \
+            | xargs --no-run-if-empty git -C third_party/vulkan fetch --quiet --depth=1 origin
+          git -C third_party/vulkan tag --points-at HEAD
+
+      # Build dependencies of the Wayland examples (winit), whose build scripts run for
+      # clippy and rustdoc as well.
+      - name: Install the build dependencies of the examples
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: pkg-config libwayland-dev libxkbcommon-dev
 
       # The version, profile and components come from rust-toolchain.toml.
       - name: Install Rust
@@ -49,21 +58,14 @@ jobs:
           rustup toolchain install
           cargo --version
 
+      # The action leaves the profiles out of its key, and the profile in the root manifest
+      # decides how the cached dependencies are built.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       - name: Format
         run: cargo fmt --check
-
-      # The Rust sources under crates/ have no comments other than doc comments on the
-      # public API of the user-facing crates. This also runs as part of the workspace
-      # tests; it is a step of its own so that it fails early.
-      - name: Comment rules under crates/
-        run: cargo test -p source-lint --test crates_follow_the_comment_rules
-
-      # The versions and SDK tags named in the Markdown files (the version example in
-      # README.md) match the workspace version in Cargo.toml.
-      - name: Versions in the Markdown files
-        run: cargo test -p source-lint --test markdown_names_the_workspace_version
 
       - name: Generated files are up to date
         run: ./tools/generate-vulkan --check
@@ -82,13 +84,67 @@ jobs:
           cargo doc --workspace --all-features --no-deps
           cargo doc -p vulkan -p vulkan-alloc --no-deps
 
+  test-tools:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # The version, profile and components come from rust-toolchain.toml.
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
+      # The tests of source-lint are the rules that rustfmt and clippy do not have: the
+      # Rust sources under crates/ have no comments other than doc comments on the public
+      # API of the user-facing crates, and the versions and SDK tags named in the Markdown
+      # files match the workspace version in Cargo.toml.
+      - name: Test the lints and the generator
+        run: cargo test --all-features $(printf -- '-p %s ' $TOOL_PACKAGES)
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      # The submodules: the C headers (crates/vulkan/tests/layout.rs) and the
+      # specification sources (crates/vulkan/tests/docs.rs).
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
+      # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
+      - name: Install lavapipe, the Vulkan loader and the validation layers
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: >-
+            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
+            libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
+
+      - name: Show the Vulkan devices and layers
+        run: vulkaninfo --summary
+
+      # The version, profile and components come from rust-toolchain.toml.
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
       # Includes the examples in the documentation (doctests) and the comparison of the
       # generated documentation with the specification sources (crates/vulkan/tests/docs.rs).
       - name: Test
-        run: cargo test --workspace --all-features
-
-      - name: Test without default features
-        run: cargo test -p vulkan --no-default-features
+        run: cargo test --workspace --all-features $(printf -- '--exclude %s ' $TOOL_PACKAGES)
 
       # A device test skips itself when the driver lacks the extension it exercises.
       # cargo hides the output of passing tests, so list the skips where they can be seen.
@@ -132,6 +188,28 @@ jobs:
           path: target/example-output/
           if-no-files-found: ignore
 
+  # Without the `std` feature the crate neither loads nor links the Vulkan loader, so
+  # this job installs none, and the device tests are compiled out.
+  test-no-default-features:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
+      - name: Test without default features
+        run: cargo test -p vulkan --no-default-features
+
   # The device tests and the headless examples on the lavapipe of a recent Mesa, which
   # has Vulkan 1.4 and the extensions that the lavapipe of Ubuntu 24.04 lacks
   # (VK_EXT_descriptor_heap among them). Here a device test or an example that skips
@@ -152,19 +230,19 @@ jobs:
     env:
       VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
     steps:
-      # git: actions/checkout downloads an archive through the REST API without it.
+      # The image has no git, so the action downloads an archive through the REST API.
+      # Neither the device tests nor the examples read the submodules or the history.
+      - uses: actions/checkout@v7
+
       # tar and zstd: Swatinem/rust-cache. gcc: the linker for Rust.
       # vulkan-loader-devel: the `linked` feature links the loader.
       - name: Install lavapipe, the Vulkan loader, the validation layers and the build tools
-        run: |
-          dnf install --assumeyes --setopt=install_weak_deps=False \
-            git-core tar zstd gcc rustup \
-            vulkan-loader vulkan-loader-devel mesa-vulkan-drivers \
+        uses: ./.github/actions/install-dnf-packages
+        with:
+          packages: >-
+            tar zstd gcc rustup
+            vulkan-loader vulkan-loader-devel mesa-vulkan-drivers
             vulkan-validation-layers vulkan-tools
-          rpm -q mesa-vulkan-drivers vulkan-loader vulkan-validation-layers
-
-      # Neither the device tests nor the examples read the submodules.
-      - uses: actions/checkout@v7
 
       # The examples step below finds nothing when the layer is missing, so its absence
       # fails here.
@@ -185,7 +263,10 @@ jobs:
           "$HOME/.cargo/bin/rustup" toolchain install
           "$HOME/.cargo/bin/cargo" --version
 
+      # The key: see the lint job.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       # A device test skips itself when the driver lacks the extension it exercises.
       # cargo hides the output of passing tests, so list the skips where they can be seen.
@@ -261,11 +342,10 @@ jobs:
       # Ubuntu 24.04 has no i386 build of the validation layers, so the device tests run
       # without them here, and the test that needs VK_EXT_debug_utils skips itself.
       - name: Install the 32-bit C toolchain, lavapipe and the Vulkan loader
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            gcc-multilib libvulkan1:i386 libvulkan-dev:i386 mesa-vulkan-drivers:i386
+        uses: ./.github/actions/install-apt-packages
+        with:
+          architecture: i386
+          packages: gcc-multilib libvulkan1:i386 libvulkan-dev:i386 mesa-vulkan-drivers:i386
 
       - name: Install Rust
         run: |
@@ -273,14 +353,14 @@ jobs:
           rustup target add "$CARGO_BUILD_TARGET"
           cargo --version
 
+      # The key: see the lint job.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       # A failure in one test binary does not hide the results of the others.
       - name: Test
         run: cargo test -p vulkan -p vulkan-alloc --all-features --no-fail-fast
-
-      - name: Test without default features
-        run: cargo test -p vulkan --no-default-features
 
       - name: Report what the device tests skipped
         run: |
@@ -292,3 +372,33 @@ jobs:
               | sed -E 's/^test [a-z_0-9:]+ \.\.\. //' | sort | uniq -c
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  test-i686-no-default-features:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_BUILD_TARGET: i686-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # gcc-multilib: links the test binaries and builds the C side of the layout test
+      # (crates/vulkan/tests/layout.rs) with -m32.
+      - name: Install the 32-bit C toolchain
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: gcc-multilib
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          rustup target add "$CARGO_BUILD_TARGET"
+          cargo --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
+      - name: Test without default features
+        run: cargo test -p vulkan --no-default-features

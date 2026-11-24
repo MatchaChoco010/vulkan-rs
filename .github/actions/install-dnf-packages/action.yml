@@ -1,0 +1,70 @@
+name: Install dnf packages
+description: >-
+  Installs Fedora packages from a cache of their package files, and downloads the files
+  from the Fedora mirrors only when the cache has none for the packages of the image.
+
+inputs:
+  packages:
+    description: The names of the packages, separated by spaces.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The files to install are the requested packages and what they depend on, less what
+    # the image has already, and newer versions of what the image has where they need
+    # them. The tag of the image names no version, so the key hashes the packages that
+    # the image has installed. The week bounds how far the cached versions fall behind
+    # the mirrors while the image stays the same.
+    - id: key
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+      run: |
+        release=$(. /etc/os-release && echo "$ID-$VERSION_ID")
+        state=$({ rpm --query --all | sort; printf '%s\n' $PACKAGES | sort -u; } | sha256sum | cut -c 1-16)
+        echo "key=dnf-$release-$(date -u +%G-%V)-$state" >> "$GITHUB_OUTPUT"
+        echo "directory=$RUNNER_TEMP/dnf-packages" >> "$GITHUB_OUTPUT"
+
+    - id: cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.key.outputs.directory }}
+        key: ${{ steps.key.outputs.key }}
+
+    # dnf takes each file from a mirror of its own choice, and some of the mirrors serve
+    # about 100 kB/s.
+    - name: Download the package files
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        DIRECTORY: ${{ steps.key.outputs.directory }}
+      run: |
+        dnf install --assumeyes --setopt=install_weak_deps=False \
+          --downloadonly --setopt=keepcache=True $PACKAGES
+        mkdir -p "$DIRECTORY"
+        cp /var/cache/libdnf5/*/packages/*.rpm "$DIRECTORY"/
+
+    # The same command with or without the cache. dnf has no repository here, so it reads
+    # no metadata, and fails when a file depends on a package or a version that neither
+    # the image nor the files have.
+    - name: Install the package files
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        DIRECTORY: ${{ steps.key.outputs.directory }}
+      run: |
+        shopt -s nullglob
+        files=("$DIRECTORY"/*.rpm)
+        if ((${#files[@]} > 0)); then
+          dnf install --assumeyes --setopt=install_weak_deps=False --disablerepo='*' "${files[@]}"
+        fi
+        rpm --query $PACKAGES
+
+    - name: Save the package files
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.key.outputs.directory }}
+        key: ${{ steps.key.outputs.key }}
