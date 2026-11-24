@@ -985,6 +985,13 @@ mod tests {
     }
 
     #[test]
+    fn a_passthrough_in_code_is_refused_also_where_a_macro_would_take_its_text() {
+        for text in ["`https://a.b/+x\ny+`", "`latexmath:[+x\ny+]`"] {
+            assert_eq!(convert(text), Err(Unsupported::Passthrough), "{text:?}");
+        }
+    }
+
+    #[test]
     fn a_plus_that_no_later_plus_can_close_stays_text() {
         assert_eq!(markdown("a +x + y"), "a +x + y");
         assert_eq!(markdown("a +x+y z"), "a +x+y z");

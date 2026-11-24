@@ -92,6 +92,23 @@ fn an_empty_slice_of_an_array_that_is_not_optional_sets_the_count_to_zero() {
 }
 
 #[test]
+fn an_optional_array_whose_setter_takes_the_pointer_itself_is_set_as_it_is() {
+    let mut ir = registry();
+    ir.structs.push(structure(
+        "VkPointersNV",
+        vec![
+            field("valueCount", "uint32_t"),
+            optional(counted("ppValues", "uint32_t**", "valueCount,1")),
+        ],
+    ));
+    let model = Model::new(&ir);
+    let squashed = squash(&definition(&model, &ir.structs[0]));
+    let setter =
+        "pub fn pp_values(mut self, value: *mut *mut u32) -> Self { self.pp_values = value; self }";
+    assert!(squashed.contains(setter), "{setter}: {squashed}");
+}
+
+#[test]
 fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the_pointer_is_optional()
  {
     let model = Model::new(Registry::get());
