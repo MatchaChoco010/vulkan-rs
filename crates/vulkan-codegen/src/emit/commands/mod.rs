@@ -96,7 +96,13 @@ fn provided(model: &Model<'_>, cfg: &Cfg, c: &Command) -> String {
     )
 }
 
-fn not_loaded(c: &Command) -> String {
+fn not_loaded(model: &Model<'_>, c: &Command) -> String {
+    if let Some((major, minor)) = wrapper::absent_before(c, model.dispatch(c)) {
+        return format!(
+            "Panics if `{}` is not loaded: the loader returned no pointer for it, as a loader that implements a Vulkan version before {major}.{minor} does.",
+            c.name
+        );
+    }
     format!(
         "Panics if `{}` is not loaded: the loader returned no pointer for it, for example because the version or the extension that provides it is not enabled.",
         c.name
@@ -126,7 +132,7 @@ fn raw_doc(model: &Model<'_>, cfg: &Cfg, c: &Command, params: &[Field]) -> Doc {
             ),
         ),
     )
-    .section("Panics", not_loaded(c))
+    .section("Panics", not_loaded(model, c))
 }
 
 fn with_deferred_safety(model: &Model<'_>, c: &Command, safety: String) -> String {
@@ -445,6 +451,7 @@ mod tests {
             vec![field("pApiVersion", "uint32_t*")],
         );
         global.instance = true;
+        global.version = Some("VK_VERSION_1_1".to_string());
         ir.commands.push(global);
         ir.commands.push(device(command(
             "vkDeviceWaitIdle",
@@ -461,7 +468,7 @@ mod tests {
             "device_wait_idle: crate::load_pfn(get(device, c\"vkDeviceWaitIdle\".as_ptr())),"
         ));
         assert!(out.contains(
-            "pub unsafe fn enumerate_instance_version(&self) -> crate::vk::Result<u32> {"
+            "pub unsafe fn enumerate_instance_version(&self) -> crate::vk::Result<Option<u32>> {"
         ));
     }
 
@@ -2619,6 +2626,22 @@ mod tests {
                     )
                 },
                 "vkEnumerateInstanceThings: a command that needs no instance and is provided by an extension, which the loader may not provide",
+            ),
+            (
+                Command {
+                    version: Some("VK_VERSION_1_2".to_string()),
+                    ..result_command(
+                        "vkSumThings",
+                        &["VK_SUCCESS"],
+                        vec![
+                            field("thingCount", "uint32_t"),
+                            counted("pFirst", "const uint32_t*", "thingCount"),
+                            counted("pSecond", "const uint32_t*", "thingCount"),
+                            field("pSum", "uint32_t*"),
+                        ],
+                    )
+                },
+                "vkSumThings: the wrapper of a command that the loader may not provide checks the lengths of slices",
             ),
             (
                 Command {

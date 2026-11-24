@@ -78,6 +78,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         note.trim_end(),
         errors.or_else(|| ty.contains("Result<").then(|| error_codes(model, &cfg, c))),
         panics(
+            model,
             c,
             inputs.checks.contains("assert_eq!"),
             &inputs.narrowed_counts,
@@ -98,18 +99,22 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     )
 }
 
-fn absent_before(c: &Command, dispatch: Dispatch) -> Option<(u32, u32)> {
+pub(super) fn absent_before(c: &Command, dispatch: Dispatch) -> Option<(u32, u32)> {
     if dispatch != Dispatch::Entry || (c.version.is_none() && c.extensions.is_empty()) {
         return None;
     }
-    let version = c.version.as_deref().filter(|_| c.extensions.is_empty());
-    let version = version.and_then(parse_version).unwrap_or_else(|| {
+    let Some(version) = c.version.as_deref().filter(|_| c.extensions.is_empty()) else {
         panic!(
             "{}: a command that needs no instance and is provided by an extension, which the loader may not provide",
             c.name
         )
-    });
-    Some(version)
+    };
+    Some(parse_version(version).unwrap_or_else(|| {
+        panic!(
+            "{}: a command that needs no instance and is provided by `{version}`, which is not a Vulkan version",
+            c.name
+        )
+    }))
 }
 
 const FIXED_BINDINGS: &[&str] = &["x", "element", "entry", "error"];
@@ -221,6 +226,7 @@ fn shape_locals(shape: &Shape, params: &[Field]) -> Vec<(String, String)> {
 }
 
 fn panics(
+    model: &Model<'_>,
     c: &Command,
     checks_lengths: bool,
     narrowed_counts: &[String],
@@ -237,7 +243,7 @@ fn panics(
         ""
     };
     (!may_be_absent)
-        .then(|| not_loaded(c) + lengths)
+        .then(|| not_loaded(model, c) + lengths)
         .into_iter()
         .chain(narrowed_counts.iter().cloned())
         .collect::<Vec<_>>()
@@ -543,7 +549,7 @@ impl Call<'_> {
                 ),
             )
             .note(format!(
-                "{written}, or `None` if the loader does not provide the command, which means that it implements a Vulkan version before {major}.{minor}."
+                "{written} in `Some`, or `None` if the loader does not provide the command, which means that it implements a Vulkan version before {major}.{minor}."
             ));
         }
         if !self.returns_result() {

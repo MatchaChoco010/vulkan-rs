@@ -136,7 +136,10 @@
 //!
 //! All commands of a level are looked up when the [`Entry`], [`Instance`] or [`Device`] is
 //! created. Calling a command whose function pointer the Vulkan loader returned as null
-//! panics. Whether a command of an extension or version that is not enabled has a null
+//! panics, except for the wrappers of commands that need no instance and that Vulkan 1.0
+//! does not provide: they return `None`, since the application cannot enable a version for
+//! the loader. [`Entry::enumerate_instance_version`] returns `Ok(None)` on a loader that
+//! implements only Vulkan 1.0. Whether a command of an extension or version that is not enabled has a null
 //! pointer depends on the loader and the driver; calling it is invalid either way. The
 //! wrappers also panic when two slices that the C signature passes with one shared length
 //! have different lengths, and when a slice has more elements than the type of its count

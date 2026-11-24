@@ -5063,7 +5063,7 @@ impl crate::Entry {
     /// # Panics
     ///
     /// Panics if `vkEnumerateInstanceVersion` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
+    /// as a loader that implements a Vulkan version before 1.1 does.
     pub unsafe fn enumerate_instance_version_raw(&self, p_api_version: *mut u32) -> VkResult {
         unsafe {
             (self
@@ -5217,9 +5217,9 @@ impl crate::Entry {
     /// Calls the C command
     /// [`vkEnumerateInstanceVersion`](https://docs.vulkan.org/refpages/latest/refpages/source/vkEnumerateInstanceVersion.html)
     /// through [`Self::enumerate_instance_version_raw`], which describes the parameters. Returns
-    /// what the command writes to `pApiVersion`, or `None` if the loader does not provide the
-    /// command, which means that it implements a Vulkan version before 1.1. The command is provided
-    /// by Vulkan 1.1.
+    /// what the command writes to `pApiVersion` in `Some`, or `None` if the loader does not provide
+    /// the command, which means that it implements a Vulkan version before 1.1. The command is
+    /// provided by Vulkan 1.1.
     ///
     /// # Errors
     ///
