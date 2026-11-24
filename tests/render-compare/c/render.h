@@ -118,12 +118,17 @@ typedef struct {
 
 void render_fail(const char *format, ...) __attribute__((noreturn, format(printf, 1, 2)));
 
-/* Memory from malloc with every byte set to 0x55, which is what malloc means in the C
- * program. The Rust program fills what it allocates with 0xaa, so bytes that a program
- * hands to Vulkan without writing them differ between the two programs instead of being
- * equal by chance. */
+/* What malloc, calloc and free mean in the C program: memory with every byte set to 0x55,
+ * or to zero, and every byte set to 0x66 before it is given back. The Rust program fills
+ * what it allocates with 0xaa and what it frees with 0xdd, so bytes that a program hands
+ * to Vulkan without writing them, or after freeing them, differ between the two programs
+ * instead of being equal by chance. */
 void *filled_alloc(size_t size);
+void *zeroed_alloc(size_t count, size_t size);
+void filled_free(void *memory);
 #define malloc(size) filled_alloc(size)
+#define calloc(count, size) zeroed_alloc(count, size)
+#define free(memory) filled_free(memory)
 
 void ctx_create(Ctx *ctx, const char *shader_dir, const Scenario *scenario);
 void ctx_destroy(Ctx *ctx);

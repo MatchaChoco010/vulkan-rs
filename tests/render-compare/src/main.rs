@@ -24,25 +24,15 @@ unsafe impl GlobalAlloc for FilledAllocations {
 
     unsafe fn dealloc(&self, memory: *mut u8, layout: Layout) {
         unsafe {
-            memory.write_bytes(FREED, layout.size());
+            for offset in 0..layout.size() {
+                memory.add(offset).write_volatile(FREED);
+            }
             System.dealloc(memory, layout)
         }
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         unsafe { System.alloc_zeroed(layout) }
-    }
-
-    unsafe fn realloc(&self, memory: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        unsafe {
-            let memory = System.realloc(memory, layout, new_size);
-            if !memory.is_null() && new_size > layout.size() {
-                memory
-                    .add(layout.size())
-                    .write_bytes(FILL, new_size - layout.size());
-            }
-            memory
-        }
     }
 }
 

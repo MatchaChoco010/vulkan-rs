@@ -26,13 +26,35 @@ void render_fail(const char *format, ...) {
     exit(1);
 }
 
-void *filled_alloc(size_t size) {
-    void *memory = (malloc)(size);
-    if (memory == NULL) {
+typedef union {
+    size_t size;
+    max_align_t alignment;
+} AllocationHeader;
+
+static void *allocate(size_t size, int fill) {
+    AllocationHeader *header = (malloc)(sizeof(*header) + size);
+    if (header == NULL) {
         render_fail("cannot allocate %zu bytes", size);
     }
-    memset(memory, 0x55, size);
-    return memory;
+    header->size = size;
+    memset(header + 1, fill, size);
+    return header + 1;
+}
+
+void *filled_alloc(size_t size) { return allocate(size, 0x55); }
+
+void *zeroed_alloc(size_t count, size_t size) { return allocate(count * size, 0); }
+
+void filled_free(void *memory) {
+    if (memory == NULL) {
+        return;
+    }
+    AllocationHeader *header = (AllocationHeader *)memory - 1;
+    volatile unsigned char *bytes = memory;
+    for (size_t i = 0; i < header->size; i++) {
+        bytes[i] = 0x66;
+    }
+    (free)(header);
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
