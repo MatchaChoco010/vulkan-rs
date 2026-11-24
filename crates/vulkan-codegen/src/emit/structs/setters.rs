@@ -1,3 +1,4 @@
+use super::nullable_arrays::may_be_null;
 use super::read_only_members::{PointsTo, read_only};
 use super::unmarked_arrays::{self, Length, length_that_no_member_stores};
 use super::{MethodNames, field_link, member_origin};
@@ -109,9 +110,14 @@ impl<'s> CountedArrays<'s> {
         let sets_the_count = setter
             .assignments
             .contains(&format!("self.{count_field} = "));
-        if !m.optional || ty.depth() == 0 || ty.is_array() || !sets_the_count {
+        if !sets_the_count || !may_be_null(self.s, m) {
             return setter;
         }
+        let allowed_by = if m.optional {
+            "registry"
+        } else {
+            "specification"
+        };
         let field = field_name(&m.name);
         let others = self.arrays_of_count[count.name.as_str()]
             .iter()
@@ -131,7 +137,7 @@ impl<'s> CountedArrays<'s> {
         };
         let mut setter = setter;
         setter.doc = std::mem::take(&mut setter.doc).text_after_the_first_block(format!(
-            "An empty slice stands for an array that is absent, which the registry allows for this member: it sets {pointer} to a null pointer and leaves {} as it is{compared}. The exception is an empty slice that takes an array away: if {pointer} is not null when the setter is called{others_are_null}, the count is set to 0, whatever stored it.",
+            "An empty slice stands for an array that is absent, which the {allowed_by} allows for this member: it sets {pointer} to a null pointer and leaves {} as it is{compared}. The exception is an empty slice that takes an array away: if {pointer} is not null when the setter is called{others_are_null}, the count is set to 0, whatever stored it.",
             field_link(&count.name),
             pointer = field_link(&m.name)
         ));
@@ -144,7 +150,7 @@ impl<'s> CountedArrays<'s> {
     }
 }
 
-fn count_member<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
+pub(super) fn count_member<'s>(s: &'s Struct, m: &Field) -> Option<&'s Field> {
     let len = match unmarked_arrays::length(s, m) {
         Some(Length::InMember(count)) => count,
         Some(Length::NotInTheStructure(_)) => return None,

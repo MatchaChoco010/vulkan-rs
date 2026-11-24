@@ -300,7 +300,10 @@ pub(crate) fn assert_listed_aligned_memory_exists(ir: &Registry) {
 mod tests {
     use super::*;
     use crate::emit::{commands, doc_of, squash, structs};
-    use crate::test_support::{catch_quietly, counted, field, optional, registry, result_command};
+    use crate::test_support::{
+        catch_quietly, chapters_of_the_specification, counted, field, optional, registry,
+        result_command,
+    };
     use std::collections::BTreeSet;
     use vulkan_registry::{EnumField, Handle};
 
@@ -559,40 +562,6 @@ mod tests {
             message,
             "the registry has no command vkGetShaderBinaryDataEXT: correct the list of memory that the specification requires to be aligned, which takes `pData` from VUID-vkGetShaderBinaryDataEXT-None-08499"
         );
-    }
-
-    fn chapters_of_the_specification() -> Option<String> {
-        let chapters = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../third_party/vulkan-docs/chapters");
-        if !chapters.is_dir() {
-            assert!(
-                std::env::var_os("VULKAN_RS_REQUIRE_DOCS_TEST").is_none(),
-                "the valid usage test is required but third_party/vulkan-docs is not checked out"
-            );
-            eprintln!("skipping the valid usage test: third_party/vulkan-docs is not checked out");
-            return None;
-        }
-        let mut text = String::new();
-        let mut directories = vec![chapters];
-        while let Some(directory) = directories.pop() {
-            let entries = std::fs::read_dir(&directory)
-                .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()));
-            for entry in entries {
-                let path = entry.expect("a directory entry").path();
-                if path.is_dir() {
-                    directories.push(path);
-                } else if path
-                    .extension()
-                    .is_some_and(|extension| extension == "adoc")
-                {
-                    let chapter = std::fs::read_to_string(&path)
-                        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
-                    text.push_str(&chapter);
-                    text.push('\n');
-                }
-            }
-        }
-        Some(text)
     }
 
     fn valid_usage_statement(chapters: &str, vuid: &str) -> String {

@@ -1416,47 +1416,77 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     /// Sets [`p_width_in_sbs_minus1`](Self::p_width_in_sbs_minus1) to the start of a slice of
     /// elements and [`tile_cols`](Self::tile_cols) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_width_in_sbs_minus1`](Self::p_width_in_sbs_minus1) to a null pointer and
+    /// leaves [`tile_cols`](Self::tile_cols) as it is, and it is not compared with the other arrays
+    /// that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_width_in_sbs_minus1`](Self::p_width_in_sbs_minus1) is not null when the setter is called
+    /// and the pointers of the other arrays that share the count are null, the count is set to 0,
+    /// whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if another array that shares `TileCols` is already set and the slice has a different
     /// length. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can count.
     pub fn width_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
-        if !self.p_mi_col_starts.is_null() {
-            assert_eq!(
-                self.tile_cols as usize,
+        if value.is_empty() {
+            if !self.p_width_in_sbs_minus1.is_null() && self.p_mi_col_starts.is_null() {
+                self.tile_cols = 0;
+            }
+            self.p_width_in_sbs_minus1 = core::ptr::null();
+        } else {
+            if !self.p_mi_col_starts.is_null() {
+                assert_eq!(
+                    self.tile_cols as usize,
+                    value.len(),
+                    "StdVideoAV1TileInfo::pWidthInSbsMinus1: every array sharing `TileCols` must have the same length"
+                );
+            }
+            self.tile_cols = len_as_count(
                 value.len(),
-                "StdVideoAV1TileInfo::pWidthInSbsMinus1: every array sharing `TileCols` must have the same length"
+                "StdVideoAV1TileInfo::pWidthInSbsMinus1",
+                "TileCols",
             );
+            self.p_width_in_sbs_minus1 = value.as_ptr();
         }
-        self.tile_cols = len_as_count(
-            value.len(),
-            "StdVideoAV1TileInfo::pWidthInSbsMinus1",
-            "TileCols",
-        );
-        self.p_width_in_sbs_minus1 = value.as_ptr();
         self
     }
     /// Sets [`p_height_in_sbs_minus1`](Self::p_height_in_sbs_minus1) to the start of a slice of
     /// elements and [`tile_rows`](Self::tile_rows) to its length.
+    ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_height_in_sbs_minus1`](Self::p_height_in_sbs_minus1) to a null pointer
+    /// and leaves [`tile_rows`](Self::tile_rows) as it is, and it is not compared with the other
+    /// arrays that share the count. The exception is an empty slice that takes an array away: if
+    /// [`p_height_in_sbs_minus1`](Self::p_height_in_sbs_minus1) is not null when the setter is
+    /// called and the pointers of the other arrays that share the count are null, the count is set
+    /// to 0, whatever stored it.
     ///
     /// # Panics
     ///
     /// Panics if another array that shares `TileRows` is already set and the slice has a different
     /// length. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can count.
     pub fn height_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
-        if !self.p_mi_row_starts.is_null() {
-            assert_eq!(
-                self.tile_rows as usize,
+        if value.is_empty() {
+            if !self.p_height_in_sbs_minus1.is_null() && self.p_mi_row_starts.is_null() {
+                self.tile_rows = 0;
+            }
+            self.p_height_in_sbs_minus1 = core::ptr::null();
+        } else {
+            if !self.p_mi_row_starts.is_null() {
+                assert_eq!(
+                    self.tile_rows as usize,
+                    value.len(),
+                    "StdVideoAV1TileInfo::pHeightInSbsMinus1: every array sharing `TileRows` must have the same length"
+                );
+            }
+            self.tile_rows = len_as_count(
                 value.len(),
-                "StdVideoAV1TileInfo::pHeightInSbsMinus1: every array sharing `TileRows` must have the same length"
+                "StdVideoAV1TileInfo::pHeightInSbsMinus1",
+                "TileRows",
             );
+            self.p_height_in_sbs_minus1 = value.as_ptr();
         }
-        self.tile_rows = len_as_count(
-            value.len(),
-            "StdVideoAV1TileInfo::pHeightInSbsMinus1",
-            "TileRows",
-        );
-        self.p_height_in_sbs_minus1 = value.as_ptr();
         self
     }
 }
@@ -26528,16 +26558,29 @@ impl<'a> DataGraphPipelineCreateInfoARM<'a> {
     /// Sets [`p_resource_infos`](Self::p_resource_infos) to the start of a slice of elements and
     /// [`resource_info_count`](Self::resource_info_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_resource_infos`](Self::p_resource_infos) to a null pointer and leaves
+    /// [`resource_info_count`](Self::resource_info_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_resource_infos`](Self::p_resource_infos) is not null when
+    /// the setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `resourceInfoCount`, a `uint32_t`, can count.
     pub fn resource_infos(mut self, value: &'a [DataGraphPipelineResourceInfoARM<'a>]) -> Self {
-        self.resource_info_count = len_as_count(
-            value.len(),
-            "VkDataGraphPipelineCreateInfoARM::pResourceInfos",
-            "resourceInfoCount",
-        );
-        self.p_resource_infos = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_resource_infos.is_null() {
+                self.resource_info_count = 0;
+            }
+            self.p_resource_infos = core::ptr::null();
+        } else {
+            self.resource_info_count = len_as_count(
+                value.len(),
+                "VkDataGraphPipelineCreateInfoARM::pResourceInfos",
+                "resourceInfoCount",
+            );
+            self.p_resource_infos = value.as_ptr();
+        }
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -28515,16 +28558,29 @@ impl<'a> DebugUtilsMessengerCallbackDataEXT<'a> {
     /// Sets [`p_queue_labels`](Self::p_queue_labels) to the start of a slice of elements and
     /// [`queue_label_count`](Self::queue_label_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_queue_labels`](Self::p_queue_labels) to a null pointer and leaves
+    /// [`queue_label_count`](Self::queue_label_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_queue_labels`](Self::p_queue_labels) is not null when the
+    /// setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueLabelCount`, a `uint32_t`, can count.
     pub fn queue_labels(mut self, value: &'a [DebugUtilsLabelEXT<'a>]) -> Self {
-        self.queue_label_count = len_as_count(
-            value.len(),
-            "VkDebugUtilsMessengerCallbackDataEXT::pQueueLabels",
-            "queueLabelCount",
-        );
-        self.p_queue_labels = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_queue_labels.is_null() {
+                self.queue_label_count = 0;
+            }
+            self.p_queue_labels = core::ptr::null();
+        } else {
+            self.queue_label_count = len_as_count(
+                value.len(),
+                "VkDebugUtilsMessengerCallbackDataEXT::pQueueLabels",
+                "queueLabelCount",
+            );
+            self.p_queue_labels = value.as_ptr();
+        }
         self
     }
     /// Sets [`cmd_buf_label_count`](Self::cmd_buf_label_count).
@@ -28535,16 +28591,29 @@ impl<'a> DebugUtilsMessengerCallbackDataEXT<'a> {
     /// Sets [`p_cmd_buf_labels`](Self::p_cmd_buf_labels) to the start of a slice of elements and
     /// [`cmd_buf_label_count`](Self::cmd_buf_label_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_cmd_buf_labels`](Self::p_cmd_buf_labels) to a null pointer and leaves
+    /// [`cmd_buf_label_count`](Self::cmd_buf_label_count) as it is. The exception is an empty slice
+    /// that takes an array away: if [`p_cmd_buf_labels`](Self::p_cmd_buf_labels) is not null when
+    /// the setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `cmdBufLabelCount`, a `uint32_t`, can count.
     pub fn cmd_buf_labels(mut self, value: &'a [DebugUtilsLabelEXT<'a>]) -> Self {
-        self.cmd_buf_label_count = len_as_count(
-            value.len(),
-            "VkDebugUtilsMessengerCallbackDataEXT::pCmdBufLabels",
-            "cmdBufLabelCount",
-        );
-        self.p_cmd_buf_labels = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_cmd_buf_labels.is_null() {
+                self.cmd_buf_label_count = 0;
+            }
+            self.p_cmd_buf_labels = core::ptr::null();
+        } else {
+            self.cmd_buf_label_count = len_as_count(
+                value.len(),
+                "VkDebugUtilsMessengerCallbackDataEXT::pCmdBufLabels",
+                "cmdBufLabelCount",
+            );
+            self.p_cmd_buf_labels = value.as_ptr();
+        }
         self
     }
     /// Sets [`object_count`](Self::object_count).
@@ -32527,16 +32596,30 @@ impl<'a> DeviceCreateInfo<'a> {
     /// pointers to NUL-terminated strings and [`enabled_layer_count`](Self::enabled_layer_count) to
     /// its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`pp_enabled_layer_names`](Self::pp_enabled_layer_names) to a null pointer
+    /// and leaves [`enabled_layer_count`](Self::enabled_layer_count) as it is. The exception is an
+    /// empty slice that takes an array away: if
+    /// [`pp_enabled_layer_names`](Self::pp_enabled_layer_names) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `enabledLayerCount`, a `uint32_t`, can count.
     pub fn enabled_layer_names(mut self, value: &'a [CStrPtr<'a>]) -> Self {
-        self.enabled_layer_count = len_as_count(
-            value.len(),
-            "VkDeviceCreateInfo::ppEnabledLayerNames",
-            "enabledLayerCount",
-        );
-        self.pp_enabled_layer_names = value.as_ptr().cast();
+        if value.is_empty() {
+            if !self.pp_enabled_layer_names.is_null() {
+                self.enabled_layer_count = 0;
+            }
+            self.pp_enabled_layer_names = core::ptr::null();
+        } else {
+            self.enabled_layer_count = len_as_count(
+                value.len(),
+                "VkDeviceCreateInfo::ppEnabledLayerNames",
+                "enabledLayerCount",
+            );
+            self.pp_enabled_layer_names = value.as_ptr().cast();
+        }
         self
     }
     /// Sets [`enabled_extension_count`](Self::enabled_extension_count).
@@ -45095,6 +45178,13 @@ impl<'a> ImageCompressionControlEXT<'a> {
     /// and [`compression_control_plane_count`](Self::compression_control_plane_count) to its
     /// length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_fixed_rate_flags`](Self::p_fixed_rate_flags) to a null pointer and
+    /// leaves [`compression_control_plane_count`](Self::compression_control_plane_count) as it is.
+    /// The exception is an empty slice that takes an array away: if
+    /// [`p_fixed_rate_flags`](Self::p_fixed_rate_flags) is not null when the setter is called, the
+    /// count is set to 0, whatever stored it.
+    ///
     /// The C declaration of the member is a pointer to writable memory, but the implementation only
     /// reads the elements, so the setter borrows them shared.
     ///
@@ -45103,12 +45193,19 @@ impl<'a> ImageCompressionControlEXT<'a> {
     /// Panics if the slice has more elements than `compressionControlPlaneCount`, a `uint32_t`, can
     /// count.
     pub fn fixed_rate_flags(mut self, value: &'a [ImageCompressionFixedRateFlagsEXT]) -> Self {
-        self.compression_control_plane_count = len_as_count(
-            value.len(),
-            "VkImageCompressionControlEXT::pFixedRateFlags",
-            "compressionControlPlaneCount",
-        );
-        self.p_fixed_rate_flags = value.as_ptr().cast_mut();
+        if value.is_empty() {
+            if !self.p_fixed_rate_flags.is_null() {
+                self.compression_control_plane_count = 0;
+            }
+            self.p_fixed_rate_flags = core::ptr::null_mut();
+        } else {
+            self.compression_control_plane_count = len_as_count(
+                value.len(),
+                "VkImageCompressionControlEXT::pFixedRateFlags",
+                "compressionControlPlaneCount",
+            );
+            self.p_fixed_rate_flags = value.as_ptr().cast_mut();
+        }
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -55642,16 +55739,29 @@ impl<'a> MutableDescriptorTypeListEXT<'a> {
     /// Sets [`p_descriptor_types`](Self::p_descriptor_types) to the start of a slice of elements
     /// and [`descriptor_type_count`](Self::descriptor_type_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_descriptor_types`](Self::p_descriptor_types) to a null pointer and
+    /// leaves [`descriptor_type_count`](Self::descriptor_type_count) as it is. The exception is an
+    /// empty slice that takes an array away: if [`p_descriptor_types`](Self::p_descriptor_types) is
+    /// not null when the setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `descriptorTypeCount`, a `uint32_t`, can count.
     pub fn descriptor_types(mut self, value: &'a [DescriptorType]) -> Self {
-        self.descriptor_type_count = len_as_count(
-            value.len(),
-            "VkMutableDescriptorTypeListEXT::pDescriptorTypes",
-            "descriptorTypeCount",
-        );
-        self.p_descriptor_types = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_descriptor_types.is_null() {
+                self.descriptor_type_count = 0;
+            }
+            self.p_descriptor_types = core::ptr::null();
+        } else {
+            self.descriptor_type_count = len_as_count(
+                value.len(),
+                "VkMutableDescriptorTypeListEXT::pDescriptorTypes",
+                "descriptorTypeCount",
+            );
+            self.p_descriptor_types = value.as_ptr();
+        }
         self
     }
 }
@@ -57293,17 +57403,31 @@ impl<'a> PastPresentationTimingPropertiesEXT<'a> {
     /// Sets [`p_presentation_timings`](Self::p_presentation_timings) to the start of a slice of
     /// elements and [`presentation_timing_count`](Self::presentation_timing_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_presentation_timings`](Self::p_presentation_timings) to a null pointer
+    /// and leaves [`presentation_timing_count`](Self::presentation_timing_count) as it is. The
+    /// exception is an empty slice that takes an array away: if
+    /// [`p_presentation_timings`](Self::p_presentation_timings) is not null when the setter is
+    /// called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `presentationTimingCount`, a `uint32_t`, can
     /// count.
     pub fn presentation_timings(mut self, value: &'a mut [PastPresentationTimingEXT<'a>]) -> Self {
-        self.presentation_timing_count = len_as_count(
-            value.len(),
-            "VkPastPresentationTimingPropertiesEXT::pPresentationTimings",
-            "presentationTimingCount",
-        );
-        self.p_presentation_timings = value.as_mut_ptr();
+        if value.is_empty() {
+            if !self.p_presentation_timings.is_null() {
+                self.presentation_timing_count = 0;
+            }
+            self.p_presentation_timings = core::ptr::null_mut();
+        } else {
+            self.presentation_timing_count = len_as_count(
+                value.len(),
+                "VkPastPresentationTimingPropertiesEXT::pPresentationTimings",
+                "presentationTimingCount",
+            );
+            self.p_presentation_timings = value.as_mut_ptr();
+        }
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -72183,16 +72307,29 @@ impl<'a> PhysicalDeviceGpaPropertiesAMD<'a> {
     /// Sets [`p_perf_blocks`](Self::p_perf_blocks) to the start of a slice of elements and
     /// [`perf_block_count`](Self::perf_block_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_perf_blocks`](Self::p_perf_blocks) to a null pointer and leaves
+    /// [`perf_block_count`](Self::perf_block_count) as it is. The exception is an empty slice that
+    /// takes an array away: if [`p_perf_blocks`](Self::p_perf_blocks) is not null when the setter
+    /// is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `perfBlockCount`, a `uint32_t`, can count.
     pub fn perf_blocks(mut self, value: &'a mut [GpaPerfBlockPropertiesAMD]) -> Self {
-        self.perf_block_count = len_as_count(
-            value.len(),
-            "VkPhysicalDeviceGpaPropertiesAMD::pPerfBlocks",
-            "perfBlockCount",
-        );
-        self.p_perf_blocks = value.as_mut_ptr();
+        if value.is_empty() {
+            if !self.p_perf_blocks.is_null() {
+                self.perf_block_count = 0;
+            }
+            self.p_perf_blocks = core::ptr::null_mut();
+        } else {
+            self.perf_block_count = len_as_count(
+                value.len(),
+                "VkPhysicalDeviceGpaPropertiesAMD::pPerfBlocks",
+                "perfBlockCount",
+            );
+            self.p_perf_blocks = value.as_mut_ptr();
+        }
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -105644,16 +105781,29 @@ impl<'a> PresentInfoKHR<'a> {
     /// Sets [`p_wait_semaphores`](Self::p_wait_semaphores) to the start of a slice of elements and
     /// [`wait_semaphore_count`](Self::wait_semaphore_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_wait_semaphores`](Self::p_wait_semaphores) to a null pointer and leaves
+    /// [`wait_semaphore_count`](Self::wait_semaphore_count) as it is. The exception is an empty
+    /// slice that takes an array away: if [`p_wait_semaphores`](Self::p_wait_semaphores) is not
+    /// null when the setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `waitSemaphoreCount`, a `uint32_t`, can count.
     pub fn wait_semaphores(mut self, value: &'a [Semaphore]) -> Self {
-        self.wait_semaphore_count = len_as_count(
-            value.len(),
-            "VkPresentInfoKHR::pWaitSemaphores",
-            "waitSemaphoreCount",
-        );
-        self.p_wait_semaphores = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_wait_semaphores.is_null() {
+                self.wait_semaphore_count = 0;
+            }
+            self.p_wait_semaphores = core::ptr::null();
+        } else {
+            self.wait_semaphore_count = len_as_count(
+                value.len(),
+                "VkPresentInfoKHR::pWaitSemaphores",
+                "waitSemaphoreCount",
+            );
+            self.p_wait_semaphores = value.as_ptr();
+        }
         self
     }
     /// Sets [`swapchain_count`](Self::swapchain_count).
@@ -111514,16 +111664,30 @@ impl<'a> RenderingAttachmentLocationInfo<'a> {
     /// slice of elements and [`color_attachment_count`](Self::color_attachment_count) to its
     /// length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_color_attachment_locations`](Self::p_color_attachment_locations) to a
+    /// null pointer and leaves [`color_attachment_count`](Self::color_attachment_count) as it is.
+    /// The exception is an empty slice that takes an array away: if
+    /// [`p_color_attachment_locations`](Self::p_color_attachment_locations) is not null when the
+    /// setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn color_attachment_locations(mut self, value: &'a [u32]) -> Self {
-        self.color_attachment_count = len_as_count(
-            value.len(),
-            "VkRenderingAttachmentLocationInfo::pColorAttachmentLocations",
-            "colorAttachmentCount",
-        );
-        self.p_color_attachment_locations = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_color_attachment_locations.is_null() {
+                self.color_attachment_count = 0;
+            }
+            self.p_color_attachment_locations = core::ptr::null();
+        } else {
+            self.color_attachment_count = len_as_count(
+                value.len(),
+                "VkRenderingAttachmentLocationInfo::pColorAttachmentLocations",
+                "colorAttachmentCount",
+            );
+            self.p_color_attachment_locations = value.as_ptr();
+        }
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -125647,16 +125811,29 @@ impl<'a> VideoDecodeInfoKHR<'a> {
     /// Sets [`p_reference_slots`](Self::p_reference_slots) to the start of a slice of elements and
     /// [`reference_slot_count`](Self::reference_slot_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_reference_slots`](Self::p_reference_slots) to a null pointer and leaves
+    /// [`reference_slot_count`](Self::reference_slot_count) as it is. The exception is an empty
+    /// slice that takes an array away: if [`p_reference_slots`](Self::p_reference_slots) is not
+    /// null when the setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `referenceSlotCount`, a `uint32_t`, can count.
     pub fn reference_slots(mut self, value: &'a [VideoReferenceSlotInfoKHR<'a>]) -> Self {
-        self.reference_slot_count = len_as_count(
-            value.len(),
-            "VkVideoDecodeInfoKHR::pReferenceSlots",
-            "referenceSlotCount",
-        );
-        self.p_reference_slots = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_reference_slots.is_null() {
+                self.reference_slot_count = 0;
+            }
+            self.p_reference_slots = core::ptr::null();
+        } else {
+            self.reference_slot_count = len_as_count(
+                value.len(),
+                "VkVideoDecodeInfoKHR::pReferenceSlots",
+                "referenceSlotCount",
+            );
+            self.p_reference_slots = value.as_ptr();
+        }
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -130856,16 +131033,29 @@ impl<'a> VideoEncodeInfoKHR<'a> {
     /// Sets [`p_reference_slots`](Self::p_reference_slots) to the start of a slice of elements and
     /// [`reference_slot_count`](Self::reference_slot_count) to its length.
     ///
+    /// An empty slice stands for an array that is absent, which the specification allows for this
+    /// member: it sets [`p_reference_slots`](Self::p_reference_slots) to a null pointer and leaves
+    /// [`reference_slot_count`](Self::reference_slot_count) as it is. The exception is an empty
+    /// slice that takes an array away: if [`p_reference_slots`](Self::p_reference_slots) is not
+    /// null when the setter is called, the count is set to 0, whatever stored it.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `referenceSlotCount`, a `uint32_t`, can count.
     pub fn reference_slots(mut self, value: &'a [VideoReferenceSlotInfoKHR<'a>]) -> Self {
-        self.reference_slot_count = len_as_count(
-            value.len(),
-            "VkVideoEncodeInfoKHR::pReferenceSlots",
-            "referenceSlotCount",
-        );
-        self.p_reference_slots = value.as_ptr();
+        if value.is_empty() {
+            if !self.p_reference_slots.is_null() {
+                self.reference_slot_count = 0;
+            }
+            self.p_reference_slots = core::ptr::null();
+        } else {
+            self.reference_slot_count = len_as_count(
+                value.len(),
+                "VkVideoEncodeInfoKHR::pReferenceSlots",
+                "referenceSlotCount",
+            );
+            self.p_reference_slots = value.as_ptr();
+        }
         self
     }
     /// Sets [`preceding_externally_encoded_bytes`](Self::preceding_externally_encoded_bytes).
