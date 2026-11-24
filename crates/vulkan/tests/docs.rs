@@ -242,6 +242,7 @@ struct Markup {
     list_item: Regex,
     nested_item: Regex,
     other_list_item: Regex,
+    term: Regex,
     described_item: Regex,
     block_attributes: Regex,
     block_title: Regex,
@@ -258,6 +259,7 @@ impl Markup {
             other_list_item: regex(
                 r"^[ \t]*(?:(?:-|\u{2022}|\.{1,5}|\d+\.|[a-zA-Z]\.|[IVXivx]+\))[ \t]+\S|[^\s/].*?(?::{2,4}|;;)(?:$|[ \t]+\S))",
             ),
+            term: regex(r"^[ \t]*[^\s/].*?(?::{2,4}|;;)(?:$|[ \t]+(\S.*)$)"),
             described_item: regex(
                 r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)(pname:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)pname:\w+)*|ename:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)ename:\w+)*)\b",
             ),
@@ -673,6 +675,73 @@ impl Specification {
         out
     }
 
+    fn item_end(&self, lines: &[&str], start: usize) -> usize {
+        let markup = &self.markup;
+        let lacks_a_description = |line: &str| {
+            markup
+                .term
+                .captures(line)
+                .is_some_and(|term| term.get(1).is_none())
+        };
+        let mut index = start + 1;
+        let mut attached = false;
+        let mut inside = None;
+        while index < lines.len() {
+            let line = lines[index].trim_end();
+            if let Some(delimiter) = inside {
+                if line == delimiter {
+                    inside = None;
+                }
+            } else if line == COMMENT {
+                attached = false;
+            } else if line.is_empty() {
+                let after = lines[index..]
+                    .iter()
+                    .position(|line| !line.trim().is_empty())
+                    .map(|skipped| (skipped, lines[index + skipped].trim_end()));
+                let goes_on = match after {
+                    None | Some((_, COMMENT)) => false,
+                    Some((1, after)) if attached => !markup.list_item.is_match(after),
+                    Some((_, after)) => {
+                        after == "+"
+                            || markup.nested_item.is_match(after)
+                            || markup.other_list_item.is_match(after)
+                            || (lacks_a_description(lines[index - 1])
+                                && !markup.list_item.is_match(after))
+                    }
+                };
+                if !goes_on {
+                    break;
+                }
+                let (skipped, _) = after.expect("a line after the empty ones");
+                attached = attached && skipped == 1;
+                index += skipped;
+                continue;
+            } else if markup.list_item.is_match(line) || markup.block_of_the_page.is_match(line) {
+                break;
+            } else if line == "+" {
+                attached = true;
+            } else if markup.block_delimiter.is_match(line) {
+                if !attached {
+                    break;
+                }
+                inside = Some(line);
+                attached = false;
+            } else if markup.block_attributes.is_match(line)
+                || markup.block_title.is_match(line)
+                || line == ATTRIBUTE_ENTRY
+            {
+                if !attached {
+                    break;
+                }
+            } else {
+                attached = false;
+            }
+            index += 1;
+        }
+        index
+    }
+
     fn items(&self, page: &str) -> Vec<(String, Vec<String>, String)> {
         let Some(page) = self.pages.get(page) else {
             return Vec::new();
@@ -687,60 +756,7 @@ impl Specification {
             if !markup.list_item.is_match(lines[start]) {
                 continue;
             }
-            let mut attached = false;
-            let mut inside = None;
-            while index < lines.len() {
-                let line = lines[index].trim_end();
-                if let Some(delimiter) = inside {
-                    if line == delimiter {
-                        inside = None;
-                    }
-                } else if line == COMMENT {
-                    attached = false;
-                } else if line.is_empty() {
-                    let after = lines[index..]
-                        .iter()
-                        .position(|line| !line.trim().is_empty())
-                        .map(|skipped| (skipped, lines[index + skipped].trim_end()));
-                    let goes_on = match after {
-                        None | Some((_, COMMENT)) => false,
-                        Some((1, after)) if attached => !markup.list_item.is_match(after),
-                        Some((_, after)) => {
-                            after == "+"
-                                || markup.nested_item.is_match(after)
-                                || markup.other_list_item.is_match(after)
-                        }
-                    };
-                    if !goes_on {
-                        break;
-                    }
-                    let (skipped, _) = after.expect("a line after the empty ones");
-                    attached = attached && skipped == 1;
-                    index += skipped;
-                    continue;
-                } else if markup.list_item.is_match(line) || markup.block_of_the_page.is_match(line)
-                {
-                    break;
-                } else if line == "+" {
-                    attached = true;
-                } else if markup.block_delimiter.is_match(line) {
-                    if !attached {
-                        break;
-                    }
-                    inside = Some(line);
-                    attached = false;
-                } else if markup.block_attributes.is_match(line)
-                    || markup.block_title.is_match(line)
-                    || line == ATTRIBUTE_ENTRY
-                {
-                    if !attached {
-                        break;
-                    }
-                } else {
-                    attached = false;
-                }
-                index += 1;
-            }
+            index = self.item_end(&lines, start);
             let text = lines[start..index].join("\n");
             if let Some(described) = markup.described_item.captures(&text)
                 && !described[1].contains("[[VUID-")
@@ -2202,12 +2218,16 @@ fn fixture_specification() -> Specification {
         "",
         "  ** This is nested as well.",
         "",
-        "1::",
+        "first::",
         "    For all limits, the note applies.",
         "",
-        "2:: The second note applies as well.",
+        "second:: The second note applies as well.",
         "+",
         "It has a second paragraph.",
+        "",
+        "third::",
+        "",
+        "    Its description follows an empty line.",
         "",
         ".. The note has a step.",
         "",
@@ -3017,8 +3037,8 @@ fn a_list_item_of_the_specification_goes_on_past_empty_lines_as_asciidoctor_read
     );
     assert_eq!(
         words("last"),
-        " last is the last limit It is nested This is nested as well 1 For all limits the note applies 2 The second note applies as well It has a second paragraph The note has a step ",
-        "nested items and lists of another kind go on past empty lines"
+        " last is the last limit It is nested This is nested as well first For all limits the note applies second The second note applies as well It has a second paragraph third Its description follows an empty line The note has a step ",
+        "nested items and lists of another kind go on past empty lines, and a term without a description takes the text after an empty line"
     );
 }
 

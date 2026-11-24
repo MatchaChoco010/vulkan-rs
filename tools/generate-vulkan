@@ -399,6 +399,8 @@ SPEC_OTHER_LIST_ITEM = re.compile(
     r"^[ \t]*(?:(?:-|•|\.{1,5}|\d+\.|[a-zA-Z]\.|[IVXivx]+\))[ \t]+\S"
     r"|(?!//[^/])\S.*?(?::{2,4}|;;)(?:$|[ \t]+\S))"
 )
+# A term, with the description on its line, if it has one.
+SPEC_TERM = re.compile(r"^[ \t]*(?!//[^/])\S.*?(?::{2,4}|;;)(?:$|[ \t]+(\S.*)$)")
 # Generated files and shared valid usage that follow a list item without an empty line
 # between them hold blocks of their own, not more text of the item.
 SPEC_INCLUDES_AFTER_AN_ITEM = (
@@ -436,9 +438,13 @@ def spec_generated_files(vk) -> dict[str, list[str]]:
             equivalent = sync.find("syncequivalent")
             if equivalent is None:
                 continue
-            flags = equivalent.get(attribute).split(",")
+            flags = equivalent.get(attribute)
+            if flags is None:
+                raise RuntimeError(
+                    f"vk.xml: <syncequivalent> of {sync.get('name')} has no `{attribute}` attribute"
+                )
             files[f"sync/flagDefinitions/{sync.get('name')}.adoc"] = [
-                f"  ** ename:{flag}" for flag in flags if flag in defined
+                f"  ** ename:{flag}" for flag in flags.split(",") if flag in defined
             ]
     return files
 
@@ -552,57 +558,92 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
     The text of an item goes on over the following lines, whatever they start with, to the
     next first-level item, to an empty line or to the delimiter of a block. Past empty
     lines the item goes on only with a nested item, with the first item of a list of
-    another kind (which is nested in the item as well) or with a list continuation (an
-    indented paragraph would go on as well, as a literal block: that is reported); a
-    comment after the empty lines ends the item, whatever follows it. A list continuation
-    (a line that is just `+`) attaches the next block to the item: a paragraph, a nested
-    list, or a delimited block with the attribute and title lines above it. The block may
-    follow after one empty line and after lines that set attributes, but not after a
-    comment, which takes the place of the block.
+    another kind (which is nested in the item as well) or with a list continuation; a
+    comment after the empty lines ends the item, whatever follows it. A term that has no
+    description on its line takes the text after the empty lines as its description. A
+    list continuation (a line that is just `+`) attaches the next block to the item: a
+    paragraph, a nested list, or a delimited block with the attribute and title lines
+    above it. The block may follow after one empty line and after lines that set
+    attributes, but not after a comment, which takes the place of the block.
+
+    Where Asciidoctor reads something else than the lines say, the item cannot be read
+    reliably: an indented paragraph after an empty line or after a list continuation is a
+    literal block, an indented `//` is text, the indented lines after a list continuation
+    go on to the next empty line even over a first-level item, and a list continuation
+    that two empty lines follow attaches nothing but still acts on the lines after it.
 
     The lines come back without their indentation, except inside a delimited block, and
     except for a line of the text that would read as a continuation, as attributes or as a
     delimiter without it: Asciidoctor reads those only at the left margin. The empty line
-    and the attribute lines between a list continuation and its block are left out, and so
-    is a list continuation that attaches nothing."""
+    and the attribute lines between a list continuation and its block are left out."""
     lines = [SPEC_LIST_ITEM.match(body[start]).group(2)]
     index = start + 1
     attaching = False
+    indented_after_a_continuation = False
     problem = None
+
+    def lacks_a_description(text):
+        term = SPEC_TERM.match(text)
+        return bool(term) and term.group(1) is None
+
+    needs_a_description = lacks_a_description(lines[0])
     while index < len(body):
         line = body[index].rstrip()
         stripped = line.strip()
         if spec_is_comment(line):
+            if line[0].isspace():
+                problem = problem or "an indented line that starts with `//`"
             attaching = False
             index += 1
             continue
         if spec_is_first_level_item(line):
+            if indented_after_a_continuation:
+                problem = problem or "a first-level item in the indented lines after a list continuation"
             break
         if not stripped:
+            indented_after_a_continuation = False
             following = index
             while following < len(body) and not body[following].strip():
                 following += 1
             if following == len(body):
                 break
-            if spec_is_comment(body[following]):
-                if attaching:
+            after = body[following].rstrip()
+            if spec_is_comment(after):
+                if after[0].isspace():
+                    problem = problem or "an indented line that starts with `//`"
+                elif attaching:
                     problem = problem or "a comment after a list continuation and an empty line"
                 break
-            after = body[following].rstrip()
             item = SPEC_LIST_ITEM.match(after)
-            if attaching and following == index + 1 and not (item and len(item.group(1)) == 1):
+            first_level = bool(item and len(item.group(1)) == 1)
+            if attaching and following == index + 1 and not first_level:
                 if lines[-1] != SPEC_LIST_CONTINUATION:
                     problem = problem or "an empty line between the attributes of a block and the block"
                 index = following
                 continue
-            nested = bool(item and len(item.group(1)) > 1) or bool(SPEC_OTHER_LIST_ITEM.match(after))
+            nested = bool(item and not first_level) or bool(SPEC_OTHER_LIST_ITEM.match(after))
             if after != SPEC_LIST_CONTINUATION and not nested:
-                if after[0].isspace() and not item:
-                    problem = problem or "an indented paragraph after an empty line"
-                break
+                if first_level:
+                    break
+                if not needs_a_description:
+                    if after[0].isspace():
+                        problem = problem or "an indented paragraph after an empty line"
+                    break
+                plain = not (
+                    SPEC_BLOCK_DELIMITER.match(after.strip())
+                    or SPEC_BLOCK_HEADER.match(after.strip())
+                    or SPEC_ATTRIBUTE_ENTRY.match(after.strip())
+                    or after.startswith("include::")
+                )
+                if not plain:
+                    problem = problem or "a term whose description after an empty line is not text"
+                    break
+                lines.extend(["", after.strip()])
+                needs_a_description = False
+                index = following + 1
+                continue
             if attaching:
-                if lines[-1] != SPEC_LIST_CONTINUATION:
-                    problem = problem or "the attributes of a block that does not follow"
+                problem = problem or "a list continuation that attaches nothing"
                 lines.pop()
                 attaching = False
             lines.append("")
@@ -614,11 +655,18 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
                 problem = problem or "two list continuations in a row"
             lines.append(line)
             attaching = True
+            indented_after_a_continuation = False
+            needs_a_description = False
             index += 1
             continue
         if at_margin and attaching and SPEC_ATTRIBUTE_ENTRY.match(line):
             index += 1
             continue
+        if attaching and not at_margin:
+            if SPEC_LIST_ITEM.match(line) or SPEC_OTHER_LIST_ITEM.match(line):
+                indented_after_a_continuation = True
+            else:
+                problem = problem or "an indented line after a list continuation"
         if at_margin and SPEC_BLOCK_DELIMITER.match(line):
             if not attaching:
                 break
@@ -628,6 +676,7 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
             if end == len(body):
                 problem = problem or f"the block that `{line}` opens does not end"
             lines.extend(inside.rstrip() for inside in body[index : end + 1])
+            needs_a_description = False
             attaching = False
             index = end + 1
             continue
@@ -652,6 +701,7 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
             or SPEC_BLOCK_DELIMITER.match(stripped)
         )
         lines.append(line if reads_differently_at_the_margin else stripped)
+        needs_a_description = lacks_a_description(stripped)
         attaching = False
         index += 1
     while lines[-1] in ("", SPEC_LIST_CONTINUATION):

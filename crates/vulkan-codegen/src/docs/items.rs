@@ -310,7 +310,11 @@ impl<'a> Reader<'a> {
         if could_start_a_list && (starts_another_kind_of_list(text) || names_a_term(text)) {
             return Err(unread(format!("a list that starts with `{text}`")));
         }
-        if after_an_empty_line && !self.attaching {
+        let describes_a_term = self.paragraph.is_empty()
+            && self.lists.last().is_some_and(|list| {
+                list.marker == Marker::Term && list.items.last().is_some_and(Vec::is_empty)
+            });
+        if after_an_empty_line && !self.attaching && !describes_a_term {
             if self.within == Within::ListItem {
                 return Err(unread("a paragraph after an empty line"));
             }
@@ -711,6 +715,38 @@ mod tests {
     }
 
     #[test]
+    fn a_term_without_a_description_takes_the_text_after_an_empty_line() {
+        assert_eq!(
+            parts(&[
+                "pname:a is:",
+                "",
+                "1::",
+                "",
+                "The note",
+                "goes on.",
+                "",
+                "2::",
+                "",
+                "Another note.",
+                "** in detail",
+            ]),
+            [
+                paragraph("pname:a is:"),
+                terms([
+                    ("1", vec![paragraph("The note\ngoes on.")]),
+                    (
+                        "2",
+                        vec![
+                            paragraph("Another note."),
+                            list([vec![paragraph("in detail")]])
+                        ]
+                    ),
+                ]),
+            ]
+        );
+    }
+
+    #[test]
     fn a_term_names_what_is_before_two_colons_at_the_end_of_a_word() {
         for (line, named) in [
             ("1::", Some(("1", ""))),
@@ -965,7 +1001,25 @@ mod tests {
                 "a list that starts with `term;; other`",
             ),
             (
-                vec!["pname:a is:", "", "1::", "", "A paragraph of the note."],
+                vec![
+                    "pname:a is:",
+                    "",
+                    "1::",
+                    "",
+                    "The note.",
+                    "",
+                    "A second paragraph.",
+                ],
+                "a paragraph after an empty line",
+            ),
+            (
+                vec![
+                    "pname:a is:",
+                    "",
+                    "1:: The note.",
+                    "",
+                    "A second paragraph.",
+                ],
                 "a paragraph after an empty line",
             ),
         ] {
@@ -1420,6 +1474,81 @@ mod tests {
     }
 
     #[test]
+    fn the_dump_gives_a_term_without_a_description_the_text_after_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:last is the last member.",
+                "",
+                "1::",
+                "",
+                "    The note after an empty line",
+                "    goes on.",
+                "",
+                "2::",
+                "",
+                "",
+                "The second note.",
+                "",
+                "Not a part of the list.",
+                "  * pname:lists has notes:",
+                "",
+                "1::",
+                "",
+                "  ** a nested item, not the description",
+                "",
+                "2:: with a description",
+                "",
+                "Not a part of the list either.",
+                "  * pname:next is the next member.",
+                "+",
+                "  ** attached",
+                "  ** and nested",
+                "",
+                "  * pname:end is the last member.",
+            ],
+            &[
+                (
+                    "last",
+                    &[
+                        "pname:last is the last member.",
+                        "",
+                        "1::",
+                        "",
+                        "The note after an empty line",
+                        "goes on.",
+                        "",
+                        "2::",
+                        "",
+                        "The second note.",
+                    ],
+                ),
+                (
+                    "lists",
+                    &[
+                        "pname:lists has notes:",
+                        "",
+                        "1::",
+                        "",
+                        "** a nested item, not the description",
+                        "",
+                        "2:: with a description",
+                    ],
+                ),
+                (
+                    "next",
+                    &[
+                        "pname:next is the next member.",
+                        "+",
+                        "** attached",
+                        "** and nested",
+                    ],
+                ),
+                ("end", &["pname:end is the last member."]),
+            ],
+        );
+    }
+
+    #[test]
     fn the_dump_ends_an_item_at_a_comment_that_follows_an_empty_line() {
         assert_dumped(
             &[
@@ -1465,11 +1594,6 @@ mod tests {
                 "",
                 "",
                 "Not attached.",
-                "  * pname:nested goes on after two empty lines.",
-                "+",
-                "",
-                "",
-                "  ** all the same",
                 "  * pname:commented has a comment in the way.",
                 "+",
                 "// a comment",
@@ -1505,14 +1629,6 @@ mod tests {
                     ],
                 ),
                 ("twice", &["pname:twice is followed by two empty lines."]),
-                (
-                    "nested",
-                    &[
-                        "pname:nested goes on after two empty lines.",
-                        "",
-                        "** all the same",
-                    ],
-                ),
                 ("commented", &["pname:commented has a comment in the way."]),
                 (
                     "skipped",
@@ -1569,7 +1685,60 @@ mod tests {
             ),
             (
                 vec!["  * pname:a is:", "+", ".Title", "", "", "  ** nested"],
-                "the attributes of a block that does not follow",
+                "a list continuation that attaches nothing",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "", "  ** nested"],
+                "a list continuation that attaches nothing",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "    An indented paragraph."],
+                "an indented line after a list continuation",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "    An indented paragraph."],
+                "an indented line after a list continuation",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "+",
+                    "  ** nested",
+                    "  * pname:b is next.",
+                ],
+                "a first-level item in the indented lines after a list continuation",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "+",
+                    "",
+                    "  ** nested",
+                    "more of it",
+                    "  * pname:b is next.",
+                ],
+                "a first-level item in the indented lines after a list continuation",
+            ),
+            (
+                vec!["  * pname:a is:", "    // not a comment", "    more"],
+                "an indented line that starts with `//`",
+            ),
+            (
+                vec!["  * pname:a is:", "", "    // not a comment"],
+                "an indented line that starts with `//`",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "",
+                    "1::",
+                    "",
+                    "[NOTE]",
+                    "====",
+                    "A note.",
+                    "====",
+                ],
+                "a term whose description after an empty line is not text",
             ),
         ] {
             let Some(dumped) = dumped(&source) else {
