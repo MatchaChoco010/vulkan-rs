@@ -110,7 +110,7 @@ impl<'s> CountedArrays<'s> {
         let sets_the_count = setter
             .assignments
             .contains(&format!("self.{count_field} = "));
-        if ty.depth() == 0 || ty.is_array() || !sets_the_count || !may_be_null(self.s, m) {
+        if !sets_the_count || !may_be_null(self.s, m) {
             return setter;
         }
         let allowed_by = if m.optional {
