@@ -37,4 +37,20 @@ vulkan-rs contains material of The Khronos Group Inc.
    The excerpts are not the Vulkan Specification. The Specification that Khronos publishes
    at https://registry.khronos.org/vulkan/ is the normative text.
 
+3. Vulkan Conformance Test Suite and Vulkan-Samples
+
+   Two scenarios of the render comparison in tests/render-compare/ are based on Khronos
+   material, as the headers of their files describe:
+
+   - cts_smoke_triangle follows dEQP-VK.api.smoke.triangle of the Vulkan Conformance Test
+     Suite (https://github.com/KhronosGroup/VK-GL-CTS). Copyright (c) 2015 Google Inc.
+     SPDX-License-Identifier: Apache-2.0
+   - samples_hello_triangle_1_3 follows the hello_triangle_1_3 sample of Vulkan-Samples
+     (https://github.com/KhronosGroup/Vulkan-Samples), and the Slang shaders in
+     tests/render-compare/shaders/vulkan-samples/ are those of the sample, unchanged.
+     Copyright (c) 2024-2026, Huawei Technologies Co., Ltd. and Copyright (c) 2025, Sascha
+     Willems. SPDX-License-Identifier: Apache-2.0
+
+   The Apache License 2.0 is in LICENSE.
+
 Vulkan and the Vulkan logo are registered trademarks of The Khronos Group Inc.

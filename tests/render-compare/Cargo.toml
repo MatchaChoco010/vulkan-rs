@@ -1,0 +1,20 @@
+[package]
+name = "vulkan-render-compare"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "render-rust"
+path = "src/main.rs"
+
+[[test]]
+name = "compare"
+path = "tests/compare/main.rs"
+
+[dependencies]
+vulkan = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+serde_json = "1"

@@ -31,6 +31,7 @@ DESCRIPTOR_HEAP = ["-profile", "spirv_1_6", "-capability", "spvDescriptorHeapEXT
 
 EXAMPLE = "examples/{}/src/shaders"
 TESTS = "crates/vulkan/tests/shaders"
+RENDER = "tests/render-compare/shaders"
 
 # (directory, source, entry point, stage, output, extra slangc arguments)
 SHADERS = [
@@ -51,6 +52,25 @@ SHADERS = [
     (EXAMPLE.format("wayland-dynamic-rendering"), "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
     (EXAMPLE.format("wayland-triangle"), "triangle.slang", "vertexMain", "vertex", "triangle.vert.spv", GLSL_450),
     (EXAMPLE.format("wayland-triangle"), "triangle.slang", "fragmentMain", "fragment", "triangle.frag.spv", GLSL_450),
+    (RENDER, "cts_smoke_triangle.slang", "vertexMain", "vertex", "cts_smoke_triangle.vert.spv", GLSL_450),
+    (RENDER, "cts_smoke_triangle.slang", "fragmentMain", "fragment", "cts_smoke_triangle.frag.spv", GLSL_450),
+    (RENDER, "vulkan-samples/hello_triangle_1_3/triangle.vert.slang", "main", "vertex", "samples_hello_triangle_1_3.vert.spv", GLSL_450),
+    (RENDER, "vulkan-samples/hello_triangle_1_3/triangle.frag.slang", "main", "fragment", "samples_hello_triangle_1_3.frag.spv", GLSL_450),
+    (RENDER, "indexed_instanced.slang", "vertexMain", "vertex", "indexed_instanced.vert.spv", GLSL_450),
+    (RENDER, "indexed_instanced.slang", "fragmentMain", "fragment", "indexed_instanced.frag.spv", GLSL_450),
+    (RENDER, "blend.slang", "vertexMain", "vertex", "blend.vert.spv", GLSL_450),
+    (RENDER, "blend.slang", "fragmentMain", "fragment", "blend.frag.spv", GLSL_450),
+    (RENDER, "depth_stencil.slang", "vertexMain", "vertex", "depth_stencil.vert.spv", GLSL_450),
+    (RENDER, "depth_stencil.slang", "fragmentMain", "fragment", "depth_stencil.frag.spv", GLSL_450),
+    (RENDER, "texture_mipmap.slang", "vertexMain", "vertex", "texture_mipmap.vert.spv", GLSL_450),
+    (RENDER, "texture_mipmap.slang", "fragmentMain", "fragment", "texture_mipmap.frag.spv", GLSL_450),
+    (RENDER, "multiple_render_targets.slang", "vertexMain", "vertex", "multiple_render_targets.vert.spv", GLSL_450),
+    (RENDER, "multiple_render_targets.slang", "fragmentMain", "fragment", "multiple_render_targets.frag.spv", GLSL_450),
+    (RENDER, "multiple_render_targets.slang", "compositeVertexMain", "vertex", "multiple_render_targets.composite.vert.spv", GLSL_450),
+    (RENDER, "multiple_render_targets.slang", "compositeFragmentMain", "fragment", "multiple_render_targets.composite.frag.spv", GLSL_450),
+    (RENDER, "compute_image.slang", "computeMain", "compute", "compute_image.comp.spv", GLSL_450),
+    (RENDER, "descriptor_kinds.slang", "vertexMain", "vertex", "descriptor_kinds.vert.spv", GLSL_450),
+    (RENDER, "descriptor_kinds.slang", "fragmentMain", "fragment", "descriptor_kinds.frag.spv", GLSL_450),
 ]
 
 
