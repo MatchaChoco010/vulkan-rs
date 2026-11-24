@@ -4,6 +4,8 @@ mod bit_fields;
 mod defaults;
 mod read_only_arrays;
 mod setters;
+#[cfg(test)]
+mod std_video_arrays;
 mod unions;
 mod unmarked_arrays;
 
