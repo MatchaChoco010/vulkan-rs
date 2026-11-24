@@ -57,7 +57,7 @@ pub enum AllocationError {
     ///   [`MappedAllocation::invalidate_range`](crate::MappedAllocation::invalidate_range)
     ///   does not lie inside the allocation.
     /// - [`Allocator::allocate`](crate::Allocator::allocate) has no identifier left for a
-    ///   new allocation, after 2<sup>64</sup> − 2 allocations in the process.
+    ///   new allocation, after 2<sup>64</sup> - 2 allocations in the process.
     InvalidAllocation,
 }
 
