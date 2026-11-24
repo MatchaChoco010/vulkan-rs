@@ -338,9 +338,52 @@ impl Pick {
 pub struct GuardUse {
     pub flush: bool,
     pub invalidate: bool,
+    pub flush_range: bool,
+    pub invalidate_range: bool,
     pub range_offset: u64,
     pub range_size: u64,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Span {
+    Inside { offset: u64, size: u64 },
+    Given { offset: u64, size: u64 },
+}
+
+impl Span {
+    fn resolve(self, length: u64) -> (u64, u64) {
+        match self {
+            Span::Inside { offset, size } => {
+                let offset = offset % length.saturating_add(1);
+                (offset, size % (length - offset).saturating_add(1))
+            }
+            Span::Given { offset, size } => (offset, size),
+        }
+    }
+}
+
+fn range_function(kind: Synchronization) -> &'static str {
+    match kind {
+        Synchronization::Flush => "flush_allocation_range",
+        Synchronization::Invalidate => "invalidate_allocation_range",
+    }
+}
+
+fn guard_range_function(kind: Synchronization) -> &'static str {
+    match kind {
+        Synchronization::Flush => "flush_range",
+        Synchronization::Invalidate => "invalidate_range",
+    }
+}
+
+struct GuardRange {
+    kind: Synchronization,
+    logged_before: usize,
+    requested: Option<(u64, u64)>,
+    event: String,
+}
+
+type GuardUsed = (usize, Vec<(Synchronization, usize)>, Vec<GuardRange>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandleUse {
@@ -352,10 +395,12 @@ pub enum HandleUse {
     UnmapMemory,
     Flush,
     Invalidate,
+    FlushRange,
+    InvalidateRange,
     MemoryFlags,
 }
 
-pub const HANDLE_USES: [HandleUse; 9] = [
+pub const HANDLE_USES: [HandleUse; 11] = [
     HandleUse::Free,
     HandleUse::MapMemory,
     HandleUse::Guard,
@@ -364,6 +409,8 @@ pub const HANDLE_USES: [HandleUse; 9] = [
     HandleUse::UnmapMemory,
     HandleUse::Flush,
     HandleUse::Invalidate,
+    HandleUse::FlushRange,
+    HandleUse::InvalidateRange,
     HandleUse::MemoryFlags,
 ];
 
@@ -377,6 +424,8 @@ pub enum Op {
     Guard(Pick, GuardUse),
     Flush(Pick),
     Invalidate(Pick),
+    FlushRange(Pick, Span),
+    InvalidateRange(Pick, Span),
     FreeAll,
     UseStale(Pick, HandleUse),
     UseForeign(Pick, HandleUse),
@@ -429,8 +478,8 @@ impl Op {
             Op::UnmapMemory(_) => OpKind::UnmapMemory,
             Op::MapPersistent(_) => OpKind::MapPersistent,
             Op::Guard(..) => OpKind::Guard,
-            Op::Flush(_) => OpKind::Flush,
-            Op::Invalidate(_) => OpKind::Invalidate,
+            Op::Flush(_) | Op::FlushRange(..) => OpKind::Flush,
+            Op::Invalidate(_) | Op::InvalidateRange(..) => OpKind::Invalidate,
             Op::FreeAll => OpKind::FreeAll,
             Op::UseStale(..) => OpKind::UseStale,
             Op::UseForeign(..) => OpKind::UseForeign,
@@ -622,6 +671,19 @@ fn picks() -> impl Strategy<Value = Pick> {
     (any::<u16>(), prop::bool::weighted(0.25)).prop_map(|(index, any)| Pick { index, any })
 }
 
+fn spans() -> impl Strategy<Value = Span> {
+    let given = || {
+        prop_oneof![
+            3 => 0..=5000u64,
+            1 => prop::sample::select(vec![u64::MAX, u64::MAX - 1, 1 << 63]),
+        ]
+    };
+    prop_oneof![
+        3 => (any::<u64>(), any::<u64>()).prop_map(|(offset, size)| Span::Inside { offset, size }),
+        2 => (given(), given()).prop_map(|(offset, size)| Span::Given { offset, size }),
+    ]
+}
+
 fn handle_uses() -> impl Strategy<Value = HandleUse> {
     prop::sample::select(HANDLE_USES.to_vec())
 }
@@ -633,7 +695,7 @@ pub struct Mix {
 
 impl Mix {
     pub const EVERYTHING: Self = Self {
-        weights: [40, 12, 8, 8, 6, 8, 4, 4, 1, 3, 3, 2, 2, 1],
+        weights: [40, 12, 8, 8, 6, 8, 8, 8, 1, 3, 3, 2, 2, 3],
     };
 }
 
@@ -656,15 +718,23 @@ pub fn ops(world: &World, mix: Mix) -> impl Strategy<Value = Op> + use<> {
     let guard_use = (
         any::<bool>(),
         any::<bool>(),
-        prop_oneof![Just(0u64), 0..=5000u64, Just(u64::MAX)],
-        prop_oneof![Just(0u64), 0..=5000u64, Just(u64::MAX)],
+        any::<bool>(),
+        any::<bool>(),
+        prop_oneof![Just(0u64), 0..=64u64, 0..=5000u64, Just(u64::MAX)],
+        prop_oneof![Just(0u64), 0..=64u64, 0..=5000u64, Just(u64::MAX)],
     )
-        .prop_map(|(flush, invalidate, range_offset, range_size)| GuardUse {
-            flush,
-            invalidate,
-            range_offset,
-            range_size,
-        });
+        .prop_map(
+            |(flush, invalidate, flush_range, invalidate_range, range_offset, range_size)| {
+                GuardUse {
+                    flush,
+                    invalidate,
+                    flush_range,
+                    invalidate_range,
+                    range_offset,
+                    range_size,
+                }
+            },
+        );
     let by_kind = |kind: OpKind| -> BoxedStrategy<Op> {
         match kind {
             OpKind::Allocate => requests(world).prop_map(Op::Allocate).boxed(),
@@ -675,8 +745,16 @@ pub fn ops(world: &World, mix: Mix) -> impl Strategy<Value = Op> + use<> {
             OpKind::Guard => (picks(), guard_use.clone())
                 .prop_map(|(pick, guard_use)| Op::Guard(pick, guard_use))
                 .boxed(),
-            OpKind::Flush => picks().prop_map(Op::Flush).boxed(),
-            OpKind::Invalidate => picks().prop_map(Op::Invalidate).boxed(),
+            OpKind::Flush => prop_oneof![
+                picks().prop_map(Op::Flush),
+                (picks(), spans()).prop_map(|(pick, span)| Op::FlushRange(pick, span)),
+            ]
+            .boxed(),
+            OpKind::Invalidate => prop_oneof![
+                picks().prop_map(Op::Invalidate),
+                (picks(), spans()).prop_map(|(pick, span)| Op::InvalidateRange(pick, span)),
+            ]
+            .boxed(),
             OpKind::FreeAll => Just(Op::FreeAll).boxed(),
             OpKind::UseStale => (picks(), handle_uses())
                 .prop_map(|(pick, handle_use)| Op::UseStale(pick, handle_use))
@@ -921,6 +999,12 @@ impl Harness {
             Op::Guard(pick, guard_use) => self.guard(pick, guard_use)?,
             Op::Flush(pick) => self.synchronize(pick, Synchronization::Flush)?,
             Op::Invalidate(pick) => self.synchronize(pick, Synchronization::Invalidate)?,
+            Op::FlushRange(pick, span) => {
+                self.synchronize_range(pick, Synchronization::Flush, span)?
+            }
+            Op::InvalidateRange(pick, span) => {
+                self.synchronize_range(pick, Synchronization::Invalidate, span)?
+            }
             Op::FreeAll => self.free_all()?,
             Op::UseStale(pick, handle_use) => self.use_stale(pick, handle_use)?,
             Op::UseForeign(pick, handle_use) => self.use_foreign(pick, handle_use)?,
@@ -1719,6 +1803,7 @@ impl Harness {
         kind: Synchronization,
         logged_before: usize,
         logged_at_least: usize,
+        requested: (u64, u64),
     ) -> Checked {
         let live = &self.live[index];
         let logged = self.fake.synchronized();
@@ -1749,10 +1834,34 @@ impl Harness {
             offset + size
         };
         let (start_of_allocation, length) = live.range();
+        let (requested_start, requested_end) = requested;
         ensure!(
-            offset <= start_of_allocation && start_of_allocation + length <= end,
-            "the range {offset}..{end} does not cover the allocation at {start_of_allocation} of \
-             {length} bytes"
+            offset <= requested_start && requested_end <= end,
+            "the range {offset}..{end} does not cover the bytes {requested_start}..{requested_end} \
+             of the allocation at {start_of_allocation} of {length} bytes"
+        );
+        let atom = self.world.atom();
+        let whole_start = start_of_allocation / atom * atom;
+        let whole_end = (start_of_allocation + length)
+            .div_ceil(atom)
+            .checked_mul(atom)
+            .map_or(block.size, |whole_end| whole_end.min(block.size));
+        ensure!(
+            whole_start <= offset && end <= whole_end,
+            "the range {offset}..{end} leaves the range {whole_start}..{whole_end} of the whole \
+             allocation at {start_of_allocation} of {length} bytes"
+        );
+        let widened_start = requested_start / atom * atom;
+        let widened_end = requested_end
+            .div_ceil(atom)
+            .checked_mul(atom)
+            .map_or(block.size, |widened_end| widened_end.min(block.size));
+        ensure_eq!(
+            (offset, end),
+            (widened_start, widened_end),
+            "the range given for the bytes {requested_start}..{requested_end}, widened to \
+             multiples of {atom} within the block of {} bytes",
+            block.size
         );
         for other in &self.live {
             let (other_start, other_length) = other.range();
@@ -1819,13 +1928,89 @@ impl Harness {
             expected,
             "{kind:?} of an allocation that is {state}"
         );
-        self.check_synchronized(index, kind, before.synchronized, 1)?;
+        let (start, length) = self.live[index].range();
+        self.check_synchronized(index, kind, before.synchronized, 1, (start, start + length))?;
         ensure_eq!(
             self.fake.synchronized().len(),
             before.synchronized + 1,
             "ranges given to the device by one {kind:?}"
         );
         self.state_is_as(&before, "a flush or invalidate")
+    }
+
+    fn synchronize_range(&mut self, pick: Pick, kind: Synchronization, span: Span) -> Checked {
+        let name = range_function(kind);
+        let Some(index) = self.pick_live(pick, |live| live.mapping_references() > 0) else {
+            self.coverage.step(format!("{name}: nothing is live"));
+            return Ok(());
+        };
+        let before = self.observe();
+        let state = self.live[index].mapping_state();
+        let (start_of_allocation, length) = self.live[index].range();
+        let (offset, size) = span.resolve(length);
+        let allocation = &self.live[index].allocation;
+        let result = unsafe {
+            match kind {
+                Synchronization::Flush => self
+                    .allocator
+                    .flush_allocation_range(allocation, offset, size),
+                Synchronization::Invalidate => self
+                    .allocator
+                    .invalidate_allocation_range(allocation, offset, size),
+            }
+        };
+        let what = format!("{name}({offset}, {size}) of an allocation of {length} bytes");
+        let inside = offset.checked_add(size).is_some_and(|end| end <= length);
+        if self.live[index].mapping_references() == 0 || !inside {
+            ensure_eq!(
+                result,
+                Err(AllocationError::InvalidAllocation),
+                "{what} that is {state}"
+            );
+            self.coverage
+                .step(if self.live[index].mapping_references() == 0 {
+                    format!("{name} refused: {state}")
+                } else {
+                    format!("{name} outside the allocation")
+                });
+            return self
+                .nothing_happened_since(&before, "a refused flush or invalidate of a range");
+        }
+        if size == 0 || self.is_coherent(&self.live[index]) {
+            ensure_eq!(result, Ok(()), "{what} that is {state}");
+            self.coverage.step(if size == 0 {
+                format!("{name} of 0 bytes")
+            } else {
+                format!("{name} of coherent memory")
+            });
+            return self.nothing_happened_since(
+                &before,
+                "a flush or invalidate of an empty range or of coherent memory",
+            );
+        }
+        let expected = match self.synchronization_fails.take() {
+            Some(failure) => {
+                self.coverage.step(format!("{name} fails on the device"));
+                Err(AllocationError::Vulkan(failure))
+            }
+            None => {
+                self.coverage.step(format!("{name}: {state}"));
+                Ok(())
+            }
+        };
+        ensure_eq!(result, expected, "{what} that is {state}");
+        let start = start_of_allocation + offset;
+        self.check_synchronized(index, kind, before.synchronized, 1, (start, start + size))?;
+        if size < length {
+            self.coverage
+                .note(format!("{name} of a part of the allocation"));
+        }
+        ensure_eq!(
+            self.fake.synchronized().len(),
+            before.synchronized + 1,
+            "ranges given to the device by one {name}"
+        );
+        self.state_is_as(&before, "a flush or invalidate of a range")
     }
 
     fn guard(&mut self, pick: Pick, guard_use: GuardUse) -> Checked {
@@ -1851,7 +2036,7 @@ impl Harness {
             ..
         } = self;
         let used = unsafe { allocator.map(&live[index].allocation) }.map(
-            |mut mapped| -> Result<(usize, Vec<(Synchronization, usize)>), String> {
+            |mut mapped| -> Result<GuardUsed, String> {
                 let pointer = mapped.as_ptr() as usize;
                 let bytes = unsafe { mapped.as_bytes_mut() };
                 ensure_eq!(bytes.len(), length, "the length of the mapped bytes");
@@ -1911,10 +2096,66 @@ impl Harness {
                     ensure_eq!(result, expected, "{kind:?} through the guard");
                     synchronized.push((kind, logged_before));
                 }
-                Ok((pointer, synchronized))
+
+                let mut ranges = Vec::new();
+                for (wanted, kind) in [
+                    (guard_use.flush_range, Synchronization::Flush),
+                    (guard_use.invalidate_range, Synchronization::Invalidate),
+                ] {
+                    if !wanted {
+                        continue;
+                    }
+                    let name = guard_range_function(kind);
+                    let logged_before = fake.synchronized().len();
+                    let result = unsafe {
+                        match kind {
+                            Synchronization::Flush => mapped.flush_range(range_offset, range_size),
+                            Synchronization::Invalidate => {
+                                mapped.invalidate_range(range_offset, range_size)
+                            }
+                        }
+                    };
+                    let calls_the_device = inside && range_size > 0 && !coherent;
+                    let expected = if inside {
+                        match synchronization_fails.take_if(|_| calls_the_device) {
+                            Some(failure) => Err(AllocationError::Vulkan(failure)),
+                            None => Ok(()),
+                        }
+                    } else {
+                        Err(AllocationError::InvalidAllocation)
+                    };
+                    ensure_eq!(
+                        result,
+                        expected,
+                        "{name}({range_offset}, {range_size}) of {length} bytes through the guard"
+                    );
+                    ensure_eq!(
+                        fake.synchronized().len(),
+                        logged_before + usize::from(calls_the_device),
+                        "ranges given to the device by {name}({range_offset}, {range_size}) of \
+                         {length} bytes through the guard"
+                    );
+                    let event = if !inside {
+                        format!("{name} through the guard outside the allocation")
+                    } else if range_size == 0 {
+                        format!("{name} through the guard of 0 bytes")
+                    } else if coherent {
+                        format!("{name} through the guard of coherent memory")
+                    } else {
+                        format!("{name} through the guard")
+                    };
+                    ranges.push(GuardRange {
+                        kind,
+                        logged_before,
+                        requested: calls_the_device
+                            .then_some((range_offset as u64, range_size as u64)),
+                        event,
+                    });
+                }
+                Ok((pointer, synchronized, ranges))
             },
         );
-        let (pointer, synchronized) = match used {
+        let (pointer, synchronized, ranges) = match used {
             Ok(used) => used?,
             Err(error) => {
                 let refusal =
@@ -1954,13 +2195,26 @@ impl Harness {
             base + self.live[index].allocation.offset() as usize,
             "the pointer of the guard"
         );
+        let (start, length) = self.live[index].range();
         for (kind, logged_before) in synchronized {
-            self.check_synchronized(index, kind, logged_before, 1)?;
+            self.check_synchronized(index, kind, logged_before, 1, (start, start + length))?;
             self.coverage.note(if coherent {
                 format!("{kind:?} through the guard makes no Vulkan call for coherent memory")
             } else {
                 format!("{kind:?} through the guard")
             });
+        }
+        for range in ranges {
+            if let Some((offset, size)) = range.requested {
+                self.check_synchronized(
+                    index,
+                    range.kind,
+                    range.logged_before,
+                    1,
+                    (start + offset, start + offset + size),
+                )?;
+            }
+            self.coverage.note(range.event);
         }
         self.live[index].fill = Some(fill);
         self.state_is_as(&before, "a dropped guard")
@@ -2444,6 +2698,12 @@ fn refuse(
             HandleUse::UnmapMemory => allocator.unmap_memory(&allocation).err(),
             HandleUse::Flush => allocator.flush_allocation(&allocation).err(),
             HandleUse::Invalidate => allocator.invalidate_allocation(&allocation).err(),
+            HandleUse::FlushRange => allocator
+                .flush_allocation_range(&allocation, 0, allocation.size())
+                .err(),
+            HandleUse::InvalidateRange => allocator
+                .invalidate_allocation_range(&allocation, 0, allocation.size())
+                .err(),
             HandleUse::MemoryFlags => allocator.allocation_memory_flags(&allocation).err(),
         };
         ensure_eq!(

@@ -133,6 +133,79 @@ impl<'a> MappedAllocation<'a> {
     pub unsafe fn invalidate(&mut self) -> Result<(), AllocationError> {
         unsafe { self.allocator.invalidate_allocation(self.allocation) }
     }
+
+    /// Flushes the host writes to the bytes `offset..offset + size` of the allocation,
+    /// the bytes [`MappedAllocation::byte_range`] gives for the same arguments, as
+    /// [`Allocator::flush_allocation_range`] does: the range is widened to multiples of
+    /// `nonCoherentAtomSize` without leaving the range [`MappedAllocation::flush`]
+    /// flushes, and for a memory type with `HOST_COHERENT`, or a `size` of 0, no Vulkan
+    /// call is made.
+    ///
+    /// A `size` of [`vk::WHOLE_SIZE`] or [`usize::MAX`] is refused as a range outside the
+    /// allocation; [`MappedAllocation::flush`] flushes the whole allocation.
+    ///
+    /// # Errors
+    ///
+    /// - [`AllocationError::InvalidAllocation`] if the range does not lie inside the
+    ///   [`Allocation::size`] bytes of the allocation (including when `offset + size`
+    ///   overflows), whether its memory type has `HOST_COHERENT` or not. No Vulkan call
+    ///   is made in this case.
+    /// - [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
+    ///
+    /// # Safety
+    ///
+    /// The device the allocator was created with must not have been destroyed.
+    pub unsafe fn flush_range(
+        &mut self,
+        offset: usize,
+        size: usize,
+    ) -> Result<(), AllocationError> {
+        let (offset, size) = range_in_bytes(offset, size)?;
+        unsafe {
+            self.allocator
+                .flush_allocation_range(self.allocation, offset, size)
+        }
+    }
+
+    /// Invalidates the host's view of the bytes `offset..offset + size` of the
+    /// allocation, the bytes [`MappedAllocation::byte_range`] gives for the same
+    /// arguments, as [`Allocator::invalidate_allocation_range`] does: the range is widened
+    /// to multiples of `nonCoherentAtomSize` without leaving the range
+    /// [`MappedAllocation::invalidate`] invalidates, and for a memory type with
+    /// `HOST_COHERENT`, or a `size` of 0, no Vulkan call is made.
+    ///
+    /// A `size` of [`vk::WHOLE_SIZE`] or [`usize::MAX`] is refused as a range outside the
+    /// allocation; [`MappedAllocation::invalidate`] invalidates the whole allocation.
+    ///
+    /// # Errors
+    ///
+    /// - [`AllocationError::InvalidAllocation`] if the range does not lie inside the
+    ///   [`Allocation::size`] bytes of the allocation (including when `offset + size`
+    ///   overflows), whether its memory type has `HOST_COHERENT` or not. No Vulkan call
+    ///   is made in this case.
+    /// - [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
+    ///
+    /// # Safety
+    ///
+    /// The device the allocator was created with must not have been destroyed.
+    pub unsafe fn invalidate_range(
+        &mut self,
+        offset: usize,
+        size: usize,
+    ) -> Result<(), AllocationError> {
+        let (offset, size) = range_in_bytes(offset, size)?;
+        unsafe {
+            self.allocator
+                .invalidate_allocation_range(self.allocation, offset, size)
+        }
+    }
+}
+
+fn range_in_bytes(offset: usize, size: usize) -> Result<(u64, u64), AllocationError> {
+    match (u64::try_from(offset), u64::try_from(size)) {
+        (Ok(offset), Ok(size)) => Ok((offset, size)),
+        _ => Err(AllocationError::InvalidAllocation),
+    }
 }
 
 impl Drop for MappedAllocation<'_> {

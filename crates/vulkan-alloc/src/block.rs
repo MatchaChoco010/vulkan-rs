@@ -498,22 +498,34 @@ impl MemoryBlock {
     pub(crate) fn mapped_range(
         &self,
         allocation: &Allocation,
+        offset: u64,
+        size: u64,
         non_coherent_atom_size: u64,
-    ) -> Result<vk::MappedMemoryRange<'static>, AllocationError> {
+    ) -> Result<Option<vk::MappedMemoryRange<'static>>, AllocationError> {
         if !self.is_allocation_mapped(allocation.allocation_id) {
             return Err(AllocationError::InvalidAllocation);
         }
-        let (offset, size) = mapped_range_bounds(
-            allocation.offset,
-            allocation.size,
-            self.size,
-            non_coherent_atom_size,
-        )
-        .ok_or(AllocationError::InvalidAllocation)?;
-        Ok(vk::MappedMemoryRange::default()
-            .memory(self.memory)
-            .offset(offset)
-            .size(size))
+        if offset
+            .checked_add(size)
+            .is_none_or(|end| end > allocation.size)
+        {
+            return Err(AllocationError::InvalidAllocation);
+        }
+        if size == 0 {
+            return Ok(None);
+        }
+        let start = allocation
+            .offset
+            .checked_add(offset)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        let (offset, size) = mapped_range_bounds(start, size, self.size, non_coherent_atom_size)
+            .ok_or(AllocationError::InvalidAllocation)?;
+        Ok(Some(
+            vk::MappedMemoryRange::default()
+                .memory(self.memory)
+                .offset(offset)
+                .size(size),
+        ))
     }
 
     fn snapshot(&self, block_index: usize) -> MemoryBlockSnapshot {

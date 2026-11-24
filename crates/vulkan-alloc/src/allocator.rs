@@ -514,6 +514,8 @@ impl Allocator {
     ///
     /// The flushed range is the allocation, widened to multiples of
     /// [`AllocatorCreateDesc::non_coherent_atom_size`] (or to the end of the block).
+    /// This gives the same result as [`Allocator::flush_allocation_range`] with an
+    /// `offset` of 0 and a `size` of [`Allocation::size`].
     ///
     /// # Errors
     ///
@@ -526,7 +528,41 @@ impl Allocator {
     ///
     /// The device the allocator was created with must not have been destroyed.
     pub unsafe fn flush_allocation(&self, allocation: &Allocation) -> Result<(), AllocationError> {
-        if let Some(range) = self.range_to_synchronize(allocation)? {
+        unsafe { self.flush_allocation_range(allocation, 0, allocation.size) }
+    }
+
+    /// Flushes the host writes to the bytes `offset..offset + size` of a mapped
+    /// allocation, counted from its first byte as in [`MappedAllocation::byte_range`],
+    /// with `vkFlushMappedMemoryRanges`. It suits a large allocation of which only a part
+    /// was written. A `size` of [`vk::WHOLE_SIZE`] is refused as a range outside the
+    /// allocation; [`Allocator::flush_allocation`] flushes the whole allocation.
+    ///
+    /// The range is widened to multiples of
+    /// [`AllocatorCreateDesc::non_coherent_atom_size`]: its start is rounded down and its
+    /// end rounded up, but not past the end of the block. The widened range stays inside
+    /// the range [`Allocator::flush_allocation`] flushes, so it does not reach into
+    /// another allocation. For a memory type with `HOST_COHERENT`, or a `size` of 0, no
+    /// Vulkan call is made and `Ok(())` is returned once the checks below pass.
+    ///
+    /// # Errors
+    ///
+    /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///   allocation, if the allocation is not mapped, or if the range does not lie inside
+    ///   the [`Allocation::size`] bytes of the allocation (including when
+    ///   `offset + size` overflows), whether its memory type has `HOST_COHERENT` or not.
+    ///   No Vulkan call is made in these cases.
+    /// - [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
+    ///
+    /// # Safety
+    ///
+    /// The device the allocator was created with must not have been destroyed.
+    pub unsafe fn flush_allocation_range(
+        &self,
+        allocation: &Allocation,
+        offset: u64,
+        size: u64,
+    ) -> Result<(), AllocationError> {
+        if let Some(range) = self.range_to_synchronize(allocation, offset, size)? {
             unsafe { self.device.flush_mapped_memory_ranges(&[range]) }
                 .map_err(AllocationError::Vulkan)?;
         }
@@ -548,6 +584,8 @@ impl Allocator {
     ///
     /// The invalidated range is the allocation, widened to multiples of
     /// [`AllocatorCreateDesc::non_coherent_atom_size`] (or to the end of the block).
+    /// This gives the same result as [`Allocator::invalidate_allocation_range`] with an
+    /// `offset` of 0 and a `size` of [`Allocation::size`].
     ///
     /// # Errors
     ///
@@ -563,7 +601,41 @@ impl Allocator {
         &self,
         allocation: &Allocation,
     ) -> Result<(), AllocationError> {
-        if let Some(range) = self.range_to_synchronize(allocation)? {
+        unsafe { self.invalidate_allocation_range(allocation, 0, allocation.size) }
+    }
+
+    /// Invalidates the host's view of the bytes `offset..offset + size` of a mapped
+    /// allocation, counted from its first byte as in [`MappedAllocation::byte_range`],
+    /// with `vkInvalidateMappedMemoryRanges`. It suits a large allocation of which only a
+    /// part is read. A `size` of [`vk::WHOLE_SIZE`] is refused as a range outside the
+    /// allocation; [`Allocator::invalidate_allocation`] invalidates the whole allocation.
+    ///
+    /// The range is widened to multiples of
+    /// [`AllocatorCreateDesc::non_coherent_atom_size`]: its start is rounded down and its
+    /// end rounded up, but not past the end of the block. The widened range stays inside
+    /// the range [`Allocator::invalidate_allocation`] invalidates, so it does not reach
+    /// into another allocation. For a memory type with `HOST_COHERENT`, or a `size` of 0,
+    /// no Vulkan call is made and `Ok(())` is returned once the checks below pass.
+    ///
+    /// # Errors
+    ///
+    /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///   allocation, if the allocation is not mapped, or if the range does not lie inside
+    ///   the [`Allocation::size`] bytes of the allocation (including when
+    ///   `offset + size` overflows), whether its memory type has `HOST_COHERENT` or not.
+    ///   No Vulkan call is made in these cases.
+    /// - [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
+    ///
+    /// # Safety
+    ///
+    /// The device the allocator was created with must not have been destroyed.
+    pub unsafe fn invalidate_allocation_range(
+        &self,
+        allocation: &Allocation,
+        offset: u64,
+        size: u64,
+    ) -> Result<(), AllocationError> {
+        if let Some(range) = self.range_to_synchronize(allocation, offset, size)? {
             unsafe { self.device.invalidate_mapped_memory_ranges(&[range]) }
                 .map_err(AllocationError::Vulkan)?;
         }
@@ -697,14 +769,19 @@ impl Allocator {
     fn range_to_synchronize(
         &self,
         allocation: &Allocation,
+        offset: u64,
+        size: u64,
     ) -> Result<Option<vk::MappedMemoryRange<'static>>, AllocationError> {
-        let range = self
-            .block(allocation)?
-            .mapped_range(allocation, self.non_coherent_atom_size)?;
+        let range = self.block(allocation)?.mapped_range(
+            allocation,
+            offset,
+            size,
+            self.non_coherent_atom_size,
+        )?;
         let coherent = self
             .allocation_memory_flags(allocation)?
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
-        Ok((!coherent).then_some(range))
+        Ok(range.filter(|_| !coherent))
     }
 
     fn heap_size(&self, memory_type_index: u32) -> Option<u64> {
