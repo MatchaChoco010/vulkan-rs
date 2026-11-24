@@ -1,7 +1,7 @@
 use std::ffi::{CStr, c_void};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::ptr::NonNull;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use proptest::prelude::*;
 use proptest::sample::Index;
@@ -14,6 +14,14 @@ use vulkan_alloc::{
 };
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
+
+static LOADER_INSTANCE_AND_DEVICE_LISTS: Mutex<()> = Mutex::new(());
+
+fn exclusive_access_to_the_loaders_instance_and_device_lists() -> MutexGuard<'static, ()> {
+    LOADER_INSTANCE_AND_DEVICE_LISTS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 struct Gpu {
     instance: Instance,
@@ -134,9 +142,11 @@ impl Gpu {
                     instance_info = instance_info.push_next(&mut layer_settings);
                 }
             }
+            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
             let instance = entry
                 .create_instance(&instance_info, None)
                 .map_err(|e| format!("vkCreateInstance: {e}"))?;
+            drop(serialized);
             let messenger = if validation {
                 match instance.create_debug_utils_messenger_ext(&message_collector(&messages), None)
                 {
@@ -213,6 +223,7 @@ impl Gpu {
                 .queue_priorities(&priorities)];
             let mut vulkan12 =
                 vk::PhysicalDeviceVulkan12Features::default().buffer_device_address(true);
+            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
             let device = instance
                 .create_device(
                     physical_device,
@@ -223,6 +234,7 @@ impl Gpu {
                     None,
                 )
                 .map_err(|e| format!("vkCreateDevice: {e}"))?;
+            drop(serialized);
             Ok((physical_device, device, external_memory_fd))
         }
     }
@@ -277,7 +289,9 @@ impl Gpu {
 impl Drop for Gpu {
     fn drop(&mut self) {
         unsafe {
+            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
             self.device.destroy_device(None);
+            drop(serialized);
             if !self.messenger.is_null() {
                 self.instance
                     .destroy_debug_utils_messenger_ext(self.messenger, None);
