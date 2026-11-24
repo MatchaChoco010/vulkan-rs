@@ -149,7 +149,11 @@ pub(crate) fn assert_listed_nullable_arrays_exist(ir: &Registry) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::definition;
     use super::*;
+    use crate::emit::squash;
+    use crate::model::Model;
+    use crate::naming::field_name;
     use crate::test_support::{
         catch_quietly, chapters_of_the_specification, counted, description_in, field, optional,
         registry, structure,
@@ -177,7 +181,7 @@ mod tests {
         text.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
-    const WITHOUT_A_DESCRIPTION: &[&str] = &["VkCuLaunchInfoNVX", "VkCuModuleCreateInfoNVX"];
+    const WITHOUT_A_DESCRIPTION: &[&str] = &["VkCuModuleCreateInfoNVX"];
 
     #[test]
     fn the_scan_for_arrays_that_may_be_null_reads_the_ways_the_specification_says_it() {
@@ -247,6 +251,7 @@ mod tests {
             return;
         };
         let all_chapters = joined(&chapters);
+        let model = Model::new(Registry::get());
         let mut found = Vec::new();
         let mut without_a_description = Vec::new();
         for s in Registry::get().structs.iter().filter(|s| !s.union) {
@@ -263,9 +268,17 @@ mod tests {
                 (&description, "pname")
             };
             let mut has_such_an_array = false;
+            let generated = squash(&definition(&model, s));
             for m in &s.members {
                 let ty = CType::of(m);
-                if ty.depth() == 0 || ty.is_array() || m.optional || count_member(s, m).is_none() {
+                let takes_a_slice =
+                    generated.contains(&format!("self.{} = value.as_", field_name(&m.name)));
+                if ty.depth() == 0
+                    || ty.is_array()
+                    || m.optional
+                    || count_member(s, m).is_none()
+                    || !takes_a_slice
+                {
                     continue;
                 }
                 has_such_an_array = true;
