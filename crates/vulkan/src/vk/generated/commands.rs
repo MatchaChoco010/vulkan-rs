@@ -5217,7 +5217,9 @@ impl crate::Entry {
     /// Calls the C command
     /// [`vkEnumerateInstanceVersion`](https://docs.vulkan.org/refpages/latest/refpages/source/vkEnumerateInstanceVersion.html)
     /// through [`Self::enumerate_instance_version_raw`], which describes the parameters. Returns
-    /// what the command writes to `pApiVersion`. The command is provided by Vulkan 1.1.
+    /// what the command writes to `pApiVersion`, or `None` if the loader does not provide the
+    /// command, which means that it implements a Vulkan version before 1.1. The command is provided
+    /// by Vulkan 1.1.
     ///
     /// # Errors
     ///
@@ -5229,18 +5231,16 @@ impl crate::Entry {
     /// # Safety
     ///
     /// The same as for [`Self::enumerate_instance_version_raw`].
-    ///
-    /// # Panics
-    ///
-    /// Panics if `vkEnumerateInstanceVersion` is not loaded: the loader returned no pointer for it,
-    /// for example because the version or the extension that provides it is not enabled.
     #[doc(alias = "vkEnumerateInstanceVersion")]
-    pub unsafe fn enumerate_instance_version(&self) -> crate::vk::Result<u32> {
+    pub unsafe fn enumerate_instance_version(&self) -> crate::vk::Result<Option<u32>> {
         unsafe {
+            if self.fp().enumerate_instance_version.is_none() {
+                return Ok(None);
+            }
             let mut value: u32 = core::mem::zeroed::<u32>();
             self.enumerate_instance_version_raw(&mut value)
                 .into_result()?;
-            Ok(value)
+            Ok(Some(value))
         }
     }
     /// Return a function pointer for a command.

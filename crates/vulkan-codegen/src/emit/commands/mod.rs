@@ -2532,4 +2532,126 @@ mod tests {
             ])
         );
     }
+
+    #[test]
+    fn the_wrappers_of_the_registry_return_none_exactly_for_global_commands_after_vulkan_1_0() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut absent = Vec::new();
+        for dispatch in Dispatch::ALL {
+            for c in commands(&model, dispatch).filter(|c| !creates_a_dispatching_handle(c)) {
+                let generated = wrapper::wrapper(&model, c, dispatch);
+                let source = squash(&generated);
+                let check = format!(
+                    "if self.fp().{}.is_none() {{ return Ok(None); }}",
+                    command_name(&c.name)
+                );
+                let in_vulkan_1_0 = c.version.is_none() && c.extensions.is_empty();
+                let may_be_absent = dispatch == Dispatch::Entry && !in_vulkan_1_0;
+                assert_eq!(source.contains(&check), may_be_absent, "{}", c.name);
+                assert_eq!(
+                    generated.contains("/// # Panics"),
+                    !may_be_absent,
+                    "{}: {generated}",
+                    c.name
+                );
+                if may_be_absent {
+                    absent.push(c.name.as_str());
+                }
+            }
+        }
+        assert_eq!(absent, ["vkEnumerateInstanceVersion"]);
+    }
+
+    #[test]
+    fn a_global_command_after_vulkan_1_0_returns_none_when_the_loader_does_not_provide_it() {
+        let mut ir = base();
+        ir.commands.push(Command {
+            version: Some("VK_VERSION_1_2".to_string()),
+            ..result_command(
+                "vkEnumerateInstanceThings",
+                &["VK_SUCCESS"],
+                vec![field("pThings", "uint32_t*")],
+            )
+        });
+        let model = Model::new(&ir);
+        let out = generate(&ir);
+        let documented = emit(&model)
+            .lines()
+            .map(|line| line.trim().trim_start_matches("///").trim())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            out.contains(
+                "pub unsafe fn enumerate_instance_things(&self) -> crate::vk::Result<Option<u32>> { unsafe { if self.fp().enumerate_instance_things.is_none() { return Ok(None); } let mut value: u32 = core::mem::zeroed::<u32>(); self.enumerate_instance_things_raw(&mut value).into_result()?; Ok(Some(value)) } }"
+            ),
+            "{out}"
+        );
+        assert!(
+            documented.contains(
+                "or `None` if the loader does not provide the command, which means that it implements a Vulkan version before 1.2."
+            ),
+            "{documented}"
+        );
+    }
+
+    #[test]
+    fn a_global_command_that_the_loader_may_not_provide_has_to_return_one_value() {
+        let cases = [
+            (
+                Command {
+                    extensions: vec!["VK_KHR_things".to_string()],
+                    ..result_command(
+                        "vkEnumerateInstanceThings",
+                        &["VK_SUCCESS"],
+                        vec![field("pThings", "uint32_t*")],
+                    )
+                },
+                "vkEnumerateInstanceThings: a command that needs no instance and is provided by an extension, which the loader may not provide",
+            ),
+            (
+                Command {
+                    version: Some("VK_VERSION_1_2".to_string()),
+                    extensions: vec!["VK_KHR_things".to_string()],
+                    ..result_command(
+                        "vkEnumerateInstanceThings",
+                        &["VK_SUCCESS"],
+                        vec![field("pThings", "uint32_t*")],
+                    )
+                },
+                "vkEnumerateInstanceThings: a command that needs no instance and is provided by an extension, which the loader may not provide",
+            ),
+            (
+                Command {
+                    version: Some("VK_VERSION_1_2".to_string()),
+                    ..result_command("vkResetThings", &["VK_SUCCESS"], vec![])
+                },
+                "vkResetThings: the wrapper of a command that the loader may not provide has to return a value",
+            ),
+            (
+                Command {
+                    version: Some("VK_VERSION_1_2".to_string()),
+                    ..result_command(
+                        "vkEnumerateInstanceThings",
+                        &["VK_SUCCESS", "VK_INCOMPLETE"],
+                        vec![field("pThings", "uint32_t*")],
+                    )
+                },
+                "vkEnumerateInstanceThings: the wrapper of a command that the loader may not provide has to return a value or an error",
+            ),
+            (
+                Command {
+                    version: Some("VK_VERSION_1_2".to_string()),
+                    ..command("vkGetThings", vec![field("pThings", "uint32_t*")])
+                },
+                "vkGetThings: the wrapper of a command that the loader may not provide has to return a value or an error",
+            ),
+        ];
+        for (c, expected) in cases {
+            let mut ir = base();
+            ir.commands.push(c);
+            let message = crate::test_support::catch_quietly(|| generate(&ir))
+                .expect_err("the wrapper cannot be generated");
+            assert_eq!(message, expected);
+        }
+    }
 }
