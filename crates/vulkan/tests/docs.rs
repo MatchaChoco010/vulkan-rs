@@ -957,6 +957,12 @@ fn is_rust_name_of(rust_name: &str, c_name: &str) -> bool {
     squeeze(rust_name) == squeeze(c_name) || (rust_name == "ty" && c_name == "type")
 }
 
+fn declared_name(declaration: &str) -> &str {
+    let declaration = declaration.split(['`', '[']).next().unwrap_or_default();
+    let declarator = declaration.split(" : ").next().unwrap_or_default();
+    declarator.rsplit(' ').next().unwrap_or_default()
+}
+
 fn list_items(list: &str) -> Vec<(usize, String)> {
     let mut items = Vec::<(usize, String)>::new();
     for line in list.lines() {
@@ -1043,6 +1049,8 @@ struct Checker {
     whole_items: usize,
     described_in_another_file: Vec<String>,
     ends_where_its_list_item_ends: Vec<String>,
+    members_under_another_name: usize,
+    descriptions_of_no_member: Vec<String>,
 }
 
 struct Generated {
@@ -1235,6 +1243,55 @@ impl Checker {
         self.fail(item, format!("the specification describes `{name}` on the page `{page}`, but the documentation does not use it"));
     }
 
+    fn members<'a>(
+        &mut self,
+        spec: &Specification,
+        generated: &Generated,
+        owner_page: Option<&str>,
+        owner: &str,
+        fields: impl IntoIterator<Item = &'a syn::Field>,
+    ) {
+        let mut c_names = BTreeSet::new();
+        for field in fields {
+            let name = field.ident.as_ref().expect("named field").to_string();
+            let (doc, _) = doc_attributes(&field.attrs);
+            self.links(spec, generated, owner, &doc);
+            self.member(spec, generated, owner_page, owner, &name, doc.trim());
+            let doc = flat(&doc);
+            if let Some(storage) = doc.strip_prefix("The storage unit of the C bit-fields ") {
+                let listed = storage.split('.').next().unwrap_or_default();
+                c_names.extend(
+                    generated
+                        .name
+                        .captures_iter(listed)
+                        .map(|name| name[1].to_string()),
+                );
+            } else if let Some(declaration) = doc.strip_prefix("The C member `") {
+                c_names.insert(declared_name(declaration).to_string());
+            } else if let Some(names) = generated.described_under_another_name.captures(&doc) {
+                c_names.extend([names[1].to_string(), names[2].to_string()]);
+            } else {
+                let names = generated.names_at_start(&doc);
+                let own = names
+                    .iter()
+                    .find(|c_name| is_rust_name_of(&name, c_name))
+                    .or(names.first());
+                c_names.extend(own.map(|c_name| c_name.to_string()));
+            }
+        }
+        let (Some(page), false) = (owner_page, c_names.is_empty()) else {
+            return;
+        };
+        let described = spec
+            .described(page, "pname")
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        for name in described.difference(&c_names) {
+            self.descriptions_of_no_member
+                .push(format!("{page}::{name}"));
+        }
+    }
+
     fn member(
         &mut self,
         spec: &Specification,
@@ -1254,9 +1311,7 @@ impl Checker {
         }
         if let Some(declaration) = doc.strip_prefix("The C member `") {
             self.undescribed_members += 1;
-            let declaration = declaration.split(['`', '[']).next().unwrap_or_default();
-            let declarator = declaration.split(" : ").next().unwrap_or_default();
-            let name = declarator.rsplit(' ').next().unwrap_or_default();
+            let name = declared_name(declaration);
             if let Some(page) = owner_page {
                 self.undescribed(spec, &item, page, ("pname", name));
             }
@@ -1285,9 +1340,26 @@ impl Checker {
                 );
                 first
             });
-        self.contained(spec, &item, page, doc);
-        self.whole(spec, &item, page, ("pname", name), doc);
-        self.not_valid_usage(spec, &item, page, doc);
+        let Some(names) = generated.described_under_another_name.captures(doc) else {
+            self.contained(spec, &item, page, doc);
+            self.whole(spec, &item, page, ("pname", name), doc);
+            self.not_valid_usage(spec, &item, page, doc);
+            return;
+        };
+        self.members_under_another_name += 1;
+        let (own, other) = (&names[1], &names[2]);
+        let description = &doc[names[0].len()..];
+        if spec.describes(page, "pname", own) {
+            self.fail(&item, format!("the specification describes the member `{own}` on the page `{page}` under its own name, but the documentation takes the description of `{other}` for it"));
+        }
+        if !spec.describes(page, "pname", other) {
+            self.fail(&item, format!("the documentation takes the description of `{other}` for the member `{own}`, but the specification describes no `{other}` on the page `{page}`"));
+        }
+        if !description.starts_with(&format!("`{other}`")) {
+            self.fail(&item, format!("the description that the documentation takes for the member `{own}` is not the one of `{other}`"));
+        }
+        self.contained(spec, &item, page, description);
+        self.whole(spec, &item, page, ("pname", other), description);
     }
 
     fn not_valid_usage(&mut self, spec: &Specification, item: &str, page: &str, doc: &str) {
@@ -1600,6 +1672,24 @@ const ENDS_WHERE_ITS_LIST_ITEM_ENDS: &[&str] = &[
     "TimeDomainKHR::QUERY_PERFORMANCE_COUNTER: `VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR`",
 ];
 
+const DESCRIPTIONS_OF_NO_MEMBER: &[&str] = &[
+    "VkClusterAccelerationStructureGeometryIndexAndGeometryFlagsNV::mask",
+    "VkDeviceAddressBindingCallbackDataEXT::messageSeverity",
+    "VkDeviceAddressBindingCallbackDataEXT::messageTypes",
+    "VkSubmitInfo::dstAccessMask",
+    "VkSubmitInfo::dstStageMask",
+    "VkSubmitInfo::newLayout",
+    "VkSubmitInfo::oldLayout",
+    "VkSubmitInfo::srcAccessMask",
+    "VkSubmitInfo::srcStageMask",
+    "VkSurfaceCapabilities2KHR::currentExtent",
+    "VkSurfaceCapabilities2KHR::currentTransform",
+    "VkSurfaceCapabilities2KHR::maxImageCount",
+    "VkSurfaceCapabilities2KHR::minImageCount",
+    "VkVideoEncodeH264PictureInfoKHR::pStdSliceHeader",
+    "VkVideoEncodeH265PictureInfoKHR::pStdSliceSegmentHeader",
+];
+
 #[test]
 fn generated_documentation_matches_the_specification() {
     let root = workspace_root();
@@ -1628,11 +1718,12 @@ fn generated_documentation_matches_the_specification() {
     check_files(&spec, &generated, &mut checker, &files);
 
     eprintln!(
-        "checked {} descriptions against the whole of their list item, {} reference links, {} summaries, {} described and {} undescribed members, {} described ({} by a table row) and {} undescribed values, {} parameters ({} under another name), the parameter lists of {} functions with {} parameters that the specification describes",
+        "checked {} descriptions against the whole of their list item, {} reference links, {} summaries, {} described ({} under another name) and {} undescribed members, {} described ({} by a table row) and {} undescribed values, {} parameters ({} under another name), the parameter lists of {} functions with {} parameters that the specification describes",
         checker.whole_items,
         checker.reference_links,
         checker.summaries,
         checker.described_members,
+        checker.members_under_another_name,
         checker.undescribed_members,
         checker.described_values,
         checker.tabulated_values,
@@ -1676,6 +1767,18 @@ fn generated_documentation_matches_the_specification() {
             .copied()
             .collect::<BTreeSet<_>>(),
         "exactly these descriptions end like the middle of a sentence, because their list item in the specification ends there"
+    );
+    assert_eq!(
+        checker
+            .descriptions_of_no_member
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        DESCRIPTIONS_OF_NO_MEMBER
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "exactly these list items on the reference pages of structures start with a name that no member has, and they are not descriptions of members. An item that describes a member under another name belongs in DESCRIBED_UNDER_ANOTHER_NAME of vulkan-codegen"
     );
     for (what, count, at_least) in [
         (
@@ -1768,19 +1871,8 @@ fn check_item(
             checker.links(spec, generated, &name, &doc);
             checker.summary(spec, &name, &doc, &aliases);
             let page = generated.page_of(&doc);
-            for field in item.fields.iter().filter(|field| field.ident.is_some()) {
-                let field_name = field.ident.as_ref().expect("named field").to_string();
-                let (doc, _) = doc_attributes(&field.attrs);
-                checker.links(spec, generated, &name, &doc);
-                checker.member(
-                    spec,
-                    generated,
-                    page.as_deref(),
-                    &name,
-                    &field_name,
-                    doc.trim(),
-                );
-            }
+            let fields = item.fields.iter().filter(|field| field.ident.is_some());
+            checker.members(spec, generated, page.as_deref(), &name, fields);
         }
         Item::Union(item) => {
             let name = item.ident.to_string();
@@ -1788,19 +1880,7 @@ fn check_item(
             checker.links(spec, generated, &name, &doc);
             checker.summary(spec, &name, &doc, &aliases);
             let page = generated.page_of(&doc);
-            for field in &item.fields.named {
-                let field_name = field.ident.as_ref().expect("named field").to_string();
-                let (doc, _) = doc_attributes(&field.attrs);
-                checker.links(spec, generated, &name, &doc);
-                checker.member(
-                    spec,
-                    generated,
-                    page.as_deref(),
-                    &name,
-                    &field_name,
-                    doc.trim(),
-                );
-            }
+            checker.members(spec, generated, page.as_deref(), &name, &item.fields.named);
         }
         Item::Type(item) => {
             let name = item.ident.to_string();
@@ -2026,6 +2106,11 @@ Empty ranges are for another day.
 ====
   * pname:width, pname:height, and
     pname:depth are the size of the thing.
+  * pname:sizeInBytes is the size of the thing in bytes.
+
+A thing is empty with the following properties:
+
+  * pname:elsewhere equal to `0`
 
 .Valid Usage
 ****
@@ -2117,6 +2202,9 @@ pub struct Thing {
     pub height: u32,
     /// `width`, `height`, and `depth` are the size of the thing.
     pub depth: u32,
+    /// `byteSize`, which the specification describes under the name `sizeInBytes`: `sizeInBytes` is
+    /// the size of the thing in bytes.
+    pub byte_size: u32,
     /// The C member `uint32_t padding`.
     pub padding: u32,
 }
@@ -2272,6 +2360,129 @@ fn fixture_with_the_allocator_as(item: &str) -> String {
             "        p_callbacks: *const c_void,\n    ) {\n",
             1,
         )
+}
+
+const FIXTURE_BYTE_SIZE: &str = "    /// `byteSize`, which the specification describes under the name `sizeInBytes`: `sizeInBytes` is
+    /// the size of the thing in bytes.
+";
+
+#[test]
+fn checker_accepts_a_member_that_takes_the_description_of_another_name() {
+    let checker = fixture_checker(FIXTURE_SOURCE);
+    assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
+    assert_eq!(checker.members_under_another_name, 1);
+    assert_eq!(
+        checker.descriptions_of_no_member,
+        ["VkThing::elsewhere"],
+        "`sizeInBytes` describes `byteSize`, and `elsewhere` is in a list that describes no member"
+    );
+}
+
+#[test]
+fn checker_collects_the_names_that_a_page_describes_and_no_member_has() {
+    assert_eq!(
+        FIXTURE_SOURCE.matches(FIXTURE_BYTE_SIZE).count(),
+        1,
+        "the description of `byte_size` is not exactly once in the fixture"
+    );
+    let undescribed = FIXTURE_SOURCE.replacen(
+        FIXTURE_BYTE_SIZE,
+        "    /// The C member `uint32_t byteSize`.\n",
+        1,
+    );
+    let checker = fixture_checker(&undescribed);
+    assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
+    assert_eq!(
+        checker.descriptions_of_no_member,
+        ["VkThing::elsewhere", "VkThing::sizeInBytes"],
+        "a description under a name that differs from the name of the member is found"
+    );
+    let differing_in_case = FIXTURE_SOURCE.replacen(
+        FIXTURE_BYTE_SIZE,
+        "    /// The C member `uint32_t SizeInBytes`.\n",
+        1,
+    );
+    assert_eq!(
+        fixture_checker(&differing_in_case).descriptions_of_no_member,
+        ["VkThing::elsewhere", "VkThing::sizeInBytes"],
+        "the name of a member is compared as it is written in C"
+    );
+}
+
+#[test]
+fn checker_reports_a_member_description_taken_from_another_name_that_does_not_fit() {
+    let taken = |own: &str, other: &str, description: &str| {
+        format!(
+            "    /// `{own}`, which the specification describes under the name `{other}`: {description}\n"
+        )
+    };
+    let size = "`sizeInBytes` is the size of the thing in bytes.";
+    for (defect, replace, with, report) in [
+        (
+            "a name that the page does not describe",
+            FIXTURE_BYTE_SIZE,
+            taken(
+                "byteSize",
+                "sizeOfThing",
+                "`sizeOfThing` is the size of the thing in bytes.",
+            ),
+            "Thing::byte_size: the documentation takes the description of `sizeOfThing` for the member `byteSize`, but the specification describes no `sizeOfThing` on the page `VkThing`",
+        ),
+        (
+            "a member that the page describes under its own name",
+            "    /// `count` is the number of things.\n",
+            taken("count", "sizeInBytes", size),
+            "Thing::count: the specification describes the member `count` on the page `VkThing` under its own name, but the documentation takes the description of `sizeInBytes` for it",
+        ),
+        (
+            "the description of a third member",
+            FIXTURE_BYTE_SIZE,
+            taken(
+                "byteSize",
+                "sizeInBytes",
+                "`flags` is reserved for future use.",
+            ),
+            "Thing::byte_size: the description that the documentation takes for the member `byteSize` is not the one of `sizeInBytes`",
+        ),
+        (
+            "a description that the page does not have",
+            FIXTURE_BYTE_SIZE,
+            taken(
+                "byteSize",
+                "sizeInBytes",
+                "`sizeInBytes` is the size of everything.",
+            ),
+            "Thing::byte_size: ``sizeInBytes` is the size of everything.` is not in the text that the specification has for `VkThing`",
+        ),
+        (
+            "the name of another member in front",
+            FIXTURE_BYTE_SIZE,
+            taken("count", "sizeInBytes", size),
+            "Thing::byte_size: is documented with the description of `count`",
+        ),
+        (
+            "a part of the item of the other name",
+            FIXTURE_BYTE_SIZE,
+            taken(
+                "byteSize",
+                "sizeInBytes",
+                "`sizeInBytes` is the size of the thing.",
+            ),
+            "Thing::byte_size: the description of `sizeInBytes` leaves out a part of its list item on the page `VkThing`",
+        ),
+        (
+            "the item of the other name cut in a sentence",
+            FIXTURE_BYTE_SIZE,
+            taken(
+                "byteSize",
+                "sizeInBytes",
+                "`sizeInBytes` is the size of the",
+            ),
+            "Thing::byte_size: the description of `sizeInBytes` ends in the middle of a sentence",
+        ),
+    ] {
+        assert_reported(defect, replace, &with, report);
+    }
 }
 
 #[test]
@@ -2909,7 +3120,15 @@ fn checker_does_not_take_valid_usage_for_a_description() {
     assert_eq!(
         thing,
         [
-            "count", "flags", "type", "range", "width", "height", "depth"
+            "count",
+            "flags",
+            "type",
+            "range",
+            "width",
+            "height",
+            "depth",
+            "sizeInBytes",
+            "elsewhere"
         ],
         "an item describes every name that it starts with"
     );

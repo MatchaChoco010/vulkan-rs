@@ -27956,7 +27956,9 @@ pub struct DataGraphTOSANameQualityARM {
     /// `name` is a pointer to a null-terminated UTF-8 string specifying the name of the TOSA
     /// profile or extension.
     pub name: [c_char; MAX_DATA_GRAPH_TOSA_NAME_SIZE_ARM],
-    /// The C member `VkDataGraphTOSAQualityFlagsARM qualityFlags`.
+    /// `qualityFlags`, which the specification describes under the name `qualityLevel`:
+    /// `qualityLevel` is a [`VkDataGraphTOSAQualityFlagsARM`](DataGraphTOSAQualityFlagsARM)
+    /// describing the quality of the support for the TOSA profile or extension.
     pub quality_flags: DataGraphTOSAQualityFlagsARM,
 }
 
@@ -33060,7 +33062,8 @@ pub struct DeviceFaultInfoKHR<'a> {
     /// information as to the type of fault and which additional fields have been populated by the
     /// driver provide further information.
     pub flags: DeviceFaultFlagsKHR,
-    /// The C member `uint64_t groupId`.
+    /// `groupId`, which the specification describes under the name `groupID`: `groupID` is a
+    /// monotonically increasing value for associating multiple entries with a single fault.
     pub group_id: u64,
     /// `description` is an array of [`VK_MAX_DESCRIPTION_SIZE`](MAX_DESCRIPTION_SIZE) `char`
     /// containing a null-terminated UTF-8 string which is a human readable description of the
@@ -47398,7 +47401,9 @@ pub struct ImageTilingControlCreateInfoEXT<'a> {
     pub s_type: StructureType,
     /// `pNext` is `NULL` or a pointer to a structure extending this structure.
     pub p_next: *const c_void,
-    /// The C member `VkImageTilingControlEXT tilingControl`.
+    /// `tilingControl`, which the specification describes under the name `imageTiling`:
+    /// `imageTiling` is a [`VkImageTilingControlEXT`](ImageTilingControlEXT) value specifying the
+    /// optimal tiling arrangement for the image.
     pub tiling_control: ImageTilingControlEXT,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -51557,9 +51562,15 @@ pub struct LatencyTimingsFrameReportNV<'a> {
     /// [`VkLatencyMarkerNV`](LatencyMarkerNV) enum
     /// [`VK_LATENCY_MARKER_SIMULATION_END_NV`](LatencyMarkerNV::SIMULATION_END).
     pub sim_end_time_us: u64,
-    /// The C member `uint64_t renderSubmitStartTimeUs`.
+    /// `renderSubmitStartTimeUs`, which the specification describes under the name
+    /// `renderStartTimeUs`: `renderStartTimeUs` is the timestamp written when
+    /// `vkSetLatencyMarkerNV` is called with the [`VkLatencyMarkerNV`](LatencyMarkerNV) enum
+    /// [`VK_LATENCY_MARKER_RENDERSUBMIT_START_NV`](LatencyMarkerNV::RENDERSUBMIT_START).
     pub render_submit_start_time_us: u64,
-    /// The C member `uint64_t renderSubmitEndTimeUs`.
+    /// `renderSubmitEndTimeUs`, which the specification describes under the name `renderEndTimeUs`:
+    /// `renderEndTimeUs` is the timestamp written when `vkSetLatencyMarkerNV` is called with the
+    /// [`VkLatencyMarkerNV`](LatencyMarkerNV) enum
+    /// [`VK_LATENCY_MARKER_RENDERSUBMIT_END_NV`](LatencyMarkerNV::RENDERSUBMIT_END).
     pub render_submit_end_time_us: u64,
     /// `presentStartTimeUs` is the timestamp written when `vkSetLatencyMarkerNV` is called with the
     /// [`VkLatencyMarkerNV`](LatencyMarkerNV) enum
@@ -86384,7 +86395,10 @@ pub struct PhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM<'a> {
     /// `schedulingControlsMaxWarpsCount` specifies the maximum number of warps that a shader core
     /// can run concurrently.
     pub scheduling_controls_max_warps_count: u32,
-    /// The C member `uint32_t schedulingControlsMaxQueuedBatchesCount`.
+    /// `schedulingControlsMaxQueuedBatchesCount`, which the specification describes under the name
+    /// `schedulingControlsMaxQueuedWorkgroupBatchesCount`:
+    /// `schedulingControlsMaxQueuedWorkgroupBatchesCount` specifies the maximum number of workgroup
+    /// batches that a shader core can queue.
     pub scheduling_controls_max_queued_batches_count: u32,
     /// `schedulingControlsMaxWorkGroupBatchSize` specifies the maximum size of workgroup batches
     /// that can be requested using
@@ -92596,7 +92610,14 @@ pub struct PhysicalDeviceTensorFeaturesARM<'a> {
     /// `shaderTensorAccess` indicates whether shader modules can declare the `TensorsARM`
     /// capability.
     pub shader_tensor_access: Bool32,
-    /// The C member `VkBool32 shaderStorageTensorArrayDynamicIndexing`.
+    /// `shaderStorageTensorArrayDynamicIndexing`, which the specification describes under the name
+    /// `shaderStorageBufferArrayDynamicIndexing`: `shaderStorageBufferArrayDynamicIndexing`
+    /// indicates whether arrays of storage tensors can be indexed by dynamically uniform integer
+    /// expressions in shader code. If this feature is not enabled, resources with a descriptor type
+    /// of [`VK_DESCRIPTOR_TYPE_TENSOR_ARM`](DescriptorType::TENSOR_ARM) must be indexed only by
+    /// constant integral expressions when aggregated into arrays in shader code. This also
+    /// indicates whether shader modules can declare the `StorageTensorArrayDynamicIndexingARM`
+    /// capability.
     pub shader_storage_tensor_array_dynamic_indexing: Bool32,
     /// `shaderStorageTensorArrayNonUniformIndexing` indicates whether arrays of storage tensors can
     /// be indexed by non-uniform integer expressions in shader code. If this feature is not

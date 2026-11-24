@@ -15,6 +15,37 @@ const DESCRIBED_UNDER_ANOTHER_NAME: &[(&str, &str, &str)] = &[
         "pLatencyMarkerInfo",
         "pSetLatencyMarkerInfo",
     ),
+    (
+        "VkDataGraphTOSANameQualityARM",
+        "qualityFlags",
+        "qualityLevel",
+    ),
+    ("VkDeviceFaultInfoKHR", "groupId", "groupID"),
+    (
+        "VkImageTilingControlCreateInfoEXT",
+        "tilingControl",
+        "imageTiling",
+    ),
+    (
+        "VkLatencyTimingsFrameReportNV",
+        "renderSubmitStartTimeUs",
+        "renderStartTimeUs",
+    ),
+    (
+        "VkLatencyTimingsFrameReportNV",
+        "renderSubmitEndTimeUs",
+        "renderEndTimeUs",
+    ),
+    (
+        "VkPhysicalDeviceSchedulingControlsDispatchParametersPropertiesARM",
+        "schedulingControlsMaxQueuedBatchesCount",
+        "schedulingControlsMaxQueuedWorkgroupBatchesCount",
+    ),
+    (
+        "VkPhysicalDeviceTensorFeaturesARM",
+        "shaderStorageTensorArrayDynamicIndexing",
+        "shaderStorageBufferArrayDynamicIndexing",
+    ),
 ];
 
 pub(super) struct Described<'a> {
@@ -65,9 +96,13 @@ fn names(item: &DocItem, name: &str) -> bool {
 }
 
 pub(super) fn described<'a>(page: &'a DocPage, name: &str) -> Option<Described<'a>> {
-    let item = |name: &str| page.items.iter().find(|item| item.name == name);
-    let item_with_other_names = || page.items.iter().find(|item| names(item, name));
-    if let Some(item) = item(name).or_else(item_with_other_names) {
+    let item = |name: &str| {
+        page.items
+            .iter()
+            .find(|item| item.name == name)
+            .or_else(|| page.items.iter().find(|item| names(item, name)))
+    };
+    if let Some(item) = item(name) {
         return Some(Described {
             item,
             under_the_name: None,
@@ -75,7 +110,7 @@ pub(super) fn described<'a>(page: &'a DocPage, name: &str) -> Option<Described<'
     }
     let (_, _, other) = DESCRIBED_UNDER_ANOTHER_NAME
         .iter()
-        .find(|(command, parameter, _)| *command == page.name && *parameter == name)?;
+        .find(|(owner, own, _)| *owner == page.name && *own == name)?;
     Some(Described {
         item: item(other)?,
         under_the_name: Some(other),
@@ -83,32 +118,34 @@ pub(super) fn described<'a>(page: &'a DocPage, name: &str) -> Option<Described<'
 }
 
 pub(crate) fn assert_every_other_name_is_in_use(model: &Model<'_>) {
-    for (command, parameter, other) in DESCRIBED_UNDER_ANOTHER_NAME {
-        let row =
-            format!("the row ({command}, {parameter}, {other}) of DESCRIBED_UNDER_ANOTHER_NAME");
-        let c = model
-            .ir
-            .commands
-            .iter()
-            .find(|c| c.name == *command)
-            .unwrap_or_else(|| panic!("{row} names a command that the registry does not have"));
-        let is_parameter = |name: &str| c.params.iter().any(|p| p.name == name);
+    for (owner, name, other) in DESCRIBED_UNDER_ANOTHER_NAME {
+        let row = format!("the row ({owner}, {name}, {other}) of DESCRIBED_UNDER_ANOTHER_NAME");
+        let command = model.ir.commands.iter().find(|c| c.name == *owner);
+        let structure = model.ir.structs.iter().find(|s| s.name == *owner);
+        let (kind, item, fields) = match (command, structure) {
+            (Some(c), _) => ("command", "parameter", &c.params),
+            (None, Some(s)) => ("structure", "member", &s.members),
+            (None, None) => {
+                panic!("{row} names a command or a structure that the registry does not have")
+            }
+        };
+        let has = |name: &str| fields.iter().any(|field| field.name == name);
         assert!(
-            is_parameter(parameter),
-            "{row} names a parameter that the command does not have"
+            has(name),
+            "{row} names a {item} that the {kind} does not have"
         );
         assert!(
-            !is_parameter(other),
-            "{row} gives a parameter the description of another parameter of the command"
+            !has(other),
+            "{row} gives a {item} the description of another {item} of the {kind}"
         );
         let page = model
             .pages
-            .get(command)
-            .unwrap_or_else(|| panic!("{row} names a command without a reference page"));
+            .get(owner)
+            .unwrap_or_else(|| panic!("{row} names a {kind} without a reference page"));
         let describes = |name: &str| page.items.iter().any(|item| names(item, name));
         assert!(
-            !describes(parameter),
-            "{row} is not needed any more: the specification describes {parameter} under its own name"
+            !describes(name),
+            "{row} is not needed any more: the specification describes {name} under its own name"
         );
         assert!(
             describes(other),
@@ -124,7 +161,7 @@ mod tests {
     use crate::model::Cfg;
     use crate::test_support::{catch_quietly, registry};
     use std::collections::BTreeSet;
-    use vulkan_registry::{Docs, Registry};
+    use vulkan_registry::{Docs, Field, Registry};
 
     fn page(name: &str, items: &[(&str, &str)]) -> DocPage {
         DocPage {
@@ -322,17 +359,29 @@ mod tests {
     #[test]
     fn a_row_that_is_not_in_use_stops_the_generator() {
         let (ir, docs) = (Registry::get(), Docs::get());
-        for (command, parameter, other) in DESCRIBED_UNDER_ANOTHER_NAME {
-            let row = format!(
-                "the row ({command}, {parameter}, {other}) of DESCRIBED_UNDER_ANOTHER_NAME"
-            );
+        let mut kinds = BTreeSet::new();
+        for (owner, name, other) in DESCRIBED_UNDER_ANOTHER_NAME {
+            let row = format!("the row ({owner}, {name}, {other}) of DESCRIBED_UNDER_ANOTHER_NAME");
+            let first_row_of_the_owner = DESCRIBED_UNDER_ANOTHER_NAME
+                .iter()
+                .find(|(first_owner, _, _)| first_owner == owner)
+                .map(|(owner, name, other)| {
+                    format!("the row ({owner}, {name}, {other}) of DESCRIBED_UNDER_ANOTHER_NAME")
+                })
+                .expect("the row itself");
+            let (kind, item) = if ir.commands.iter().any(|c| c.name == *owner) {
+                ("command", "parameter")
+            } else {
+                ("structure", "member")
+            };
+            kinds.insert(kind);
             let with_page = |change: &dyn Fn(&mut DocPage)| {
                 let mut docs = docs.clone();
                 let page = docs
                     .pages
                     .iter_mut()
-                    .find(|page| page.name == *command)
-                    .expect("the page of the command");
+                    .find(|page| page.name == *owner)
+                    .expect("the page of the row");
                 change(page);
                 docs
             };
@@ -340,14 +389,14 @@ mod tests {
             let corrected = with_page(&|page| {
                 for item in &mut page.items {
                     if item.name == *other {
-                        item.name = parameter.to_string();
+                        item.name = name.to_string();
                     }
                 }
             });
             assert_eq!(
                 stop(ir, &corrected),
                 format!(
-                    "{row} is not needed any more: the specification describes {parameter} under its own name"
+                    "{row} is not needed any more: the specification describes {name} under its own name"
                 )
             );
 
@@ -358,30 +407,94 @@ mod tests {
             );
 
             let mut without_page = docs.clone();
-            without_page.pages.retain(|page| page.name != *command);
+            without_page.pages.retain(|page| page.name != *owner);
             assert_eq!(
                 stop(ir, &without_page),
-                format!("{row} names a command without a reference page")
+                format!("{first_row_of_the_owner} names a {kind} without a reference page")
             );
 
-            let mut renamed = ir.clone();
-            for c in renamed.commands.iter_mut().filter(|c| c.name == *command) {
-                for p in c.params.iter_mut().filter(|p| p.name == *parameter) {
-                    p.name = other.to_string();
+            let with_fields = |change: &dyn Fn(&mut Vec<Field>)| {
+                let mut ir = ir.clone();
+                for c in ir.commands.iter_mut().filter(|c| c.name == *owner) {
+                    change(&mut c.params);
                 }
-            }
+                for s in ir.structs.iter_mut().filter(|s| s.name == *owner) {
+                    change(&mut s.members);
+                }
+                ir
+            };
+
+            let renamed = with_fields(&|fields| {
+                for field in fields.iter_mut().filter(|field| field.name == *name) {
+                    field.name = other.to_string();
+                }
+            });
             assert_eq!(
                 stop(&renamed, docs),
-                format!("{row} names a parameter that the command does not have")
+                format!("{row} names a {item} that the {kind} does not have")
             );
 
-            let mut without_command = ir.clone();
-            without_command.commands.retain(|c| c.name != *command);
+            let with_both = with_fields(&|fields| {
+                let mut field = fields[0].clone();
+                field.name = other.to_string();
+                fields.push(field);
+            });
             assert_eq!(
-                stop(&without_command, docs),
-                format!("{row} names a command that the registry does not have")
+                stop(&with_both, docs),
+                format!("{row} gives a {item} the description of another {item} of the {kind}")
+            );
+
+            let mut without_owner = ir.clone();
+            without_owner.commands.retain(|c| c.name != *owner);
+            without_owner.structs.retain(|s| s.name != *owner);
+            assert_eq!(
+                stop(&without_owner, docs),
+                format!(
+                    "{first_row_of_the_owner} names a command or a structure that the registry does not have"
+                )
             );
         }
+        assert_eq!(
+            kinds,
+            BTreeSet::from(["command", "structure"]),
+            "the table has rows of both kinds"
+        );
+    }
+
+    #[test]
+    fn a_member_that_the_specification_names_differently_gets_that_description() {
+        let ir = registry();
+        let docs = Docs {
+            pages: vec![page(
+                "VkDeviceFaultInfoKHR",
+                &[
+                    ("flags", "pname:flags is a bitmask."),
+                    (
+                        "groupID",
+                        "pname:groupID is a monotonically increasing value.",
+                    ),
+                ],
+            )],
+            ..Default::default()
+        };
+        let model = Model::with_docs(&ir, &docs);
+        let from = Cfg::default();
+        assert_eq!(
+            model.described(&from, "VkDeviceFaultInfoKHR", "groupId"),
+            Some(vec![Block::Text(
+                "`groupId`, which the specification describes under the name `groupID`: `groupID` is a monotonically increasing value."
+                    .to_string()
+            )])
+        );
+        assert_eq!(
+            model.described(&from, "VkDeviceFaultInfoKHR", "flags"),
+            Some(vec![Block::Text("`flags` is a bitmask.".to_string())])
+        );
+        assert_eq!(
+            model.described(&from, "VkDeviceFaultInfoKHR", "groupid"),
+            None,
+            "a row names one member"
+        );
     }
 
     #[test]
