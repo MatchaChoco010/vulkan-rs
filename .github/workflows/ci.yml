@@ -33,15 +33,17 @@ jobs:
       - name: Fetch the Vulkan-Headers SDK tags
         run: git -C third_party/vulkan fetch --quiet --depth=1 origin 'refs/tags/vulkan-sdk-*:refs/tags/vulkan-sdk-*'
 
+      # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
+      # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
       - name: Install lavapipe, the Vulkan loader and the validation layers
-        run: |
-          sudo apt-get update
-          # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
-          # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
-          sudo apt-get install --yes --no-install-recommends \
-            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools \
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: >-
+            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
             libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
-          vulkaninfo --summary
+
+      - name: Show the Vulkan devices and layers
+        run: vulkaninfo --summary
 
       # The version, profile and components come from rust-toolchain.toml.
       - name: Install Rust
@@ -261,11 +263,10 @@ jobs:
       # Ubuntu 24.04 has no i386 build of the validation layers, so the device tests run
       # without them here, and the test that needs VK_EXT_debug_utils skips itself.
       - name: Install the 32-bit C toolchain, lavapipe and the Vulkan loader
-        run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            gcc-multilib libvulkan1:i386 libvulkan-dev:i386 mesa-vulkan-drivers:i386
+        uses: ./.github/actions/install-apt-packages
+        with:
+          architecture: i386
+          packages: gcc-multilib libvulkan1:i386 libvulkan-dev:i386 mesa-vulkan-drivers:i386
 
       - name: Install Rust
         run: |

@@ -1,0 +1,96 @@
+name: Install apt packages
+description: >-
+  Installs Ubuntu packages from a cache of their package files, and downloads the files
+  from the Ubuntu archive only when the cache has none for the image of the runner.
+
+inputs:
+  packages:
+    description: The names of the packages, separated by spaces.
+    required: true
+  architecture:
+    description: A foreign architecture to add before installing, such as i386.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # The files to install are the requested packages and what they depend on, less what
+    # the image has already, so the key names the image and the request. The week bounds
+    # how far the cached versions fall behind the archive while the image stays the same.
+    - id: key
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        ARCHITECTURE: ${{ inputs.architecture }}
+      run: |
+        request=$({ echo "$ARCHITECTURE"; printf '%s\n' $PACKAGES | sort -u; } | sha256sum | cut -c 1-16)
+        echo "key=apt-${ImageOS:-unknown}-${ImageVersion:-unknown}-$(date -u +%G-%V)-$request" >> "$GITHUB_OUTPUT"
+        echo "directory=$RUNNER_TEMP/apt-packages" >> "$GITHUB_OUTPUT"
+
+    - id: cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.key.outputs.directory }}
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Add the foreign architecture
+      if: inputs.architecture != ''
+      shell: bash
+      env:
+        ARCHITECTURE: ${{ inputs.architecture }}
+      run: sudo dpkg --add-architecture "$ARCHITECTURE"
+
+    # The images of the runners in AWS regions list a regional EC2 mirror first, which
+    # serves about 100 kB/s per connection. Without it apt goes on to the next entry of
+    # the list, archive.ubuntu.com.
+    - name: Download the package files
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        DIRECTORY: ${{ steps.key.outputs.directory }}
+      run: |
+        if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+          sudo sed -i '/\.ec2\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+        fi
+        mkdir -p "$DIRECTORY"
+        sudo apt-get update
+        sudo apt-get install --yes --no-install-recommends --download-only \
+          -o Dir::Cache::Archives="$DIRECTORY" $PACKAGES
+        sudo chown -R "$(id -u):$(id -g)" "$DIRECTORY"
+        rm -rf "$DIRECTORY/partial" "$DIRECTORY/lock"
+
+    # The same command with or without the cache. apt has no source but the files here:
+    # with its lists it would download again each file whose version the lists of the
+    # image name. It takes the files in the order their dependencies need, and fails when
+    # one depends on a package or a version that neither the image nor the files have.
+    # The hooks that the image adds around dpkg (debconf questions before it, a search for
+    # services to restart after it) take longer than the installation on a runner whose
+    # disk has not been read yet, and have nothing to do here.
+    - name: Install the package files
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        DIRECTORY: ${{ steps.key.outputs.directory }}
+      run: |
+        shopt -s nullglob
+        files=("$DIRECTORY"/*.deb)
+        if ((${#files[@]} > 0)); then
+          printf '%s\n' \
+            'Dir::Etc::SourceList "/dev/null";' \
+            'Dir::Etc::SourceParts "/dev/null";' \
+            '#clear DPkg::Pre-Install-Pkgs;' \
+            '#clear DPkg::Post-Invoke;' \
+            > "$RUNNER_TEMP/apt-files-only.conf"
+          sudo apt-get --config-file "$RUNNER_TEMP/apt-files-only.conf" install --yes \
+            --no-install-recommends "${files[@]}"
+        fi
+        dpkg-query --show $PACKAGES
+
+    - name: Save the package files
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ steps.key.outputs.directory }}
+        key: ${{ steps.key.outputs.key }}
