@@ -93,6 +93,7 @@ fn heap_layout_errors_name_every_number_they_carry() {
             vec!["24", "16"],
         ),
         (HeapLayoutError::ZeroDescriptorSize, vec![]),
+        (HeapLayoutError::ZeroDescriptorCount, vec![]),
         (
             HeapLayoutError::ReservedRangeOutsideHeap {
                 reserved_offset: 81_003,

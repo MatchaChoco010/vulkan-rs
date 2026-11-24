@@ -921,10 +921,12 @@ mod tests {
         min_resource_reserved: u64,
         min_sampler_reserved: u64,
         min_sampler_reserved_with_embedded: u64,
+        tensor_size: u64,
+        tensor_alignment: u64,
     }
 
     impl Properties {
-        fn fields_mut(&mut self) -> [&mut u64; 13] {
+        fn fields_mut(&mut self) -> [&mut u64; 15] {
             [
                 &mut self.buffer_size,
                 &mut self.buffer_alignment,
@@ -939,6 +941,8 @@ mod tests {
                 &mut self.min_resource_reserved,
                 &mut self.min_sampler_reserved,
                 &mut self.min_sampler_reserved_with_embedded,
+                &mut self.tensor_size,
+                &mut self.tensor_alignment,
             ]
         }
 
@@ -960,11 +964,18 @@ mod tests {
                     self.min_sampler_reserved_with_embedded,
                 )
         }
+
+        fn tensor_vk(&self) -> vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM<'static> {
+            vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM::default()
+                .tensor_descriptor_size(self.tensor_size)
+                .tensor_descriptor_alignment(self.tensor_alignment)
+        }
     }
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Heap {
         Resource,
+        ResourceWithTensors,
         Sampler,
         SamplerWithEmbedded,
     }
@@ -974,6 +985,8 @@ mod tests {
         Buffers(u32),
         Images(u32),
         Uniform(u32),
+        MultiDescriptorImages(u32, u32),
+        Tensors(u32),
         Samplers(u32),
     }
 
@@ -984,9 +997,14 @@ mod tests {
 
     impl Plan {
         fn new(properties: &Properties, heap: Heap) -> Self {
+            let tensor_properties = properties.tensor_vk();
             let properties = properties.vk();
             match heap {
                 Heap::Resource => Self::Resource(ResourceHeapPlan::new(&properties)),
+                Heap::ResourceWithTensors => Self::Resource(ResourceHeapPlan::with_tensors(
+                    &properties,
+                    &tensor_properties,
+                )),
                 Heap::Sampler => Self::Sampler(SamplerHeapPlan::new(&properties)),
                 Heap::SamplerWithEmbedded => {
                     Self::Sampler(SamplerHeapPlan::with_embedded_samplers(&properties))
@@ -999,6 +1017,10 @@ mod tests {
                 (Self::Resource(plan), Op::Buffers(count)) => plan.buffers(count),
                 (Self::Resource(plan), Op::Images(count)) => plan.images(count),
                 (Self::Resource(plan), Op::Uniform(count)) => plan.uniform(count),
+                (Self::Resource(plan), Op::MultiDescriptorImages(count, per_image)) => {
+                    plan.multi_descriptor_images(count, per_image)
+                }
+                (Self::Resource(plan), Op::Tensors(count)) => plan.tensors(count),
                 (Self::Sampler(plan), Op::Samplers(count)) => plan.samplers(count),
                 _ => panic!("{op:?} is not a run of this heap"),
             }
@@ -1050,7 +1072,58 @@ mod tests {
                 Op::Images(count) => self.typed(count, p.image_size, p.image_alignment),
                 Op::Samplers(count) => self.typed(count, p.sampler_size, p.sampler_alignment),
                 Op::Uniform(count) => self.uniform(count),
+                Op::MultiDescriptorImages(count, per_image) => {
+                    self.multi_descriptor_images(count, per_image)
+                }
+                Op::Tensors(count) => self.tensors(count),
             }
+        }
+
+        fn multi_descriptor_images(
+            &mut self,
+            count: u32,
+            per_image: u32,
+        ) -> Result<DescriptorSlots, Vec<HeapLayoutError>> {
+            let p = self.properties;
+            if p.image_size == 0 {
+                return Err(vec![HeapLayoutError::ZeroDescriptorSize]);
+            }
+            let mut errors = Vec::new();
+            if per_image == 0 {
+                errors.push(HeapLayoutError::ZeroDescriptorCount);
+            }
+            if !u128::from(p.image_size).is_multiple_of(at_least_1(p.image_alignment)) {
+                errors.push(HeapLayoutError::UnalignedDescriptorSize {
+                    size: p.image_size,
+                    alignment: p.image_alignment,
+                });
+            }
+            let stride = u128::from(p.image_size) * u128::from(per_image);
+            if stride > U64_MAX {
+                errors.push(HeapLayoutError::Overflow);
+            }
+            if stride == 0 || stride > U64_MAX {
+                return Err(errors);
+            }
+            self.place(count, stride, u64::try_from(stride).unwrap(), errors)
+        }
+
+        fn tensors(&mut self, count: u32) -> Result<DescriptorSlots, Vec<HeapLayoutError>> {
+            let (size, alignment) = match self.heap {
+                Heap::ResourceWithTensors => (
+                    self.properties.tensor_size,
+                    self.properties.tensor_alignment,
+                ),
+                _ => (0, 0),
+            };
+            if size == 0 {
+                return Err(vec![HeapLayoutError::ZeroDescriptorSize]);
+            }
+            let stride = round_up(u128::from(size), at_least_1(alignment));
+            if stride > U64_MAX {
+                return Err(vec![HeapLayoutError::Overflow]);
+            }
+            self.place(count, stride, size, Vec::new())
         }
 
         fn typed(
@@ -1120,7 +1193,7 @@ mod tests {
         fn finish(&self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
             let p = self.properties;
             let (reserved_alignment, reserved_size, max, heap_alignment) = match self.heap {
-                Heap::Resource => (
+                Heap::Resource | Heap::ResourceWithTensors => (
                     least_common_multiple(
                         at_least_1(p.buffer_alignment),
                         at_least_1(p.image_alignment),
@@ -1238,42 +1311,48 @@ mod tests {
             (0u32..=16, 0u32..=16),
             prop::array::uniform3((any::<u8>(), any::<u64>())),
             prop::array::uniform2((any::<u8>(), any::<u64>())),
+            (1u64..=1024, 0u32..=10),
         )
-            .prop_map(|(buffer, image, sampler, heap_alignments, reserved, max)| {
-                let size_and_alignment =
-                    |(size, alignment): (u32, u32)| (1u64 << size, 1u64 << alignment.min(size));
-                let (buffer_size, buffer_alignment) = size_and_alignment(buffer);
-                let (image_size, image_alignment) = size_and_alignment(image);
-                let (sampler_size, sampler_alignment) = size_and_alignment(sampler);
-                let largest = buffer_size.max(image_size);
-                let min_resource_reserved = pick_within((1 << 15) * largest, largest, reserved[0]);
-                let min_sampler_reserved =
-                    pick_within(96 * sampler_size, sampler_size, reserved[1]);
-                let min_sampler_reserved_with_embedded =
-                    pick_within(2048 * sampler_size, sampler_size, reserved[2]);
-                Properties {
-                    buffer_size,
-                    buffer_alignment,
-                    image_size,
-                    image_alignment,
-                    sampler_size,
-                    sampler_alignment,
-                    resource_heap_alignment: 1 << heap_alignments.0,
-                    sampler_heap_alignment: 1 << heap_alignments.1,
-                    max_resource_heap_size: pick_at_least(
-                        ((1 << 20) - (1 << 15)) * largest + min_resource_reserved,
-                        max[0],
-                    ),
-                    max_sampler_heap_size: pick_at_least(
-                        (4000 * sampler_size + min_sampler_reserved)
-                            .max(2048 * sampler_size + min_sampler_reserved_with_embedded),
-                        max[1],
-                    ),
-                    min_resource_reserved,
-                    min_sampler_reserved,
-                    min_sampler_reserved_with_embedded,
-                }
-            })
+            .prop_map(
+                |(buffer, image, sampler, heap_alignments, reserved, max, tensor)| {
+                    let size_and_alignment =
+                        |(size, alignment): (u32, u32)| (1u64 << size, 1u64 << alignment.min(size));
+                    let (buffer_size, buffer_alignment) = size_and_alignment(buffer);
+                    let (image_size, image_alignment) = size_and_alignment(image);
+                    let (sampler_size, sampler_alignment) = size_and_alignment(sampler);
+                    let largest = buffer_size.max(image_size);
+                    let min_resource_reserved =
+                        pick_within((1 << 15) * largest, largest, reserved[0]);
+                    let min_sampler_reserved =
+                        pick_within(96 * sampler_size, sampler_size, reserved[1]);
+                    let min_sampler_reserved_with_embedded =
+                        pick_within(2048 * sampler_size, sampler_size, reserved[2]);
+                    Properties {
+                        buffer_size,
+                        buffer_alignment,
+                        image_size,
+                        image_alignment,
+                        sampler_size,
+                        sampler_alignment,
+                        resource_heap_alignment: 1 << heap_alignments.0,
+                        sampler_heap_alignment: 1 << heap_alignments.1,
+                        max_resource_heap_size: pick_at_least(
+                            ((1 << 20) - (1 << 15)) * largest + min_resource_reserved,
+                            max[0],
+                        ),
+                        max_sampler_heap_size: pick_at_least(
+                            (4000 * sampler_size + min_sampler_reserved)
+                                .max(2048 * sampler_size + min_sampler_reserved_with_embedded),
+                            max[1],
+                        ),
+                        min_resource_reserved,
+                        min_sampler_reserved,
+                        min_sampler_reserved_with_embedded,
+                        tensor_size: tensor.0,
+                        tensor_alignment: 1 << tensor.1.min(tensor.0.ilog2()),
+                    }
+                },
+            )
     }
 
     fn extreme_values() -> impl Strategy<Value = u64> {
@@ -1301,12 +1380,12 @@ mod tests {
     fn properties() -> impl Strategy<Value = Properties> {
         let replaced = prop_oneof![
             4 => Just(0u16),
-            3 => (0u32..13, 0u32..13).prop_map(|(a, b)| (1u16 << a) | (1u16 << b)),
-            2 => Just(0x1fff_u16),
+            3 => (0u32..15, 0u32..15).prop_map(|(a, b)| (1u16 << a) | (1u16 << b)),
+            2 => Just(0x7fff_u16),
         ];
         (
             conforming_properties(),
-            prop::array::uniform13(extreme_values()),
+            prop::array::uniform15(extreme_values()),
             replaced,
         )
             .prop_map(|(mut properties, extreme, replaced)| {
@@ -1334,22 +1413,36 @@ mod tests {
         ]
     }
 
+    fn descriptors_per_image() -> impl Strategy<Value = u32> {
+        prop_oneof![
+            1 => Just(0u32),
+            2 => Just(1u32),
+            4 => 2u32..=3,
+            2 => 4u32..=16,
+            1 => (0u32..=2).prop_map(|below| u32::MAX - below),
+            1 => any::<u32>(),
+        ]
+    }
+
     fn scenarios(heaps: Vec<Heap>) -> impl Strategy<Value = Scenario> {
         (
             properties(),
             prop::sample::select(heaps),
-            prop::collection::vec((0u8..3, counts()), 0..=8),
+            prop::collection::vec((0u8..5, counts(), descriptors_per_image()), 0..=8),
             addresses(),
             1u64..=1024,
         )
             .prop_map(|(properties, heap, runs, address, valid_multiple)| {
+                let resource = matches!(heap, Heap::Resource | Heap::ResourceWithTensors);
                 let ops = runs
                     .into_iter()
-                    .map(|(kind, count)| match (heap, kind) {
-                        (Heap::Resource, 0) => Op::Buffers(count),
-                        (Heap::Resource, 1) => Op::Images(count),
-                        (Heap::Resource, _) => Op::Uniform(count),
-                        _ => Op::Samplers(count),
+                    .map(|(kind, count, per_image)| match (resource, kind) {
+                        (true, 0) => Op::Buffers(count),
+                        (true, 1) => Op::Images(count),
+                        (true, 2) => Op::Uniform(count),
+                        (true, 3) => Op::MultiDescriptorImages(count, per_image),
+                        (true, _) => Op::Tensors(count),
+                        (false, _) => Op::Samplers(count),
                     })
                     .collect();
                 Scenario {
@@ -1363,7 +1456,12 @@ mod tests {
     }
 
     fn every_heap() -> Vec<Heap> {
-        vec![Heap::Resource, Heap::Sampler, Heap::SamplerWithEmbedded]
+        vec![
+            Heap::Resource,
+            Heap::ResourceWithTensors,
+            Heap::Sampler,
+            Heap::SamplerWithEmbedded,
+        ]
     }
 
     #[derive(Debug, Default)]
@@ -1371,7 +1469,10 @@ mod tests {
         runs_placed: u32,
         empty_runs_that_moved_the_end: u32,
         uniform_strides_rounded_up: u32,
+        tensor_strides_rounded_up: u32,
+        multi_descriptor_image_runs: u32,
         zero_descriptor_size: u32,
+        zero_descriptor_count: u32,
         unaligned_descriptor_size: u32,
         run_overflow: u32,
         runs_after_a_rejected_run: u32,
@@ -1380,6 +1481,8 @@ mod tests {
         finish_overflow: u32,
         conforming_layouts_checked: u32,
         conforming_runs_checked: u32,
+        conforming_multi_descriptor_image_runs_checked: u32,
+        conforming_tensor_runs_checked: u32,
         bind_ok: u32,
         bind_reserved_range_outside_heap: u32,
         bind_misaligned: u32,
@@ -1419,11 +1522,18 @@ mod tests {
                     if matches!(op, Op::Uniform(_)) && actual.stride > actual.descriptor_size {
                         seen.uniform_strides_rounded_up += 1;
                     }
+                    if matches!(op, Op::Tensors(_)) && actual.stride > actual.descriptor_size {
+                        seen.tensor_strides_rounded_up += 1;
+                    }
+                    if matches!(op, Op::MultiDescriptorImages(count, 2..) if count > 0) {
+                        seen.multi_descriptor_image_runs += 1;
+                    }
                 }
                 (Err(errors), Err(actual)) if errors.first() == Some(actual) => {
                     rejected += 1;
                     match actual {
                         HeapLayoutError::ZeroDescriptorSize => seen.zero_descriptor_size += 1,
+                        HeapLayoutError::ZeroDescriptorCount => seen.zero_descriptor_count += 1,
                         HeapLayoutError::UnalignedDescriptorSize { .. } => {
                             seen.unaligned_descriptor_size += 1;
                         }
@@ -1465,6 +1575,7 @@ mod tests {
             && power_of_two_at_most(p.sampler_alignment, p.sampler_size.min(32))
             && power_of_two_at_most(p.image_alignment, p.image_size.min(64))
             && power_of_two_at_most(p.buffer_alignment, p.buffer_size.min(128))
+            && power_of_two_at_most(p.tensor_alignment, p.tensor_size)
             && power_of_two_at_most(p.sampler_heap_alignment, 65536)
             && power_of_two_at_most(p.resource_heap_alignment, 65536)
             && u128::from(p.min_sampler_reserved) <= 96 * sampler_size
@@ -1489,7 +1600,7 @@ mod tests {
 
     fn bind_rules(p: &Properties, heap: Heap) -> BindRules {
         match heap {
-            Heap::Resource => BindRules {
+            Heap::Resource | Heap::ResourceWithTensors => BindRules {
                 reserved_range_in_the_heap: "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11232",
                 size_at_most_the_maximum: "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11234",
                 address_alignment: "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11235",
@@ -1629,9 +1740,25 @@ mod tests {
             p.sampler_size,
             "VUID-vkWriteSamplerDescriptorsEXT-size-11203",
         );
+        let tensor = (
+            p.tensor_alignment,
+            "VUID-VkDescriptorSetAndBindingMappingEXT-source-11390",
+        );
+        let tensor_write = (
+            p.tensor_size,
+            "VUID-vkWriteResourceDescriptorsEXT-size-11207",
+        );
         match op {
             Op::Buffers(_) => (vec![buffer], vec![buffer_write]),
             Op::Images(_) => (vec![image], vec![image_write]),
+            Op::MultiDescriptorImages(_, per_image) => (
+                vec![image],
+                vec![(
+                    p.image_size.saturating_mul(u64::from(per_image)),
+                    "VUID-vkWriteResourceDescriptorsEXT-pResources-11208",
+                )],
+            ),
+            Op::Tensors(_) => (vec![tensor], vec![tensor_write]),
             Op::Uniform(_) => (vec![image, buffer], vec![image_write, buffer_write]),
             Op::Samplers(_) => (vec![sampler], vec![sampler_write]),
         }
@@ -1705,6 +1832,13 @@ mod tests {
                 continue;
             }
             seen.conforming_runs_checked += 1;
+            match op {
+                Op::MultiDescriptorImages(_, 2..) => {
+                    seen.conforming_multi_descriptor_image_runs_checked += 1;
+                }
+                Op::Tensors(_) => seen.conforming_tensor_runs_checked += 1,
+                _ => {}
+            }
             if slots.descriptor_size > slots.stride {
                 return Err(format!(
                     "{op:?} gave {slots:?}, whose descriptors overlap the next slot"
@@ -2200,8 +2334,8 @@ mod tests {
         }
 
         #[test]
-        fn conforming_resource_heaps_meet_vuid_11232_11233_11234_11235_11251_11252_11365_11411_11435_11436_and_11207(
-            scenario in scenarios(vec![Heap::Resource])
+        fn conforming_resource_heaps_meet_vuid_11232_11233_11234_11235_11251_11252_11365_11390_11411_11435_11436_11207_and_11208(
+            scenario in scenarios(vec![Heap::Resource, Heap::ResourceWithTensors])
         ) {
             check_the_specification(&scenario, &mut Seen::default())
                 .map_err(TestCaseError::fail)?;
@@ -2284,6 +2418,7 @@ mod tests {
 
         let runs = seen.runs_placed
             + seen.zero_descriptor_size
+            + seen.zero_descriptor_count
             + seen.unaligned_descriptor_size
             + seen.run_overflow;
         let finishes = seen.layouts + seen.too_large + seen.finish_overflow;
@@ -2298,11 +2433,19 @@ mod tests {
         assert!(seen.runs_after_a_rejected_run * 10 > runs, "{seen:?}");
         assert!(seen.empty_runs_that_moved_the_end > 20, "{seen:?}");
         assert!(seen.uniform_strides_rounded_up > 50, "{seen:?}");
+        assert!(seen.tensor_strides_rounded_up > 50, "{seen:?}");
+        assert!(seen.multi_descriptor_image_runs > 50, "{seen:?}");
+        assert!(seen.zero_descriptor_count > 20, "{seen:?}");
         assert!(seen.layouts * 3 > finishes, "{seen:?}");
         assert!(seen.too_large * 10 > finishes, "{seen:?}");
         assert!(seen.finish_overflow * 40 > finishes, "{seen:?}");
         assert!(seen.conforming_layouts_checked * 8 > cases, "{seen:?}");
         assert!(seen.conforming_runs_checked * 4 > cases, "{seen:?}");
+        assert!(
+            seen.conforming_multi_descriptor_image_runs_checked * 40 > cases,
+            "{seen:?}"
+        );
+        assert!(seen.conforming_tensor_runs_checked * 40 > cases, "{seen:?}");
 
         let binds = seen.bind_ok
             + seen.bind_reserved_range_outside_heap
@@ -2354,9 +2497,58 @@ mod tests {
         assert_eq!(plan.images(0), Err(HeapLayoutError::ZeroDescriptorSize));
         assert_eq!(plan.uniform(1), Err(HeapLayoutError::ZeroDescriptorSize));
         assert_eq!(
+            plan.multi_descriptor_images(1, 3),
+            Err(HeapLayoutError::ZeroDescriptorSize)
+        );
+        assert_eq!(plan.tensors(1), Err(HeapLayoutError::ZeroDescriptorSize));
+        assert_eq!(
+            ResourceHeapPlan::with_tensors(
+                &unqueried,
+                &vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM::default()
+            )
+            .tensors(1),
+            Err(HeapLayoutError::ZeroDescriptorSize)
+        );
+        assert_eq!(
             SamplerHeapPlan::new(&unqueried).samplers(1),
             Err(HeapLayoutError::ZeroDescriptorSize)
         );
+        let images = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+            .image_descriptor_size(32)
+            .image_descriptor_alignment(32);
+        let unqueried_format = vk::SamplerYcbcrConversionImageFormatProperties::default();
+        assert_eq!(
+            ResourceHeapPlan::new(&images).multi_descriptor_images(
+                1,
+                unqueried_format.combined_image_sampler_descriptor_count
+            ),
+            Err(HeapLayoutError::ZeroDescriptorCount)
+        );
+    }
+
+    #[test]
+    fn a_plan_without_tensor_properties_holds_no_tensors() {
+        let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+            .max_resource_heap_size(1 << 20)
+            .image_descriptor_size(32)
+            .image_descriptor_alignment(32);
+        let tensor_properties = vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM::default()
+            .tensor_descriptor_size(64)
+            .tensor_descriptor_alignment(64);
+        let mut without = ResourceHeapPlan::new(&properties);
+        assert_eq!(without.tensors(1), Err(HeapLayoutError::ZeroDescriptorSize));
+        let mut with = ResourceHeapPlan::with_tensors(&properties, &tensor_properties);
+        assert_eq!(with.images(1).map(|slots| slots.end()), Ok(32));
+        assert_eq!(
+            with.tensors(2),
+            Ok(DescriptorSlots {
+                first_index: 1,
+                count: 2,
+                stride: 64,
+                descriptor_size: 64,
+            })
+        );
+        assert_eq!(with.finish().map(|layout| layout.reserved_offset), Ok(192));
     }
 
     #[test]
@@ -2450,12 +2642,21 @@ mod tests {
         empty_runs.buffers(0).unwrap();
         empty_runs.images(0).unwrap();
         empty_runs.uniform(0).unwrap();
+        empty_runs.multi_descriptor_images(0, 3).unwrap();
+        let mut empty_tensors = ResourceHeapPlan::with_tensors(
+            &nothing_to_hold,
+            &vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM::default()
+                .tensor_descriptor_size(48)
+                .tensor_descriptor_alignment(16),
+        );
+        empty_tensors.tensors(0).unwrap();
         let mut empty_samplers = SamplerHeapPlan::new(&nothing_to_hold);
         empty_samplers.samplers(0).unwrap();
         for layout in [
             ResourceHeapPlan::new(&nothing_to_hold).finish().unwrap(),
             SamplerHeapPlan::new(&nothing_to_hold).finish().unwrap(),
             empty_runs.finish().unwrap(),
+            empty_tensors.finish().unwrap(),
             empty_samplers.finish().unwrap(),
         ] {
             assert_eq!(layout.size, 0, "a plan with no slots and no reserved range");
