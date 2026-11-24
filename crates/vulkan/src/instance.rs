@@ -82,6 +82,9 @@ impl Instance {
     /// The returned [`Device`] keeps the Vulkan loader library of this instance loaded.
     /// Destroy the device with [`Device::destroy_device`]; dropping it does not.
     ///
+    /// With a Vulkan loader older than 1.4.350, no other thread may create or destroy a
+    /// device or create an instance while this function runs: see [`Device::load`].
+    ///
     /// # Errors
     ///
     /// Returns the error code of `vkCreateDevice`, for example

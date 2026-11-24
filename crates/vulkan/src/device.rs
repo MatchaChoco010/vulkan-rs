@@ -34,6 +34,18 @@ impl Device {
     /// Use it for a device created with `Instance::create_device_raw` or by other code.
     /// The returned value keeps the loader library of `instance` loaded.
     ///
+    /// # Vulkan loaders before 1.4.350
+    ///
+    /// The function calls `vkGetDeviceProcAddr` once for every device-level command.
+    /// Vulkan-Loader releases before 1.4.350, such as the 1.3.275 of Ubuntu 24.04, do
+    /// not synchronize that command with `vkCreateDevice` and `vkDestroyDevice` on other
+    /// threads, whatever device and instance those are called for, nor with a
+    /// `vkCreateInstance` on another thread that fails for one of the installed drivers:
+    /// the lookup can read memory that those calls have freed, and crash. With such a
+    /// loader, do not create or destroy a device, and do not create an instance, on
+    /// another thread while this function or [`Instance::create_device`] runs. The crate
+    /// does not serialize these calls for the application.
+    ///
     /// # Panics
     ///
     /// Panics if the table of `instance` has no `vkGetDeviceProcAddr`.
