@@ -158,3 +158,41 @@ pub(crate) fn result_command(name: &str, success_codes: &[&str], params: Vec<Fie
         ..command(name, params)
     }
 }
+
+pub(crate) fn chapters_of_the_specification() -> Option<String> {
+    let chapters = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../third_party/vulkan-docs/chapters");
+    if !chapters.is_dir() {
+        assert!(
+            std::env::var_os("VULKAN_RS_REQUIRE_DOCS_TEST").is_none(),
+            "a test that reads the specification is required but third_party/vulkan-docs is not checked out"
+        );
+        eprintln!(
+            "skipping a test that reads the specification: third_party/vulkan-docs is not checked out"
+        );
+        return None;
+    }
+    let mut text = String::new();
+    let mut directories = vec![chapters];
+    while let Some(directory) = directories.pop() {
+        let mut entries = std::fs::read_dir(&directory)
+            .unwrap_or_else(|error| panic!("read {}: {error}", directory.display()))
+            .map(|entry| entry.expect("a directory entry").path())
+            .collect::<Vec<_>>();
+        entries.sort();
+        for path in entries {
+            if path.is_dir() {
+                directories.push(path);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension == "adoc")
+            {
+                let chapter = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+                text.push_str(&chapter);
+                text.push('\n');
+            }
+        }
+    }
+    Some(text)
+}

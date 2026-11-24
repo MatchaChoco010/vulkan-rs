@@ -208,3 +208,56 @@ fn arrays_that_are_not_optional_keep_setting_their_count_for_an_empty_slice() {
         "an empty array of color attachments, which are not optional, does not match two resolve attachments"
     );
 }
+
+#[test]
+fn an_empty_slice_is_null_where_the_specification_gives_null_a_meaning() {
+    let locations = vk::RenderingAttachmentLocationInfo::default()
+        .color_attachment_locations(&[])
+        .color_attachment_count(2);
+    assert_eq!(locations.color_attachment_count, 2);
+    assert!(
+        locations.p_color_attachment_locations.is_null(),
+        "NULL maps each color attachment to its index; a pointer that is not null is read for two elements"
+    );
+    let locations = vk::RenderingAttachmentLocationInfo::default()
+        .color_attachment_count(2)
+        .color_attachment_locations(&[]);
+    assert_eq!(locations.color_attachment_count, 2);
+    assert!(locations.p_color_attachment_locations.is_null());
+    let remapped = [1, 0];
+    let locations = locations.color_attachment_locations(&remapped);
+    assert_eq!(locations.color_attachment_count, 2);
+    assert_eq!(locations.p_color_attachment_locations, remapped.as_ptr());
+    let locations = locations.color_attachment_locations(&[]);
+    assert_eq!(
+        locations.color_attachment_count, 0,
+        "the array that the count described is taken away"
+    );
+    assert!(locations.p_color_attachment_locations.is_null());
+
+    let timings = vk::PastPresentationTimingPropertiesEXT::default().presentation_timings(&mut []);
+    assert_eq!(timings.presentation_timing_count, 0);
+    assert!(
+        timings.p_presentation_timings.is_null(),
+        "pPresentationTimings is NULL, for which the command returns the number of timing records"
+    );
+    let blocks = vk::PhysicalDeviceGpaPropertiesAMD::default().perf_blocks(&mut []);
+    assert_eq!(blocks.perf_block_count, 0);
+    assert!(blocks.p_perf_blocks.is_null());
+
+    let present = vk::PresentInfoKHR::default().wait_semaphores(&[]);
+    assert_eq!(present.wait_semaphore_count, 0);
+    assert!(present.p_wait_semaphores.is_null());
+    let data = vk::DebugUtilsMessengerCallbackDataEXT::default()
+        .queue_labels(&[])
+        .cmd_buf_labels(&[]);
+    assert!(data.p_queue_labels.is_null() && data.p_cmd_buf_labels.is_null());
+    let types = vk::MutableDescriptorTypeListEXT::default().descriptor_types(&[]);
+    assert!(types.p_descriptor_types.is_null());
+    let control = vk::ImageCompressionControlEXT::default().fixed_rate_flags(&[]);
+    assert!(control.p_fixed_rate_flags.is_null());
+    let decode = vk::VideoDecodeInfoKHR::default().reference_slots(&[]);
+    assert!(decode.p_reference_slots.is_null());
+    let encode = vk::VideoEncodeInfoKHR::default().reference_slots(&[]);
+    assert!(encode.p_reference_slots.is_null());
+}

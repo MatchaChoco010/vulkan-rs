@@ -1,4 +1,5 @@
 use super::definition;
+use super::nullable_arrays::NULLABLE_ARRAYS;
 use crate::emit::{doc_of, squash};
 use crate::model::{CType, Model};
 use crate::naming::field_name;
@@ -114,6 +115,7 @@ fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the
     let model = Model::new(Registry::get());
     let mut absent_when_empty = BTreeSet::new();
     let mut counted_arrays = 0;
+    let mut listed_arrays = 0;
     for s in model.ir.structs.iter().filter(|s| !s.union) {
         let out = squash(&definition(&model, s));
         for m in &s.members {
@@ -142,15 +144,25 @@ fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the
             let leaves_the_count = out.contains(&format!(
                 " {{ self.{count_field} = 0; }} self.{field} = {null}; }} else {{ "
             ));
+            let listed = NULLABLE_ARRAYS
+                .iter()
+                .any(|listed| listed.structure == s.name && listed.member == m.name);
+            let nullable = m.optional || listed;
             assert_eq!(
                 (sets_null, guards_the_count, leaves_the_count),
-                (m.optional, m.optional, m.optional),
-                "{}::{}, whose pointer the registry marks as {}: {out}",
+                (nullable, nullable, nullable),
+                "{}::{}, whose pointer the registry marks as {}{}: {out}",
                 s.name,
                 m.name,
-                if m.optional { "optional" } else { "required" }
+                if m.optional { "optional" } else { "required" },
+                if listed {
+                    " and the specification allows to be null"
+                } else {
+                    ""
+                }
             );
-            if m.optional {
+            listed_arrays += usize::from(listed);
+            if nullable {
                 absent_when_empty.insert(format!("{}::{}", s.name, m.name));
             }
         }
@@ -163,15 +175,54 @@ fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the
         "VkTensorDescriptionARM::pStrides",
         "VkGetLatencyMarkerInfoNV::pTimings",
         "VkAccelerationStructureBuildGeometryInfoKHR::ppGeometries",
+        "VkRenderingAttachmentLocationInfo::pColorAttachmentLocations",
+        "VkPastPresentationTimingPropertiesEXT::pPresentationTimings",
     ] {
         assert!(
             absent_when_empty.contains(expected),
             "{expected} is not among {absent_when_empty:?}"
         );
     }
+    assert_eq!(listed_arrays, NULLABLE_ARRAYS.len());
     assert!(
-        absent_when_empty.len() >= 60 && counted_arrays >= 300,
+        absent_when_empty.len() >= 70 && counted_arrays >= 300,
         "{} of {counted_arrays} counted arrays are optional",
         absent_when_empty.len()
     );
+}
+
+#[test]
+fn the_documentation_of_a_setter_says_what_allows_the_array_to_be_absent() {
+    let model = Model::new(Registry::get());
+    for (structure, setter, allowed_by) in [
+        (
+            "VkDescriptorSetLayoutBinding",
+            "immutable_samplers",
+            "registry",
+        ),
+        (
+            "VkRenderingAttachmentLocationInfo",
+            "color_attachment_locations",
+            "specification",
+        ),
+        (
+            "VkPhysicalDeviceGpaPropertiesAMD",
+            "perf_blocks",
+            "specification",
+        ),
+    ] {
+        let s = model
+            .ir
+            .structs
+            .iter()
+            .find(|s| s.name == structure)
+            .unwrap_or_else(|| panic!("the registry has no {structure}"));
+        let documented = doc_of(&definition(&model, s), &format!("pub fn {setter}("));
+        assert!(
+            documented[1].starts_with(&format!(
+                "An empty slice stands for an array that is absent, which the {allowed_by} allows for this member: it sets "
+            )),
+            "{structure}: {documented:?}"
+        );
+    }
 }
