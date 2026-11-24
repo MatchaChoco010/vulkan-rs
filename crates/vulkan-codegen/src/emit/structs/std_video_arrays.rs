@@ -518,7 +518,7 @@ const ARRAYS: &[StdVideoArray] = &[
         "StdVideoEncodeH264ReferenceListsInfo",
         "reserved1",
         &[("7", 7)],
-        "padding: the Vulkan specification describes the member as used only for padding purposes and otherwise ignored, and video.xml says it is reserved for future use and must be initialized with 0",
+        "padding: video.xml says that the member is reserved for future use and must be initialized with 0",
     ),
     in_member(
         "StdVideoEncodeH264ReferenceListsInfo",
@@ -619,13 +619,13 @@ const ARRAYS: &[StdVideoArray] = &[
         "StdVideoEncodeH265LongTermRefPics",
         "delta_poc_msb_present_flag",
         &[("STD_VIDEO_H265_MAX_DELTA_POC", 48)],
-        "H.265 7.3.6.1 reads delta_poc_msb_present_flag[i] for i < num_long_term_sps + num_long_term_pics, and 7.4.7.1 limits num_long_term_sps to 32 (num_long_term_ref_pics_sps) and num_long_term_pics to 16 (MaxDpbSize), 48 together",
+        "H.265 7.3.6.1 reads delta_poc_msb_present_flag[i] for i < num_long_term_sps + num_long_term_pics, a sum that 7.4.7.1 limits to sps_max_dec_pic_buffering_minus1, at most MaxDpbSize - 1 = 15 by A.4.2; the header gives the 32 + 16 elements of STD_VIDEO_H265_MAX_LONG_TERM_REF_PICS_SPS and STD_VIDEO_H265_MAX_LONG_TERM_PICS together",
     ),
     fixed(
         "StdVideoEncodeH265LongTermRefPics",
         "delta_poc_msb_cycle_lt",
         &[("STD_VIDEO_H265_MAX_DELTA_POC", 48)],
-        "H.265 7.3.6.1 reads delta_poc_msb_cycle_lt[i] for i < num_long_term_sps + num_long_term_pics, and 7.4.7.1 limits num_long_term_sps to 32 (num_long_term_ref_pics_sps) and num_long_term_pics to 16 (MaxDpbSize), 48 together",
+        "H.265 7.3.6.1 reads delta_poc_msb_cycle_lt[i] for i < num_long_term_sps + num_long_term_pics, a sum that 7.4.7.1 limits to sps_max_dec_pic_buffering_minus1, at most MaxDpbSize - 1 = 15 by A.4.2; the header gives the 32 + 16 elements of STD_VIDEO_H265_MAX_LONG_TERM_REF_PICS_SPS and STD_VIDEO_H265_MAX_LONG_TERM_PICS together",
     ),
     fixed(
         "StdVideoEncodeH265PictureInfo",
@@ -869,13 +869,13 @@ const ARRAYS: &[StdVideoArray] = &[
         "StdVideoH265PictureParameterSet",
         "column_width_minus1",
         &[("STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_COLS_LIST_SIZE", 19)],
-        "H.265 7.3.2.3.1 reads column_width_minus1[i] for i < num_tile_columns_minus1, which A.4.1 f) limits to less than MaxTileCols, at most 20 in Table A.8",
+        "H.265 7.3.2.3.1 reads column_width_minus1[i] for i < num_tile_columns_minus1, which A.4.1 f) limits to less than MaxTileCols, 20 in Table A.8 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 40",
     ),
     fixed(
         "StdVideoH265PictureParameterSet",
         "row_height_minus1",
         &[("STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_ROWS_LIST_SIZE", 21)],
-        "H.265 7.3.2.3.1 reads row_height_minus1[i] for i < num_tile_rows_minus1, which A.4.1 f) limits to less than MaxTileRows, at most 22 in Table A.8",
+        "H.265 7.3.2.3.1 reads row_height_minus1[i] for i < num_tile_rows_minus1, which A.4.1 f) limits to less than MaxTileRows, 22 in Table A.8 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 44",
     ),
     one(
         "StdVideoH265PictureParameterSet",
@@ -897,7 +897,7 @@ const ARRAYS: &[StdVideoArray] = &[
                 128,
             ),
         ],
-        "H.265 7.3.2.2.3 and 7.3.2.3.3 read the palette predictor initializers [comp][i] for comp < 3 and i <= num_palette_predictor_initializers_minus1, whose number 7.4.3.2.3 bounds by PaletteMaxPredictorSize, at most 128 by A.3.7 and A.3.8",
+        "H.265 7.3.2.2.3 reads sps_palette_predictor_initializer[comp][i] for i <= sps_num_palette_predictor_initializers_minus1, and 7.3.2.3.3 reads pps_palette_predictor_initializer[comp][i] for i < pps_num_palette_predictor_initializers, both for comp < numComps, which is 1 or 3; 7.4.3.2.3 and 7.4.3.3.3 bound the number of entries by PaletteMaxPredictorSize, at most 128 by A.3.7 and A.3.8",
     ),
     fixed(
         "StdVideoH265ScalingLists",
@@ -1004,25 +1004,25 @@ const ARRAYS: &[StdVideoArray] = &[
         "StdVideoH265SubLayerHrdParameters",
         "bit_rate_value_minus1",
         &[("STD_VIDEO_H265_CPB_CNT_LIST_SIZE", 32)],
-        "H.265 E.2.3 reads bit_rate_value_minus1[i] for i <= CpbCnt = cpb_cnt_minus1[subLayerId], which E.3.2 limits to 31",
+        "H.265 E.2.3 reads bit_rate_value_minus1[i] for i < CpbCnt, which E.3.3 sets to cpb_cnt_minus1[subLayerId] + 1, at most 32 by E.3.2",
     ),
     fixed(
         "StdVideoH265SubLayerHrdParameters",
         "cpb_size_value_minus1",
         &[("STD_VIDEO_H265_CPB_CNT_LIST_SIZE", 32)],
-        "H.265 E.2.3 reads cpb_size_value_minus1[i] for i <= CpbCnt = cpb_cnt_minus1[subLayerId], which E.3.2 limits to 31",
+        "H.265 E.2.3 reads cpb_size_value_minus1[i] for i < CpbCnt, which E.3.3 sets to cpb_cnt_minus1[subLayerId] + 1, at most 32 by E.3.2",
     ),
     fixed(
         "StdVideoH265SubLayerHrdParameters",
         "cpb_size_du_value_minus1",
         &[("STD_VIDEO_H265_CPB_CNT_LIST_SIZE", 32)],
-        "H.265 E.2.3 reads cpb_size_du_value_minus1[i] for i <= CpbCnt = cpb_cnt_minus1[subLayerId], which E.3.2 limits to 31",
+        "H.265 E.2.3 reads cpb_size_du_value_minus1[i] for i < CpbCnt, which E.3.3 sets to cpb_cnt_minus1[subLayerId] + 1, at most 32 by E.3.2",
     ),
     fixed(
         "StdVideoH265SubLayerHrdParameters",
         "bit_rate_du_value_minus1",
         &[("STD_VIDEO_H265_CPB_CNT_LIST_SIZE", 32)],
-        "H.265 E.2.3 reads bit_rate_du_value_minus1[i] for i <= CpbCnt = cpb_cnt_minus1[subLayerId], which E.3.2 limits to 31",
+        "H.265 E.2.3 reads bit_rate_du_value_minus1[i] for i < CpbCnt, which E.3.3 sets to cpb_cnt_minus1[subLayerId] + 1, at most 32 by E.3.2",
     ),
     one(
         "StdVideoH265VideoParameterSet",
@@ -1244,12 +1244,12 @@ const CONSTANTS: &[StdVideoConstant] = &[
     constant(
         "STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_COLS_LIST_SIZE",
         "19",
-        "H.265 A.4.1 f) and Table A.8: num_tile_columns_minus1 is less than MaxTileCols, at most 20",
+        "H.265 A.4.1 f) and Table A.8: num_tile_columns_minus1 is less than MaxTileCols, 20 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 40",
     ),
     constant(
         "STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_ROWS_LIST_SIZE",
         "21",
-        "H.265 A.4.1 f) and Table A.8: num_tile_rows_minus1 is less than MaxTileRows, at most 22",
+        "H.265 A.4.1 f) and Table A.8: num_tile_rows_minus1 is less than MaxTileRows, 22 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 44",
     ),
     constant(
         "STD_VIDEO_H265_CPB_CNT_LIST_SIZE",
@@ -1264,7 +1264,7 @@ const CONSTANTS: &[StdVideoConstant] = &[
     constant(
         "STD_VIDEO_H265_MAX_DELTA_POC",
         "48",
-        "H.265 7.4.7.1: num_long_term_sps is at most num_long_term_ref_pics_sps (32) and num_long_term_pics at most 16, 48 together",
+        "the sum of STD_VIDEO_H265_MAX_LONG_TERM_REF_PICS_SPS (32) and STD_VIDEO_H265_MAX_LONG_TERM_PICS (16), more than the 15 entries to which H.265 7.4.7.1 limits num_long_term_sps + num_long_term_pics",
     ),
     constant(
         "STD_VIDEO_H265_MAX_DPB_SIZE",
@@ -1519,6 +1519,11 @@ fn check_arrays(ir: &Registry) -> usize {
     let model = Model::new(ir);
     let mut checked = BTreeSet::new();
     for s in std_video_structures(ir) {
+        assert!(
+            !s.union,
+            "{} is a union of a Vulkan Video Std header, whose members this check does not read",
+            s.name
+        );
         let generated = squash(&definition(&model, s));
         for m in s.members.iter().filter(|m| is_array(m)) {
             check_member(ir, s, m, &generated);
