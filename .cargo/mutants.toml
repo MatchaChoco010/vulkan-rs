@@ -1,0 +1,25 @@
+# Settings of cargo-mutants (https://mutants.rs/), which changes the code in small ways
+# and reports the changes that no test notices:
+#
+#     cargo mutants -p vulkan-alloc
+#     cargo mutants -p vulkan-codegen
+#     cargo mutants -p vulkan -f 'crates/vulkan/src/**'
+#
+# A mutant that loops forever while it allocates can take all the memory of the machine,
+# so run it under a memory limit (for example `systemd-run --user --scope -p MemoryMax=6G`).
+
+# The generated bindings are checked against the C headers and the specification, not by
+# mutating 16 MB of generated code.
+exclude_globs = ["crates/vulkan/src/vk/generated/**", "examples/**"]
+
+# Tests whose name starts with `slow_` repeat faster tests at a larger size.
+additional_cargo_test_args = ["--", "--skip", "slow_"]
+
+# A mutant that makes a search loop forever is caught by this timeout.
+minimum_test_timeout = 60
+
+exclude_re = [
+    # Reaching this check takes about 2^32 regions in one block, which is about 160 GiB of
+    # host memory.
+    "has_room_for_regions",
+]
