@@ -53,7 +53,7 @@ fn msaa_pipeline(
         .cull_mode(vk::CullModeFlags::NONE)
         .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
         .line_width(1.0);
-    let sample_masks = [sample_mask];
+    let sample_masks = [sample_mask, 0];
     let multisample = vk::PipelineMultisampleStateCreateInfo::default()
         .rasterization_samples(vk::SampleCountFlagBits::_4)
         .sample_shading_enable(true)
