@@ -12,6 +12,7 @@ use vulkan::{Device, Entry, Instance};
 pub const INSTANCE: u64 = 0x1A57;
 pub const DEVICE: u64 = 0xDE71CE;
 pub const READ_LIMIT: u64 = 128;
+pub const INSTANCE_VERSION: u32 = vk::make_api_version(0, 1, 3, 250);
 
 pub fn cases(default: u32) -> Config {
     let cases = std::env::var("PROPTEST_CASES")
@@ -332,6 +333,14 @@ unsafe extern "system" fn enumerate_device_extension_properties(
     );
     unsafe { write_extension_properties(properties, count, &answer) };
     answer.result
+}
+
+unsafe extern "system" fn enumerate_instance_version(api_version: *mut u32) -> VkResult {
+    if api_version.is_null() {
+        return VkResult::ERROR_UNKNOWN;
+    }
+    unsafe { api_version.write(INSTANCE_VERSION) };
+    VkResult::SUCCESS
 }
 
 unsafe extern "system" fn enumerate_instance_extension_properties(
@@ -788,6 +797,10 @@ unsafe extern "system" fn get_instance_proc_addr(
     record_request(instance.as_raw_u64(), name);
     match name.to_bytes() {
         b"vkCreateInstance" => pfn!(create_instance, vk::PFN_vkCreateInstance),
+        b"vkEnumerateInstanceVersion" => pfn!(
+            enumerate_instance_version,
+            vk::PFN_vkEnumerateInstanceVersion
+        ),
         b"vkEnumerateInstanceExtensionProperties" => pfn!(
             enumerate_instance_extension_properties,
             vk::PFN_vkEnumerateInstanceExtensionProperties

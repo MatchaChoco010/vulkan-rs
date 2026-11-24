@@ -7,7 +7,7 @@ use crate::docs::{Doc, join_and, join_or};
 use crate::emit::command_info::result_code;
 use crate::emit::{arrow, assert_distinct_names};
 use crate::model::AlignedOutput;
-use crate::model::{CType, Cfg, Dispatch, Model, null_ptr};
+use crate::model::{CType, Cfg, Dispatch, Model, null_ptr, parse_version};
 use crate::naming::command_name;
 use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
@@ -19,11 +19,18 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
     let aligned = aligned_output(model, c, params, &shape);
     assert_distinct_names(&c.name, bound_names(c, params, &shape, &inputs, aligned));
+    let absent_before = absent_before(c, dispatch);
+    assert!(
+        absent_before.is_none() || matches!(shape, Shape::ReturnsValue { .. }),
+        "{}: the wrapper of a command that the loader may not provide has to return a value",
+        c.name
+    );
     let call = Call {
         model,
         c,
         params,
         inputs: &inputs,
+        absent_before,
     };
     let Returned {
         ty,
@@ -70,8 +77,13 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         c,
         note.trim_end(),
         errors.or_else(|| ty.contains("Result<").then(|| error_codes(model, &cfg, c))),
-        inputs.checks.contains("assert_eq!"),
-        &inputs.narrowed_counts,
+        panics(
+            model,
+            c,
+            inputs.checks.contains("assert_eq!"),
+            &inputs.narrowed_counts,
+            absent_before.is_some(),
+        ),
     );
     format!(
         "{doc}{cfg}pub unsafe fn {name}{generics}(&self{signature}){arrow} {{
@@ -85,6 +97,24 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         arrow = arrow(&ty),
         checks = inputs.checks,
     )
+}
+
+pub(super) fn absent_before(c: &Command, dispatch: Dispatch) -> Option<(u32, u32)> {
+    if dispatch != Dispatch::Entry || (c.version.is_none() && c.extensions.is_empty()) {
+        return None;
+    }
+    let Some(version) = c.version.as_deref().filter(|_| c.extensions.is_empty()) else {
+        panic!(
+            "{}: a command that needs no instance and is provided by an extension, which the loader may not provide",
+            c.name
+        )
+    };
+    Some(parse_version(version).unwrap_or_else(|| {
+        panic!(
+            "{}: a command that needs no instance and is provided by `{version}`, which is not a Vulkan version",
+            c.name
+        )
+    }))
 }
 
 const FIXED_BINDINGS: &[&str] = &["x", "element", "entry", "error"];
@@ -195,21 +225,40 @@ fn shape_locals(shape: &Shape, params: &[Field]) -> Vec<(String, String)> {
     }
 }
 
+fn panics(
+    model: &Model<'_>,
+    c: &Command,
+    checks_lengths: bool,
+    narrowed_counts: &[String],
+    may_be_absent: bool,
+) -> String {
+    assert!(
+        !(may_be_absent && checks_lengths),
+        "{}: the wrapper of a command that the loader may not provide checks the lengths of slices",
+        c.name
+    );
+    let lengths = if checks_lengths {
+        " Also panics if the slices do not have the lengths that the command needs: slices that it counts with one parameter have to be equally long, and a slice whose length it reads from another argument has to have that length."
+    } else {
+        ""
+    };
+    (!may_be_absent)
+        .then(|| not_loaded(model, c) + lengths)
+        .into_iter()
+        .chain(narrowed_counts.iter().cloned())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn doc(
     model: &Model<'_>,
     cfg: &Cfg,
     c: &Command,
     note: &str,
     errors: Option<String>,
-    checks_lengths: bool,
-    narrowed_counts: &[String],
+    panics: String,
 ) -> Doc {
     let raw = raw_name(c);
-    let lengths = if checks_lengths {
-        " Also panics if the slices do not have the lengths that the command needs: slices that it counts with one parameter have to be equally long, and a slice whose length it reads from another argument has to have that length."
-    } else {
-        ""
-    };
     Doc::new()
         .text(model.summary(cfg, &c.name).unwrap_or_default())
         .text(format!(
@@ -222,14 +271,7 @@ fn doc(
             "Safety",
             with_deferred_safety(model, c, format!("The same as for [`Self::{raw}`].")),
         )
-        .section(
-            "Panics",
-            [not_loaded(c) + lengths]
-                .into_iter()
-                .chain(narrowed_counts.iter().cloned())
-                .collect::<Vec<_>>()
-                .join(" "),
-        )
+        .section("Panics", panics)
         .alias(&c.name)
 }
 
@@ -326,6 +368,7 @@ struct Call<'a> {
     c: &'a Command,
     params: &'a [Field],
     inputs: &'a Inputs,
+    absent_before: Option<(u32, u32)>,
 }
 
 impl Call<'_> {
@@ -488,6 +531,27 @@ impl Call<'_> {
         let call = self.raw(&[(out, "&mut value")]);
         let listed_errors = self.listed_errors();
         let written = format!("Returns what the command writes to `{}`", p.name);
+        if let Some((major, minor)) = self.absent_before {
+            assert!(
+                self.returns_result() && !self.has_success_codes_besides_success(),
+                "{}: the wrapper of a command that the loader may not provide has to return a value or an error",
+                self.c.name
+            );
+            return Returned::new(
+                format!("crate::vk::Result<Option<{ty}>>"),
+                format!(
+                    "if self.fp().{pointer}.is_none() {{ return Ok(None); }}
+                    {declaration}
+                    {}?;
+                    Ok(Some({value}))",
+                    self.result_of(&call),
+                    pointer = command_name(&self.c.name),
+                ),
+            )
+            .note(format!(
+                "{written} in `Some`, or `None` if the loader does not provide the command, which means that it implements a Vulkan version before {major}.{minor}."
+            ));
+        }
         if !self.returns_result() {
             return Returned::new(
                 ty,

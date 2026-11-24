@@ -899,6 +899,17 @@ fn creating_an_instance_or_a_device_loads_its_commands_with_the_new_handle() {
     }
 }
 
+#[test]
+fn the_instance_version_is_none_when_the_loader_does_not_provide_the_command() {
+    let without = fake_driver::entry_without_commands();
+    assert_eq!(unsafe { without.enumerate_instance_version() }, Ok(None));
+    let with = fake_driver::entry();
+    assert_eq!(
+        unsafe { with.enumerate_instance_version() },
+        Ok(Some(fake_driver::INSTANCE_VERSION))
+    );
+}
+
 type UnloadedCall<'a> = (&'static CommandInfo, Box<dyn Fn() + 'a>);
 
 #[test]
@@ -910,12 +921,6 @@ fn a_command_that_is_not_loaded_panics_with_its_name() {
     let command_buffer = vk::CommandBuffer::from_raw_u64(1);
     let fences = [vk::Fence::from_raw_u64(FENCE)];
     let calls: Vec<UnloadedCall<'_>> = vec![
-        (
-            &vk::command::ENUMERATE_INSTANCE_VERSION,
-            Box::new(|| {
-                let _ = unsafe { entry.enumerate_instance_version() };
-            }),
-        ),
         (
             &vk::command::ENUMERATE_INSTANCE_EXTENSION_PROPERTIES,
             Box::new(|| {
