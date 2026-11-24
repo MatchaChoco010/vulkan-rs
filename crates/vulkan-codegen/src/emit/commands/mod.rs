@@ -2599,6 +2599,12 @@ mod tests {
             ),
             "{documented}"
         );
+        assert!(
+            documented.contains(
+                "Panics if `vkEnumerateInstanceThings` is not loaded: the loader returned no pointer for it, as a loader that implements a Vulkan version before 1.2 does."
+            ),
+            "{documented}"
+        );
     }
 
     #[test]

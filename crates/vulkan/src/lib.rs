@@ -139,11 +139,11 @@
 //! panics, except for the wrappers of commands that need no instance and that Vulkan 1.0
 //! does not provide: they return `None`, since the application cannot enable a version for
 //! the loader. [`Entry::enumerate_instance_version`] returns `Ok(None)` on a loader that
-//! implements only Vulkan 1.0. Whether a command of an extension or version that is not enabled has a null
-//! pointer depends on the loader and the driver; calling it is invalid either way. The
-//! wrappers also panic when two slices that the C signature passes with one shared length
-//! have different lengths, and when a slice has more elements than the type of its count
-//! parameter can count, such as more than `u32::MAX` for a `uint32_t` count.
+//! implements only Vulkan 1.0. Whether a command of an extension or version that is not
+//! enabled has a null pointer depends on the loader and the driver; calling it is invalid
+//! either way. The wrappers also panic when two slices that the C signature passes with one
+//! shared length have different lengths, and when a slice has more elements than the type
+//! of its count parameter can count, such as more than `u32::MAX` for a `uint32_t` count.
 //!
 //! Nothing is destroyed on drop: [`Entry`], [`Instance`] and [`Device`] only hold a handle
 //! and a shared function pointer table, and are cheap to clone, `Send` and `Sync`. Destroy
