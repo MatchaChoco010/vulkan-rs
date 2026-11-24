@@ -12213,7 +12213,7 @@ pub struct AccelerationStructureInstanceKHR {
     /// The storage unit of the C bit-fields `instanceShaderBindingTableRecordOffset` and `flags`.
     /// The methods named after the bit-fields read and write them.
     pub bitfield1: u32,
-    /// `accelerationStructureReference` is either :
+    /// `accelerationStructureReference` is either:
     ///
     /// - a device address containing the value obtained from
     ///   [`vkGetAccelerationStructureDeviceAddressKHR`](crate::Device::get_acceleration_structure_device_address_khr)
@@ -29943,7 +29943,7 @@ pub union DescriptorDataEXT<'a> {
     /// `accelerationStructure` is the address of a
     /// [`VkAccelerationStructureKHR`](AccelerationStructureKHR) specifying the parameters of a
     /// [`VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR`](DescriptorType::ACCELERATION_STRUCTURE_KHR)
-    /// descriptor , or a [`VkAccelerationStructureNV`](AccelerationStructureNV) handle specifying
+    /// descriptor, or a [`VkAccelerationStructureNV`](AccelerationStructureNV) handle specifying
     /// the parameters of a
     /// [`VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV`](DescriptorType::ACCELERATION_STRUCTURE_NV)
     /// descriptor.
@@ -59825,7 +59825,7 @@ pub struct PhysicalDeviceBufferDeviceAddressFeatures<'a> {
     /// reusing buffer and device addresses, e.g. for trace capture and replay.
     pub buffer_device_address_capture_replay: Bool32,
     /// `bufferDeviceAddressMultiDevice` indicates that the implementation supports the
-    /// `bufferDeviceAddress` , `rayTracingPipeline` and `rayQuery` features for logical devices
+    /// `bufferDeviceAddress`, `rayTracingPipeline` and `rayQuery` features for logical devices
     /// created with multiple physical devices. If this feature is not supported, buffer and
     /// acceleration structure addresses must not be queried on a logical device created with more
     /// than one physical device.
@@ -64019,7 +64019,7 @@ pub struct PhysicalDeviceDescriptorBufferPropertiesEXT<'a> {
     /// retrieve descriptor data can be created in relation to command buffer submission. If this
     /// value is [`VK_FALSE`](FALSE), then the application must create any [`VkSampler`](Sampler) or
     /// [`VkImageView`](ImageView) objects whose descriptor data is accessed during the execution of
-    /// a command buffer, before the [`vkQueueSubmit`](crate::Device::queue_submit) , or
+    /// a command buffer, before the [`vkQueueSubmit`](crate::Device::queue_submit), or
     /// [`vkQueueSubmit2`](crate::Device::queue_submit2), call that submits that command buffer.
     pub allow_sampler_image_view_post_submit_creation: Bool32,
     /// `descriptorBufferOffsetAlignment` indicates the required alignment in bytes when setting
@@ -78312,7 +78312,7 @@ pub struct PhysicalDeviceMaintenance9PropertiesKHR<'a> {
     /// [`VkVertexInputAttributeDescription2EXT`](VertexInputAttributeDescription2EXT)::`location`
     /// set by the most recent call to
     /// [`vkCmdSetVertexInputEXT`](crate::Device::cmd_set_vertex_input_ext) when the state is
-    /// dynamic .
+    /// dynamic.
     pub default_vertex_attribute_value: DefaultVertexAttributeValueKHR,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -92294,7 +92294,7 @@ pub struct PhysicalDeviceSubgroupSizeControlFeatures<'a> {
     /// structure.
     pub subgroup_size_control: Bool32,
     /// `computeFullSubgroups` indicates whether the implementation supports requiring full
-    /// subgroups in compute , mesh, or task shaders via the
+    /// subgroups in compute, mesh, or task shaders via the
     /// [`VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT`](PipelineShaderStageCreateFlagBits::REQUIRE_FULL_SUBGROUPS)
     /// flag.
     pub compute_full_subgroups: Bool32,
@@ -96531,7 +96531,7 @@ pub struct PhysicalDeviceVulkan12Features<'a> {
     /// reusing buffer and device addresses, e.g. for trace capture and replay.
     pub buffer_device_address_capture_replay: Bool32,
     /// `bufferDeviceAddressMultiDevice` indicates that the implementation supports the
-    /// `bufferDeviceAddress` , `rayTracingPipeline` and `rayQuery` features for logical devices
+    /// `bufferDeviceAddress`, `rayTracingPipeline` and `rayQuery` features for logical devices
     /// created with multiple physical devices. If this feature is not supported, buffer and
     /// acceleration structure addresses must not be queried on a logical device created with more
     /// than one physical device.
@@ -97737,7 +97737,7 @@ pub struct PhysicalDeviceVulkan13Features<'a> {
     /// structure.
     pub subgroup_size_control: Bool32,
     /// `computeFullSubgroups` indicates whether the implementation supports requiring full
-    /// subgroups in compute , mesh, or task shaders via the
+    /// subgroups in compute, mesh, or task shaders via the
     /// [`VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT`](PipelineShaderStageCreateFlagBits::REQUIRE_FULL_SUBGROUPS)
     /// flag.
     pub compute_full_subgroups: Bool32,
@@ -120027,9 +120027,9 @@ pub struct SwapchainCreateInfoKHR<'a> {
     /// >
     /// > On some platforms, it is normal that `maxImageExtent` may become `(0, 0)`, for example
     /// > when the window is minimized. In such a case, it is not possible to create a swapchain due
-    /// > to the Valid Usage requirements , unless scaling is selected through
+    /// > to the Valid Usage requirements, unless scaling is selected through
     /// > [`VkSwapchainPresentScalingCreateInfoKHR`](SwapchainPresentScalingCreateInfoKHR), if
-    /// > supported .
+    /// > supported.
     pub image_extent: Extent2D,
     /// `imageArrayLayers` is the number of views in a multiview/stereo surface. For
     /// non-stereoscopic-3D applications, this value is 1.

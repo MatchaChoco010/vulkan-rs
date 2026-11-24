@@ -2476,7 +2476,7 @@ impl BuildAccelerationStructureFlagBitsKHR {
     /// in
     /// [`VkAccelerationStructureBuildGeometryInfoKHR`](AccelerationStructureBuildGeometryInfoKHR)
     /// or an `update` of [`VK_TRUE`](TRUE) in
-    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv) .
+    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv).
     /// For sphere and LSS primitives, only positions and radii may be updated, the provided index
     /// buffers and flags must remain unchanged from the initial build.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR")]
@@ -16983,7 +16983,7 @@ impl PipelineStageFlagBits {
     #[doc(alias = "VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT")]
     pub const MESH_SHADER_EXT: Self = Self(1048576);
     /// `VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR` specifies the execution of the ray tracing
-    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv) ,
+    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv),
     /// [`vkCmdTraceRaysKHR`](crate::Device::cmd_trace_rays_khr), or
     /// [`vkCmdTraceRaysIndirectKHR`](crate::Device::cmd_trace_rays_indirect_khr)
     #[doc(alias = "VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR")]
@@ -17004,8 +17004,7 @@ impl PipelineStageFlagBits {
     /// `VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR` specifies the execution of
     /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv),
     /// [`vkCmdCopyAccelerationStructureNV`](crate::Device::cmd_copy_acceleration_structure_nv),
-    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv)
-    /// ,
+    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv),
     /// [`vkCmdBuildAccelerationStructuresKHR`](crate::Device::cmd_build_acceleration_structures_khr),
     /// [`vkCmdBuildAccelerationStructuresIndirectKHR`](crate::Device::cmd_build_acceleration_structures_indirect_khr),
     /// [`vkCmdCopyAccelerationStructureKHR`](crate::Device::cmd_copy_acceleration_structure_khr),
@@ -30691,7 +30690,7 @@ impl BuildAccelerationStructureFlagsKHR {
     /// in
     /// [`VkAccelerationStructureBuildGeometryInfoKHR`](AccelerationStructureBuildGeometryInfoKHR)
     /// or an `update` of [`VK_TRUE`](TRUE) in
-    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv) .
+    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv).
     /// For sphere and LSS primitives, only positions and radii may be updated, the provided index
     /// buffers and flags must remain unchanged from the initial build.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR")]
@@ -52800,7 +52799,7 @@ impl PipelineStageFlags {
     #[doc(alias = "VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT")]
     pub const MESH_SHADER_EXT: Self = Self(1048576);
     /// `VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR` specifies the execution of the ray tracing
-    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv) ,
+    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv),
     /// [`vkCmdTraceRaysKHR`](crate::Device::cmd_trace_rays_khr), or
     /// [`vkCmdTraceRaysIndirectKHR`](crate::Device::cmd_trace_rays_indirect_khr)
     #[doc(alias = "VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR")]
@@ -52821,8 +52820,7 @@ impl PipelineStageFlags {
     /// `VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR` specifies the execution of
     /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv),
     /// [`vkCmdCopyAccelerationStructureNV`](crate::Device::cmd_copy_acceleration_structure_nv),
-    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv)
-    /// ,
+    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv),
     /// [`vkCmdBuildAccelerationStructuresKHR`](crate::Device::cmd_build_acceleration_structures_khr),
     /// [`vkCmdBuildAccelerationStructuresIndirectKHR`](crate::Device::cmd_build_acceleration_structures_indirect_khr),
     /// [`vkCmdCopyAccelerationStructureKHR`](crate::Device::cmd_copy_acceleration_structure_khr),

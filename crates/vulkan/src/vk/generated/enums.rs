@@ -5906,15 +5906,14 @@ impl CopyAccelerationStructureModeKHR {
     /// structure must have been created with the same parameters as `src` with the exception of
     /// `size`, which must at least as large as the queried
     /// [`VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR`](QueryType::ACCELERATION_STRUCTURE_SIZE_KHR)
-    /// size . If `src` contains references to other acceleration structures, `dst` will reference
+    /// size. If `src` contains references to other acceleration structures, `dst` will reference
     /// the same acceleration structures.
     #[doc(alias = "VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR")]
     pub const CLONE: Self = Self(0);
     /// `VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR` creates a more compact version of an
     /// acceleration structure `src` into `dst`. The acceleration structure `dst` must have been
     /// created with a size at least as large as that returned by
-    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv)
-    /// ,
+    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv),
     /// [`vkCmdWriteAccelerationStructuresPropertiesKHR`](crate::Device::cmd_write_acceleration_structures_properties_khr),
     /// or
     /// [`vkWriteAccelerationStructuresPropertiesKHR`](crate::Device::write_acceleration_structures_properties_khr)

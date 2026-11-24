@@ -3717,6 +3717,82 @@ fn generated_documentation_has_no_asciidoc_left() {
     );
 }
 
+fn spaces_before_punctuation(source: &str) -> Vec<String> {
+    let code_span = regex(r"``.*?``|`[^`\n]*`");
+    let separated = regex(r"\S [.,;:!?)]+(?: |$)");
+    doc_blocks(source)
+        .iter()
+        .filter_map(|doc| {
+            let text = doc.split("```").step_by(2).collect::<Vec<_>>().join(" ");
+            let text = flat(&code_span.replace_all(&text, "`code`"));
+            let found = separated.find(&text)?;
+            Some(format!("`{}` in `{}`", found.as_str().trim(), flat(doc)))
+        })
+        .collect()
+}
+
+#[test]
+fn generated_documentation_has_no_space_before_closing_punctuation() {
+    let directory = workspace_root().join("crates/vulkan/src/vk/generated");
+    let mut checked = 0;
+    let mut failures = Vec::new();
+    for entry in fs::read_dir(&directory).expect("read the generated sources") {
+        let path = entry.expect("directory entry").path();
+        let source = fs::read_to_string(&path).expect("read a generated source");
+        checked += doc_blocks(&source).len();
+        failures.extend(
+            spaces_before_punctuation(&source)
+                .into_iter()
+                .map(|failure| {
+                    let file = path.file_name().unwrap_or_default().to_string_lossy();
+                    format!("{file}: {failure}")
+                }),
+        );
+    }
+    assert!(checked > 10_000, "only {checked} doc comments were checked");
+    assert!(
+        failures.is_empty(),
+        "{} generated doc comments have a space before closing punctuation, which is where a line of the specification starts with the punctuation:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn a_space_before_closing_punctuation_is_reported() {
+    for (doc, found) in [
+        ("/// a copy . If more", "y ."),
+        ("/// is either :\n///\n/// - this", "r :"),
+        ("/// the command\n/// , or the other", "d ,"),
+        (
+            "/// via [`vkTrace`](crate::Device::trace) ,\n/// or not",
+            ") ,",
+        ),
+        ("/// `a` , `b` and `c`", "` ,"),
+        ("/// (see the list ) and", "t )"),
+        ("/// - an item\n///   ; the end", "m ;"),
+        ("/// really ?!", "y ?!"),
+    ] {
+        let reported = spaces_before_punctuation(&format!("{doc}\npub struct Thing;\n"));
+        assert_eq!(reported.len(), 1, "`{doc}`: {reported:?}");
+        assert!(
+            reported[0].starts_with(&format!("`{found}` in `")),
+            "`{doc}`: {reported:?}"
+        );
+    }
+    for doc in [
+        "/// a copy. If more, then: this; that (or those)!",
+        "/// `a . b`, `x ,` and ``c ` ; d``",
+        "/// ```c\n/// a = b ? c : d ;\n/// ```",
+        "/// a .5 factor and ...more, a?b:c",
+        "/// - `a`: one\n/// - `b`: two",
+        "/// x — y - z",
+    ] {
+        let reported = spaces_before_punctuation(&format!("{doc}\npub struct Thing;\n"));
+        assert!(reported.is_empty(), "`{doc}` is reported: {reported:?}");
+    }
+}
+
 #[test]
 fn asciidoc_left_in_documentation_is_reported() {
     for (doc, what) in [

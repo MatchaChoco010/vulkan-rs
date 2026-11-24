@@ -169,7 +169,9 @@ impl<'a> Model<'a> {
         let mut blocks = Vec::new();
         for part in parts {
             blocks.push(match part {
-                Part::Paragraph(text) => Block::Text(self.markdown(from, page, own, &text)),
+                Part::Paragraph(text) => Block::Text(without_space_before_punctuation(
+                    &self.markdown(from, page, own, &text),
+                )),
                 Part::List(items) => Block::List(
                     items
                         .into_iter()
@@ -343,6 +345,26 @@ impl<'a> Model<'a> {
             .alias(c_name)
             .of_item(&type_name(c_name))
     }
+}
+
+const CLOSING_PUNCTUATION: [char; 7] = ['.', ',', ';', ':', '!', '?', ')'];
+
+fn without_space_before_punctuation(markdown: &str) -> String {
+    let mut out = String::with_capacity(markdown.len());
+    for (number, line) in markdown.split('\n').enumerate() {
+        let mark = line.split_whitespace().next().unwrap_or_default();
+        let closes_up = !mark.is_empty() && mark.chars().all(|c| CLOSING_PUNCTUATION.contains(&c));
+        if number > 0 && closes_up {
+            out.truncate(out.trim_end().len());
+            out.push_str(line.trim_start());
+        } else {
+            if number > 0 {
+                out.push('\n');
+            }
+            out.push_str(line);
+        }
+    }
+    out
 }
 
 fn value_named(row: &[Cell]) -> Option<&str> {
@@ -800,6 +822,45 @@ mod tests {
                         Block::list(["In detail.".to_string()]),
                     ],
                 ]),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_line_that_starts_with_closing_punctuation_closes_up_to_the_line_before_it() {
+        for (markdown, closed_up) in [
+            ("a copy\n.\nIf more", "a copy.\nIf more"),
+            ("is either\n:", "is either:"),
+            ("the command\n, or the other", "the command, or the other"),
+            ("(see the list \n  ) and", "(see the list) and"),
+            ("a\n?! b\n;\nc", "a?! b;\nc"),
+            ("a\n... and more", "a... and more"),
+            (".\na", ".\na"),
+            ("a\n.b\n,c\n...d\n-\n(\n\"", "a\n.b\n,c\n...d\n-\n(\n\""),
+            ("a\n\n.", "a."),
+            ("", ""),
+        ] {
+            assert_eq!(
+                without_space_before_punctuation(markdown),
+                closed_up,
+                "{markdown:?}"
+            );
+        }
+        let ir = ir();
+        let docs = with_the_width_described_as(&[
+            "pname:width is the width",
+            ".",
+            "If so, it is required",
+            ":",
+            "** slink:VkExtent2D",
+            ", or not",
+        ]);
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            Some(vec![
+                Block::Text("`width` is the width.\nIf so, it is required:".to_string()),
+                Block::list(["[`VkExtent2D`](Extent2D), or not".to_string()]),
             ])
         );
     }
