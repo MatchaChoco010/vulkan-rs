@@ -2706,10 +2706,6 @@
     {
      "name": "pGeometries",
      "text": "pname:pGeometries is a pointer to an array of pname:geometryCount\nslink:VkGeometryNV structures containing the scene data being passed\ninto the acceleration structure."
-    },
-    {
-     "name": "scratch",
-     "text": "pname:scratch must: have been created with the\nename:VK_BUFFER_USAGE_RAY_TRACING_BIT_NV usage flag set"
     }
    ],
    "kind": "structs",
@@ -2743,6 +2739,14 @@
     {
      "name": "accelerationStructureReference",
      "text": "pname:accelerationStructureReference is\neither\n:\n** a device address containing the value obtained from\nflink:vkGetAccelerationStructureDeviceAddressKHR\nor\nflink:vkGetAccelerationStructureHandleNV\nfor a bottom level acceleration structure (used by device operations\nwhich reference acceleration structures)\nor,\n** a device address containing a bottom level cluster acceleration\nstructure built using\nflink:vkCmdBuildClusterAccelerationStructureIndirectNV\n** a slink:VkAccelerationStructureKHR object (used by host operations\nwhich reference acceleration structures)."
+    },
+    {
+     "name": "instanceCustomIndex",
+     "text": "pname:instanceCustomIndex and pname:mask occupy the same memory as if a\nsingle code:uint32_t was specified in their place\n** pname:instanceCustomIndex occupies the 24 least significant bits of\nthat memory\n** pname:mask occupies the 8 most significant bits of that memory"
+    },
+    {
+     "name": "instanceShaderBindingTableRecordOffset",
+     "text": "pname:instanceShaderBindingTableRecordOffset and pname:flags occupy the\nsame memory as if a single code:uint32_t was specified in their place\n** pname:instanceShaderBindingTableRecordOffset occupies the 24 least\nsignificant bits of that memory\n** pname:flags occupies the 8 most significant bits of that memory"
     }
    ],
    "kind": "structs",
@@ -2788,6 +2792,14 @@
     {
      "name": "accelerationStructureReference",
      "text": "pname:accelerationStructureReference is either:\n** a device address containing the value obtained from\nflink:vkGetAccelerationStructureDeviceAddressKHR\nor\nflink:vkGetAccelerationStructureHandleNV\n(used by device operations which reference acceleration structures) or,\n** a slink:VkAccelerationStructureKHR object (used by host operations\nwhich reference acceleration structures)."
+    },
+    {
+     "name": "instanceCustomIndex",
+     "text": "pname:instanceCustomIndex and pname:mask occupy the same memory as if a\nsingle code:uint32_t was specified in their place\n** pname:instanceCustomIndex occupies the 24 least significant bits of\nthat memory\n** pname:mask occupies the 8 most significant bits of that memory"
+    },
+    {
+     "name": "instanceShaderBindingTableRecordOffset",
+     "text": "pname:instanceShaderBindingTableRecordOffset and pname:flags occupy the\nsame memory as if a single code:uint32_t was specified in their place\n** pname:instanceShaderBindingTableRecordOffset occupies the 24 least\nsignificant bits of that memory\n** pname:flags occupies the 8 most significant bits of that memory"
     }
    ],
    "kind": "structs",
@@ -2983,6 +2995,14 @@
     {
      "name": "accelerationStructureReference",
      "text": "pname:accelerationStructureReference is either:\n** a device address containing the value obtained from\nflink:vkGetAccelerationStructureDeviceAddressKHR\nor\nflink:vkGetAccelerationStructureHandleNV\n(used by device operations which reference acceleration structures) or,\n** a slink:VkAccelerationStructureKHR object (used by host operations\nwhich reference acceleration structures)."
+    },
+    {
+     "name": "instanceCustomIndex",
+     "text": "pname:instanceCustomIndex and pname:mask occupy the same memory as if a\nsingle code:uint32_t was specified in their place\n** pname:instanceCustomIndex occupies the 24 least significant bits of\nthat memory\n** pname:mask occupies the 8 most significant bits of that memory"
+    },
+    {
+     "name": "instanceShaderBindingTableRecordOffset",
+     "text": "pname:instanceShaderBindingTableRecordOffset and pname:flags occupy the\nsame memory as if a single code:uint32_t was specified in their place\n** pname:instanceShaderBindingTableRecordOffset occupies the 24 least\nsignificant bits of that memory\n** pname:flags occupies the 8 most significant bits of that memory"
     }
    ],
    "kind": "structs",
@@ -3920,6 +3940,10 @@
     {
      "name": "colorAttachmentFormat",
      "text": "pname:colorAttachmentFormat is a elink:VkFormat specifying the format of\ncolor attachment images that must: be used for color attachments when\nresolving to the specified external format.\nIf the implementation supports external format resolves for the\nspecified external format, this value will be a color format supporting\nthe ename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT in\nslink:VkFormatProperties::pname:optimalTilingFeatures as returned by\nflink:vkGetPhysicalDeviceFormatProperties with pname:format equal to\npname:colorAttachmentFormat If external format resolves are not\nsupported, this value will be ename:VK_FORMAT_UNDEFINED."
+    },
+    {
+     "name": "colorAttachmentFormat",
+     "text": "pname:colorAttachmentFormat must: be a format that supports\nename:VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT in\nslink:VkFormatProperties::pname:optimalTilingFeatures."
     }
    ],
    "kind": "structs",
@@ -6871,6 +6895,10 @@
     {
      "name": "opacityMicromapIndexBuffer",
      "text": "pname:opacityMicromapIndexBuffer is either `0` or specifies the address\nof a strided array with size equal to the number of triangles or indices\ninto the opacity micromap array.\nIf pname:opacityMicromapIndexBuffer is `0` then the index used is the\nindex of the triangle in the geometry."
+    },
+    {
+     "name": "triangleCount",
+     "text": "pname:triangleCount, pname:vertexCount, pname:positionTruncateBitCount,\npname:indexType and pname:opacityMicromapIndexType occupy the same\nmemory as if a single code:uint32_t was specified in their place\n** pname:triangleCount occupies the 9 least significant bits of that\nmemory\n** pname:vertexCount occupies the next 9 least significant bits of that\nmemory\n** pname:positionTruncateBitCount occupies the next 6 least significant\nbits of that memory\n** pname:indexType occupies the next 4 least significant bits of that\nmemory\n** pname:opacityMicromapIndexType occupies the 4 most significant bits of\nthat memory"
     }
    ],
    "kind": "structs",
@@ -6952,6 +6980,10 @@
     {
      "name": "instantiationBoundingBoxLimit",
      "text": "pname:instantiationBoundingBoxLimit is either `0` or specifies the\naddress of a bounding box within which all instantiated clusters must:\nlie.\nThe bounding box is specified by six 32-bit floating-point values in the\norder MinX, MinY, MinZ, MaxX, MaxY, MaxZ."
+    },
+    {
+     "name": "triangleCount",
+     "text": "pname:triangleCount, pname:vertexCount, pname:positionTruncateBitCount,\npname:indexType and pname:opacityMicromapIndexType occupy the same\nmemory as if a single code:uint32_t was specified in their place\n** pname:triangleCount occupies the 9 least significant bits of that\nmemory\n** pname:vertexCount occupies the next 9 least significant bits of that\nmemory\n** pname:positionTruncateBitCount occupies the next 6 least significant\nbits of that memory\n** pname:indexType occupies the next 4 least significant bits of that\nmemory\n** pname:opacityMicromapIndexType occupies the 4 most significant bits of\nthat memory"
     }
    ],
    "kind": "structs",
@@ -7097,6 +7129,10 @@
     {
      "name": "geometryFlags",
      "text": "pname:geometryFlags is a bitmask of\nelink:VkClusterAccelerationStructureGeometryFlagBitsNV values describing\ngeometry flags for the cluster acceleration structure."
+    },
+    {
+     "name": "geometryIndex",
+     "text": "pname:geometryIndex, pname:reserved and pname:mask occupy the same\nmemory as if a single code:uint32_t was specified in their place\n** pname:geometryIndex occupies the 24 least significant bits of that\nmemory\n** pname:geometryFlags occupies the 3 most significant bits of that memory"
     }
    ],
    "kind": "structs",
@@ -9111,14 +9147,6 @@
     {
      "name": "descriptorCount",
      "text": "pname:descriptorCount is the number of descriptors to copy from the\nsource to destination.\nIf pname:descriptorCount is greater than the number of remaining array\nelements in the source or destination binding, those affect consecutive\nbindings in a manner similar to slink:VkWriteDescriptorSet above.\nIf the descriptor binding identified by pname:srcSet and\npname:srcBinding has a descriptor type of\nename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK then pname:descriptorCount\nspecifies the number of bytes to copy and the remaining array elements\nin the source or destination binding refer to the remaining number of\nbytes in those."
-    },
-    {
-     "name": "srcBinding",
-     "text": "pname:srcBinding must: be a valid binding within pname:srcSet"
-    },
-    {
-     "name": "dstBinding",
-     "text": "pname:dstBinding must: be a valid binding within pname:dstSet"
     }
    ],
    "kind": "structs",
@@ -10549,14 +10577,6 @@
     {
      "name": "flags",
      "text": "pname:flags are the tlink:VkDataGraphOpticalFlowCreateFlagsARM used for\nthis optical flow pipeline."
-    },
-    {
-     "name": "VK_DATA_GRAPH_OPTICAL_FLOW_CREATE_ENABLE_HINT_BIT_ARM",
-     "text": "ename:VK_DATA_GRAPH_OPTICAL_FLOW_CREATE_ENABLE_HINT_BIT_ARM must: not be\nset in pname:flags if\nsname:VkQueueFamilyDataGraphOpticalFlowPropertiesARM::pname:hintSupported\nis ename:VK_FALSE"
-    },
-    {
-     "name": "VK_DATA_GRAPH_OPTICAL_FLOW_CREATE_ENABLE_COST_BIT_ARM",
-     "text": "ename:VK_DATA_GRAPH_OPTICAL_FLOW_CREATE_ENABLE_COST_BIT_ARM must: not be\nset in pname:flags if\nsname:VkQueueFamilyDataGraphOpticalFlowPropertiesARM::pname:costSupported\nis ename:VK_FALSE"
     }
    ],
    "kind": "structs",
@@ -19050,6 +19070,14 @@
      "text": "ename:VK_FORMAT_FEATURE_2_ACCELERATION_STRUCTURE_RADIUS_BUFFER_BIT_NV\nspecifies that the format can: be used as the radius format when\ncreating an <<acceleration-structure,acceleration structure>>\n(sname:VkAccelerationStructureGeometryLinearSweptSpheresDataNV::pname:radiusFormat\nor\nsname:VkAccelerationStructureGeometrySpheresDataNV::pname:radiusFormat).\nThis format can: also be used as the radius format in host memory when\ndoing <<host-acceleration-structure, host acceleration structure>>\nbuilds."
     },
     {
+     "name": "VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT",
+     "text": "ename:VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT specifies that\nbuffer views created with this format can: be used as\n<<descriptors-storagetexelbuffer, storage texel buffers>> for read\noperations without specifying a format."
+    },
+    {
+     "name": "VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT",
+     "text": "ename:VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT specifies\nthat buffer views created with this format can: be used as\n<<descriptors-storagetexelbuffer, storage texel buffers>> for write\noperations without specifying a format."
+    },
+    {
      "name": "VK_FORMAT_FEATURE_2_OPTICAL_FLOW_IMAGE_BIT_NV",
      "text": "ename:VK_FORMAT_FEATURE_2_OPTICAL_FLOW_IMAGE_BIT_NV specifies that an\nimage view with this format can: be used as an input or reference to\n<<opticalflow-operations,optical flow operations>>"
     },
@@ -19563,14 +19591,6 @@
     {
      "name": "width",
      "text": "pname:width, pname:height and pname:layers define the dimensions of the\nframebuffer.\nIf the render pass uses multiview, then pname:layers must: be one and\neach attachment requires a number of layers that is greater than the\nmaximum bit index set in the view mask in the subpasses in which it is\nused."
-    },
-    {
-     "name": "height",
-     "text": "pname:height must: be greater than `0`"
-    },
-    {
-     "name": "layers",
-     "text": "pname:layers must: be greater than `0`"
     }
    ],
    "kind": "structs",
@@ -19805,10 +19825,6 @@
     {
      "name": "maxDrawCount",
      "text": "pname:maxDrawCount is the maximum number of indirect draws that can be\nexecuted by any COUNT-type multi-draw indirect tokens.\nThe draw count in the indirect buffer is clamped to this value for these\ntoken types."
-    },
-    {
-     "name": "maxSequencesCount",
-     "text": "pname:maxSequencesCount must: be less or equal to\nslink:VkPhysicalDeviceDeviceGeneratedCommandsPropertiesEXT::pname:maxIndirectSequenceCount"
     }
    ],
    "kind": "structs",
@@ -21680,6 +21696,74 @@
     {
      "name": "initialLayout",
      "text": "pname:initialLayout is a elink:VkImageLayout value specifying the\ninitial elink:VkImageLayout of all image subresources of the image.\nSee <<resources-image-layouts,Image Layouts>>."
+    },
+    {
+     "name": "imageType",
+     "text": "pname:imageType is ename:VK_IMAGE_TYPE_2D"
+    },
+    {
+     "name": "format",
+     "text": "pname:format is not a depth/stencil format"
+    },
+    {
+     "name": "mipLevels",
+     "text": "pname:mipLevels is 1"
+    },
+    {
+     "name": "arrayLayers",
+     "text": "pname:arrayLayers is 1"
+    },
+    {
+     "name": "samples",
+     "text": "pname:samples is ename:VK_SAMPLE_COUNT_1_BIT"
+    },
+    {
+     "name": "usage",
+     "text": "pname:usage only includes ename:VK_IMAGE_USAGE_TRANSFER_SRC_BIT and/or\nename:VK_IMAGE_USAGE_TRANSFER_DST_BIT"
+    },
+    {
+     "name": "imageType",
+     "text": "pname:imageType is ename:VK_IMAGE_TYPE_2D"
+    },
+    {
+     "name": "mipLevels",
+     "text": "pname:mipLevels is 1"
+    },
+    {
+     "name": "arrayLayers",
+     "text": "pname:arrayLayers is 1, unless\nthe <<features-ycbcrImageArrays, pname:ycbcrImageArrays>> feature is\nenabled, or\notherwise indicated by\nslink:VkImageFormatProperties::pname:maxArrayLayers, as returned by\nflink:vkGetPhysicalDeviceImageFormatProperties"
+    },
+    {
+     "name": "samples",
+     "text": "pname:samples is ename:VK_SAMPLE_COUNT_1_BIT"
+    },
+    {
+     "name": "flags",
+     "text": "pname:flags is 0 or only includes ename:VK_IMAGE_CREATE_ALIAS_BIT"
+    },
+    {
+     "name": "imageType",
+     "text": "pname:imageType is ename:VK_IMAGE_TYPE_2D"
+    },
+    {
+     "name": "mipLevels",
+     "text": "pname:mipLevels is 1"
+    },
+    {
+     "name": "arrayLayers",
+     "text": "pname:arrayLayers is 1"
+    },
+    {
+     "name": "samples",
+     "text": "pname:samples is ename:VK_SAMPLE_COUNT_1_BIT"
+    },
+    {
+     "name": "tiling",
+     "text": "pname:tiling is ename:VK_IMAGE_TILING_OPTIMAL"
+    },
+    {
+     "name": "usage",
+     "text": "pname:usage includes ename:VK_IMAGE_USAGE_TILE_MEMORY_BIT_QCOM and any\nvalid combination of the following ename:VK_IMAGE_USAGE_SAMPLED_BIT,\nename:VK_IMAGE_USAGE_STORAGE_BIT,\nename:VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,\nename:VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,\nename:VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT"
     }
    ],
    "kind": "structs",
@@ -22041,6 +22125,26 @@
     {
      "name": "VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM",
      "text": "ename:VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM specifies the layout that an\nimage created with ename:VK_IMAGE_TILING_OPTIMAL must: be in, if the\n<<features-unifiedImageLayouts,pname:unifiedImageLayouts>> feature is\ndisabled, or may: be in if it is enabled, for it and a tensor bound to\nthe same aliased range of memory to consistently interpret the data in\nmemory.\nSee <<resources-memory-aliasing>> for a complete set of rules for\ntensor/image aliasing.\nThis layout is valid only for image subresources of images created with\nthe ename:VK_IMAGE_USAGE_TENSOR_ALIASING_BIT_ARM usage flag set."
+    },
+    {
+     "name": "VK_IMAGE_LAYOUT_PRESENT_SRC_KHR",
+     "text": "ename:VK_IMAGE_LAYOUT_PRESENT_SRC_KHR"
+    },
+    {
+     "name": "VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR",
+     "text": "ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR"
+    },
+    {
+     "name": "VK_IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR",
+     "text": "ename:VK_IMAGE_LAYOUT_VIDEO_DECODE_SRC_KHR,\nename:VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR, and\nename:VK_IMAGE_LAYOUT_VIDEO_DECODE_DPB_KHR\nwithout the\n<<features-unifiedImageLayoutsVideo,pname:unifiedImageLayoutsVideo>>\nfeature"
+    },
+    {
+     "name": "VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR",
+     "text": "ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_SRC_KHR,\nename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_DST_KHR, and\nename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_DPB_KHR\nwithout the\n<<features-unifiedImageLayoutsVideo,pname:unifiedImageLayoutsVideo>>\nfeature"
+    },
+    {
+     "name": "VK_IMAGE_LAYOUT_VIDEO_ENCODE_QUANTIZATION_MAP_KHR",
+     "text": "ename:VK_IMAGE_LAYOUT_VIDEO_ENCODE_QUANTIZATION_MAP_KHR\nwithout the\n<<features-unifiedImageLayoutsVideo,pname:unifiedImageLayoutsVideo>>\nfeature"
     }
    ],
    "kind": "enums",
@@ -22837,10 +22941,6 @@
     {
      "name": "decodeMode",
      "text": "pname:decodeMode is the intermediate format used to decode ASTC\ncompressed formats."
-    },
-    {
-     "name": "format",
-     "text": "pname:format of the image view must: be one of the\n<<appendix-compressedtex-astc, ASTC Compressed Image Formats>>"
     }
    ],
    "kind": "structs",
@@ -22957,10 +23057,6 @@
     {
      "name": "subresourceRange",
      "text": "pname:subresourceRange is a slink:VkImageSubresourceRange structure\nselecting the set of mipmap levels and array layers to be accessible to\nthe view."
-    },
-    {
-     "name": "usage",
-     "text": "pname:usage must: not include\nename:VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR"
     }
    ],
    "kind": "structs",
@@ -23065,14 +23161,6 @@
     {
      "name": "sliceCount",
      "text": "pname:sliceCount is the number of 3D slices accessible to the image\nview."
-    },
-    {
-     "name": "image",
-     "text": "pname:image must: have been created with pname:imageType equal to\nename:VK_IMAGE_TYPE_3D"
-    },
-    {
-     "name": "viewType",
-     "text": "pname:viewType must: be ename:VK_IMAGE_VIEW_TYPE_3D"
     }
    ],
    "kind": "structs",
@@ -25056,6 +25144,34 @@
     {
      "name": "requiresDedicatedAllocation",
      "text": "pname:requiresDedicatedAllocation specifies that a dedicated allocation\nis required for this resource."
+    },
+    {
+     "name": "requiresDedicatedAllocation",
+     "text": "pname:requiresDedicatedAllocation may: be ename:VK_TRUE if the\npname:pNext chain of slink:VkBufferCreateInfo for the call to\nfname:vkCreateBuffer used to create the buffer being queried included a\nslink:VkExternalMemoryBufferCreateInfo structure, and any of the handle\ntypes specified in\nslink:VkExternalMemoryBufferCreateInfo::pname:handleTypes requires\ndedicated allocation, as reported by\nflink:vkGetPhysicalDeviceExternalBufferProperties in\nsname:VkExternalBufferProperties::pname:externalMemoryProperties.externalMemoryFeatures.\nOtherwise, pname:requiresDedicatedAllocation will be ename:VK_FALSE."
+    },
+    {
+     "name": "requiresDedicatedAllocation",
+     "text": "pname:requiresDedicatedAllocation may: be ename:VK_TRUE if the\npname:pNext chain of slink:VkImageCreateInfo for the call to\nflink:vkCreateImage used to create the image being queried included a\nslink:VkExternalMemoryImageCreateInfo structure, and any of the handle\ntypes specified in\nslink:VkExternalMemoryImageCreateInfo::pname:handleTypes requires\ndedicated allocation, as reported by\nflink:vkGetPhysicalDeviceImageFormatProperties2 in\nsname:VkExternalImageFormatProperties::pname:externalMemoryProperties.externalMemoryFeatures."
+    },
+    {
+     "name": "requiresDedicatedAllocation",
+     "text": "pname:requiresDedicatedAllocation may: be ename:VK_TRUE if the image's\ntiling is ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT."
+    },
+    {
+     "name": "requiresDedicatedAllocation",
+     "text": "pname:requiresDedicatedAllocation will\notherwise\nbe ename:VK_FALSE"
+    },
+    {
+     "name": "requiresDedicatedAllocation",
+     "text": "pname:requiresDedicatedAllocation may: be ename:VK_TRUE if the\npname:pNext chain of slink:VkTensorCreateInfoARM for the call to\nfname:vkCreateTensorARM used to create the tensor being queried included\na slink:VkExternalMemoryTensorCreateInfoARM structure, and any of the\nhandle types specified in\nslink:VkExternalMemoryTensorCreateInfoARM::pname:handleTypes requires\ndedicated allocation, as reported by\nflink:vkGetPhysicalDeviceExternalTensorPropertiesARM in\nsname:VkExternalTensorPropertiesARM::pname:externalMemoryProperties.externalMemoryFeatures."
+    },
+    {
+     "name": "requiresDedicatedAllocation",
+     "text": "pname:requiresDedicatedAllocation will be ename:VK_TRUE if the\nslink:VkTensorDescriptionARM::pname:tiling provided via the\nslink:VkTensorCreateInfoARM structure for the call to\nflink:vkCreateTensorARM used to create the tensor being queried was\nename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_64K_ARM."
+    },
+    {
+     "name": "requiresDedicatedAllocation",
+     "text": "pname:requiresDedicatedAllocation will\notherwise\nbe ename:VK_FALSE."
     }
    ],
    "kind": "structs",
@@ -25098,10 +25214,6 @@
     {
      "name": "memory",
      "text": "pname:memory is the memory object from which the Android hardware buffer\nwill be exported."
-    },
-    {
-     "name": "VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID",
-     "text": "ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID\nmust: have been included in\nslink:VkExportMemoryAllocateInfo::pname:handleTypes when pname:memory\nwas created"
     }
    ],
    "kind": "structs",
@@ -26819,26 +26931,6 @@
     {
      "name": "flags",
      "text": "pname:flags are the tlink:VkOpticalFlowSessionCreateFlagsNV used for\nthis optical flow session."
-    },
-    {
-     "name": "VK_OPTICAL_FLOW_SESSION_CREATE_ENABLE_HINT_BIT_NV",
-     "text": "ename:VK_OPTICAL_FLOW_SESSION_CREATE_ENABLE_HINT_BIT_NV must: not be set\nin pname:flags if\nsname:VkPhysicalDeviceOpticalFlowPropertiesNV::pname:hintSupported is\nename:VK_FALSE"
-    },
-    {
-     "name": "VK_OPTICAL_FLOW_SESSION_CREATE_ENABLE_COST_BIT_NV",
-     "text": "ename:VK_OPTICAL_FLOW_SESSION_CREATE_ENABLE_COST_BIT_NV must: not be set\nin pname:flags if\nsname:VkPhysicalDeviceOpticalFlowPropertiesNV::pname:costSupported is\nename:VK_FALSE"
-    },
-    {
-     "name": "VK_OPTICAL_FLOW_SESSION_CREATE_ENABLE_GLOBAL_FLOW_BIT_NV",
-     "text": "ename:VK_OPTICAL_FLOW_SESSION_CREATE_ENABLE_GLOBAL_FLOW_BIT_NV must: not\nbe set in pname:flags if\nsname:VkPhysicalDeviceOpticalFlowPropertiesNV::pname:globalFlowSupported\nis ename:VK_FALSE"
-    },
-    {
-     "name": "VK_OPTICAL_FLOW_SESSION_CREATE_ALLOW_REGIONS_BIT_NV",
-     "text": "ename:VK_OPTICAL_FLOW_SESSION_CREATE_ALLOW_REGIONS_BIT_NV must: not be\nset in pname:flags if\nsname:VkPhysicalDeviceOpticalFlowPropertiesNV::pname:maxNumRegionsOfInterest\nis 0"
-    },
-    {
-     "name": "VK_OPTICAL_FLOW_SESSION_CREATE_BOTH_DIRECTIONS_BIT_NV",
-     "text": "ename:VK_OPTICAL_FLOW_SESSION_CREATE_BOTH_DIRECTIONS_BIT_NV must: not be\nset in pname:flags if\nsname:VkPhysicalDeviceOpticalFlowPropertiesNV::pname:bidirectionalFlowSupported\nis ename:VK_FALSE"
     }
    ],
    "kind": "structs",
@@ -27407,6 +27499,18 @@
     {
      "name": "VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM",
      "text": "ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to\n`100`"
+    },
+    {
+     "name": "VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM",
+     "text": "ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to\n`99`"
+    },
+    {
+     "name": "VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM",
+     "text": "ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to\n`98`"
+    },
+    {
+     "name": "VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM",
+     "text": "ename:VK_PERF_HINT_TYPE_FREQUENCY_SCALED_QCOM and pname:scale equal to\n`0`"
     },
     {
      "name": "VK_PERF_HINT_TYPE_DEFAULT_QCOM",
@@ -34428,12 +34532,84 @@
      "text": "ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT"
     },
     {
+     "name": "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT"
+    },
+    {
      "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
      "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT"
     },
     {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT"
+    },
+    {
      "name": "VK_MEMORY_PROPERTY_PROTECTED_BIT",
      "text": "ename:VK_MEMORY_PROPERTY_PROTECTED_BIT"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_PROTECTED_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_PROTECTED_BIT |\nename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD | +\nename:VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD | +\nename:VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD | +\nename:VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD | +\nename:VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT | +\nename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | +\nename:VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD | +\nename:VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD"
+    },
+    {
+     "name": "VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT",
+     "text": "ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | +\nename:VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV"
     }
    ],
    "kind": "structs",
@@ -44925,10 +45101,6 @@
     {
      "name": "offset",
      "text": "pname:offset and pname:size are the start offset and size, respectively,\nconsumed by the range.\nBoth pname:offset and pname:size are in units of bytes and must: be a\nmultiple of 4.\nThe layout of the push constant variables is specified in the shader."
-    },
-    {
-     "name": "size",
-     "text": "pname:size must: be greater than `0`"
     }
    ],
    "kind": "structs",
@@ -47107,6 +47279,22 @@
     {
      "name": "pColorAttachmentLocations",
      "text": "pname:pColorAttachmentLocations is a pointer to an array of\npname:colorAttachmentCount code:uint32_t values defining remapped\nlocations for color attachments."
+    },
+    {
+     "name": "colorAttachmentCount",
+     "text": "pname:colorAttachmentCount set to\nslink:VkPipelineRenderingCreateInfo::pname:colorAttachmentCount."
+    },
+    {
+     "name": "pColorAttachmentLocations",
+     "text": "pname:pColorAttachmentLocations set to `NULL`."
+    },
+    {
+     "name": "colorAttachmentCount",
+     "text": "pname:colorAttachmentCount set to\nslink:VkCommandBufferInheritanceRenderingInfo::pname:colorAttachmentCount."
+    },
+    {
+     "name": "pColorAttachmentLocations",
+     "text": "pname:pColorAttachmentLocations set to `NULL`."
     }
    ],
    "kind": "structs",
@@ -47280,10 +47468,6 @@
     {
      "name": "pStencilAttachment",
      "text": "pname:pStencilAttachment is a pointer to a\nslink:VkRenderingAttachmentInfo structure describing a stencil\nattachment."
-    },
-    {
-     "name": "imageView",
-     "text": "pname:imageView members of elements of pname:pColorAttachments that are\nnot dlink:VK_NULL_HANDLE must: have been created with the same\npname:sampleCount\n, if the <<features-multisampledRenderToSingleSampled,\npname:multisampledRenderToSingleSampled>> feature is not enabled"
     }
    ],
    "kind": "structs",
@@ -47317,6 +47501,38 @@
     {
      "name": "pStencilInputAttachmentIndex",
      "text": "pname:pStencilInputAttachmentIndex is either `NULL`, or a pointer to a\ncode:uint32_t value defining the index for the stencil attachment to be\nused as an input attachment."
+    },
+    {
+     "name": "colorAttachmentCount",
+     "text": "pname:colorAttachmentCount set to\nslink:VkPipelineRenderingCreateInfo::pname:colorAttachmentCount."
+    },
+    {
+     "name": "pColorAttachmentInputIndices",
+     "text": "pname:pColorAttachmentInputIndices set to `NULL`."
+    },
+    {
+     "name": "pDepthInputAttachmentIndex",
+     "text": "pname:pDepthInputAttachmentIndex set to `NULL`."
+    },
+    {
+     "name": "pStencilInputAttachmentIndex",
+     "text": "pname:pStencilInputAttachmentIndex set to `NULL`."
+    },
+    {
+     "name": "colorAttachmentCount",
+     "text": "pname:colorAttachmentCount set to\nslink:VkCommandBufferInheritanceRenderingInfo::pname:colorAttachmentCount."
+    },
+    {
+     "name": "pColorAttachmentInputIndices",
+     "text": "pname:pColorAttachmentInputIndices set to `NULL`."
+    },
+    {
+     "name": "pDepthInputAttachmentIndex",
+     "text": "pname:pDepthInputAttachmentIndex set to `NULL`."
+    },
+    {
+     "name": "pStencilInputAttachmentIndex",
+     "text": "pname:pStencilInputAttachmentIndex set to `NULL`."
     }
    ],
    "kind": "structs",
@@ -47954,10 +48170,6 @@
     {
      "name": "windowCompareMode",
      "text": "pname:windowCompareMode is a elink:VkBlockMatchWindowCompareModeQCOM\nspecifying the compare mode."
-    },
-    {
-     "name": "WindowExtent",
-     "text": "pname:WindowExtent must: not be larger than\nslink:VkPhysicalDeviceImageProcessing2PropertiesQCOM::pname:maxBlockMatchWindow"
     }
    ],
    "kind": "structs",
@@ -48409,6 +48621,18 @@
     {
      "name": "components",
      "text": "pname:components.a = ename:VK_COMPONENT_SWIZZLE_IDENTITY"
+    },
+    {
+     "name": "components",
+     "text": "pname:components.r = ename:VK_COMPONENT_SWIZZLE_B"
+    },
+    {
+     "name": "components",
+     "text": "pname:components.g = ename:VK_COMPONENT_SWIZZLE_R"
+    },
+    {
+     "name": "components",
+     "text": "pname:components.b = ename:VK_COMPONENT_SWIZZLE_G"
     }
    ],
    "kind": "enums",
@@ -48562,10 +48786,6 @@
     {
      "name": "context",
      "text": "pname:context and pname:window are QNX Screen code:context and\ncode:window to associate the surface with."
-    },
-    {
-     "name": "window",
-     "text": "pname:window must: point to a valid QNX Screen code:struct\n_screen_window"
     }
    ],
    "kind": "structs",
@@ -52137,10 +52357,6 @@
     {
      "name": "pQueueFamilyIndices",
      "text": "pname:pQueueFamilyIndices is a list of queue families that will access\nthis tensor (ignored if pname:sharingMode is not\nename:VK_SHARING_MODE_CONCURRENT)."
-    },
-    {
-     "name": "tensorElements",
-     "text": "pname:tensorElements (as defined in\n<<resources-tensor-creation-limits>>) must: not be greater than\nslink:VkPhysicalDeviceTensorPropertiesARM::pname:maxTensorElements"
     }
    ],
    "kind": "structs",
@@ -55583,6 +55799,10 @@
     {
      "name": "pStdSliceHeader",
      "text": "pname:pStdSliceHeader->slice_type is code:STD_VIDEO_H264_SLICE_TYPE_P\nand code:weighted_pred_flag is enabled in the active PPS."
+    },
+    {
+     "name": "pStdSliceHeader",
+     "text": "pname:pStdSliceHeader->slice_type is code:STD_VIDEO_H264_SLICE_TYPE_B\nand code:weighted_bipred_idc in the active PPS equals\ncode:STD_VIDEO_H264_WEIGHTED_BIPRED_IDC_EXPLICIT."
     }
    ],
    "kind": "structs",
@@ -56368,6 +56588,10 @@
     {
      "name": "pStdSliceSegmentHeader",
      "text": "pname:pStdSliceSegmentHeader->slice_type is\ncode:STD_VIDEO_H265_SLICE_TYPE_P and code:weighted_pred_flag is enabled\nin the active PPS."
+    },
+    {
+     "name": "pStdSliceSegmentHeader",
+     "text": "pname:pStdSliceSegmentHeader->slice_type is\ncode:STD_VIDEO_H265_SLICE_TYPE_B and code:weighted_bipred_flag is\nenabled in the active PPS."
     }
    ],
    "kind": "structs",
@@ -58181,10 +58405,6 @@
     {
      "name": "minDepth",
      "text": "pname:minDepth and pname:maxDepth are the depth range for the viewport."
-    },
-    {
-     "name": "y",
-     "text": "pname:y must: be greater than or equal to pname:viewportBoundsRange[0]"
     }
    ],
    "kind": "structs",
@@ -58264,10 +58484,6 @@
     {
      "name": "display",
      "text": "pname:display and pname:surface are pointers to the Wayland\ncode:wl_display and code:wl_surface to associate the surface with."
-    },
-    {
-     "name": "surface",
-     "text": "pname:surface must: point to a valid Wayland code:wl_surface"
     }
    ],
    "kind": "structs",
@@ -59890,10 +60106,6 @@
     {
      "name": "imageLayout",
      "text": "pname:imageLayout is the layout that the image subresources accessible\nfrom pname:imageView will be in when the invocation mask image is\naccessed"
-    },
-    {
-     "name": "depth",
-     "text": "pname:depth in flink:vkCmdTraceRaysKHR must: be 1"
     }
    ],
    "kind": "protos",
@@ -59957,10 +60169,6 @@
     {
      "name": "pBindInfo",
      "text": "pname:pBindInfo is a slink:VkBindHeapInfoEXT specifying the device\naddress range used for the heap and any implementation reservations."
-    },
-    {
-     "name": "heapRange",
-     "text": "pname:heapRange must: be a device address range allocated to the\napplication from a buffer created with the\nename:VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT usage flag set"
     }
    ],
    "kind": "protos",
@@ -59978,10 +60186,6 @@
     {
      "name": "pBindInfo",
      "text": "pname:pBindInfo is a slink:VkBindHeapInfoEXT specifying the device\naddress range used for the heap and any implementation reservations."
-    },
-    {
-     "name": "heapRange",
-     "text": "pname:heapRange must: be a device address range allocated to the\napplication from a buffer created with the\nename:VK_BUFFER_USAGE_DESCRIPTOR_HEAP_BIT_EXT usage flag set"
     }
    ],
    "kind": "protos",
@@ -60297,10 +60501,6 @@
     {
      "name": "scratchOffset",
      "text": "pname:scratchOffset is the offset in bytes relative to the start of\npname:scratch that will be used as a scratch memory."
-    },
-    {
-     "name": "geometryCount",
-     "text": "pname:geometryCount must: be less than or equal to\nslink:VkPhysicalDeviceRayTracingPropertiesNV::pname:maxGeometryCount"
     }
    ],
    "kind": "protos",
@@ -60610,6 +60810,10 @@
     {
      "name": "VK_UUID_SIZE",
      "text": "ename:VK_UUID_SIZE bytes of data matching\nsname:VkPhysicalDeviceIDProperties::pname:driverUUID"
+    },
+    {
+     "name": "VK_UUID_SIZE",
+     "text": "ename:VK_UUID_SIZE bytes of data identifying the compatibility for\ncomparison using flink:vkGetDeviceAccelerationStructureCompatibilityKHR"
     }
    ],
    "kind": "protos",
@@ -61046,6 +61250,10 @@
     {
      "name": "VK_UUID_SIZE",
      "text": "ename:VK_UUID_SIZE bytes of data matching\nsname:VkPhysicalDeviceIDProperties::pname:driverUUID"
+    },
+    {
+     "name": "VK_UUID_SIZE",
+     "text": "ename:VK_UUID_SIZE bytes of data identifying the compatibility for\ncomparison using flink:vkGetDeviceMicromapCompatibilityEXT"
     }
    ],
    "kind": "protos",
@@ -61230,10 +61438,6 @@
     {
      "name": "pDecodeInfo",
      "text": "pname:pDecodeInfo is a pointer to a slink:VkVideoDecodeInfoKHR structure\nspecifying the parameters of the video decode operations."
-    },
-    {
-     "name": "activeReferencePictureCount",
-     "text": "pname:activeReferencePictureCount must: be less than or equal to the\nslink:VkVideoSessionCreateInfoKHR::pname:maxActiveReferencePictures\nspecified when the bound video session was created"
     }
    ],
    "kind": "protos",
@@ -61830,10 +62034,6 @@
     {
      "name": "vertexStride",
      "text": "pname:vertexStride is the stride in bytes between each element of the\nvertex data that is used to calculate the vertex count from the counter\nvalue.\nThis value is typically the same value that was used in the graphics\npipeline state when the transform feedback was captured as the\ncode:XfbStride."
-    },
-    {
-     "name": "pInfo",
-     "text": "pname:pInfo->counterRange.address must: be a multiple of `4`"
     }
    ],
    "kind": "protos",
@@ -62224,10 +62424,6 @@
     {
      "name": "pEncodeInfo",
      "text": "pname:pEncodeInfo is a pointer to a slink:VkVideoEncodeInfoKHR structure\nspecifying the parameters of the video encode operations."
-    },
-    {
-     "name": "activeReferencePictureCount",
-     "text": "pname:activeReferencePictureCount must: be less than or equal to the\nslink:VkVideoSessionCreateInfoKHR::pname:maxActiveReferencePictures\nspecified when the bound video session was created"
     }
    ],
    "kind": "protos",
@@ -65212,10 +65408,6 @@
     {
      "name": "firstQuery",
      "text": "pname:firstQuery is the first query index within the query pool that\nwill contain the pname:accelerationStructureCount number of results."
-    },
-    {
-     "name": "accelerationStructure",
-     "text": "pname:accelerationStructure must: be bound completely and contiguously\nto a single sname:VkDeviceMemory object via\nflink:vkBindAccelerationStructureMemoryNV"
     }
    ],
    "kind": "protos",
@@ -71323,8 +71515,20 @@
      "text": "pname:scope equals ename:VK_SCOPE_SUBGROUP_KHR and pname:subgroupSize is\n`0`"
     },
     {
+     "name": "scope",
+     "text": "pname:scope equals ename:VK_SCOPE_SUBGROUP_KHR and pname:subgroupSize is\nequal to slink:VkPhysicalDeviceSubgroupProperties::pname:subgroupSize"
+    },
+    {
      "name": "AType",
      "text": "pname:AType and pname:BType are ename:VK_COMPONENT_TYPE_FLOAT16_KHR,\npname:CType and pname:ResultType are either both\nename:VK_COMPONENT_TYPE_FLOAT16_KHR or both\nename:VK_COMPONENT_TYPE_FLOAT32_KHR"
+    },
+    {
+     "name": "AType",
+     "text": "pname:AType and pname:BType are ename:VK_COMPONENT_TYPE_UINT8_KHR,\npname:CType and pname:ResultType are either both\nename:VK_COMPONENT_TYPE_UINT32_KHR or both\nename:VK_COMPONENT_TYPE_SINT32_KHR"
+    },
+    {
+     "name": "AType",
+     "text": "pname:AType and pname:BType are ename:VK_COMPONENT_TYPE_SINT8_KHR,\npname:CType and pname:ResultType are ename:VK_COMPONENT_TYPE_SINT32_KHR"
     }
    ],
    "kind": "protos",
@@ -71405,10 +71609,6 @@
     {
      "name": "descriptorType",
      "text": "pname:descriptorType is a elink:VkDescriptorType specifying the type of\nheap descriptor to query the size for."
-    },
-    {
-     "name": "type",
-     "text": "pname:type must: be one of ename:VK_DESCRIPTOR_TYPE_SAMPLER,\nename:VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,\nename:VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,\nename:VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,\nename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,\nename:VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,\nename:VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,\nename:VK_DESCRIPTOR_TYPE_SAMPLE_WEIGHT_IMAGE_QCOM,\nename:VK_DESCRIPTOR_TYPE_BLOCK_MATCH_IMAGE_QCOM,\nename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,\nename:VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV,\nename:VK_DESCRIPTOR_TYPE_PARTITIONED_ACCELERATION_STRUCTURE_NV,\nename:VK_DESCRIPTOR_TYPE_TENSOR_ARM,\nor ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT"
     }
    ],
    "kind": "protos",
@@ -73649,10 +73849,6 @@
     {
      "name": "pImportFenceFdInfo",
      "text": "pname:pImportFenceFdInfo is a pointer to a slink:VkImportFenceFdInfoKHR\nstructure specifying the fence and import parameters."
-    },
-    {
-     "name": "fence",
-     "text": "pname:fence must: not be associated with any queue command that has not\nyet completed execution on that queue"
     }
    ],
    "kind": "protos",
@@ -73670,10 +73866,6 @@
     {
      "name": "pImportFenceWin32HandleInfo",
      "text": "pname:pImportFenceWin32HandleInfo is a pointer to a\nslink:VkImportFenceWin32HandleInfoKHR structure specifying the fence and\nimport parameters."
-    },
-    {
-     "name": "fence",
-     "text": "pname:fence must: not be associated with any queue command that has not\nyet completed execution on that queue"
     }
    ],
    "kind": "protos",
@@ -73691,10 +73883,6 @@
     {
      "name": "pImportSemaphoreFdInfo",
      "text": "pname:pImportSemaphoreFdInfo is a pointer to a\nslink:VkImportSemaphoreFdInfoKHR structure specifying the semaphore and\nimport parameters."
-    },
-    {
-     "name": "semaphore",
-     "text": "pname:semaphore must: not be associated with any queue command that has\nnot yet completed execution on that queue"
     }
    ],
    "kind": "protos",
@@ -73729,10 +73917,6 @@
     {
      "name": "pImportSemaphoreZirconHandleInfo",
      "text": "pname:pImportSemaphoreZirconHandleInfo is a pointer to a\nslink:VkImportSemaphoreZirconHandleInfoFUCHSIA structure specifying the\nsemaphore and import parameters."
-    },
-    {
-     "name": "semaphore",
-     "text": "pname:semaphore must: not be associated with any queue command that has\nnot yet completed execution on that queue"
     }
    ],
    "kind": "protos",
@@ -73833,10 +74017,6 @@
     {
      "name": "ppData",
      "text": "pname:ppData is a pointer to a code:void* variable in which a\nhost-accessible pointer to the beginning of the mapped range is\nreturned.\nThe value of the returned pointer minus pname:offset must: be aligned to\nslink:VkPhysicalDeviceLimits::pname:minMemoryMapAlignment."
-    },
-    {
-     "name": "VK_MEMORY_MAP_PLACED_BIT_EXT",
-     "text": "ename:VK_MEMORY_MAP_PLACED_BIT_EXT must: not be set in pname:flags"
     }
    ],
    "kind": "protos",
@@ -75737,7 +75917,6 @@
   "primsrast-polygonmode": "Polygon Mode",
   "queries-pipestats": "Pipeline Statistics Queries",
   "resources-memory-aliasing": "Memory Aliasing",
-  "resources-tensor-creation-limits": "Tensor Creation Limits",
   "shaders-robust-buffer-access": "Robust Buffer Access",
   "shaders-robust-buffer-access2": "Robust Buffer Access 2",
   "shaders-robust-image-access": "Robust Image Access",
