@@ -6,6 +6,7 @@ members = [
     "crates/vulkan-registry",
     "crates/source-lint",
     "examples/*",
+    "tests/render-compare",
 ]
 resolver = "3"
 

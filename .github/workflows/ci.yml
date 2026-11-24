@@ -144,7 +144,9 @@ jobs:
       # Includes the examples in the documentation (doctests) and the comparison of the
       # generated documentation with the specification sources (crates/vulkan/tests/docs.rs).
       - name: Test
-        run: cargo test --workspace --all-features $(printf -- '--exclude %s ' $TOOL_PACKAGES)
+        run: >-
+          cargo test --workspace --all-features
+          $(printf -- '--exclude %s ' $TOOL_PACKAGES) --exclude vulkan-render-compare
 
       # A device test skips itself when the driver lacks the extension it exercises.
       # cargo hides the output of passing tests, so list the skips where they can be seen.
@@ -325,6 +327,143 @@ jobs:
           name: example-output-recent-lavapipe
           path: target/example-output/
           if-no-files-found: ignore
+
+  # tests/render-compare draws the same scenarios with a C program written against the
+  # Vulkan headers and the loader and with a Rust program written against the vulkan crate,
+  # and checks that both read back the same pixels, that the C pictures are the intended
+  # ones, and that both programs make the same Vulkan calls with the same arguments, as
+  # recorded by the gfxreconstruct capture layer. The pictures, their differences and the
+  # recorded calls are uploaded as an artifact.
+  render-compare:
+    runs-on: ubuntu-24.04
+    env:
+      VULKAN_RS_REQUIRE_RENDER_COMPARE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # gcc and libvulkan-dev: the C program, built with the headers of third_party/vulkan.
+      # gfxreconstruct: the capture layer and gfxrecon-convert.
+      - name: Install lavapipe, the Vulkan loader, the validation layers and gfxreconstruct
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: >-
+            gcc libvulkan1 libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers
+            vulkan-tools gfxreconstruct
+
+      - name: Show the Vulkan devices and the version of gfxreconstruct
+        run: |
+          vulkaninfo --summary
+          gfxrecon-convert --version
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
+      - name: Compare the renderings
+        run: |
+          set -o pipefail
+          cargo test -p vulkan-render-compare -- --nocapture 2>&1 | tee "$RUNNER_TEMP/render-compare.log"
+
+      - name: Summarize the comparison
+        if: always()
+        run: |
+          {
+            echo "### Render comparison"
+            echo '```'
+            grep -E "^test |made the same|skipping|differ|test result" "$RUNNER_TEMP/render-compare.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the pictures and the recorded calls
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: render-compare
+          path: target/render-compare/
+          if-no-files-found: error
+
+  # The same comparison on the lavapipe and the validation layers of a recent Mesa and
+  # Vulkan SDK. Fedora has no package of gfxreconstruct, so the calls are compared in the
+  # render-compare job only.
+  render-compare-recent-lavapipe:
+    runs-on: ubuntu-24.04
+    container:
+      image: fedora:45
+    defaults:
+      run:
+        shell: bash
+    env:
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+      VULKAN_RS_REQUIRE_RENDER_COMPARE: "1"
+      VULKAN_RS_RENDER_COMPARE_TRACE: "0"
+    steps:
+      # The image has no git, so this checkout downloads an archive, which has the action
+      # of the next step but not the submodule.
+      - uses: actions/checkout@v7
+
+      # git-core: the second checkout fetches the submodule with it. tar and zstd:
+      # Swatinem/rust-cache. gcc: the C program and the linker for Rust.
+      - name: Install lavapipe, the Vulkan loader, the validation layers and the build tools
+        uses: ./.github/actions/install-dnf-packages
+        with:
+          packages: >-
+            git-core tar zstd gcc rustup
+            vulkan-loader vulkan-loader-devel mesa-vulkan-drivers
+            vulkan-validation-layers vulkan-tools
+
+      # The C program is built with the headers of the third_party/vulkan submodule.
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Show the Vulkan devices
+        run: vulkaninfo --summary
+
+      # See the recent-lavapipe job.
+      - name: Install Rust
+        env:
+          RUSTUP_INIT_SKIP_SUDO_CHECK: "yes"
+        run: |
+          rustup-init -y --no-modify-path --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install
+          "$HOME/.cargo/bin/cargo" --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
+      - name: Compare the renderings
+        run: |
+          set -o pipefail
+          cargo test -p vulkan-render-compare -- --nocapture 2>&1 | tee "$RUNNER_TEMP/render-compare.log"
+
+      - name: Summarize the comparison
+        if: always()
+        run: |
+          {
+            echo "### Render comparison (recent lavapipe)"
+            echo '```'
+            grep -E "^test |made the same|skipping|differ|test result" "$RUNNER_TEMP/render-compare.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: render-compare-recent-lavapipe
+          path: target/render-compare/
+          if-no-files-found: error
 
   # The user-facing crates on a 32-bit target: `usize` is narrower than `vk::DeviceSize`,
   # and the i386 C ABI aligns 64-bit members of structs to 4 bytes.
