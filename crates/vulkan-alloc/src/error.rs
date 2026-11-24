@@ -118,8 +118,8 @@ impl std::error::Error for AllocationError {}
 ///
 /// It converts into [`AllocationError`] with `?`. The conversion drops the allocation,
 /// which leaves its range allocated and mapped as it was until
-/// [`Allocator::free_all`](crate::Allocator::free_all) (see the
-/// [crate documentation](crate#leaks)).
+/// [`Allocator::free_all`](crate::Allocator::free_all) or until the allocator is dropped
+/// (see the [crate documentation](crate#leaks)).
 #[derive(Debug, PartialEq, Eq)]
 pub struct FreeError {
     /// The allocation that was passed to [`Allocator::free`](crate::Allocator::free).

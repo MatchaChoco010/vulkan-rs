@@ -43,16 +43,18 @@ fn totals_beyond_u64_max_saturate_instead_of_panicking() {
 }
 
 #[test]
-fn dropping_an_allocator_whose_live_allocations_exceed_u64_max_does_not_panic() {
+fn dropping_an_allocator_whose_live_allocations_exceed_u64_max_frees_them_without_panicking() {
     let fake = FakeDevice::new();
     let allocator = allocator_holding_two_blocks_of_half_the_address_space(&fake);
     drop(allocator);
     assert_eq!(fake.calls().map, 0, "the test must not map its huge blocks");
     assert_eq!(
-        fake.memory_objects().len(),
+        fake.calls().free,
         2,
-        "dropping the allocator must not free the memory of live allocations"
+        "dropping the allocator must free the memory of live allocations"
     );
+    assert!(fake.memory_objects().is_empty());
+    assert_eq!(fake.misuse(), Vec::<String>::new());
 }
 
 #[test]

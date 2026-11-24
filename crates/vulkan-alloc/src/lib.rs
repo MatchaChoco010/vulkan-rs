@@ -98,8 +98,16 @@
 //! ([`AllocationCreateDesc::export_handle_types`]) and zero-initialized allocations
 //! ([`vulkan::vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] in
 //! [`AllocationCreateDesc::memory_allocate_flags`]) get a `VkDeviceMemory` of their own.
-//! When the last allocation of a block is freed, the block's `VkDeviceMemory` is freed
-//! at once.
+//! When the last allocation of a shared block is freed, the block is kept empty if it
+//! has the size of a new shared block of its memory type and the type has no other
+//! empty block. The next allocations of that type with the same
+//! [`AllocationCreateDesc::memory_allocate_flags`] are placed in it, whatever their
+//! [`AllocationCreateDesc::linear`]. This spares a `vkAllocateMemory` call each time a
+//! program allocates and frees one allocation, such as a staging buffer, in a memory
+//! type that holds nothing else. Other blocks are freed when their last allocation is
+//! freed (see [`Allocator::free`]).
+//! [`Allocator::free_empty_blocks`] frees the empty blocks, and dropping the allocator
+//! frees all of its memory.
 //!
 //! The free ranges of a block are kept in lists by size class. A request first looks
 //! only at the first free range of each list, from the class of the requested size
@@ -191,23 +199,26 @@
 //! 3. Drop the allocator.
 //! 4. Destroy the device.
 //!
-//! Dropping the allocator makes no Vulkan calls, so dropping it after the device was
-//! destroyed is harmless. Allocating, freeing, mapping, unmapping, flushing or
-//! invalidating after that is not.
+//! Dropping the allocator frees all of its `VkDeviceMemory` with `vkFreeMemory`: the
+//! empty blocks it keeps (see [`Allocator::free`]) and the memory of allocations that
+//! were not freed. So it is dropped before the device is destroyed, once the device no
+//! longer uses that memory; the safety section of [`Allocator::allocate`] requires
+//! this. An allocator that holds no memory, because it never allocated or because
+//! [`Allocator::free_all`] was called after its last allocation, makes no Vulkan call
+//! when dropped, and may be dropped after the device was destroyed. Allocating,
+//! freeing, mapping, unmapping, flushing or invalidating after that is not allowed.
 //!
 //! # Leaks
 //!
 //! [`Allocation`] has no destructor: dropping one without passing it to
 //! [`Allocator::free`] leaves its range allocated, and the block that holds it stays
-//! allocated until [`Allocator::free_all`].
+//! allocated until [`Allocator::free_all`] or until the allocator is dropped.
 //!
 //! Dropping an [`Allocator`] that still has live allocations does not panic. It logs an
 //! error through the [`log`] crate that lists each live allocation with its
-//! [`AllocationCreateDesc::name`], and does not free the `VkDeviceMemory` blocks, which
-//! may still back resources in use. Vulkan requires every `VkDeviceMemory` to be freed
-//! before the device is destroyed: call [`Allocator::free_all`] once the resources are no
-//! longer in use, or free the distinct [`LiveAllocation::memory`] handles reported by
-//! [`Allocator::live_allocations`] yourself.
+//! [`AllocationCreateDesc::name`], then frees their `VkDeviceMemory` with the rest of
+//! its memory. The device must no longer use the resources bound to that memory, and
+//! they must not be used afterwards (see the safety section of [`Allocator::allocate`]).
 //!
 //! # Threads
 //!

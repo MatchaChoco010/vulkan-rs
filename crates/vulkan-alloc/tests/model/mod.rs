@@ -427,6 +427,7 @@ pub enum Op {
     FlushRange(Pick, Span),
     InvalidateRange(Pick, Span),
     FreeAll,
+    FreeEmptyBlocks,
     UseStale(Pick, HandleUse),
     UseForeign(Pick, HandleUse),
     FailNextAllocation(vk::VkResult),
@@ -480,7 +481,7 @@ impl Op {
             Op::Guard(..) => OpKind::Guard,
             Op::Flush(_) | Op::FlushRange(..) => OpKind::Flush,
             Op::Invalidate(_) | Op::InvalidateRange(..) => OpKind::Invalidate,
-            Op::FreeAll => OpKind::FreeAll,
+            Op::FreeAll | Op::FreeEmptyBlocks => OpKind::FreeAll,
             Op::UseStale(..) => OpKind::UseStale,
             Op::UseForeign(..) => OpKind::UseForeign,
             Op::FailNextAllocation(_) => OpKind::FailNextAllocation,
@@ -755,7 +756,7 @@ pub fn ops(world: &World, mix: Mix) -> impl Strategy<Value = Op> + use<> {
                 (picks(), spans()).prop_map(|(pick, span)| Op::InvalidateRange(pick, span)),
             ]
             .boxed(),
-            OpKind::FreeAll => Just(Op::FreeAll).boxed(),
+            OpKind::FreeAll => prop_oneof![Just(Op::FreeAll), Just(Op::FreeEmptyBlocks)].boxed(),
             OpKind::UseStale => (picks(), handle_uses())
                 .prop_map(|(pick, handle_use)| Op::UseStale(pick, handle_use))
                 .boxed(),
@@ -1020,6 +1021,7 @@ impl Harness {
                 self.synchronize_range(pick, Synchronization::Invalidate, span)?
             }
             Op::FreeAll => self.free_all()?,
+            Op::FreeEmptyBlocks => self.free_empty_blocks()?,
             Op::UseStale(pick, handle_use) => self.use_stale(pick, handle_use)?,
             Op::UseForeign(pick, handle_use) => self.use_foreign(pick, handle_use)?,
             Op::FailNextAllocation(failure) => {
@@ -1052,11 +1054,10 @@ impl Harness {
                     live.raw_mappings -= 1;
                 }
                 let memory = live.memory();
-                let last_of_its_block = !self.live.iter().any(|other| other.memory() == memory);
                 self.allocator
                     .free(live.allocation)
                     .map_err(|error| format!("freeing at the end: {error:?}"))?;
-                if last_of_its_block {
+                if self.taken_in(memory).is_empty() && !self.keeps_empty_block(memory) {
                     self.blocks.remove(&memory);
                 }
                 if let Some(twin) = live.twin {
@@ -1069,22 +1070,52 @@ impl Harness {
         }
         ensure!(self.allocator.is_empty(), "the allocator is not empty");
         ensure!(self.twin.is_empty(), "the twin allocator is not empty");
+        let blocks = self.blocks.len();
+        let before = self.fake.calls();
+        let Harness {
+            allocator,
+            twin,
+            fake,
+            twin_fake,
+            mut coverage,
+            ..
+        } = self;
+        drop(allocator);
+        drop(twin);
+        let calls = fake.calls();
         ensure_eq!(
-            self.fake.memory_objects(),
+            calls.free - before.free,
+            blocks,
+            "vkFreeMemory calls of dropping the allocator"
+        );
+        ensure_eq!(
+            (calls.allocate, calls.map, calls.unmap),
+            (before.allocate, before.map, before.unmap),
+            "other calls of dropping the allocator"
+        );
+        if blocks > 0 {
+            coverage.note("drop: frees the blocks");
+        }
+        ensure_eq!(
+            fake.memory_objects(),
             HashMap::new(),
             "memory left on the device"
         );
         ensure_eq!(
-            self.twin_fake.memory_objects(),
+            twin_fake.memory_objects(),
             HashMap::new(),
             "memory left on the twin device"
         );
-        let calls = self.fake.calls();
+        ensure_eq!(
+            (fake.misuse(), twin_fake.misuse()),
+            (Vec::<String>::new(), Vec::<String>::new()),
+            "invalid calls to the devices while dropping the allocators"
+        );
         ensure!(
             calls.allocate >= calls.free,
             "more vkFreeMemory than vkAllocateMemory calls: {calls:?}"
         );
-        Ok(std::mem::take(&mut self.coverage))
+        Ok(coverage)
     }
 
     fn pick_live(&self, pick: Pick, fitting: impl Fn(&Live) -> bool) -> Option<usize> {
@@ -1161,6 +1192,17 @@ impl Harness {
             .filter(|live| live.memory() == memory)
             .map(Live::range)
             .collect()
+    }
+
+    fn keeps_empty_block(&self, memory: u64) -> bool {
+        let block = self.blocks[&memory];
+        !block.own
+            && block.size == self.world.shared_block_size(block.memory_type)
+            && !self.blocks.iter().any(|(&other, other_block)| {
+                other != memory
+                    && other_block.memory_type == block.memory_type
+                    && self.taken_in(other).is_empty()
+            })
     }
 
     fn mapping_references_in(&self, memory: u64) -> usize {
@@ -1250,15 +1292,15 @@ impl Harness {
         let alignment = self.effective_alignment(memory_type, request.alignment);
         let own = request.needs_its_own_memory();
         let allocate_flags = request.allocate_flags();
-        let shareable = |block: &Block| {
+        let shareable = |memory: u64, block: &Block| {
             !block.own
                 && block.memory_type == memory_type
-                && block.linear == request.linear
+                && (block.linear == request.linear || self.taken_in(memory).is_empty())
                 && block.allocate_flags == allocate_flags
         };
         let has_room = !own
             && self.blocks.iter().any(|(&memory, block)| {
-                shareable(block)
+                shareable(memory, block)
                     && gaps(block.size, &self.taken_in(memory))
                         .into_iter()
                         .any(|gap| fits(gap, request.size, alignment))
@@ -1273,11 +1315,22 @@ impl Harness {
                 before.calls.allocate,
                 "vkAllocateMemory calls although a shared block has room"
             );
-            let block = self.blocks.get(&allocation.memory().0).copied();
+            let memory = allocation.memory().0;
+            let block = self.blocks.get(&memory).copied();
             ensure!(
-                block.as_ref().is_some_and(shareable),
+                block.is_some_and(|block| shareable(memory, &block)),
                 "placed in {block:?}, which is not a block the request can share"
             );
+            if self.taken_in(memory).is_empty()
+                && let Some(block) = self.blocks.get_mut(&memory)
+            {
+                self.coverage.note(if block.linear == request.linear {
+                    "allocate: reuses the empty block"
+                } else {
+                    "allocate: reuses the empty block for the other kind of resource"
+                });
+                block.linear = request.linear;
+            }
             self.coverage.step("allocate: into a shared block");
             allocation
         } else {
@@ -1577,12 +1630,25 @@ impl Harness {
         let calls = self.fake.calls();
         let block_is_empty = !self.live.iter().any(|other| other.memory() == memory);
         if block_is_empty {
-            self.blocks.remove(&memory);
+            let kept = self.keeps_empty_block(memory);
             ensure_eq!(
                 calls.free,
-                before.calls.free + 1,
-                "vkFreeMemory calls after the last allocation of a block was freed"
+                before.calls.free + usize::from(!kept),
+                "vkFreeMemory calls after the last allocation of a block was freed, when the \
+                 block is {}",
+                if kept { "kept" } else { "not kept" }
             );
+            let block = self.blocks[&memory];
+            self.coverage.note(if kept {
+                "free: the empty block is kept"
+            } else if block.own || block.size != self.world.shared_block_size(block.memory_type) {
+                "free: the empty block is freed"
+            } else {
+                "free: a second empty block is freed"
+            });
+            if !kept {
+                self.blocks.remove(&memory);
+            }
             ensure!(
                 calls.unmap - before.calls.unmap <= usize::from(was_mapped),
                 "vkUnmapMemory calls while freeing a block: {} to {}",
@@ -2264,6 +2330,44 @@ impl Harness {
         Ok(())
     }
 
+    fn free_empty_blocks(&mut self) -> Checked {
+        let before = self.observe();
+        let empty = self
+            .blocks
+            .keys()
+            .copied()
+            .filter(|&memory| self.taken_in(memory).is_empty())
+            .collect::<Vec<_>>();
+        let freed = unsafe { self.allocator.free_empty_blocks() };
+        ensure_eq!(freed, empty.len(), "the count free_empty_blocks returns");
+        let calls = self.fake.calls();
+        ensure_eq!(
+            calls.free - before.calls.free,
+            empty.len(),
+            "vkFreeMemory calls of free_empty_blocks"
+        );
+        ensure_eq!(
+            (calls.allocate, calls.map, calls.unmap),
+            (before.calls.allocate, before.calls.map, before.calls.unmap),
+            "other calls of free_empty_blocks"
+        );
+        for memory in &empty {
+            self.blocks.remove(memory);
+        }
+        self.coverage.step(if empty.is_empty() {
+            "free_empty_blocks: no block is empty"
+        } else {
+            "free_empty_blocks: frees a block"
+        });
+        let twin_freed = unsafe { self.twin.free_empty_blocks() };
+        ensure_eq!(
+            twin_freed,
+            freed,
+            "the count free_empty_blocks returns for the twin"
+        );
+        Ok(())
+    }
+
     fn use_stale(&mut self, pick: Pick, handle_use: HandleUse) -> Checked {
         let Some(index) = pick.among(self.stale.len()) else {
             self.coverage.step("stale handle: none exists");
@@ -2376,6 +2480,7 @@ impl Harness {
                 "memory type {index} is listed without blocks"
             );
             let mut type_totals = (0u64, 0u64, 0u64, 0usize, 0usize);
+            let mut empty_blocks = 0;
             let mut previous_block = None;
             for block in &memory_type.blocks {
                 let memory = block.memory.0;
@@ -2486,11 +2591,15 @@ impl Harness {
                     "the allocated regions of {:?}",
                     block.memory
                 );
-                ensure!(
-                    !allocated.is_empty(),
-                    "{:?} is kept without allocations",
-                    block.memory
-                );
+                if allocated.is_empty() {
+                    empty_blocks += 1;
+                    ensure!(
+                        !model.own && model.size == self.world.shared_block_size(index),
+                        "{:?} is kept without allocations, but it is not a shared block of the \
+                         size of a new shared block of its memory type",
+                        block.memory
+                    );
+                }
                 let allocated_bytes = allocated.iter().map(|region| region.1).sum::<u64>();
                 ensure_eq!(
                     (
@@ -2530,6 +2639,10 @@ impl Harness {
                     memory_type_index: index,
                 }));
             }
+            ensure!(
+                empty_blocks <= 1,
+                "memory type {index} keeps {empty_blocks} empty blocks"
+            );
             ensure_eq!(
                 (
                     type_stats.total_block_bytes,

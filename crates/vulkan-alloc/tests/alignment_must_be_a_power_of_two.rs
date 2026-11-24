@@ -152,6 +152,7 @@ proptest! {
             unsafe { allocator.free(allocation) }.unwrap();
         }
         prop_assert!(allocator.is_empty(), "{}", context);
+        drop(allocator);
         prop_assert_eq!(fake.misuse(), Vec::<String>::new(), "{}", context);
         prop_assert!(fake.memory_objects().is_empty(), "{}", context);
     }

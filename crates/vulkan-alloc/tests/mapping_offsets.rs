@@ -49,6 +49,7 @@ fn pointers_are_the_block_address_plus_the_offset_for_any_offset() {
             allocator.free(second).unwrap();
             allocator.free(first).unwrap();
         }
+        drop(allocator);
         assert_eq!(fake.misuse(), Vec::<String>::new(), "offset {first_size}");
         assert!(fake.memory_objects().is_empty(), "offset {first_size}");
     }

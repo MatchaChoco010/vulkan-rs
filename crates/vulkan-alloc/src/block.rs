@@ -122,6 +122,7 @@ impl MemoryTypeAllocator {
                     block.is_shareable_with(resource_class, memory_allocate_flags)
                 })?;
                 let suballocation = block.suballocate(requirements.size, requirements.alignment)?;
+                block.resource_class = resource_class;
                 Some(block.allocation(memory_type_index, block_index, suballocation))
             })
     }
@@ -172,10 +173,12 @@ impl MemoryTypeAllocator {
         &mut self,
         device: &Device,
         allocation: &Allocation,
+        shared_block_size: u64,
     ) -> Result<(), AllocationError> {
         let block = self.block_mut(allocation)?;
         unsafe { block.free_allocation(device, allocation.allocation_id) }?;
         if block.is_empty()
+            && !self.keeps_empty_block(allocation.block_index, shared_block_size)
             && let Some(block) = self
                 .blocks
                 .get_mut(allocation.block_index)
@@ -184,6 +187,28 @@ impl MemoryTypeAllocator {
             unsafe { block.free_memory(device) };
         }
         Ok(())
+    }
+
+    fn keeps_empty_block(&self, block_index: usize, shared_block_size: u64) -> bool {
+        let Some(Some(block)) = self.blocks.get(block_index) else {
+            return false;
+        };
+        !block.dedicated
+            && block.size == shared_block_size
+            && !self.blocks.iter().enumerate().any(|(index, other)| {
+                index != block_index && other.as_ref().is_some_and(MemoryBlock::is_empty)
+            })
+    }
+
+    pub(crate) unsafe fn free_empty_blocks(&mut self, device: &Device) -> usize {
+        let mut freed = 0;
+        for slot in &mut self.blocks {
+            if let Some(block) = slot.take_if(|block| block.is_empty()) {
+                unsafe { block.free_memory(device) };
+                freed += 1;
+            }
+        }
+        freed
     }
 
     pub(crate) unsafe fn free_all_blocks(&mut self, device: &Device) {
@@ -300,7 +325,7 @@ impl MemoryBlock {
         memory_allocate_flags: vk::MemoryAllocateFlags,
     ) -> bool {
         !self.dedicated
-            && self.resource_class == resource_class
+            && (self.resource_class == resource_class || self.is_empty())
             && self.memory_allocate_flags == memory_allocate_flags
     }
 

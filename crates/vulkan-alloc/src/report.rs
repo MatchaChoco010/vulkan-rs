@@ -9,6 +9,10 @@ use crate::block::MemoryTypeAllocator;
 /// `allocated_bytes + free_bytes` equals `total_block_bytes`, unless a total is larger
 /// than [`u64::MAX`]: each total saturates at [`u64::MAX`], and the equality may then
 /// not hold.
+///
+/// The blocks include the empty blocks the allocator keeps for later allocations (see
+/// [`Allocator::free`](crate::Allocator::free)): they count in `block_count` and
+/// `total_block_bytes`, and all their bytes in `free_bytes`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AllocatorStats {
     /// The total size of all `VkDeviceMemory` blocks.
@@ -69,13 +73,19 @@ pub struct MemoryTypeSnapshot {
 }
 
 /// One `VkDeviceMemory` block in a [`MemoryTypeSnapshot`].
+///
+/// A block can be empty, with no allocated region: the allocator keeps up to one empty
+/// block per memory type for later allocations (see
+/// [`Allocator::free`](crate::Allocator::free)).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryBlockSnapshot {
     /// The position of the block among the blocks of its memory type. It stays the same
     /// while the block exists; the position of a freed block can be taken by a new one,
     /// and positions of freed blocks that were not reused are skipped.
     pub block_index: usize,
-    /// The kind of resource the block holds.
+    /// The kind of resource the block holds. An empty block keeps the kind of its last
+    /// allocation until an allocation of either kind is placed in it, which gives the
+    /// block the kind of that allocation.
     pub resource_class: AllocationResourceClass,
     /// Whether the block is the `VkDeviceMemory` of a single dedicated, exportable or
     /// zero-initialized allocation.

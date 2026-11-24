@@ -74,8 +74,9 @@ pub struct GpuOwner {
     pub device: Device,
     pub queue_family: u32,
     pub queue: vk::Queue,
-    /// Dropped after the device is destroyed, which is harmless: dropping an allocator
-    /// makes no Vulkan call.
+    /// Dropped after the device is destroyed, which is harmless: the `Drop` of
+    /// [`GpuOwner`] calls `free_all` before it destroys the device, and an allocator that
+    /// holds no memory makes no Vulkan call when dropped.
     allocator: RefCell<Allocator>,
 }
 
@@ -162,8 +163,10 @@ impl Drop for GpuOwner {
         // all of them are gone; waiting makes sure that no submitted work is left.
         unsafe {
             let _ = self.device.device_wait_idle();
-            // Each buffer and image freed its memory when it was destroyed, which
-            // released the blocks; this frees what a failed free left behind.
+            // Each buffer and image freed its memory when it was destroyed. This frees
+            // the empty blocks that the allocator keeps for later allocations and what a
+            // failed free left behind, so that dropping the allocator after the device
+            // makes no Vulkan call.
             let live = self.allocator.get_mut().free_all();
             if live != 0 {
                 cleanup_failed(format_args!(
