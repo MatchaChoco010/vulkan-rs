@@ -1,3 +1,4 @@
+use super::read_only_arrays::is_read_only;
 use super::unmarked_arrays::{self, Length, length_that_no_member_stores};
 use super::{MethodNames, field_link, member_origin};
 use crate::docs::{Block, Doc};
@@ -328,8 +329,13 @@ fn pointer_setter(
     names: &mut MethodNames<'_>,
 ) -> Setter {
     let field = field_name(&m.name);
-    let borrow = Borrow::of_pointer(ty.outer_const());
-    let as_ptr = borrow.slice_as_ptr();
+    let read_only = is_read_only(s, m);
+    let borrow = Borrow::of_pointer(ty.outer_const() || read_only);
+    let as_ptr = if read_only {
+        "as_ptr().cast_mut"
+    } else {
+        borrow.slice_as_ptr()
+    };
     let pointee = model.base_ty(&ty.base, "'a");
     let mut generics = String::new();
     let count = count_member(s, m);
@@ -429,8 +435,15 @@ fn pointer_setter(
         )
     };
     let alignment = crate::model::aligned_input(s, m).map_or("", |input| input.requirement);
+    let read_only = if read_only {
+        "The C declaration of the member is a pointer to writable memory, but the implementation only reads the elements, so the setter borrows them shared."
+    } else {
+        ""
+    };
     Setter {
-        doc: doc.text_after_the_first_block(alignment),
+        doc: doc
+            .text_after_the_first_block(alignment)
+            .text_after_the_first_block(read_only),
         name: pointer_setter_method_name(m, names),
         generics,
         value_ty,
@@ -795,7 +808,7 @@ mod tests {
                     VoidArrayLength::Bytes => (String::new(), "u8"),
                     VoidArrayLength::Values(typed) => (format!("<T: {}>", typed.value_trait), "T"),
                 };
-                let mutability = if CType::of(m).outer_const() {
+                let mutability = if CType::of(m).outer_const() || is_read_only(s, m) {
                     ""
                 } else {
                     "mut "

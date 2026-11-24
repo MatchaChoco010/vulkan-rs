@@ -27941,19 +27941,22 @@ impl<'a> DataGraphProcessingEngineCreateInfoARM<'a> {
     /// Sets [`p_processing_engines`](Self::p_processing_engines) to the start of a slice of
     /// elements and [`processing_engine_count`](Self::processing_engine_count) to its length.
     ///
+    /// The C declaration of the member is a pointer to writable memory, but the implementation only
+    /// reads the elements, so the setter borrows them shared.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `processingEngineCount`, a `uint32_t`, can count.
     pub fn processing_engines(
         mut self,
-        value: &'a mut [PhysicalDeviceDataGraphProcessingEngineARM],
+        value: &'a [PhysicalDeviceDataGraphProcessingEngineARM],
     ) -> Self {
         self.processing_engine_count = len_as_count(
             value.len(),
             "VkDataGraphProcessingEngineCreateInfoARM::pProcessingEngines",
             "processingEngineCount",
         );
-        self.p_processing_engines = value.as_mut_ptr();
+        self.p_processing_engines = value.as_ptr().cast_mut();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -45083,17 +45086,20 @@ impl<'a> ImageCompressionControlEXT<'a> {
     /// and [`compression_control_plane_count`](Self::compression_control_plane_count) to its
     /// length.
     ///
+    /// The C declaration of the member is a pointer to writable memory, but the implementation only
+    /// reads the elements, so the setter borrows them shared.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `compressionControlPlaneCount`, a `uint32_t`, can
     /// count.
-    pub fn fixed_rate_flags(mut self, value: &'a mut [ImageCompressionFixedRateFlagsEXT]) -> Self {
+    pub fn fixed_rate_flags(mut self, value: &'a [ImageCompressionFixedRateFlagsEXT]) -> Self {
         self.compression_control_plane_count = len_as_count(
             value.len(),
             "VkImageCompressionControlEXT::pFixedRateFlags",
             "compressionControlPlaneCount",
         );
-        self.p_fixed_rate_flags = value.as_mut_ptr();
+        self.p_fixed_rate_flags = value.as_ptr().cast_mut();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -99808,9 +99814,12 @@ impl<'a> PipelineBinaryDataKHR<'a> {
     }
     /// Sets [`p_data`](Self::p_data) to the start of a slice of bytes and
     /// [`data_size`](Self::data_size) to its length.
-    pub fn data(mut self, value: &'a mut [u8]) -> Self {
+    ///
+    /// The C declaration of the member is a pointer to writable memory, but the implementation only
+    /// reads the elements, so the setter borrows them shared.
+    pub fn data(mut self, value: &'a [u8]) -> Self {
         self.data_size = value.len() as _;
-        self.p_data = value.as_mut_ptr().cast();
+        self.p_data = value.as_ptr().cast_mut().cast();
         self
     }
 }
@@ -110517,16 +110526,19 @@ impl<'a> RenderPassPerformanceCountersByRegionBeginInfoARM<'a> {
     /// Sets [`p_counter_indices`](Self::p_counter_indices) to the start of a slice of elements and
     /// [`counter_index_count`](Self::counter_index_count) to its length.
     ///
+    /// The C declaration of the member is a pointer to writable memory, but the implementation only
+    /// reads the elements, so the setter borrows them shared.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `counterIndexCount`, a `uint32_t`, can count.
-    pub fn counter_indices(mut self, value: &'a mut [u32]) -> Self {
+    pub fn counter_indices(mut self, value: &'a [u32]) -> Self {
         self.counter_index_count = len_as_count(
             value.len(),
             "VkRenderPassPerformanceCountersByRegionBeginInfoARM::pCounterIndices",
             "counterIndexCount",
         );
-        self.p_counter_indices = value.as_mut_ptr();
+        self.p_counter_indices = value.as_ptr().cast_mut();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.

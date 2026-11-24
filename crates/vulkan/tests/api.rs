@@ -20,6 +20,26 @@ fn slice_setters_set_count_and_pointer() {
 }
 
 #[test]
+fn arrays_that_the_implementation_only_reads_are_borrowed_from_read_only_memory() {
+    static BINARY: [u8; 5] = [1, 2, 3, 4, 5];
+    static RATES: [vk::ImageCompressionFixedRateFlagsEXT; 1] =
+        [vk::ImageCompressionFixedRateFlagsEXT::_2BPC];
+    static COUNTERS: [u32; 2] = [7, 9];
+    let data = vk::PipelineBinaryDataKHR::default().data(&BINARY);
+    assert_eq!(
+        (data.data_size, data.p_data.cast_const()),
+        (5, BINARY.as_ptr().cast())
+    );
+    let control = vk::ImageCompressionControlEXT::default().fixed_rate_flags(&RATES);
+    assert_eq!(control.compression_control_plane_count, 1);
+    assert_eq!(control.p_fixed_rate_flags.cast_const(), RATES.as_ptr());
+    let counters =
+        vk::RenderPassPerformanceCountersByRegionBeginInfoARM::default().counter_indices(&COUNTERS);
+    assert_eq!(counters.counter_index_count, 2);
+    assert_eq!(counters.p_counter_indices.cast_const(), COUNTERS.as_ptr());
+}
+
+#[test]
 fn arrays_sharing_a_count_must_agree() {
     let semaphores = [vk::Semaphore::null(); 2];
     let stages = [vk::PipelineStageFlags::empty(); 2];

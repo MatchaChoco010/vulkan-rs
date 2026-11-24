@@ -2,11 +2,13 @@
 mod absent_arrays;
 mod bit_fields;
 mod defaults;
+mod read_only_arrays;
 mod setters;
 mod unions;
 mod unmarked_arrays;
 
 pub(crate) use bit_fields::{Slot, slots};
+pub(crate) use read_only_arrays::assert_listed_read_only_arrays_exist;
 pub(crate) use unmarked_arrays::assert_listed_structures_exist;
 
 use super::{assert_distinct_names, header, type_aliases, w};
