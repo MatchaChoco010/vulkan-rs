@@ -32,7 +32,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
     (void)severity;
     (void)types;
     (void)user_data;
-    fprintf(stderr, "validation message: %s\n", data->pMessage);
+    fprintf(stderr, "validation message: [%s] %s\n",
+            data->pMessageIdName ? data->pMessageIdName : "", data->pMessage);
     validation_message_count++;
     return VK_FALSE;
 }
@@ -56,8 +57,13 @@ static int has_layer(const char *name) {
     return found;
 }
 
-void ctx_create(Ctx *ctx, const char *shader_dir, const char *const *device_extensions,
-                uint32_t device_extension_count) {
+static void require(VkBool32 supported, const char *feature) {
+    if (!supported) {
+        render_fail("unsupported: the device has no %s", feature);
+    }
+}
+
+void ctx_create(Ctx *ctx, const char *shader_dir, const Scenario *scenario) {
     memset(ctx, 0, sizeof(*ctx));
     ctx->shader_dir = shader_dir;
     validation_enabled = has_layer(VALIDATION_LAYER);
@@ -145,6 +151,89 @@ void ctx_create(Ctx *ctx, const char *shader_dir, const char *const *device_exte
         render_fail("unsupported: no queue family with graphics and compute");
     }
 
+    uint32_t extension_count = 0;
+    CHECK(vkEnumerateDeviceExtensionProperties(ctx->physical_device, NULL, &extension_count,
+                                               NULL));
+    VkExtensionProperties *extensions_found = calloc(extension_count + 1, sizeof(*extensions_found));
+    CHECK(vkEnumerateDeviceExtensionProperties(ctx->physical_device, NULL, &extension_count,
+                                               extensions_found));
+    for (uint32_t wanted_index = 0; wanted_index < scenario->device_extension_count;
+         wanted_index++) {
+        const char *wanted_extension = scenario->device_extensions[wanted_index];
+        int found = 0;
+        for (uint32_t i = 0; i < extension_count; i++) {
+            if (strcmp(extensions_found[i].extensionName, wanted_extension) == 0) {
+                found = 1;
+            }
+        }
+        if (!found) {
+            render_fail("unsupported: the device has no %s", wanted_extension);
+        }
+    }
+    free(extensions_found);
+
+    VkPhysicalDeviceShaderObjectFeaturesEXT shader_object = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_OBJECT_FEATURES_EXT,
+    };
+    VkPhysicalDeviceRayQueryFeaturesKHR ray_query = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+    };
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR acceleration_structure = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+        .pNext = &ray_query,
+    };
+    VkPhysicalDeviceVulkan11Features features11 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+    };
+    if (scenario->extension_features == EXTENSION_FEATURES_RAY_QUERY) {
+        features11.pNext = &acceleration_structure;
+    } else if (scenario->extension_features == EXTENSION_FEATURES_SHADER_OBJECT) {
+        features11.pNext = &shader_object;
+    }
+    VkPhysicalDeviceVulkan12Features features12 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &features11,
+    };
+    VkPhysicalDeviceVulkan13Features features13 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .pNext = &features12,
+    };
+    VkPhysicalDeviceFeatures2 supported = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &features13,
+    };
+    vkGetPhysicalDeviceFeatures2(ctx->physical_device, &supported);
+    require(supported.features.occlusionQueryPrecise, "occlusionQueryPrecise");
+    require(supported.features.geometryShader, "geometryShader");
+    require(supported.features.tessellationShader, "tessellationShader");
+    require(supported.features.sampleRateShading, "sampleRateShading");
+    require(supported.features.fragmentStoresAndAtomics, "fragmentStoresAndAtomics");
+    require(supported.features.shaderSampledImageArrayDynamicIndexing,
+            "shaderSampledImageArrayDynamicIndexing");
+    require(supported.features.multiDrawIndirect, "multiDrawIndirect");
+    require(supported.features.drawIndirectFirstInstance, "drawIndirectFirstInstance");
+    require(features11.shaderDrawParameters, "shaderDrawParameters");
+    require(features12.drawIndirectCount, "drawIndirectCount");
+    require(features12.descriptorIndexing, "descriptorIndexing");
+    require(features12.shaderSampledImageArrayNonUniformIndexing,
+            "shaderSampledImageArrayNonUniformIndexing");
+    require(features12.descriptorBindingSampledImageUpdateAfterBind,
+            "descriptorBindingSampledImageUpdateAfterBind");
+    require(features12.descriptorBindingPartiallyBound, "descriptorBindingPartiallyBound");
+    require(features12.descriptorBindingVariableDescriptorCount,
+            "descriptorBindingVariableDescriptorCount");
+    require(features12.runtimeDescriptorArray, "runtimeDescriptorArray");
+    require(features12.bufferDeviceAddress, "bufferDeviceAddress");
+    require(features13.inlineUniformBlock, "inlineUniformBlock");
+    require(features13.synchronization2, "synchronization2");
+    require(features13.dynamicRendering, "dynamicRendering");
+    if (scenario->extension_features == EXTENSION_FEATURES_RAY_QUERY) {
+        require(acceleration_structure.accelerationStructure, "accelerationStructure");
+        require(ray_query.rayQuery, "rayQuery");
+    } else if (scenario->extension_features == EXTENSION_FEATURES_SHADER_OBJECT) {
+        require(shader_object.shaderObject, "shaderObject");
+    }
+
     float priority = 1.0f;
     VkDeviceQueueCreateInfo queue_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -152,27 +241,60 @@ void ctx_create(Ctx *ctx, const char *shader_dir, const char *const *device_exte
         .queueCount = 1,
         .pQueuePriorities = &priority,
     };
-    VkPhysicalDeviceVulkan11Features features11 = {
+    shader_object.shaderObject = VK_TRUE;
+    ray_query.rayQuery = VK_TRUE;
+    acceleration_structure = (VkPhysicalDeviceAccelerationStructureFeaturesKHR){
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+        .pNext = &ray_query,
+        .accelerationStructure = VK_TRUE,
+    };
+    features11 = (VkPhysicalDeviceVulkan11Features){
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .pNext = features11.pNext,
         .shaderDrawParameters = VK_TRUE,
     };
-    VkPhysicalDeviceVulkan13Features features13 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+    features12 = (VkPhysicalDeviceVulkan12Features){
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
         .pNext = &features11,
+        .drawIndirectCount = VK_TRUE,
+        .descriptorIndexing = VK_TRUE,
+        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+        .descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
+        .descriptorBindingPartiallyBound = VK_TRUE,
+        .descriptorBindingVariableDescriptorCount = VK_TRUE,
+        .runtimeDescriptorArray = VK_TRUE,
+        .bufferDeviceAddress = VK_TRUE,
+    };
+    features13 = (VkPhysicalDeviceVulkan13Features){
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .pNext = &features12,
+        .inlineUniformBlock = VK_TRUE,
         .synchronization2 = VK_TRUE,
         .dynamicRendering = VK_TRUE,
     };
-    VkPhysicalDeviceFeatures features = {
-        .occlusionQueryPrecise = VK_TRUE,
+    VkPhysicalDeviceFeatures2 enabled = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &features13,
+        .features =
+            {
+                .geometryShader = VK_TRUE,
+                .tessellationShader = VK_TRUE,
+                .sampleRateShading = VK_TRUE,
+                .multiDrawIndirect = VK_TRUE,
+                .drawIndirectFirstInstance = VK_TRUE,
+                .occlusionQueryPrecise = VK_TRUE,
+                .fragmentStoresAndAtomics = VK_TRUE,
+                .shaderSampledImageArrayDynamicIndexing = VK_TRUE,
+            },
     };
     VkDeviceCreateInfo device_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = &features13,
-        .pEnabledFeatures = &features,
+        .pNext = &enabled,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_info,
-        .enabledExtensionCount = device_extension_count,
-        .ppEnabledExtensionNames = device_extension_count ? device_extensions : NULL,
+        .enabledExtensionCount = scenario->device_extension_count,
+        .ppEnabledExtensionNames =
+            scenario->device_extension_count ? scenario->device_extensions : NULL,
     };
     CHECK(vkCreateDevice(ctx->physical_device, &device_info, NULL, &ctx->device));
     vkGetDeviceQueue(ctx->device, ctx->queue_family, 0, &ctx->queue);
@@ -264,6 +386,7 @@ ImageDesc image_desc(VkFormat format, uint32_t width, uint32_t height, VkImageUs
                 .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
             },
         .aspect = aspect,
+        .view_type = VK_IMAGE_VIEW_TYPE_2D,
     };
     return desc;
 }
@@ -284,9 +407,9 @@ Image image_create(Ctx *ctx, const ImageDesc *desc) {
     VkImageViewCreateInfo view = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image = image.image,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .viewType = desc->view_type,
         .format = desc->info.format,
-        .subresourceRange = {desc->aspect, 0, desc->info.mipLevels, 0, 1},
+        .subresourceRange = {desc->aspect, 0, desc->info.mipLevels, 0, desc->info.arrayLayers},
     };
     CHECK(vkCreateImageView(ctx->device, &view, NULL, &image.view));
     return image;
@@ -392,6 +515,14 @@ void color_attachment_end(VkCommandBuffer command_buffer, VkImage image) {
                   VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                   VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
                   VK_ACCESS_2_TRANSFER_READ_BIT);
+}
+
+VkClearValue depth_stencil_clear(float depth, uint32_t stencil) {
+    VkClearValue value;
+    memset(&value, 0, sizeof(value));
+    value.depthStencil.depth = depth;
+    value.depthStencil.stencil = stencil;
+    return value;
 }
 
 void rendering_begin(VkCommandBuffer command_buffer, VkImageView view, const float clear[4],
@@ -506,7 +637,7 @@ void output_write(Ctx *ctx, const char *path) {
     }
 }
 
-VkShaderModule shader_module(Ctx *ctx, const char *file_name) {
+uint32_t *shader_code(Ctx *ctx, const char *file_name, size_t *size) {
     char path[4096];
     snprintf(path, sizeof(path), "%s/%s", ctx->shader_dir, file_name);
     FILE *file = fopen(path, "rb");
@@ -514,16 +645,23 @@ VkShaderModule shader_module(Ctx *ctx, const char *file_name) {
         render_fail("cannot open %s", path);
     }
     fseek(file, 0, SEEK_END);
-    long size = ftell(file);
+    long length = ftell(file);
     fseek(file, 0, SEEK_SET);
-    uint32_t *code = malloc((size_t)size + 4);
-    if (fread(code, 1, (size_t)size, file) != (size_t)size) {
+    uint32_t *code = malloc((size_t)length + 4);
+    if (fread(code, 1, (size_t)length, file) != (size_t)length) {
         render_fail("cannot read %s", path);
     }
     fclose(file);
+    *size = (size_t)length;
+    return code;
+}
+
+VkShaderModule shader_module(Ctx *ctx, const char *file_name) {
+    size_t size = 0;
+    uint32_t *code = shader_code(ctx, file_name, &size);
     VkShaderModuleCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = (size_t)size,
+        .codeSize = size,
         .pCode = code,
     };
     VkShaderModule module;
@@ -539,12 +677,14 @@ VkPipeline graphics_pipeline(Ctx *ctx, const GraphicsDesc *desc) {
             .stage = VK_SHADER_STAGE_VERTEX_BIT,
             .module = desc->vertex,
             .pName = desc->vertex_entry,
+            .pSpecializationInfo = desc->vertex_specialization,
         },
         {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
             .module = desc->fragment,
             .pName = desc->fragment_entry,
+            .pSpecializationInfo = desc->fragment_specialization,
         },
     };
     VkPipelineVertexInputStateCreateInfo no_vertex_input = {
@@ -553,6 +693,7 @@ VkPipeline graphics_pipeline(Ctx *ctx, const GraphicsDesc *desc) {
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = desc->topology,
+        .primitiveRestartEnable = desc->primitive_restart,
     };
     VkViewport viewport = {0.0f, 0.0f, (float)desc->width, (float)desc->height, 0.0f, 1.0f};
     VkRect2D scissor = {{0, 0}, {desc->width, desc->height}};
@@ -592,8 +733,8 @@ VkPipeline graphics_pipeline(Ctx *ctx, const GraphicsDesc *desc) {
         .pVertexInputState = desc->vertex_input ? desc->vertex_input : &no_vertex_input,
         .pInputAssemblyState = &input_assembly,
         .pViewportState = &viewport_state,
-        .pRasterizationState = &rasterization,
-        .pMultisampleState = &multisample,
+        .pRasterizationState = desc->rasterization ? desc->rasterization : &rasterization,
+        .pMultisampleState = desc->multisample ? desc->multisample : &multisample,
         .pDepthStencilState = desc->depth_stencil,
         .pColorBlendState = &color_blend,
         .pDynamicState = desc->dynamic_state_count ? &dynamic : NULL,

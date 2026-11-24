@@ -22,13 +22,14 @@ fn main() {
     }
     let Some(scenario) = scenarios::SCENARIOS
         .iter()
+        .chain([&scenarios::INVALID_CALL])
         .find(|scenario| scenario.name == args[1])
     else {
         eprintln!("no scenario named {}", args[1]);
         std::process::exit(2);
     };
 
-    let mut ctx = Ctx::new(Path::new(&args[2]), scenario.device_extensions);
+    let mut ctx = Ctx::new(Path::new(&args[2]), scenario);
     println!(
         "validation layer: {}",
         if render::validation_enabled() {

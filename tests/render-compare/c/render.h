@@ -61,22 +61,31 @@ typedef struct {
     VkImageView view;
 } Image;
 
+/* An image and the view that image_create makes of all its mip levels and array layers. */
 typedef struct {
     VkImageCreateInfo info;
     VkImageAspectFlags aspect;
+    VkImageViewType view_type;
 } ImageDesc;
 
 /* The state of a graphics pipeline that differs between the scenarios. A NULL pointer
- * leaves that part of the create info NULL; rendering, when not NULL, is chained to the
- * create info for dynamic rendering. */
+ * leaves that part of the create info NULL, except that a NULL vertex_input stands for no
+ * vertex input, a NULL rasterization for filled polygons without culling and a NULL
+ * multisample for `samples` samples without any other multisample state. rendering, when
+ * not NULL, is chained to the create info for dynamic rendering. */
 typedef struct {
     VkShaderModule vertex;
     VkShaderModule fragment;
     const char *vertex_entry;
     const char *fragment_entry;
     const VkPipelineVertexInputStateCreateInfo *vertex_input;
+    const VkSpecializationInfo *vertex_specialization;
+    const VkSpecializationInfo *fragment_specialization;
     VkPrimitiveTopology topology;
+    VkBool32 primitive_restart;
+    const VkPipelineRasterizationStateCreateInfo *rasterization;
     VkSampleCountFlagBits samples;
+    const VkPipelineMultisampleStateCreateInfo *multisample;
     const VkPipelineDepthStencilStateCreateInfo *depth_stencil;
     const VkPipelineColorBlendAttachmentState *blend_attachments;
     uint32_t blend_attachment_count;
@@ -90,17 +99,25 @@ typedef struct {
     uint32_t height;
 } GraphicsDesc;
 
+/* The feature structures of extensions that a scenario needs in the pNext chain of the
+ * device, in addition to the features that every scenario enables. */
+typedef enum {
+    EXTENSION_FEATURES_NONE,
+    EXTENSION_FEATURES_RAY_QUERY,
+    EXTENSION_FEATURES_SHADER_OBJECT,
+} ExtensionFeatures;
+
 typedef struct {
     const char *name;
     void (*run)(Ctx *ctx);
     const char *const *device_extensions;
     uint32_t device_extension_count;
+    ExtensionFeatures extension_features;
 } Scenario;
 
 void render_fail(const char *format, ...) __attribute__((noreturn, format(printf, 1, 2)));
 
-void ctx_create(Ctx *ctx, const char *shader_dir, const char *const *device_extensions,
-                uint32_t device_extension_count);
+void ctx_create(Ctx *ctx, const char *shader_dir, const Scenario *scenario);
 void ctx_destroy(Ctx *ctx);
 uint32_t ctx_validation_messages(void);
 int ctx_validation_enabled(void);
@@ -135,6 +152,10 @@ void host_read_barrier(VkCommandBuffer command_buffer, VkPipelineStageFlags2 src
 void color_attachment_begin(VkCommandBuffer command_buffer, VkImage image);
 void color_attachment_end(VkCommandBuffer command_buffer, VkImage image);
 
+/* A clear value for a depth/stencil attachment. The bytes of the union that depthStencil
+ * does not cover are zero, as with vk::ClearValue::depth_stencil. */
+VkClearValue depth_stencil_clear(float depth, uint32_t stencil);
+
 /* Begins dynamic rendering to one color attachment that is cleared to `clear`. */
 void rendering_begin(VkCommandBuffer command_buffer, VkImageView view, const float clear[4],
                      uint32_t width, uint32_t height);
@@ -151,6 +172,8 @@ void output_buffer(Ctx *ctx, const Buffer *buffer, uint32_t width, uint32_t heig
 void output_words(Ctx *ctx, const uint32_t *words, uint32_t count, const char *name);
 void output_write(Ctx *ctx, const char *path);
 
+/* Reads a SPIR-V file of the shader directory; the caller frees the words. */
+uint32_t *shader_code(Ctx *ctx, const char *file_name, size_t *size);
 VkShaderModule shader_module(Ctx *ctx, const char *file_name);
 VkPipeline graphics_pipeline(Ctx *ctx, const GraphicsDesc *desc);
 VkPipelineLayout pipeline_layout(Ctx *ctx, const VkDescriptorSetLayout *set_layouts,

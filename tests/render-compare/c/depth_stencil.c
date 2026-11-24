@@ -141,7 +141,7 @@ void scenario_depth_stencil(Ctx *ctx) {
         .imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue = {.depthStencil = {1.0f, 0}},
+        .clearValue = depth_stencil_clear(1.0f, 0),
     };
     VkRenderingInfo rendering_info = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,

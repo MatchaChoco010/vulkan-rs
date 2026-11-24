@@ -79,6 +79,7 @@ pub struct Image {
 pub struct ImageDesc {
     pub info: vk::ImageCreateInfo<'static>,
     pub aspect: vk::ImageAspectFlags,
+    pub view_type: vk::ImageViewType,
 }
 
 pub struct GraphicsDesc<'a> {
@@ -87,8 +88,13 @@ pub struct GraphicsDesc<'a> {
     pub vertex_entry: &'a CStr,
     pub fragment_entry: &'a CStr,
     pub vertex_input: Option<&'a vk::PipelineVertexInputStateCreateInfo<'a>>,
+    pub vertex_specialization: Option<&'a vk::SpecializationInfo<'a>>,
+    pub fragment_specialization: Option<&'a vk::SpecializationInfo<'a>>,
     pub topology: vk::PrimitiveTopology,
+    pub primitive_restart: bool,
+    pub rasterization: Option<&'a vk::PipelineRasterizationStateCreateInfo<'a>>,
     pub samples: vk::SampleCountFlagBits,
+    pub multisample: Option<&'a vk::PipelineMultisampleStateCreateInfo<'a>>,
     pub depth_stencil: Option<&'a vk::PipelineDepthStencilStateCreateInfo<'a>>,
     pub blend_attachments: &'a [vk::PipelineColorBlendAttachmentState],
     pub dynamic_states: &'a [vk::DynamicState],
@@ -100,10 +106,24 @@ pub struct GraphicsDesc<'a> {
     pub height: u32,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ExtensionFeatures {
+    None,
+    RayQuery,
+    ShaderObject,
+}
+
 pub struct Scenario {
     pub name: &'static str,
     pub run: fn(&mut Ctx),
     pub device_extensions: &'static [&'static CStr],
+    pub extension_features: ExtensionFeatures,
+}
+
+fn require(supported: vk::Bool32, feature: &str) {
+    if supported == vk::FALSE {
+        fail(&format!("unsupported: the device has no {feature}"));
+    }
 }
 
 unsafe extern "system" fn debug_callback(
@@ -112,8 +132,22 @@ unsafe extern "system" fn debug_callback(
     data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
     _user_data: *mut c_void,
 ) -> vk::Bool32 {
-    let message = unsafe { CStr::from_ptr((*data).p_message) };
-    eprintln!("validation message: {}", message.to_string_lossy());
+    let (id, message) = unsafe {
+        let id = (*data).p_message_id_name;
+        (
+            if id.is_null() {
+                c""
+            } else {
+                CStr::from_ptr(id)
+            },
+            CStr::from_ptr((*data).p_message),
+        )
+    };
+    eprintln!(
+        "validation message: [{}] {}",
+        id.to_string_lossy(),
+        message.to_string_lossy()
+    );
     VALIDATION_MESSAGES.fetch_add(1, Ordering::Relaxed);
     vk::FALSE
 }
@@ -149,7 +183,7 @@ fn messenger_info() -> vk::DebugUtilsMessengerCreateInfoEXT<'static> {
 }
 
 impl Ctx {
-    pub fn new(shader_dir: &Path, device_extensions: &[&CStr]) -> Ctx {
+    pub fn new(shader_dir: &Path, scenario: &Scenario) -> Ctx {
         unsafe {
             let entry = Entry::load().unwrap_or_else(|error| fail(&format!("{error}")));
             let validation = has_layer(&entry, VALIDATION_LAYER);
@@ -218,25 +252,160 @@ impl Ctx {
                 .unwrap_or_else(|| fail("unsupported: no queue family with graphics and compute"))
                 as u32;
 
+            let extensions_found = instance
+                .enumerate_device_extension_properties(physical_device, None)
+                .check("vkEnumerateDeviceExtensionProperties");
+            for wanted in scenario.device_extensions {
+                if !extensions_found
+                    .iter()
+                    .any(|extension| extension.extension_name_as_c_str() == Ok(*wanted))
+                {
+                    fail(&format!(
+                        "unsupported: the device has no {}",
+                        wanted.to_string_lossy()
+                    ));
+                }
+            }
+
+            let mut shader_object = vk::PhysicalDeviceShaderObjectFeaturesEXT::default();
+            let mut ray_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default();
+            let mut acceleration_structure =
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
+            let mut features11 = vk::PhysicalDeviceVulkan11Features::default();
+            let mut features12 = vk::PhysicalDeviceVulkan12Features::default();
+            let mut features13 = vk::PhysicalDeviceVulkan13Features::default();
+            let mut supported = vk::PhysicalDeviceFeatures2::default();
+            match scenario.extension_features {
+                ExtensionFeatures::None => {}
+                ExtensionFeatures::RayQuery => {
+                    supported = supported
+                        .push_next(&mut ray_query)
+                        .push_next(&mut acceleration_structure);
+                }
+                ExtensionFeatures::ShaderObject => {
+                    supported = supported.push_next(&mut shader_object);
+                }
+            }
+            supported = supported
+                .push_next(&mut features11)
+                .push_next(&mut features12)
+                .push_next(&mut features13);
+            instance.get_physical_device_features2(physical_device, &mut supported);
+            let core = supported.features;
+            require(core.occlusion_query_precise, "occlusionQueryPrecise");
+            require(core.geometry_shader, "geometryShader");
+            require(core.tessellation_shader, "tessellationShader");
+            require(core.sample_rate_shading, "sampleRateShading");
+            require(core.fragment_stores_and_atomics, "fragmentStoresAndAtomics");
+            require(
+                core.shader_sampled_image_array_dynamic_indexing,
+                "shaderSampledImageArrayDynamicIndexing",
+            );
+            require(core.multi_draw_indirect, "multiDrawIndirect");
+            require(
+                core.draw_indirect_first_instance,
+                "drawIndirectFirstInstance",
+            );
+            require(features11.shader_draw_parameters, "shaderDrawParameters");
+            require(features12.draw_indirect_count, "drawIndirectCount");
+            require(features12.descriptor_indexing, "descriptorIndexing");
+            require(
+                features12.shader_sampled_image_array_non_uniform_indexing,
+                "shaderSampledImageArrayNonUniformIndexing",
+            );
+            require(
+                features12.descriptor_binding_sampled_image_update_after_bind,
+                "descriptorBindingSampledImageUpdateAfterBind",
+            );
+            require(
+                features12.descriptor_binding_partially_bound,
+                "descriptorBindingPartiallyBound",
+            );
+            require(
+                features12.descriptor_binding_variable_descriptor_count,
+                "descriptorBindingVariableDescriptorCount",
+            );
+            require(
+                features12.runtime_descriptor_array,
+                "runtimeDescriptorArray",
+            );
+            require(features12.buffer_device_address, "bufferDeviceAddress");
+            require(features13.inline_uniform_block, "inlineUniformBlock");
+            require(features13.synchronization2, "synchronization2");
+            require(features13.dynamic_rendering, "dynamicRendering");
+            match scenario.extension_features {
+                ExtensionFeatures::None => {}
+                ExtensionFeatures::RayQuery => {
+                    require(
+                        acceleration_structure.acceleration_structure,
+                        "accelerationStructure",
+                    );
+                    require(ray_query.ray_query, "rayQuery");
+                }
+                ExtensionFeatures::ShaderObject => {
+                    require(shader_object.shader_object, "shaderObject");
+                }
+            }
+
             let priorities = [1.0_f32];
             let queue_infos = [vk::DeviceQueueCreateInfo::default()
                 .queue_family_index(queue_family)
                 .queue_priorities(&priorities)];
+            let mut shader_object =
+                vk::PhysicalDeviceShaderObjectFeaturesEXT::default().shader_object(true);
+            let mut ray_query = vk::PhysicalDeviceRayQueryFeaturesKHR::default().ray_query(true);
+            let mut acceleration_structure =
+                vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
+                    .acceleration_structure(true);
             let mut features11 =
                 vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
+            let mut features12 = vk::PhysicalDeviceVulkan12Features::default()
+                .draw_indirect_count(true)
+                .descriptor_indexing(true)
+                .shader_sampled_image_array_non_uniform_indexing(true)
+                .descriptor_binding_sampled_image_update_after_bind(true)
+                .descriptor_binding_partially_bound(true)
+                .descriptor_binding_variable_descriptor_count(true)
+                .runtime_descriptor_array(true)
+                .buffer_device_address(true);
             let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
+                .inline_uniform_block(true)
                 .synchronization2(true)
                 .dynamic_rendering(true);
-            let extension_names = device_extensions
+            let mut enabled = vk::PhysicalDeviceFeatures2::default().features(
+                vk::PhysicalDeviceFeatures::default()
+                    .geometry_shader(true)
+                    .tessellation_shader(true)
+                    .sample_rate_shading(true)
+                    .multi_draw_indirect(true)
+                    .draw_indirect_first_instance(true)
+                    .fragment_stores_and_atomics(true)
+                    .shader_sampled_image_array_dynamic_indexing(true)
+                    .occlusion_query_precise(true),
+            );
+            let extension_names = scenario
+                .device_extensions
                 .iter()
                 .map(|name| vk::CStrPtr::new(name))
                 .collect::<Vec<_>>();
-            let features = vk::PhysicalDeviceFeatures::default().occlusion_query_precise(true);
-            let mut device_info = vk::DeviceCreateInfo::default()
+            let mut device_info = vk::DeviceCreateInfo::default();
+            match scenario.extension_features {
+                ExtensionFeatures::None => {}
+                ExtensionFeatures::RayQuery => {
+                    device_info = device_info
+                        .push_next(&mut ray_query)
+                        .push_next(&mut acceleration_structure);
+                }
+                ExtensionFeatures::ShaderObject => {
+                    device_info = device_info.push_next(&mut shader_object);
+                }
+            }
+            device_info = device_info
                 .push_next(&mut features11)
+                .push_next(&mut features12)
                 .push_next(&mut features13)
-                .queue_create_infos(&queue_infos)
-                .enabled_features(&features);
+                .push_next(&mut enabled)
+                .queue_create_infos(&queue_infos);
             if !extension_names.is_empty() {
                 device_info = device_info.enabled_extension_names(&extension_names);
             }
@@ -381,9 +550,12 @@ impl Ctx {
                 .check("vkBindImageMemory");
             let view_info = vk::ImageViewCreateInfo::default()
                 .image(image)
-                .view_type(vk::ImageViewType::_2D)
+                .view_type(desc.view_type)
                 .format(desc.info.format)
-                .subresource_range(subresource_range(desc.aspect, 0, desc.info.mip_levels));
+                .subresource_range(
+                    subresource_range(desc.aspect, 0, desc.info.mip_levels)
+                        .layer_count(desc.info.array_layers),
+                );
             let view = self
                 .device
                 .create_image_view(&view_info, None)
@@ -625,14 +797,17 @@ impl Ctx {
             .unwrap_or_else(|error| fail(&format!("cannot write {}: {error}", path.display())));
     }
 
-    pub fn shader_module(&self, file_name: &str) -> vk::ShaderModule {
+    pub fn shader_code(&self, file_name: &str) -> Vec<u32> {
         let path = self.shader_dir.join(file_name);
-        let bytes = std::fs::read(&path)
-            .unwrap_or_else(|error| fail(&format!("cannot read {}: {error}", path.display())));
-        let code = bytes
+        std::fs::read(&path)
+            .unwrap_or_else(|error| fail(&format!("cannot read {}: {error}", path.display())))
             .chunks_exact(4)
             .map(|word| u32::from_le_bytes([word[0], word[1], word[2], word[3]]))
-            .collect::<Vec<_>>();
+            .collect()
+    }
+
+    pub fn shader_module(&self, file_name: &str) -> vk::ShaderModule {
+        let code = self.shader_code(file_name);
         let info = vk::ShaderModuleCreateInfo::default().code(&code);
         unsafe { self.device.create_shader_module(&info, None) }.check("vkCreateShaderModule")
     }
@@ -649,9 +824,18 @@ impl Ctx {
                     .module(desc.fragment)
                     .name(desc.fragment_entry),
             ];
+            let [mut vertex_stage, mut fragment_stage] = stages;
+            if let Some(specialization) = desc.vertex_specialization {
+                vertex_stage = vertex_stage.specialization_info(specialization);
+            }
+            if let Some(specialization) = desc.fragment_specialization {
+                fragment_stage = fragment_stage.specialization_info(specialization);
+            }
+            let stages = [vertex_stage, fragment_stage];
             let no_vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-            let input_assembly =
-                vk::PipelineInputAssemblyStateCreateInfo::default().topology(desc.topology);
+            let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
+                .topology(desc.topology)
+                .primitive_restart_enable(desc.primitive_restart);
             let viewports = [vk::Viewport::default()
                 .width(desc.width as f32)
                 .height(desc.height as f32)
@@ -678,8 +862,8 @@ impl Ctx {
                 .vertex_input_state(desc.vertex_input.unwrap_or(&no_vertex_input))
                 .input_assembly_state(&input_assembly)
                 .viewport_state(&viewport_state)
-                .rasterization_state(&rasterization)
-                .multisample_state(&multisample)
+                .rasterization_state(desc.rasterization.unwrap_or(&rasterization))
+                .multisample_state(desc.multisample.unwrap_or(&multisample))
                 .color_blend_state(&color_blend)
                 .layout(desc.layout)
                 .render_pass(desc.render_pass)
@@ -733,8 +917,13 @@ impl<'a> GraphicsDesc<'a> {
             vertex_entry: c"main",
             fragment_entry: c"main",
             vertex_input: None,
+            vertex_specialization: None,
+            fragment_specialization: None,
             topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+            primitive_restart: false,
+            rasterization: None,
             samples: vk::SampleCountFlagBits::_1,
+            multisample: None,
             depth_stencil: None,
             blend_attachments: &[BLEND_DISABLED],
             dynamic_states: &[],
@@ -768,6 +957,7 @@ pub fn image_desc(
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .initial_layout(vk::ImageLayout::UNDEFINED),
         aspect,
+        view_type: vk::ImageViewType::_2D,
     }
 }
 
@@ -806,6 +996,10 @@ pub fn subresource_layers(aspect: vk::ImageAspectFlags, mip: u32) -> vk::ImageSu
         .mip_level(mip)
         .base_array_layer(0)
         .layer_count(1)
+}
+
+pub fn depth_stencil_clear(depth: f32, stencil: u32) -> vk::ClearValue {
+    vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue { depth, stencil })
 }
 
 pub fn color_clear(rgba: [f32; 4]) -> vk::ClearValue {

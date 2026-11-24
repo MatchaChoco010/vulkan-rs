@@ -2,7 +2,7 @@ use vulkan::vk;
 
 use crate::render::{
     BLEND_DISABLED, Ctx, GraphicsDesc, bytes_of, color_attachment_begin, color_attachment_end,
-    color_clear, image_barrier, image_desc, rect,
+    color_clear, depth_stencil_clear, image_barrier, image_desc, rect,
 };
 
 fn depth_stencil_state(
@@ -155,10 +155,7 @@ pub fn run(ctx: &mut Ctx) {
             .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
-            .clear_value(vk::ClearValue::depth_stencil(vk::ClearDepthStencilValue {
-                depth: 1.0,
-                stencil: 0,
-            }));
+            .clear_value(depth_stencil_clear(1.0, 0));
         let rendering_info = vk::RenderingInfo::default()
             .render_area(rect(width, height))
             .layer_count(1)

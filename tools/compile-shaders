@@ -27,6 +27,7 @@ RAY_TRACING = [
     "-emit-spirv-directly",
     "-fvk-use-entrypoint-name",
 ]
+RAY_QUERY = ["-profile", "glsl_460+spirv_1_4"]
 DESCRIPTOR_HEAP = ["-profile", "spirv_1_6", "-capability", "spvDescriptorHeapEXT"]
 
 EXAMPLE = "examples/{}/src/shaders"
@@ -71,6 +72,23 @@ SHADERS = [
     (RENDER, "compute_image.slang", "computeMain", "compute", "compute_image.comp.spv", GLSL_450),
     (RENDER, "descriptor_kinds.slang", "vertexMain", "vertex", "descriptor_kinds.vert.spv", GLSL_450),
     (RENDER, "descriptor_kinds.slang", "fragmentMain", "fragment", "descriptor_kinds.frag.spv", GLSL_450),
+    (RENDER, "indirect_draws.slang", "vertexMain", "vertex", "indirect_draws.vert.spv", GLSL_450),
+    (RENDER, "indirect_draws.slang", "fragmentMain", "fragment", "indirect_draws.frag.spv", GLSL_450),
+    (RENDER, "tessellation_geometry.slang", "vertexMain", "vertex", "tessellation_geometry.vert.spv", GLSL_450),
+    (RENDER, "tessellation_geometry.slang", "hullMain", "hull", "tessellation_geometry.tesc.spv", GLSL_450),
+    (RENDER, "tessellation_geometry.slang", "domainMain", "domain", "tessellation_geometry.tese.spv", GLSL_450),
+    (RENDER, "tessellation_geometry.slang", "geometryMain", "geometry", "tessellation_geometry.geom.spv", GLSL_450),
+    (RENDER, "tessellation_geometry.slang", "fragmentMain", "fragment", "tessellation_geometry.frag.spv", GLSL_450),
+    (RENDER, "image_views.slang", "vertexMain", "vertex", "image_views.vert.spv", GLSL_450),
+    (RENDER, "image_views.slang", "fragmentMain", "fragment", "image_views.frag.spv", GLSL_450),
+    (RENDER, "dynamic_rendering_msaa.slang", "vertexMain", "vertex", "dynamic_rendering_msaa.vert.spv", GLSL_450),
+    (RENDER, "dynamic_rendering_msaa.slang", "fragmentMain", "fragment", "dynamic_rendering_msaa.frag.spv", GLSL_450),
+    (RENDER, "descriptor_indexing.slang", "vertexMain", "vertex", "descriptor_indexing.vert.spv", GLSL_450),
+    (RENDER, "descriptor_indexing.slang", "fragmentMain", "fragment", "descriptor_indexing.frag.spv", GLSL_450),
+    (RENDER, "shader_objects.slang", "vertexMain", "vertex", "shader_objects.vert.spv", GLSL_450),
+    (RENDER, "shader_objects.slang", "fragmentMain", "fragment", "shader_objects.frag.spv", GLSL_450),
+    (RENDER, "ray_query.slang", "vertexMain", "vertex", "ray_query.vert.spv", GLSL_450),
+    (RENDER, "ray_query.slang", "fragmentMain", "fragment", "ray_query.frag.spv", RAY_QUERY),
 ]
 
 

@@ -22,13 +22,16 @@ int main(int argc, char **argv) {
             scenario = &SCENARIOS[i];
         }
     }
+    if (strcmp(INVALID_CALL.name, argv[1]) == 0) {
+        scenario = &INVALID_CALL;
+    }
     if (scenario == NULL) {
         fprintf(stderr, "no scenario named %s\n", argv[1]);
         return 2;
     }
 
     Ctx ctx;
-    ctx_create(&ctx, argv[2], scenario->device_extensions, scenario->device_extension_count);
+    ctx_create(&ctx, argv[2], scenario);
     printf("validation layer: %s\n", ctx_validation_enabled() ? "enabled" : "not found");
     scenario->run(&ctx);
     ctx_destroy(&ctx);

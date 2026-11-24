@@ -72,20 +72,32 @@ pub enum Run {
     Unsupported(String),
 }
 
-pub fn run(program: &Path, scenario: &str, output: &Path, capture: Option<&Path>) -> Run {
+fn command(program: &Path, scenario: &str, output: &Path) -> Command {
     let mut command = Command::new(program);
-    command.arg(scenario).arg(shader_dir()).arg(output);
-    match capture {
-        Some(capture) => {
-            command
-                .env("RENDER_COMPARE_CAPTURE_LAYER", CAPTURE_LAYER)
-                .env("GFXRECON_CAPTURE_FILE", capture)
-                .env("GFXRECON_CAPTURE_FILE_TIMESTAMP", "false")
-                .env("GFXRECON_LOG_LEVEL", "warning");
-        }
-        None => {
-            command.env_remove("RENDER_COMPARE_CAPTURE_LAYER");
-        }
+    command
+        .arg(scenario)
+        .arg(shader_dir())
+        .arg(output)
+        .env_remove("RENDER_COMPARE_CAPTURE_LAYER")
+        .env(
+            "MALLOC_PERTURB_",
+            if program == rust_program() {
+                "170"
+            } else {
+                "85"
+            },
+        );
+    command
+}
+
+pub fn run(program: &Path, scenario: &str, output: &Path, capture: Option<&Path>) -> Run {
+    let mut command = command(program, scenario, output);
+    if let Some(capture) = capture {
+        command
+            .env("RENDER_COMPARE_CAPTURE_LAYER", CAPTURE_LAYER)
+            .env("GFXRECON_CAPTURE_FILE", capture)
+            .env("GFXRECON_CAPTURE_FILE_TIMESTAMP", "false")
+            .env("GFXRECON_LOG_LEVEL", "warning");
     }
     let result = command
         .output()
@@ -111,6 +123,42 @@ pub fn run(program: &Path, scenario: &str, output: &Path, capture: Option<&Path>
             program.display()
         );
     }
+    Run::Done
+}
+
+pub const INVALID_CALL: &str = "invalid_call";
+pub const INVALID_CALL_MESSAGE: &str = "validation message: [VUID-VkBufferCreateInfo-size-00912]";
+pub const VALIDATION_FAILURE_STATUS: i32 = 3;
+
+pub fn run_invalid_call(program: &Path, output: &Path) -> Run {
+    let result = command(program, INVALID_CALL, output)
+        .output()
+        .unwrap_or_else(|e| panic!("cannot run {}: {e}", program.display()));
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    if let Some(reason) = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("unsupported: "))
+    {
+        return Run::Unsupported(reason.to_string());
+    }
+    if !stdout.contains("validation layer: enabled") {
+        return Run::Unsupported(format!(
+            "{} ran without the validation layer",
+            program.display()
+        ));
+    }
+    assert!(
+        stderr.contains(INVALID_CALL_MESSAGE),
+        "{} made an invalid call, but the validation layer did not report {INVALID_CALL_MESSAGE}:\n{stdout}{stderr}",
+        program.display()
+    );
+    assert_eq!(
+        result.status.code(),
+        Some(VALIDATION_FAILURE_STATUS),
+        "{} made an invalid call that the validation layer reported, but did not fail:\n{stdout}{stderr}",
+        program.display()
+    );
     Run::Done
 }
 

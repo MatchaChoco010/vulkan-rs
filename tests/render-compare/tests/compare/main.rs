@@ -25,6 +25,11 @@ macro_rules! scenarios {
             fn both_programs_have_the_scenarios_of_the_tests() {
                 crate::both_programs_have(crate::SCENARIOS);
             }
+
+            #[test]
+            fn a_validation_message_fails_both_programs() {
+                crate::a_validation_message_fails_both_programs();
+            }
         }
     };
 }
@@ -41,6 +46,13 @@ scenarios![
     compute_image,
     descriptor_kinds,
     secondary_queries,
+    indirect_draws,
+    tessellation_geometry,
+    image_views,
+    dynamic_rendering_msaa,
+    descriptor_indexing,
+    shader_objects,
+    ray_query,
 ];
 
 fn skip(reason: &str) {
@@ -278,4 +290,18 @@ fn both_programs_have(scenarios: &[&str]) {
         wanted,
         "the scenarios of the Rust program"
     );
+}
+
+fn a_validation_message_fails_both_programs() {
+    let c_program = match programs::c_program() {
+        Ok(program) => program,
+        Err(reason) => return skip(&reason),
+    };
+    let directory = artifacts(programs::INVALID_CALL);
+    for (side, program) in [("c", c_program), ("rust", programs::rust_program())] {
+        let output = directory.join(format!("{side}.out"));
+        if let Run::Unsupported(reason) = programs::run_invalid_call(&program, &output) {
+            return skip(&reason);
+        }
+    }
 }
