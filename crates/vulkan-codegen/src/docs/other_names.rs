@@ -328,6 +328,7 @@ mod tests {
             ("pname:a[0] and pname:b are", vec!["a"]),
             ("pname:a.b and pname:c are", vec!["a"]),
             ("pname:a or pname:b is", vec!["a"]),
+            ("pname:a pname:b are", vec!["a"]),
             ("pname:a,pname:b are", vec!["a"]),
             ("pname:a andpname:b are", vec!["a"]),
             ("pname:a and and pname:b are", vec!["a"]),

@@ -397,6 +397,26 @@ mod tests {
     }
 
     #[test]
+    fn a_dot_alone_or_before_a_blank_starts_no_block_title() {
+        assert_eq!(
+            parts(&["pname:a is:", "+", ".", "text"]),
+            [paragraph("pname:a is:"), paragraph(".\ntext")]
+        );
+        for lead in ["+", ""] {
+            for item in [". the first", ".\tthe first"] {
+                let text = ["pname:a is:", lead, item, "text"].join("\n");
+                assert_eq!(
+                    read(&text),
+                    Err(Unsupported::Block(format!(
+                        "a list that starts with `{item}`"
+                    ))),
+                    "{text}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn the_text_goes_on_over_lines_that_start_with_markup() {
         for lines in [
             [
@@ -559,6 +579,29 @@ mod tests {
                 paragraph("Whichever it is, it stays."),
             ]
         );
+        assert_eq!(
+            parts(&[
+                "pname:a is:",
+                "+",
+                "[NOTE]",
+                "====",
+                "* this",
+                "** or rather this",
+                "",
+                "+",
+                "Whichever it is, it stays.",
+                "====",
+            ]),
+            [
+                paragraph("pname:a is:"),
+                note(vec![list([vec![
+                    paragraph("this"),
+                    list([vec![paragraph("or rather this")]]),
+                    paragraph("Whichever it is, it stays."),
+                ]])]),
+            ],
+            "in a block, the outermost item is the item of the first list"
+        );
     }
 
     #[test]
@@ -670,6 +713,10 @@ mod tests {
                 "a `--` block with the attributes []",
             ),
             (
+                vec!["pname:a is:", "+", "[source,c++]", "--", "a", "--"],
+                "a `--` block with the attributes [\"source\", \"c++\"]",
+            ),
+            (
                 vec![
                     "pname:a is:",
                     "+",
@@ -712,6 +759,24 @@ mod tests {
             ),
             (
                 vec!["pname:a is:", "----", "a", "----"],
+                "a `----` block that nothing attaches",
+            ),
+            (
+                vec!["pname:a is:", "", "----", "a", "----"],
+                "a `----` block that nothing attaches",
+            ),
+            (
+                vec![
+                    "pname:a is:",
+                    "+",
+                    "[NOTE]",
+                    "====",
+                    "a",
+                    "----",
+                    "b",
+                    "----",
+                    "====",
+                ],
                 "a `----` block that nothing attaches",
             ),
             (
@@ -780,6 +845,12 @@ mod tests {
                 "pname:a is slink:VkThing::pname:a, i.e. the",
                 "e.g. first -- or",
                 "-1.",
+            ],
+            [
+                "pname:a is one,",
+                "etc. and so on,",
+                ":: names no term,",
+                ":x:y sets no attribute",
             ],
             [
                 "pname:a is 2 * 3",

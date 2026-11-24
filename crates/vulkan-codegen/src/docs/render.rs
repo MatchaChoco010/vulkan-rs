@@ -358,6 +358,17 @@ mod tests {
     }
 
     #[test]
+    fn a_list_that_starts_an_item_puts_its_first_marker_after_the_marker_of_the_item() {
+        let rendered = Doc::new()
+            .blocks([Block::List(vec![
+                vec![Block::list(["a".to_string(), "b".to_string()])],
+                vec![text("c")],
+            ])])
+            .render();
+        assert_eq!(rendered, "/// - - a\n///   - b\n/// - c\n");
+    }
+
+    #[test]
     fn the_blocks_of_a_list_item_stay_inside_the_item() {
         let rendered = Doc::new()
             .blocks([
