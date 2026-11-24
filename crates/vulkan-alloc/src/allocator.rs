@@ -167,9 +167,11 @@ impl Allocator {
     /// When several of these apply, the one listed first is returned:
     ///
     /// 1. [`AllocationError::InvalidAllocationCreateDesc`] if `desc.requirements.size` is
-    ///    0, or if `desc.requirements.alignment` is neither 0 nor a power of two. It
-    ///    depends on `desc` alone, so it is returned whatever the memory types and heaps
-    ///    of the device.
+    ///    0, if `desc.requirements.alignment` is neither 0 nor a power of two, or if
+    ///    [`AllocationCreateDesc::memory_allocate_flags`] contain
+    ///    [`vk::MemoryAllocateFlags::DEVICE_MASK`], which needs a `deviceMask` the
+    ///    allocator cannot pass. It depends on `desc` alone, so it is returned whatever
+    ///    the memory types and heaps of the device.
     /// 2. [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
     ///    required flags, not counting the types that are left out as described above.
     ///    For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
@@ -205,10 +207,7 @@ impl Allocator {
     ///   identical properties.
     /// - The `vkAllocateMemory` call made from `desc` must be valid. In particular:
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
-    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`) and must
-    ///   not contain [`vk::MemoryAllocateFlags::DEVICE_MASK`], which needs a
-    ///   `deviceMask` the allocator cannot pass (memory on chosen physical devices is
-    ///   allocated with `vkAllocateMemory` directly); a
+    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
     ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
     ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
     ///   `protectedMemory` feature; non-empty
@@ -744,7 +743,11 @@ impl Drop for Allocator {
 
 fn is_accepted(desc: &AllocationCreateDesc<'_>) -> bool {
     let alignment = desc.requirements.alignment;
-    desc.requirements.size != 0 && (alignment == 0 || alignment.is_power_of_two())
+    desc.requirements.size != 0
+        && (alignment == 0 || alignment.is_power_of_two())
+        && !desc
+            .memory_allocate_flags
+            .contains(vk::MemoryAllocateFlags::DEVICE_MASK)
 }
 
 fn memory_type_mut<'a>(

@@ -79,6 +79,7 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
     for event in [
         "allocate: invalid description: 0 bytes",
         "allocate: invalid description: alignment that is not a power of two",
+        "allocate: invalid description: DEVICE_MASK",
         "invalid description without a compatible memory type",
         "invalid description larger than the memory heap",
         "allocate: no compatible memory type",
