@@ -105,7 +105,7 @@ fn structure_build(
         );
         build = build.dst_acceleration_structure(structure).scratch_data(
             vk::DeviceOrHostAddressKHR::device_address(
-                scratch.address.div_ceil(scratch_alignment) * scratch_alignment,
+                (scratch.address + 1).div_ceil(scratch_alignment) * scratch_alignment,
             ),
         );
         let ranges =

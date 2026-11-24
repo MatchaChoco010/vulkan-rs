@@ -6,7 +6,8 @@
  * are built on the device from buffers given by device address, with the geometry in a
  * union and the build ranges behind a pointer to pointers. The scratch buffers are longer
  * than the build needs by the alignment that the device requires of the scratch address,
- * and the address is rounded up to it.
+ * and the scratch memory begins at the first aligned address after the start of the
+ * buffer, so that the address passed is never the one the query returned.
  */
 #include "scenarios.h"
 
@@ -96,7 +97,7 @@ static Structure structure_build(Ctx *ctx, VkAccelerationStructureTypeKHR type,
                                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, NULL);
     build.dstAccelerationStructure = result.structure;
     build.scratchData.deviceAddress =
-        (scratch.address + scratch_alignment - 1) / scratch_alignment * scratch_alignment;
+        (scratch.address + scratch_alignment) / scratch_alignment * scratch_alignment;
     VkAccelerationStructureBuildRangeInfoKHR range = {.primitiveCount = primitive_count};
     const VkAccelerationStructureBuildRangeInfoKHR *ranges = &range;
     VkCommandBuffer command_buffer = commands_begin(ctx);
