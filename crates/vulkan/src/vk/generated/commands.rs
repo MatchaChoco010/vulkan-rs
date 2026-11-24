@@ -65515,7 +65515,17 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkGetShaderInstrumentationValuesARM`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetShaderInstrumentationValuesARM.html)
     /// through [`Self::get_shader_instrumentation_values_arm_raw`], which describes the parameters.
-    /// Returns the result code of the command when it is not an error, which the registry lists as
+    /// `metric_block_count` is the element count of `metric_values`, which the command reads and
+    /// writes: if `metric_values` is null, the command writes the number of elements that it can
+    /// return to it; otherwise it has to hold the number of elements that `metric_values` has room
+    /// for when the wrapper is called, and the command overwrites it with the number of elements
+    /// that it wrote. Each element is a metric block, a
+    /// [`ShaderInstrumentationMetricDataHeaderARM`] followed by as many `u64` values as
+    /// [`PhysicalDeviceShaderInstrumentationPropertiesARM::num_metrics`] says, so the size of an
+    /// element depends on the device. The wrapper passes `metric_values` as it is, without checking
+    /// it: unless it is null, it has to be valid for writes of as many elements as
+    /// `metric_block_count` holds when the wrapper is called. Returns the result code of the
+    /// command when it is not an error, which the registry lists as
     /// [`VK_SUCCESS`](VkResult::SUCCESS) or [`VK_INCOMPLETE`](VkResult::INCOMPLETE). The command is
     /// provided by [`VK_ARM_shader_instrumentation`](ARM_SHADER_INSTRUMENTATION_NAME).
     ///

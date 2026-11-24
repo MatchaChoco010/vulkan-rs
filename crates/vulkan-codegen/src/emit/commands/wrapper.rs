@@ -74,6 +74,10 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     } else {
         note
     };
+    let note = match super::uncounted_arrays::uncounted_array(c) {
+        Some(array) => format!("{} {note}", array.note()),
+        None => note,
+    };
     let note = if inputs.notes.is_empty() {
         note
     } else {

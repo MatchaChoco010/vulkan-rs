@@ -1,7 +1,10 @@
 mod dispatch_tables;
 mod inputs;
 mod shape;
+mod uncounted_arrays;
 mod wrapper;
+
+pub(crate) use uncounted_arrays::assert_listed_uncounted_arrays_exist;
 
 use super::func_pointers::parameter_items;
 use super::{arrow, assert_distinct_names, header, parameter_names, w};
@@ -2040,6 +2043,7 @@ mod tests {
     fn the_wrappers_of_the_registry_describe_every_count_that_they_read_through_a_pointer() {
         let model = Model::with_docs(Registry::get(), Docs::get());
         let mut found = BTreeSet::new();
+        let mut passed_on = BTreeSet::new();
         for c in &model.ir.commands {
             if creates_a_dispatching_handle(c) {
                 continue;
@@ -2060,7 +2064,7 @@ mod tests {
                 documented
                     .matches(", which the command reads and writes: ")
                     .count(),
-                arrays_of_count.len(),
+                arrays_of_count.len() + usize::from(uncounted_arrays::uncounted_array(c).is_some()),
                 "{}: {documented}",
                 c.name
             );
@@ -2082,6 +2086,26 @@ mod tests {
                 );
                 found.insert(c.name.as_str());
             }
+            let signature = code.split(" {").next().expect("the signature");
+            for integer in ["u32", "usize"] {
+                let reference = format!("&mut {integer}");
+                for (at, _) in signature.match_indices(&reference) {
+                    let after = &signature[at + reference.len()..];
+                    if after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+                        continue;
+                    }
+                    let argument = signature[..at]
+                        .rsplit_once(':')
+                        .and_then(|(before, _)| before.rsplit([' ', '(']).next())
+                        .expect("the name of the argument");
+                    assert!(
+                        documented.contains(&format!("`{argument}` is the element count of `")),
+                        "{}: the wrapper passes the integer `{argument}` on by reference and does not say what it counts: {documented}",
+                        c.name
+                    );
+                    passed_on.insert((c.name.as_str(), argument.to_string()));
+                }
+            }
         }
         assert_eq!(
             found,
@@ -2089,6 +2113,24 @@ mod tests {
                 "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM",
                 "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR",
                 "vkGetDeviceFaultReportsKHR",
+            ])
+        );
+        assert_eq!(
+            passed_on,
+            BTreeSet::from([
+                (
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM",
+                    "counter_count".to_string()
+                ),
+                (
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR",
+                    "counter_count".to_string()
+                ),
+                ("vkGetDeviceFaultReportsKHR", "fault_counts".to_string()),
+                (
+                    "vkGetShaderInstrumentationValuesARM",
+                    "metric_block_count".to_string()
+                ),
             ])
         );
     }
