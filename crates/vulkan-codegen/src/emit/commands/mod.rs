@@ -1845,7 +1845,12 @@ mod tests {
                 .filter(|c| listed_by_name(c))
                 .map(|c| c.name.as_str())
                 .collect::<Vec<_>>(),
-            ["vkGetQueryPoolResults", "vkGetShaderBinaryDataEXT"],
+            [
+                "vkGetQueryPoolResults",
+                "vkGetShaderBinaryDataEXT",
+                "vkWriteAccelerationStructuresPropertiesKHR",
+                "vkWriteMicromapsPropertiesEXT"
+            ],
             "the commands that keep their names here, because the generator lists a requirement \
              of the specification under the name of the command"
         );

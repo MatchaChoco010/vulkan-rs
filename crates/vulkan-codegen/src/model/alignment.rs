@@ -37,10 +37,16 @@ pub(crate) const ALIGNED_INPUTS: &[AlignedInput] = &[AlignedInput {
 pub(crate) struct AlignedSlice {
     pub(crate) command: &'static str,
     pub(crate) parameter: &'static str,
-    pub(crate) alignment: usize,
+    pub(crate) alignment: Alignment,
     pub(crate) wider: Option<WiderAlignment>,
     pub(crate) stated_by: &'static str,
     pub(crate) unchecked: &'static str,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Alignment {
+    Bytes(usize),
+    Of(&'static str),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -51,19 +57,37 @@ pub(crate) struct WiderAlignment {
     pub(crate) alignment: usize,
 }
 
-pub(crate) const ALIGNED_SLICES: &[AlignedSlice] = &[AlignedSlice {
-    command: "vkGetQueryPoolResults",
-    parameter: "pData",
-    alignment: 4,
-    wider: Some(WiderAlignment {
-        flags: "flags",
-        bits: "VkQueryResultFlagBits",
-        bit: "VK_QUERY_RESULT_64_BIT",
-        alignment: 8,
-    }),
-    stated_by: "VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815",
-    unchecked: "For a pool of performance queries, VUID-vkGetQueryPoolResults-queryType-03229 requires the alignment of [`PerformanceCounterResultKHR`] instead, which the wrapper does not check, since it does not know the type of the pool.",
-}];
+pub(crate) const ALIGNED_SLICES: &[AlignedSlice] = &[
+    AlignedSlice {
+        command: "vkGetQueryPoolResults",
+        parameter: "pData",
+        alignment: Alignment::Bytes(4),
+        wider: Some(WiderAlignment {
+            flags: "flags",
+            bits: "VkQueryResultFlagBits",
+            bit: "VK_QUERY_RESULT_64_BIT",
+            alignment: 8,
+        }),
+        stated_by: "VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815",
+        unchecked: "For a pool of performance queries without `VK_QUERY_RESULT_64_BIT`, VUID-vkGetQueryPoolResults-queryType-03229 requires the alignment of [`PerformanceCounterResultKHR`], which the wrapper does not check, since it does not know the type of the pool. Neither does it check `stride`, which VUID-vkGetQueryPoolResults-queryCount-12251, VUID-vkGetQueryPoolResults-queryCount-12252 and VUID-vkGetQueryPoolResults-queryCount-12253 require to be a multiple of the same alignment when `queryCount` is greater than 1.",
+    },
+    AlignedSlice {
+        command: "vkWriteAccelerationStructuresPropertiesKHR",
+        parameter: "pData",
+        alignment: Alignment::Of("VkDeviceSize"),
+        wider: None,
+        stated_by: "VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03449, VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03451, VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06732 and VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06734",
+        unchecked: "The wrapper does not check `stride`, which VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03448, VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03450, VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06731 and VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06733 require to be a multiple of the size of `VkDeviceSize`.",
+    },
+    AlignedSlice {
+        command: "vkWriteMicromapsPropertiesEXT",
+        parameter: "pData",
+        alignment: Alignment::Of("VkDeviceSize"),
+        wider: None,
+        stated_by: "VUID-vkWriteMicromapsPropertiesEXT-queryType-10072",
+        unchecked: "The wrapper does not check `stride`, which VUID-vkWriteMicromapsPropertiesEXT-queryType-10071 requires to be a multiple of the size of `VkDeviceSize`.",
+    },
+];
 
 const CORRECT_THE_LIST: &str =
     "correct the list of memory that the specification requires to be aligned";
@@ -114,7 +138,10 @@ impl AlignedSlice {
             ..
         } = self;
         let alignments = [
-            Some(*alignment),
+            match alignment {
+                Alignment::Bytes(bytes) => Some(*bytes),
+                Alignment::Of(_) => None,
+            },
             wider.as_ref().map(|wider| wider.alignment),
         ];
         for alignment in alignments.into_iter().flatten() {
@@ -483,7 +510,12 @@ mod tests {
                 );
             }
         }
-        let mut ir = registry_with(vec![shader_binary_data(LISTED), query()]);
+        let mut ir = registry_with(vec![
+            shader_binary_data(LISTED),
+            query(),
+            write_properties("vkWriteAccelerationStructuresPropertiesKHR"),
+            write_properties("vkWriteMicromapsPropertiesEXT"),
+        ]);
         ir.structs.push(crate::test_support::structure(
             "VkShaderCreateInfoEXT",
             vec![size(), counted("pCode", "const void*", "codeSize")],
@@ -574,6 +606,10 @@ mod tests {
             .split_once(&anchor)
             .map(|(_, after)| after)
             .unwrap_or_default();
+        statement_at(after)
+    }
+
+    fn statement_at(after: &str) -> String {
         let end = ["[[VUID-", "****"]
             .iter()
             .filter_map(|next| after.find(next))
@@ -603,11 +639,31 @@ mod tests {
             );
         }
         for slice in ALIGNED_SLICES {
-            let alignments = [
-                Some(slice.alignment),
-                slice.wider.as_ref().map(|wider| wider.alignment),
-            ];
-            let vuids = slice.stated_by.split(" and ").collect::<Vec<_>>();
+            let vuids = slice
+                .stated_by
+                .split(", ")
+                .flat_map(|vuids| vuids.split(" and "))
+                .collect::<Vec<_>>();
+            let alignments = match slice.alignment {
+                Alignment::Of(ty) => {
+                    for vuid in &vuids {
+                        let statement = valid_usage_statement(&chapters, vuid);
+                        assert!(
+                            statement.contains(&format!(
+                                "pname:{} must: point to a basetype:{ty}",
+                                slice.parameter
+                            )),
+                            "{vuid} does not require `{}` to point to a {ty}: {statement}",
+                            slice.parameter
+                        );
+                    }
+                    continue;
+                }
+                Alignment::Bytes(bytes) => [
+                    Some(bytes),
+                    slice.wider.as_ref().map(|wider| wider.alignment),
+                ],
+            };
             assert_eq!(
                 vuids.len(),
                 alignments.iter().flatten().count(),
@@ -624,18 +680,21 @@ mod tests {
                     "{vuid} does not require `{}` to be aligned to {alignment} bytes: {statement}",
                     slice.parameter
                 );
-                if let Some(wider) = slice
-                    .wider
-                    .as_ref()
-                    .filter(|wider| wider.alignment == alignment)
-                {
+                let wider = slice.wider.as_ref();
+                let (bit, flags) = wider.map_or(("", ""), |wider| (wider.bit, wider.flags));
+                let selects_it =
+                    statement.contains(&format!("ename:{bit} is set in pname:{flags}"));
+                let excludes_it =
+                    statement.contains(&format!("ename:{bit} is not set in pname:{flags}"));
+                if wider.is_some_and(|wider| wider.alignment == alignment) {
                     assert!(
-                        statement.contains(&format!(
-                            "ename:{} is set in pname:{}",
-                            wider.bit, wider.flags
-                        )),
-                        "{vuid} does not ask for {alignment} bytes when {} is set: {statement}",
-                        wider.bit
+                        selects_it && !excludes_it,
+                        "{vuid} does not ask for {alignment} bytes when {bit} is set: {statement}"
+                    );
+                } else if wider.is_some() {
+                    assert!(
+                        excludes_it,
+                        "{vuid} does not ask for {alignment} bytes when {bit} is not set: {statement}"
                     );
                 }
             }
@@ -652,11 +711,61 @@ mod tests {
         }
     }
 
-    const ALIGNED_RAW_POINTERS: &[&str] =
-        &["VUID-vkGetMemoryHostPointerPropertiesEXT-pHostPointer-01753"];
+    const NOT_CHECKED_BY_THE_WRAPPERS: &[(&str, &str)] = &[
+        (
+            "VUID-vkGetMemoryHostPointerPropertiesEXT-pHostPointer-01753",
+            "a raw pointer that the caller passes as it is",
+        ),
+        (
+            "VUID-VkImportMemoryHostPointerInfoEXT-pHostPointer-01749",
+            "a raw pointer that the caller stores in the structure",
+        ),
+        (
+            "VUID-VkMemoryMapPlacedInfoEXT-pPlacedAddress-09577",
+            "a raw pointer that the caller stores in the structure",
+        ),
+        (
+            "VUID-vkCopyMemoryToAccelerationStructureKHR-pInfo-03750",
+            "the host address of a VkDeviceOrHostAddressKHR, a raw pointer that the caller stores",
+        ),
+        (
+            "VUID-vkCopyAccelerationStructureToMemoryKHR-pInfo-03751",
+            "the host address of a VkDeviceOrHostAddressKHR, a raw pointer that the caller stores",
+        ),
+        (
+            "VUID-vkCopyMemoryToMicromapEXT-pInfo-07564",
+            "the host address of a VkDeviceOrHostAddressKHR, a raw pointer that the caller stores",
+        ),
+        (
+            "VUID-vkCopyMicromapToMemoryEXT-pInfo-07570",
+            "the host address of a VkDeviceOrHostAddressKHR, a raw pointer that the caller stores",
+        ),
+        (
+            "VUID-{refpage}-pOffsets-08061",
+            "the values of an array of offsets, not the address of memory",
+        ),
+    ];
+
+    fn host_memory_that_has_to_be_aligned(statement: &str) -> Option<&str> {
+        statement.split("pname:").skip(1).find_map(|after| {
+            let (path, rest) = after.split_once(' ').unwrap_or((after, ""));
+            let last = path.rsplit(['>', '.']).next().unwrap_or(path);
+            let identifier = path
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '>' | '.'));
+            let host = last == "hostAddress"
+                || (last.starts_with('p')
+                    && last[1..].starts_with(|c: char| c.is_ascii_uppercase()));
+            let aligned = rest.starts_with("must: be aligned")
+                || rest.starts_with("must: be a pointer aligned")
+                || rest.starts_with("must: point to a basetype:")
+                || rest.starts_with("is not `NULL`, it must: be aligned");
+            (identifier && host && aligned).then_some(path)
+        })
+    }
 
     #[test]
-    fn every_command_parameter_that_the_specification_requires_to_be_aligned_is_listed() {
+    fn every_host_memory_that_the_specification_requires_to_be_aligned_is_listed() {
         let Some(chapters) = chapters_of_the_specification() else {
             return;
         };
@@ -668,33 +777,71 @@ mod tests {
                     .iter()
                     .flat_map(|slice| [slice.stated_by, slice.unchecked]),
             )
-            .chain(ALIGNED_RAW_POINTERS.iter().copied())
-            .collect::<Vec<_>>()
-            .join(" ");
-        let mut found = 0;
-        for (index, _) in chapters.match_indices("[[VUID-vk") {
+            .chain(ALIGNED_INPUTS.iter().map(|input| input.stated_by))
+            .chain(NOT_CHECKED_BY_THE_WRAPPERS.iter().map(|(vuid, _)| *vuid))
+            .flat_map(|text| text.split([' ', ',']))
+            .filter(|token| token.starts_with("VUID-"))
+            .collect::<BTreeSet<_>>();
+        let mut found = BTreeSet::new();
+        for (index, _) in chapters.match_indices("[[VUID-") {
             let vuid = &chapters[index + 2..];
-            let vuid = &vuid[..vuid.find("]]").expect("the end of the anchor")];
-            let statement = valid_usage_statement(&chapters, vuid);
-            let aligned = statement.split("pname:").skip(1).any(|after| {
-                let (name, rest) = after.split_once(' ').unwrap_or((after, ""));
-                name.starts_with('p')
-                    && name.chars().all(|c| c.is_ascii_alphanumeric())
-                    && (rest.starts_with("must: be aligned")
-                        || rest.starts_with("must: be a pointer aligned"))
-            });
-            if aligned {
-                found += 1;
+            let end = vuid.find("]]").expect("the end of the anchor");
+            let statement = statement_at(&vuid[end + 2..]);
+            let vuid = &vuid[..end];
+            if host_memory_that_has_to_be_aligned(&statement).is_some() {
                 assert!(
                     listed.contains(vuid),
-                    "{vuid} requires a parameter to be aligned, and no list of aligned memory names it: {statement}"
+                    "{vuid} requires host memory to be aligned, and no list of aligned memory names it: {statement}"
                 );
+                found.insert(vuid);
             }
         }
-        assert!(
-            found >= 4,
-            "only {found} statements require a parameter to be aligned"
-        );
+        for (vuid, _) in NOT_CHECKED_BY_THE_WRAPPERS {
+            assert!(found.contains(vuid), "{vuid} is listed but not found");
+        }
+        assert_eq!(found.len(), 19, "{found:?}");
+    }
+
+    #[test]
+    fn the_scan_for_aligned_host_memory_reads_the_ways_the_specification_says_it() {
+        for (statement, path) in [
+            (
+                "If pname:pData is not `NULL`, it must: be aligned to `16` bytes",
+                Some("pData"),
+            ),
+            (
+                "pname:pData must: point to a basetype:VkDeviceSize",
+                Some("pData"),
+            ),
+            (
+                "then pname:pData must: be aligned to a multiple of `4`",
+                Some("pData"),
+            ),
+            (
+                "pname:pHostPointer must: be a pointer aligned to",
+                Some("pHostPointer"),
+            ),
+            (
+                "pname:pInfo->dst.hostAddress must: be aligned to 16 bytes",
+                Some("pInfo->dst.hostAddress"),
+            ),
+            (
+                "pname:pInfo->dst.deviceAddress must: be aligned to `256` bytes",
+                None,
+            ),
+            (
+                "pname:stride must: be a multiple of the size of basetype:VkDeviceSize",
+                None,
+            ),
+            ("pname:pData must: be a valid pointer", None),
+            ("pname:p must: be aligned", None),
+        ] {
+            assert_eq!(
+                host_memory_that_has_to_be_aligned(statement),
+                path,
+                "{statement}"
+            );
+        }
     }
 
     #[test]
@@ -715,7 +862,14 @@ mod tests {
             .filter(|c| model.aligned_slice(c).is_some())
             .map(|c| c.name.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(checked, ["vkGetQueryPoolResults"]);
+        assert_eq!(
+            checked,
+            [
+                "vkGetQueryPoolResults",
+                "vkWriteAccelerationStructuresPropertiesKHR",
+                "vkWriteMicromapsPropertiesEXT"
+            ]
+        );
     }
 
     fn query() -> Command {
@@ -727,6 +881,21 @@ mod tests {
                 field("dataSize", "size_t"),
                 counted("pData", "void*", "dataSize"),
                 field("flags", "VkQueryResultFlags"),
+            ],
+        );
+        c.device = true;
+        c
+    }
+
+    fn write_properties(name: &str) -> Command {
+        let mut c = result_command(
+            name,
+            &["VK_SUCCESS"],
+            vec![
+                field("device", "VkDevice"),
+                field("dataSize", "size_t"),
+                counted("pData", "void*", "dataSize"),
+                field("stride", "size_t"),
             ],
         );
         c.device = true;

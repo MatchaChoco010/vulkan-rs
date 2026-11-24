@@ -6,7 +6,7 @@ use super::{
 use crate::docs::{Doc, join_and, join_or};
 use crate::emit::command_info::result_code;
 use crate::emit::{arrow, assert_distinct_names};
-use crate::model::AlignedOutput;
+use crate::model::{AlignedOutput, Alignment};
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr, parse_version};
 use crate::naming::{command_name, field_name, flag_bit_name};
 use std::collections::BTreeSet;
@@ -128,9 +128,18 @@ fn alignment_check(model: &Model<'_>, c: &Command, params: &[Field]) -> Alignmen
         .find(|p| p.name == slice.parameter)
         .unwrap_or_else(|| panic!("{}: `{}` is not passed", c.name, slice.parameter));
     let slice_name = argument_name(p);
-    let alignment = slice.alignment;
+    let (alignment, of) = match slice.alignment {
+        Alignment::Bytes(bytes) => (bytes.to_string(), format!("{bytes} bytes")),
+        Alignment::Of(ty) => {
+            let ty = model.base_ty(ty, "'_");
+            (
+                format!("core::mem::align_of::<{ty}>()"),
+                format!("the alignment of [`{ty}`]"),
+            )
+        }
+    };
     let (required, described) = match &slice.wider {
-        None => (alignment.to_string(), format!("{alignment} bytes")),
+        None => (alignment, of),
         Some(wider) => {
             let flags = params
                 .iter()
@@ -145,7 +154,7 @@ fn alignment_check(model: &Model<'_>, c: &Command, params: &[Field]) -> Alignmen
                     wider.alignment
                 ),
                 format!(
-                    "{alignment} bytes, or to {} bytes if `{}` contains `{}`",
+                    "{of}, or to {} bytes if `{}` contains `{}`",
                     wider.alignment, wider.flags, wider.bit
                 ),
             )
@@ -154,7 +163,9 @@ fn alignment_check(model: &Model<'_>, c: &Command, params: &[Field]) -> Alignmen
     AlignmentCheck {
         check: format!(
             "assert!({slice_name}.as_ptr().addr().is_multiple_of({required}), \"{}: `{slice_name}` has to start at an address aligned to {described} ({})\");\n",
-            c.name, slice.stated_by
+            c.name,
+            slice.stated_by,
+            described = described.replace("[`", "`").replace("`]", "`"),
         ),
         panics: format!(
             "Panics if `{slice_name}` does not start at an address aligned to {described}, as {} require: a slice of bytes does not guarantee it, so borrow it from memory with that alignment. {}",
