@@ -2744,7 +2744,7 @@ mod tests {
         let out = generate(&ir);
         assert!(
             out.contains(
-                "pub unsafe fn get_things_khr(&self) -> crate::vk::Result<Vec<(ThingKHR<'static>, Vec<u8>)>> { unsafe { loop { let mut count: u32 = 0; self.get_things_khr_raw(&mut count, core::ptr::null_mut()).into_result()?; let mut values: Vec<ThingKHR<'static>> = alloc::vec![Default::default(); count as usize]; let result = self.get_things_khr_raw(&mut count, values.as_mut_ptr()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; values.truncate(count as usize); let mut bytes: Vec<Vec<u8>> = values.iter().map(|element| alloc::vec![0u8; element.data_size]).collect(); for (element, bytes) in values.iter_mut().zip(&mut bytes) { element.p_data = bytes.as_mut_ptr().cast(); } let result = self.get_things_khr_raw(&mut count, values.as_mut_ptr()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; values.truncate(count as usize); bytes.truncate(count as usize); for (element, bytes) in values.iter_mut().zip(&mut bytes) { bytes.truncate(element.data_size); element.p_data = core::ptr::null_mut(); } return Ok(values.into_iter().zip(bytes).collect()); } } }"
+                "pub unsafe fn get_things_khr(&self) -> crate::vk::Result<Vec<(ThingKHR<'static>, Vec<u8>)>> { unsafe { loop { let mut count: u32 = 0; self.get_things_khr_raw(&mut count, core::ptr::null_mut()).into_result()?; let mut values: Vec<ThingKHR<'static>> = alloc::vec![Default::default(); count as usize]; let result = self.get_things_khr_raw(&mut count, values.as_mut_ptr()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; values.truncate(count as usize); let mut bytes: Vec<Vec<u8>> = values.iter().map(|element| alloc::vec![0u8; element.data_size]).collect(); for (element, bytes) in values.iter_mut().zip(&mut bytes) { element.p_data = bytes.as_mut_ptr().cast(); } count = values.len() as u32; let result = self.get_things_khr_raw(&mut count, values.as_mut_ptr()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; values.truncate(count as usize); bytes.truncate(count as usize); for (element, bytes) in values.iter_mut().zip(&mut bytes) { bytes.truncate(element.data_size); element.p_data = core::ptr::null_mut(); } return Ok(values.into_iter().zip(bytes).collect()); } } }"
             ),
             "{out}"
         );
@@ -2762,6 +2762,7 @@ mod tests {
         assert!(
             out.contains("let mut count: usize = 0;")
                 && out.contains("alloc::vec![Default::default(); count];")
+                && out.contains("count = values.len();")
                 && out.contains("bytes.truncate(count);"),
             "{out}"
         );

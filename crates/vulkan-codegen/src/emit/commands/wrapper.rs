@@ -764,6 +764,10 @@ impl Call<'_> {
             _ => "count as usize",
         };
         let NestedBytes { pointer, size, .. } = nested;
+        let elements = match count_ty.as_str() {
+            "usize" => "values.len()".to_string(),
+            _ => format!("values.len() as {count_ty}"),
+        };
         let query = self.raw(&[(count, "&mut count"), (data, "core::ptr::null_mut()")]);
         let fill = self.raw(&[(count, "&mut count"), (data, "values.as_mut_ptr()")]);
         let listed_errors = self.listed_errors();
@@ -782,6 +786,7 @@ impl Call<'_> {
                     for (element, bytes) in values.iter_mut().zip(&mut bytes) {{
                         element.{pointer} = bytes.as_mut_ptr().cast();
                     }}
+                    count = {elements};
                     let result = {fill};
                     if result == VkResult::INCOMPLETE {{ continue; }}
                     {listed_errors}result.into_result()?;

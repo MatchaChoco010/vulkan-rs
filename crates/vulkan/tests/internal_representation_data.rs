@@ -23,8 +23,10 @@ fn cases(default: u32) -> ProptestConfig {
 #[derive(Clone, Debug)]
 enum Change {
     Add(Vec<u8>),
-    Remove,
+    RemoveLast,
+    RemoveFirst,
     Grow(usize, Vec<u8>),
+    Shrink(usize, usize),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -68,12 +70,23 @@ impl Driver {
             }
             match change {
                 Change::Add(bytes) => representations.push(bytes.clone()),
-                Change::Remove => {
+                Change::RemoveLast => {
                     representations.pop();
+                }
+                Change::RemoveFirst => {
+                    if !representations.is_empty() {
+                        representations.remove(0);
+                    }
                 }
                 Change::Grow(index, more) => {
                     if let Some(len) = representations.len().checked_sub(1) {
                         representations[(*index).min(len)].extend_from_slice(more);
+                    }
+                }
+                Change::Shrink(index, less) => {
+                    if let Some(len) = representations.len().checked_sub(1) {
+                        let bytes = &mut representations[(*index).min(len)];
+                        bytes.truncate(bytes.len().saturating_sub(*less));
                     }
                 }
             }
@@ -207,9 +220,12 @@ fn representations() -> impl Strategy<Value = Vec<Vec<u8>>> {
 fn change() -> impl Strategy<Value = Change> {
     prop_oneof![
         vec(any::<u8>(), 0..MOST_BYTES).prop_map(Change::Add),
-        Just(Change::Remove),
+        Just(Change::RemoveLast),
+        Just(Change::RemoveFirst),
         (0..MOST_REPRESENTATIONS, vec(any::<u8>(), 1..MOST_BYTES))
             .prop_map(|(index, more)| Change::Grow(index, more)),
+        (0..MOST_REPRESENTATIONS, 1..MOST_BYTES)
+            .prop_map(|(index, less)| Change::Shrink(index, less)),
     ]
 }
 

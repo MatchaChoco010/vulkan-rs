@@ -64382,6 +64382,7 @@ impl crate::Device {
                 for (element, bytes) in values.iter_mut().zip(&mut bytes) {
                     element.p_data = bytes.as_mut_ptr().cast();
                 }
+                count = values.len() as u32;
                 let result = self.get_pipeline_executable_internal_representations_khr_raw(
                     core::ptr::from_ref(executable_info),
                     &mut count,
