@@ -301,7 +301,7 @@ impl<'a> Reader<'a> {
         let mut block_title = None;
         for line in header {
             match title(line) {
-                Some(text) if !is_attributes(line) => block_title = Some(text.trim().to_string()),
+                Some(text) => block_title = Some(text.trim().to_string()),
                 _ => style.extend(
                     line[1..line.len() - 1]
                         .split(',')
