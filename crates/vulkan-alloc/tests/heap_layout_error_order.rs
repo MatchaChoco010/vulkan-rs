@@ -9,6 +9,7 @@ const ALIGNMENTS: [u64; 8] = [0, 1, 2, 3, 16, 1 << 32, 1 << 62, 1 << 63];
 const COUNTS: [u32; 5] = [0, 1, 2, 3, u32::MAX];
 const RESERVED_SIZES: [u64; 3] = [0, 1, u64::MAX];
 const MAX_SIZES: [u64; 3] = [0, 1 << 20, u64::MAX];
+const DESCRIPTORS_PER_IMAGE: [u32; 6] = [0, 1, 2, 3, 1 << 31, u32::MAX];
 
 fn lcm(a: u64, b: u64) -> u128 {
     fn gcd(mut a: u128, mut b: u128) -> u128 {
@@ -48,6 +49,48 @@ fn typed_run_errors(cursor: u64, size: u64, alignment: u64, count: u32) -> Vec<H
         errors.push(HeapLayoutError::Overflow);
     }
     errors
+}
+
+fn multi_descriptor_image_run_errors(
+    cursor: u64,
+    size: u64,
+    alignment: u64,
+    descriptors_per_image: u32,
+    count: u32,
+) -> Vec<HeapLayoutError> {
+    if size == 0 {
+        return vec![HeapLayoutError::ZeroDescriptorSize];
+    }
+    let mut errors = Vec::new();
+    if descriptors_per_image == 0 {
+        errors.push(HeapLayoutError::ZeroDescriptorCount);
+    }
+    let alignment = alignment.max(1);
+    if !size.is_multiple_of(alignment) {
+        errors.push(HeapLayoutError::UnalignedDescriptorSize { size, alignment });
+    }
+    let stride = u128::from(size) * u128::from(descriptors_per_image);
+    let overflows = match u64::try_from(stride) {
+        Ok(0) => false,
+        Ok(stride) => placement_overflows(cursor, stride, count),
+        Err(_) => true,
+    };
+    if overflows {
+        errors.push(HeapLayoutError::Overflow);
+    }
+    errors
+}
+
+fn tensor_run_errors(cursor: u64, size: u64, alignment: u64, count: u32) -> Vec<HeapLayoutError> {
+    if size == 0 {
+        return vec![HeapLayoutError::ZeroDescriptorSize];
+    }
+    let alignment = u128::from(alignment.max(1));
+    let stride = u128::from(size).div_ceil(alignment) * alignment;
+    match u64::try_from(stride) {
+        Ok(stride) if !placement_overflows(cursor, stride, count) => Vec::new(),
+        _ => vec![HeapLayoutError::Overflow],
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -314,6 +357,81 @@ fn resource_plan_follows_its_documentation(
             );
         }
     }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
+fn multi_descriptor_image_and_tensor_runs_return_the_first_documented_error_that_applies() {
+    let mut seen = Seen::default();
+    let mut tensor_successes = 0;
+    let mut tensor_overflows = 0;
+    for size in SIZES {
+        for alignment in ALIGNMENTS {
+            let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+                .buffer_descriptor_size(16)
+                .buffer_descriptor_alignment(16)
+                .image_descriptor_size(size)
+                .image_descriptor_alignment(alignment)
+                .max_resource_heap_size(u64::MAX);
+            let tensor_properties = vk::PhysicalDeviceDescriptorHeapTensorPropertiesARM::default()
+                .tensor_descriptor_size(size)
+                .tensor_descriptor_alignment(alignment);
+            for first_count in COUNTS {
+                for count in COUNTS {
+                    for descriptors_per_image in DESCRIPTORS_PER_IMAGE {
+                        let mut plan = ResourceHeapPlan::new(&properties);
+                        let mut cursor = plan.buffers(first_count).map_or(0, |slots| slots.end());
+                        let applicable = multi_descriptor_image_run_errors(
+                            cursor,
+                            size,
+                            alignment,
+                            descriptors_per_image,
+                            count,
+                        );
+                        assert_run(
+                            &mut seen,
+                            "ResourceHeapPlan::multi_descriptor_images",
+                            &(size, alignment, first_count, count, descriptors_per_image),
+                            plan.multi_descriptor_images(count, descriptors_per_image),
+                            &applicable,
+                            &mut cursor,
+                        );
+                    }
+
+                    let mut plan = ResourceHeapPlan::with_tensors(&properties, &tensor_properties);
+                    let mut cursor = plan.buffers(first_count).map_or(0, |slots| slots.end());
+                    let applicable = tensor_run_errors(cursor, size, alignment, count);
+                    let context = (size, alignment, first_count, count);
+                    let result = plan.tensors(count);
+                    if let Ok(slots) = result {
+                        tensor_successes += 1;
+                        let stride = u128::from(size).div_ceil(u128::from(alignment.max(1)))
+                            * u128::from(alignment.max(1));
+                        assert_eq!(u128::from(slots.stride), stride, "{context:?}");
+                        assert_eq!(slots.descriptor_size, size, "{context:?}");
+                    }
+                    if applicable.first() == Some(&HeapLayoutError::Overflow) {
+                        tensor_overflows += 1;
+                    }
+                    assert_run(
+                        &mut seen,
+                        "ResourceHeapPlan::tensors",
+                        &context,
+                        result,
+                        &applicable,
+                        &mut cursor,
+                    );
+                    assert_eq!(
+                        ResourceHeapPlan::new(&properties).tensors(count),
+                        Err(HeapLayoutError::ZeroDescriptorSize),
+                        "a plan made by new has no tensor descriptor size"
+                    );
+                }
+            }
+        }
+    }
+    seen.assert_covers(&["ResourceHeapPlan::multi_descriptor_images"]);
+    assert!(tensor_successes > 0 && tensor_overflows > 0);
 }
 
 #[test]
