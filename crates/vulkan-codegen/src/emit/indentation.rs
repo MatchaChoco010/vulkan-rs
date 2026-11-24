@@ -128,6 +128,54 @@ mod tests {
     }
 
     #[test]
+    fn a_character_literal_ends_at_the_quote_after_one_character_or_after_an_escape() {
+        for (after_the_quote, rest) in [
+            ("a' x", Some(" x")),
+            ("\"'(", Some("(")),
+            ("é'[", Some("[")),
+            ("\\'' x", Some(" x")),
+            ("\\\\' x", Some(" x")),
+            ("\\n'", Some("")),
+            ("\\u{7b}'}", Some("}")),
+            ("a> x", None),
+            ("a, 'b> x", None),
+            ("_ x", None),
+            ("a", None),
+            ("", None),
+            ("'' x", None),
+            ("\\", None),
+            ("\\n x", None),
+        ] {
+            assert_eq!(
+                after_character_literal(after_the_quote),
+                rest,
+                "{after_the_quote:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_string_literal_ends_at_the_first_quote_that_no_backslash_escapes() {
+        for (after_the_quote, rest) in [
+            ("\" x", Some(" x")),
+            ("a{b\"}", Some("}")),
+            ("a\\\"b\" x", Some(" x")),
+            ("a\\\\\" x", Some(" x")),
+            ("é\"\"", Some("\"")),
+            ("a", None),
+            ("a\\\"", None),
+            ("a\\", None),
+            ("", None),
+        ] {
+            assert_eq!(
+                after_string_literal(after_the_quote),
+                rest,
+                "{after_the_quote:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_lifetime_starts_no_character_literal() {
         assert_eq!(
             indent_by_nesting("fn f<'a>(x: &'a [u8]) -> &'a str {\nx('a', 'b')\n}\n"),

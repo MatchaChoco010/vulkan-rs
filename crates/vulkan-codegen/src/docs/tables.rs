@@ -48,9 +48,10 @@ struct ColumnSpec {
 }
 
 fn column_spec(record: &str) -> Option<ColumnSpec> {
-    let is_digits = |text: &str| !text.is_empty() && text.chars().all(|c| c.is_ascii_digit());
     let (columns, rest) = match record.split_once('*') {
-        Some((multiplier, rest)) if is_digits(multiplier) => (multiplier.parse().ok()?, rest),
+        Some((multiplier, rest)) if multiplier.chars().all(|c| c.is_ascii_digit()) => {
+            (multiplier.parse().ok()?, rest)
+        }
         Some(_) => return None,
         None => (1, record),
     };
@@ -711,6 +712,8 @@ mod tests {
             ("1,2A,2", 2),
             ("1,2ab,2", 2),
             ("1,-1,2", 2),
+            ("1,+2*,2", 2),
+            ("1,-2*,2", 2),
             ("1,99999999999999999999999999*,2", 2),
         ] {
             assert_eq!(column_count(cols), Some(columns), "{cols:?}");
