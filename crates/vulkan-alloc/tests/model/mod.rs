@@ -430,8 +430,8 @@ pub enum Op {
     UseStale(Pick, HandleUse),
     UseForeign(Pick, HandleUse),
     FailNextAllocation(vk::VkResult),
-    FaultNextMap { returns_null: bool },
-    FailNextSynchronization,
+    FaultNextMap(MapFault),
+    FailNextSynchronization(vk::VkResult),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -484,8 +484,8 @@ impl Op {
             Op::UseStale(..) => OpKind::UseStale,
             Op::UseForeign(..) => OpKind::UseForeign,
             Op::FailNextAllocation(_) => OpKind::FailNextAllocation,
-            Op::FaultNextMap { .. } => OpKind::FaultNextMap,
-            Op::FailNextSynchronization => OpKind::FailNextSynchronization,
+            Op::FaultNextMap(_) => OpKind::FaultNextMap,
+            Op::FailNextSynchronization(_) => OpKind::FailNextSynchronization,
         }
     }
 }
@@ -768,10 +768,17 @@ pub fn ops(world: &World, mix: Mix) -> impl Strategy<Value = Op> + use<> {
             ]
             .prop_map(Op::FailNextAllocation)
             .boxed(),
-            OpKind::FaultNextMap => any::<bool>()
-                .prop_map(|returns_null| Op::FaultNextMap { returns_null })
-                .boxed(),
-            OpKind::FailNextSynchronization => Just(Op::FailNextSynchronization).boxed(),
+            OpKind::FaultNextMap => prop_oneof![
+                Just(MapFault::ReturnsNull),
+                prop::sample::select(MAP_FAILURES.to_vec()).prop_map(MapFault::Fails),
+            ]
+            .prop_map(Op::FaultNextMap)
+            .boxed(),
+            OpKind::FailNextSynchronization => {
+                prop::sample::select(SYNCHRONIZATION_FAILURES.to_vec())
+                    .prop_map(Op::FailNextSynchronization)
+                    .boxed()
+            }
         }
     };
     Union::new_weighted(
@@ -919,8 +926,15 @@ const OTHER_ALLOCATION_FAILURES: [vk::VkResult; 4] = [
     vk::VkResult::ERROR_INVALID_EXTERNAL_HANDLE,
     vk::VkResult::ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS,
 ];
-const INJECTED_MAP_FAILURE: vk::VkResult = vk::VkResult::ERROR_MEMORY_MAP_FAILED;
-const INJECTED_SYNCHRONIZATION_FAILURE: vk::VkResult = vk::VkResult::ERROR_OUT_OF_HOST_MEMORY;
+const MAP_FAILURES: [vk::VkResult; 3] = [
+    vk::VkResult::ERROR_MEMORY_MAP_FAILED,
+    vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY,
+    vk::VkResult::ERROR_OUT_OF_HOST_MEMORY,
+];
+const SYNCHRONIZATION_FAILURES: [vk::VkResult; 2] = [
+    vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY,
+    vk::VkResult::ERROR_OUT_OF_HOST_MEMORY,
+];
 
 fn gaps(size: u64, taken: &[(u64, u64)]) -> Vec<(u64, u64)> {
     let mut taken = taken.to_vec();
@@ -1013,20 +1027,14 @@ impl Harness {
                 self.fake.fail_next_allocation(failure);
                 self.coverage.step("arm a failing vkAllocateMemory");
             }
-            Op::FaultNextMap { returns_null } => {
-                let fault = if returns_null {
-                    MapFault::ReturnsNull
-                } else {
-                    MapFault::Fails(INJECTED_MAP_FAILURE)
-                };
+            Op::FaultNextMap(fault) => {
                 self.map_fault = Some(fault);
                 self.fake.fault_next_map(fault);
                 self.coverage.step("arm a faulty vkMapMemory");
             }
-            Op::FailNextSynchronization => {
-                self.synchronization_fails = Some(INJECTED_SYNCHRONIZATION_FAILURE);
-                self.fake
-                    .fail_next_synchronization(INJECTED_SYNCHRONIZATION_FAILURE);
+            Op::FailNextSynchronization(failure) => {
+                self.synchronization_fails = Some(failure);
+                self.fake.fail_next_synchronization(failure);
                 self.coverage.step("arm a failing flush or invalidate");
             }
         }
@@ -1916,6 +1924,8 @@ impl Harness {
         let expected = match self.synchronization_fails.take() {
             Some(failure) => {
                 self.coverage.step(format!("{kind:?} fails on the device"));
+                self.coverage
+                    .note(format!("{kind:?} fails on the device with {failure:?}"));
                 Err(AllocationError::Vulkan(failure))
             }
             None => {
@@ -1991,6 +2001,8 @@ impl Harness {
         let expected = match self.synchronization_fails.take() {
             Some(failure) => {
                 self.coverage.step(format!("{name} fails on the device"));
+                self.coverage
+                    .note(format!("{name} fails on the device with {failure:?}"));
                 Err(AllocationError::Vulkan(failure))
             }
             None => {
