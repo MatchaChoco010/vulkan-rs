@@ -64320,9 +64320,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkGetPipelineExecutableInternalRepresentationsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPipelineExecutableInternalRepresentationsKHR.html)
     /// through [`Self::get_pipeline_executable_internal_representations_khr_raw`], which describes
-    /// the parameters. Asks the command for the number of elements and then for the elements, again
-    /// for as long as it reports `VK_INCOMPLETE`, and returns what it writes to
-    /// `pInternalRepresentations`. The command is provided by
+    /// the parameters. Asks the command for the number of elements, then for the elements, which
+    /// give the size of the data that `pData` of each element points to, and then for the elements
+    /// and their data, all again for as long as it reports `VK_INCOMPLETE`. Returns each element
+    /// that the command writes to `pInternalRepresentations` together with its data, with `pData`
+    /// set to null. The command is provided by
     /// [`VK_KHR_pipeline_executable_properties`](KHR_PIPELINE_EXECUTABLE_PROPERTIES_NAME).
     ///
     /// # Errors
@@ -64346,7 +64348,12 @@ impl crate::Device {
     pub unsafe fn get_pipeline_executable_internal_representations_khr(
         &self,
         executable_info: &PipelineExecutableInfoKHR<'_>,
-    ) -> crate::vk::Result<Vec<PipelineExecutableInternalRepresentationKHR<'static>>> {
+    ) -> crate::vk::Result<
+        Vec<(
+            PipelineExecutableInternalRepresentationKHR<'static>,
+            Vec<u8>,
+        )>,
+    > {
         unsafe {
             loop {
                 let mut count: u32 = 0;
@@ -64368,7 +64375,29 @@ impl crate::Device {
                 }
                 result.into_result()?;
                 values.truncate(count as usize);
-                return Ok(values);
+                let mut bytes: Vec<Vec<u8>> = values
+                    .iter()
+                    .map(|element| alloc::vec![0u8; element.data_size])
+                    .collect();
+                for (element, bytes) in values.iter_mut().zip(&mut bytes) {
+                    element.p_data = bytes.as_mut_ptr().cast();
+                }
+                let result = self.get_pipeline_executable_internal_representations_khr_raw(
+                    core::ptr::from_ref(executable_info),
+                    &mut count,
+                    values.as_mut_ptr(),
+                );
+                if result == VkResult::INCOMPLETE {
+                    continue;
+                }
+                result.into_result()?;
+                values.truncate(count as usize);
+                bytes.truncate(count as usize);
+                for (element, bytes) in values.iter_mut().zip(&mut bytes) {
+                    bytes.truncate(element.data_size);
+                    element.p_data = core::ptr::null_mut();
+                }
+                return Ok(values.into_iter().zip(bytes).collect());
             }
         }
     }

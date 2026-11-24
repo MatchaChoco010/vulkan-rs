@@ -2683,4 +2683,158 @@ mod tests {
             assert_eq!(message, expected);
         }
     }
+
+    #[test]
+    fn the_wrappers_of_the_registry_return_the_buffers_that_enumerated_elements_point_to() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut with_buffers = Vec::new();
+        for dispatch in Dispatch::ALL {
+            for c in commands(&model, dispatch).filter(|c| !creates_a_dispatching_handle(c)) {
+                let params = dispatch.explicit_params(c);
+                let shape::Shape::Enumerates { data, .. } = shape::Shape::detect(&model, c, params)
+                else {
+                    continue;
+                };
+                let Some(element) = model.get_struct(&params[data].ty) else {
+                    continue;
+                };
+                let points_to_output = element.members.iter().any(|m| {
+                    m.name != "pNext" && m.len.is_some() && CType::of(m).pointers == [false]
+                });
+                let source = squash(&wrapper::wrapper(&model, c, dispatch));
+                assert_eq!(
+                    source.contains("let mut bytes: Vec<Vec<u8>>"),
+                    points_to_output,
+                    "{}: {source}",
+                    c.name
+                );
+                if points_to_output {
+                    with_buffers.push(c.name.as_str());
+                }
+            }
+        }
+        assert_eq!(
+            with_buffers,
+            ["vkGetPipelineExecutableInternalRepresentationsKHR"]
+        );
+    }
+
+    fn enumerating_things(element: Vec<Field>) -> Registry {
+        let mut ir = base();
+        ir.structs
+            .push(tagged("VkThingKHR", "VK_STRUCTURE_TYPE_THING_KHR", element));
+        ir.commands.push(device(result_command(
+            "vkGetThingsKHR",
+            &["VK_SUCCESS", "VK_INCOMPLETE"],
+            vec![
+                field("device", "VkDevice"),
+                field("pThingCount", "uint32_t*"),
+                optional(counted("pThings", "VkThingKHR*", "pThingCount")),
+            ],
+        )));
+        ir
+    }
+
+    #[test]
+    fn an_enumeration_whose_elements_point_to_bytes_asks_for_them_and_returns_them() {
+        let ir = enumerating_things(vec![
+            field("dataSize", "size_t"),
+            counted("pData", "void*", "dataSize"),
+        ]);
+        let out = generate(&ir);
+        assert!(
+            out.contains(
+                "pub unsafe fn get_things_khr(&self) -> crate::vk::Result<Vec<(ThingKHR<'static>, Vec<u8>)>> { unsafe { loop { let mut count: u32 = 0; self.get_things_khr_raw(&mut count, core::ptr::null_mut()).into_result()?; let mut values: Vec<ThingKHR<'static>> = alloc::vec![Default::default(); count as usize]; let result = self.get_things_khr_raw(&mut count, values.as_mut_ptr()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; values.truncate(count as usize); let mut bytes: Vec<Vec<u8>> = values.iter().map(|element| alloc::vec![0u8; element.data_size]).collect(); for (element, bytes) in values.iter_mut().zip(&mut bytes) { element.p_data = bytes.as_mut_ptr().cast(); } let result = self.get_things_khr_raw(&mut count, values.as_mut_ptr()); if result == VkResult::INCOMPLETE { continue; } result.into_result()?; values.truncate(count as usize); bytes.truncate(count as usize); for (element, bytes) in values.iter_mut().zip(&mut bytes) { bytes.truncate(element.data_size); element.p_data = core::ptr::null_mut(); } return Ok(values.into_iter().zip(bytes).collect()); } } }"
+            ),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn an_enumeration_counted_by_a_size_t_whose_elements_point_to_bytes_counts_with_it() {
+        let mut ir = enumerating_things(vec![
+            field("dataSize", "size_t"),
+            counted("pData", "void*", "dataSize"),
+        ]);
+        let c = ir.commands.last_mut().unwrap();
+        c.params[1] = field("pThingCount", "size_t*");
+        let out = generate(&ir);
+        assert!(
+            out.contains("let mut count: usize = 0;")
+                && out.contains("alloc::vec![Default::default(); count];")
+                && out.contains("bytes.truncate(count);"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn an_enumeration_whose_elements_point_to_a_value_without_a_length_returns_the_elements() {
+        let ir = enumerating_things(vec![field("pMarker", "void*")]);
+        let out = generate(&ir);
+        assert!(
+            out.contains(
+                "pub unsafe fn get_things_khr(&self) -> crate::vk::Result<Vec<ThingKHR<'static>>>"
+            ),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn an_enumeration_whose_elements_point_to_other_buffers_is_refused() {
+        let cases = [
+            (
+                vec![
+                    field("dataSize", "size_t"),
+                    counted("pData", "void*", "dataSize"),
+                    field("otherSize", "size_t"),
+                    counted("pOther", "void*", "otherSize"),
+                ],
+                "vkGetThingsKHR: the elements of `pThings` point to more than one buffer that the command writes",
+            ),
+            (
+                vec![
+                    field("valueCount", "uint32_t"),
+                    counted("pValues", "uint32_t*", "valueCount"),
+                ],
+                "vkGetThingsKHR: the elements of `pThings` point to `pValues`, a buffer that the command writes, and the wrapper allocates only bytes counted by a `size_t` member",
+            ),
+            (
+                vec![
+                    field("valueCount", "size_t"),
+                    counted("pValues", "uint32_t*", "valueCount"),
+                ],
+                "vkGetThingsKHR: the elements of `pThings` point to `pValues`, a buffer that the command writes, and the wrapper allocates only bytes counted by a `size_t` member",
+            ),
+            (
+                vec![
+                    field("dataSize", "uint32_t"),
+                    counted("pData", "void*", "dataSize"),
+                ],
+                "vkGetThingsKHR: the elements of `pThings` point to `pData`, a buffer that the command writes, and the wrapper allocates only bytes counted by a `size_t` member",
+            ),
+        ];
+        for (element, expected) in cases {
+            let ir = enumerating_things(element);
+            let message = crate::test_support::catch_quietly(|| generate(&ir))
+                .expect_err("the wrapper cannot be generated");
+            assert_eq!(message, expected);
+        }
+    }
+
+    #[test]
+    fn an_enumeration_without_a_result_whose_elements_point_to_bytes_is_refused() {
+        let mut ir = enumerating_things(vec![
+            field("dataSize", "size_t"),
+            counted("pData", "void*", "dataSize"),
+        ]);
+        let c = ir.commands.last_mut().unwrap();
+        c.return_ty = "void".to_string();
+        c.success_codes.clear();
+        let message = crate::test_support::catch_quietly(|| generate(&ir))
+            .expect_err("the wrapper cannot be generated");
+        assert_eq!(
+            message,
+            "vkGetThingsKHR: the elements of `pThings` point to buffers that the command writes, and the command returns no result that says whether they were large enough"
+        );
+    }
 }

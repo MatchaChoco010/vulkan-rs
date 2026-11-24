@@ -8,7 +8,7 @@ use crate::emit::command_info::result_code;
 use crate::emit::{arrow, assert_distinct_names};
 use crate::model::AlignedOutput;
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr, parse_version};
-use crate::naming::command_name;
+use crate::naming::{command_name, field_name};
 use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
 
@@ -18,7 +18,11 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
     let aligned = aligned_output(model, c, params, &shape);
-    assert_distinct_names(&c.name, bound_names(c, params, &shape, &inputs, aligned));
+    let nested = nested_bytes(model, c, params, &shape);
+    assert_distinct_names(
+        &c.name,
+        bound_names(c, params, &shape, &inputs, aligned, nested.as_ref()),
+    );
     let absent_before = absent_before(c, dispatch);
     assert!(
         absent_before.is_none() || matches!(shape, Shape::ReturnsValue { .. }),
@@ -40,7 +44,10 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     } = match &shape {
         Shape::PassThrough => call.passes_through(),
         Shape::ReturnsValue { out } => call.returns_value(*out),
-        Shape::Enumerates { count, data } => call.enumerates(*count, *data, aligned),
+        Shape::Enumerates { count, data } => match &nested {
+            Some(nested) => call.enumerates_with_bytes(*count, *data, nested),
+            None => call.enumerates(*count, *data, aligned),
+        },
         Shape::FillsOnePerInput { count, out } => {
             let len = inputs.slice_len_local(*count).unwrap_or_else(|| {
                 panic!(
@@ -121,6 +128,58 @@ const FIXED_BINDINGS: &[&str] = &["x", "element", "entry", "error"];
 
 const ALIGNED_BINDINGS: &[&str] = &["padding", "written"];
 
+const NESTED_BINDINGS: &[&str] = &["bytes"];
+
+struct NestedBytes {
+    pointer: String,
+    size: String,
+    c_pointer: String,
+}
+
+fn nested_bytes(
+    model: &Model<'_>,
+    c: &Command,
+    params: &[Field],
+    shape: &Shape,
+) -> Option<NestedBytes> {
+    let Shape::Enumerates { data, .. } = shape else {
+        return None;
+    };
+    let element = model.get_struct(&params[*data].ty)?;
+    let written = element
+        .members
+        .iter()
+        .filter(|m| m.name != "pNext" && m.len.is_some() && CType::of(m).pointers == [false])
+        .collect::<Vec<_>>();
+    let m = match written.as_slice() {
+        [] => return None,
+        [m] => *m,
+        _ => panic!(
+            "{}: the elements of `{}` point to more than one buffer that the command writes",
+            c.name, params[*data].name
+        ),
+    };
+    let size = m.len.as_deref().and_then(|len| {
+        element.members.iter().find(|size| {
+            size.name == len
+                && CType::of(size).depth() == 0
+                && model.canonical(&size.ty) == "size_t"
+        })
+    });
+    let size = size.filter(|_| m.ty == "void");
+    let size = size.unwrap_or_else(|| {
+        panic!(
+            "{}: the elements of `{}` point to `{}`, a buffer that the command writes, and the wrapper allocates only bytes counted by a `size_t` member",
+            c.name, params[*data].name, m.name
+        )
+    });
+    Some(NestedBytes {
+        pointer: field_name(&m.name),
+        size: field_name(&size.name),
+        c_pointer: m.name.clone(),
+    })
+}
+
 fn aligned_output(
     model: &Model<'_>,
     c: &Command,
@@ -154,7 +213,19 @@ fn bound_names(
     shape: &Shape,
     inputs: &Inputs,
     aligned: Option<&AlignedOutput>,
+    nested: Option<&NestedBytes>,
 ) -> Vec<(String, String)> {
+    let nested = nested.into_iter().flat_map(|nested| {
+        NESTED_BINDINGS.iter().map(|name| {
+            (
+                format!(
+                    "the local `{name}` that holds the buffers that `{}` of the elements points to",
+                    nested.c_pointer
+                ),
+                name.to_string(),
+            )
+        })
+    });
     let aligned = aligned.into_iter().flat_map(|output| {
         ALIGNED_BINDINGS.iter().map(|name| {
             (
@@ -184,6 +255,7 @@ fn bound_names(
         .cloned()
         .chain(shape_locals(shape, params))
         .chain(aligned)
+        .chain(nested)
         .chain(result)
         .chain(fixed)
         .collect()
@@ -199,7 +271,8 @@ pub(super) fn checked_names(
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
     let aligned = aligned_output(model, c, params, &shape);
-    bound_names(c, params, &shape, &inputs, aligned)
+    let nested = nested_bytes(model, c, params, &shape);
+    bound_names(c, params, &shape, &inputs, aligned, nested.as_ref())
         .into_iter()
         .map(|(_, name)| name.trim_start_matches("r#").to_string())
         .collect()
@@ -673,6 +746,59 @@ impl Call<'_> {
         .note(format!(
             "Asks the command for the number of elements and then for the elements, and returns what it writes to `{}`.{placement}",
             p.name
+        ))
+    }
+
+    fn enumerates_with_bytes(&self, count: usize, data: usize, nested: &NestedBytes) -> Returned {
+        let p = &self.params[data];
+        assert!(
+            self.returns_result(),
+            "{}: the elements of `{}` point to buffers that the command writes, and the command returns no result that says whether they were large enough",
+            self.c.name,
+            p.name
+        );
+        let (element, init) = self.output_element(p);
+        let count_ty = self.model.base_ty(&self.params[count].ty, "'_");
+        let len = match count_ty.as_str() {
+            "usize" => "count",
+            _ => "count as usize",
+        };
+        let NestedBytes { pointer, size, .. } = nested;
+        let query = self.raw(&[(count, "&mut count"), (data, "core::ptr::null_mut()")]);
+        let fill = self.raw(&[(count, "&mut count"), (data, "values.as_mut_ptr()")]);
+        let listed_errors = self.listed_errors();
+        Returned::new(
+            format!("crate::vk::Result<Vec<({element}, Vec<u8>)>>"),
+            format!(
+                "loop {{
+                    let mut count: {count_ty} = 0;
+                    {}?;
+                    let mut values: Vec<{element}> = alloc::vec![{init}; {len}];
+                    let result = {fill};
+                    if result == VkResult::INCOMPLETE {{ continue; }}
+                    {listed_errors}result.into_result()?;
+                    values.truncate({len});
+                    let mut bytes: Vec<Vec<u8>> = values.iter().map(|element| alloc::vec![0u8; element.{size}]).collect();
+                    for (element, bytes) in values.iter_mut().zip(&mut bytes) {{
+                        element.{pointer} = bytes.as_mut_ptr().cast();
+                    }}
+                    let result = {fill};
+                    if result == VkResult::INCOMPLETE {{ continue; }}
+                    {listed_errors}result.into_result()?;
+                    values.truncate({len});
+                    bytes.truncate({len});
+                    for (element, bytes) in values.iter_mut().zip(&mut bytes) {{
+                        bytes.truncate(element.{size});
+                        element.{pointer} = core::ptr::null_mut();
+                    }}
+                    return Ok(values.into_iter().zip(bytes).collect());
+                }}",
+                self.result_of(&query)
+            ),
+        )
+        .note(format!(
+            "Asks the command for the number of elements, then for the elements, which give the size of the data that `{}` of each element points to, and then for the elements and their data, all again for as long as it reports `VK_INCOMPLETE`. Returns each element that the command writes to `{}` together with its data, with `{}` set to null.",
+            nested.c_pointer, p.name, nested.c_pointer
         ))
     }
 
