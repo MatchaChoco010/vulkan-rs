@@ -213,19 +213,19 @@ jobs:
     env:
       VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
     steps:
-      # git: actions/checkout downloads an archive through the REST API without it.
+      # The image has no git, so the action downloads an archive through the REST API.
+      # Neither the device tests nor the examples read the submodules or the history.
+      - uses: actions/checkout@v7
+
       # tar and zstd: Swatinem/rust-cache. gcc: the linker for Rust.
       # vulkan-loader-devel: the `linked` feature links the loader.
       - name: Install lavapipe, the Vulkan loader, the validation layers and the build tools
-        run: |
-          dnf install --assumeyes --setopt=install_weak_deps=False \
-            git-core tar zstd gcc rustup \
-            vulkan-loader vulkan-loader-devel mesa-vulkan-drivers \
+        uses: ./.github/actions/install-dnf-packages
+        with:
+          packages: >-
+            tar zstd gcc rustup
+            vulkan-loader vulkan-loader-devel mesa-vulkan-drivers
             vulkan-validation-layers vulkan-tools
-          rpm -q mesa-vulkan-drivers vulkan-loader vulkan-validation-layers
-
-      # Neither the device tests nor the examples read the submodules.
-      - uses: actions/checkout@v7
 
       # The examples step below finds nothing when the layer is missing, so its absence
       # fails here.
