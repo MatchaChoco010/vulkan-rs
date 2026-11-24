@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
 use std::ptr::NonNull;
 use vulkan::vk;
 use vulkan_alloc::{Allocation, AllocationCreateDesc, AllocationScheme, MemoryLocation};
@@ -94,7 +94,8 @@ pub unsafe fn buffer_device_address(gpu: &Gpu, buffer: vk::Buffer) -> vk::Device
 
 /// Copies `bytes` to the start of a host-visible buffer. An error when they are more
 /// than the buffer holds; its allocation may be larger, but the device sees only the
-/// buffer.
+/// buffer. `CpuToGpu` and `GpuToCpu` memory is host-coherent; memory of a `Custom`
+/// location that is not is flushed after the copy.
 pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<()> {
     check_fits(bytes.len(), buffer.size)?;
     gpu.with_allocator(|allocator| unsafe {
@@ -115,6 +116,8 @@ pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<(
 
 /// The contents of a host-visible buffer that the device has written. The writes must
 /// have been made visible to the host, with a barrier to `HOST` and a wait.
+/// `CpuToGpu` and `GpuToCpu` memory is host-coherent; memory of a `Custom` location
+/// that is not is invalidated before the read.
 pub unsafe fn read_buffer(gpu: &Gpu, buffer: &Buffer) -> Result<Vec<u8>> {
     gpu.with_allocator(|allocator| unsafe {
         let coherent = allocator
@@ -256,11 +259,9 @@ impl Destroy for MappedBuffer {
 }
 
 /// Like [`create_aligned_buffer`] in `CpuToGpu` memory, mapped for as long as the
-/// buffer lives. The memory is host-coherent, so that neither side has to flush or
-/// invalidate it: a buffer that is neither sparse nor protected can always be bound to
-/// a host-visible and host-coherent memory type, and `CpuToGpu` takes the first such
-/// type. `GpuToCpu` memory may not be coherent; read it back with [`read_buffer`]
-/// instead.
+/// buffer lives. `CpuToGpu` memory is always host-coherent, so neither side has to
+/// flush or invalidate it, and a buffer that is neither sparse nor protected can always
+/// be bound to such memory.
 pub unsafe fn create_mapped_buffer(
     gpu: &Gpu,
     name: &str,
@@ -273,8 +274,9 @@ pub unsafe fn create_mapped_buffer(
         let len = host_len(size)?;
         let buffer =
             create_aligned_buffer(gpu, name, size, usage, MemoryLocation::CpuToGpu, alignment)?;
-        let bytes =
-            map_coherent(gpu, &buffer.allocation).with_context(|| format!("mapping {name}"))?;
+        let bytes = gpu
+            .with_allocator(|allocator| allocator.map_persistent(&buffer.allocation))
+            .with_context(|| format!("mapping {name}"))?;
         let Buffer {
             buffer,
             allocation,
@@ -288,18 +290,6 @@ pub unsafe fn create_mapped_buffer(
             len,
         }))
     }
-}
-
-unsafe fn map_coherent(gpu: &Gpu, allocation: &Allocation) -> Result<NonNull<u8>> {
-    gpu.with_allocator(|allocator| unsafe {
-        if !allocator
-            .allocation_memory_flags(allocation)?
-            .contains(vk::MemoryPropertyFlags::HOST_COHERENT)
-        {
-            bail!("the memory is not host-coherent");
-        }
-        Ok(allocator.map_persistent(allocation)?)
-    })
 }
 
 /// An image bound to device-local memory from the allocator of a [`Gpu`].
