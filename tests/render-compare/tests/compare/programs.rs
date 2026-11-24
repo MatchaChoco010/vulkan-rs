@@ -24,6 +24,10 @@ pub fn required() -> bool {
     std::env::var_os("VULKAN_RS_REQUIRE_RENDER_COMPARE").is_some_and(|value| value != "0")
 }
 
+pub fn validation_wanted() -> bool {
+    std::env::var_os("VULKAN_RS_RENDER_COMPARE_VALIDATION").is_none_or(|value| value != "0")
+}
+
 pub fn rust_program() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_render-rust"))
 }
@@ -49,7 +53,11 @@ fn build_c_program() -> Result<PathBuf, String> {
     sources.sort();
     let program = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("render-c");
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
-    let output = Command::new(&cc)
+    let mut command = Command::new(&cc);
+    if cfg!(target_arch = "x86") {
+        command.arg("-m32");
+    }
+    let output = command
         .args(["-std=c11", "-O1", "-Wall", "-Wextra", "-Werror"])
         .arg("-I")
         .arg(&include)
@@ -116,7 +124,7 @@ pub fn run(program: &Path, scenario: &str, output: &Path, capture: Option<&Path>
         program.display(),
         result.status
     );
-    if required() {
+    if required() && validation_wanted() {
         assert!(
             stdout.contains("validation layer: enabled"),
             "{} {scenario} ran without the validation layer",

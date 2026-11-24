@@ -465,6 +465,64 @@ jobs:
           path: target/render-compare/
           if-no-files-found: error
 
+  # The comparison on a 32-bit target, where `usize` is narrower than `vk::DeviceSize` and
+  # the i386 C ABI aligns 64-bit members of structs to 4 bytes. Ubuntu 24.04 has no i386
+  # build of the validation layers or of gfxreconstruct, so this job compares the pixels
+  # and the expected pictures without them.
+  render-compare-i686:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_BUILD_TARGET: i686-unknown-linux-gnu
+      VULKAN_RS_REQUIRE_RENDER_COMPARE: "1"
+      VULKAN_RS_RENDER_COMPARE_TRACE: "0"
+      VULKAN_RS_RENDER_COMPARE_VALIDATION: "0"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # gcc-multilib: links the test binaries and builds the C program with -m32.
+      # libvulkan-dev:i386: the C program links the loader.
+      - name: Install the 32-bit C toolchain, lavapipe and the Vulkan loader
+        uses: ./.github/actions/install-apt-packages
+        with:
+          architecture: i386
+          packages: gcc-multilib libvulkan1:i386 libvulkan-dev:i386 mesa-vulkan-drivers:i386
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          rustup target add "$CARGO_BUILD_TARGET"
+          cargo --version
+
+      # The key: see the lint job.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
+
+      - name: Compare the renderings
+        run: |
+          set -o pipefail
+          cargo test -p vulkan-render-compare -- --nocapture 2>&1 | tee "$RUNNER_TEMP/render-compare.log"
+
+      - name: Summarize the comparison
+        if: always()
+        run: |
+          {
+            echo "### Render comparison (i686)"
+            echo '```'
+            grep -E "^test |skipping|differ|test result" "$RUNNER_TEMP/render-compare.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: render-compare-i686
+          path: target/render-compare/
+          if-no-files-found: error
+
   # The user-facing crates on a 32-bit target: `usize` is narrower than `vk::DeviceSize`,
   # and the i386 C ABI aligns 64-bit members of structs to 4 bytes.
   test-i686:

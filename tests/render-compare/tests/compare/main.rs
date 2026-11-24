@@ -293,6 +293,10 @@ fn both_programs_have(scenarios: &[&str]) {
 }
 
 fn a_validation_message_fails_both_programs() {
+    if !programs::validation_wanted() {
+        eprintln!("the comparison runs without the validation layer");
+        return;
+    }
     let c_program = match programs::c_program() {
         Ok(program) => program,
         Err(reason) => return skip(&reason),
