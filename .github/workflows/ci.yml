@@ -55,7 +55,11 @@ jobs:
           rustup toolchain install
           cargo --version
 
+      # The action leaves the profiles out of its key, and the profile in the root manifest
+      # decides how the cached dependencies are built.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       - name: Format
         run: cargo fmt --check
@@ -115,7 +119,10 @@ jobs:
           rustup toolchain install
           cargo --version
 
+      # The key: see the lint job.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       # Includes the examples in the documentation (doctests) and the comparison of the
       # generated documentation with the specification sources (crates/vulkan/tests/docs.rs).
@@ -178,7 +185,10 @@ jobs:
           rustup toolchain install
           cargo --version
 
+      # The key: see the lint job.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       - name: Test without default features
         run: cargo test -p vulkan --no-default-features
@@ -236,7 +246,10 @@ jobs:
           "$HOME/.cargo/bin/rustup" toolchain install
           "$HOME/.cargo/bin/cargo" --version
 
+      # The key: see the lint job.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       # A device test skips itself when the driver lacks the extension it exercises.
       # cargo hides the output of passing tests, so list the skips where they can be seen.
@@ -323,7 +336,10 @@ jobs:
           rustup target add "$CARGO_BUILD_TARGET"
           cargo --version
 
+      # The key: see the lint job.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       # A failure in one test binary does not hide the results of the others.
       - name: Test
@@ -362,7 +378,10 @@ jobs:
           rustup target add "$CARGO_BUILD_TARGET"
           cargo --version
 
+      # The key: see the lint job.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
 
       - name: Test without default features
         run: cargo test -p vulkan --no-default-features
