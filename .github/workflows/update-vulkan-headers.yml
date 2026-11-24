@@ -32,11 +32,13 @@ jobs:
         with:
           submodules: true
 
+      # The packages of the test job of the CI workflow, whose cache of package files this
+      # shares.
       - name: Install lavapipe, the Vulkan loader and the validation layers
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers \
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: >-
+            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
             libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
 
       # The version, profile and components come from rust-toolchain.toml.
