@@ -408,6 +408,8 @@ impl TlsfSuballocator {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     impl SizeClass {
@@ -568,45 +570,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn free_regions_are_listed_by_both_levels_of_their_size() {
-        let mut allocator = TlsfSuballocator::new(1 << 20);
-        let sizes = [1024, 1024 + 32, 1024 + 512, 2048, 2048 + 64, 300, 308];
-        let mut kept = Vec::new();
-        let mut released = Vec::new();
-        for size in sizes {
-            released.push(allocator.allocate(size, 1).unwrap());
-            kept.push(allocator.allocate(1, 1).unwrap());
-        }
-        for allocation in &released {
-            allocator.free(allocation.id).unwrap();
-        }
-        check_invariants(&allocator);
-
-        let classes = released
-            .iter()
-            .map(|allocation| SizeClass::containing(allocation.size))
-            .collect::<Vec<_>>();
-        for (index, class) in classes.iter().enumerate() {
-            assert_eq!(
-                allocator.free_lists[TlsfSuballocator::list_index(*class)],
-                allocator.allocations_region_before(kept[index].id),
-                "the region of {} bytes is the only one of its class",
-                sizes[index]
-            );
-            assert!(!classes[..index].contains(class));
-        }
-        assert_eq!(classes[0].first, classes[1].first);
-        assert_eq!(classes[0].first, classes[2].first);
-        assert_ne!(classes[0].first, classes[3].first);
-    }
-
-    impl TlsfSuballocator {
-        fn allocations_region_before(&self, id: u64) -> u32 {
-            self.regions[self.allocations[&id] as usize].previous
-        }
-    }
-
-    #[test]
     fn a_request_takes_the_first_list_whose_head_fits() {
         let mut allocator = TlsfSuballocator::new(1 << 20);
         let mut small = Vec::new();
@@ -628,104 +591,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn allocates_aligned_block() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let allocation = allocator.allocate(128, 256).unwrap();
-        assert_eq!(allocation.offset % 256, 0);
-        assert!(allocation.size >= 128);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn rejects_zero_size_and_too_large_allocations() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let before = allocator.clone();
-        assert!(allocator.allocate(0, 1).is_none());
-        assert!(allocator.allocate(2048, 1).is_none());
-        assert_eq!(allocator, before);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn exact_fit_consumes_whole_block() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let allocation = allocator.allocate(1024, 1).unwrap();
-        assert_eq!(allocation.offset, 0);
-        assert_eq!(allocation.size, 1024);
-        assert!(allocator.allocate(1, 1).is_none());
-        let stats = allocator.stats();
-        assert_eq!(stats.allocated_bytes, 1024);
-        assert_eq!(stats.free_bytes, 0);
-        allocator.free(allocation.id).unwrap();
-        assert_eq!(allocator.stats().free_bytes, 1024);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn a_whole_block_is_allocated_with_any_alignment() {
-        for alignment in [1, 2, 64, 4096, 1 << 20, 1 << 40, 3, 4097] {
-            let size = 64 * 1024 * 1024;
-            let mut allocator = TlsfSuballocator::new(size);
-            let allocation = allocator.allocate(size, alignment).unwrap();
-            assert_eq!((allocation.offset, allocation.size), (0, size));
-            check_invariants(&allocator);
-        }
-    }
-
-    #[test]
-    fn tiny_tail_is_absorbed_into_allocation() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let allocation = allocator.allocate(900, 1).unwrap();
-        assert_eq!(allocation.size, 1024);
-        assert_eq!(allocator.stats().free_bytes, 0);
-        allocator.free(allocation.id).unwrap();
-        assert_eq!(allocator.stats().free_bytes, 1024);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn alignment_prefix_is_split_and_remerged() {
-        let mut allocator = TlsfSuballocator::new(2048);
-        let first = allocator.allocate(60, 1).unwrap();
-        let aligned = allocator.allocate(128, 256).unwrap();
-        assert_eq!(aligned.offset, 256);
-        assert!(free_regions(&allocator).contains(&(60, 196)));
-        allocator.free(first.id).unwrap();
-        allocator.free(aligned.id).unwrap();
-        assert_eq!(free_regions(&allocator), [(0, 2048)]);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn reuses_freed_space() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(256, 1).unwrap();
-        let b = allocator.allocate(256, 1).unwrap();
-        allocator.free(a.id).unwrap();
-        let c = allocator.allocate(128, 1).unwrap();
-        assert_eq!(c.offset, a.offset);
-        allocator.free(b.id).unwrap();
-        allocator.free(c.id).unwrap();
-        assert_eq!(allocator.stats().free_bytes, 1024);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn merges_previous_and_next_blocks() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(128, 1).unwrap();
-        let b = allocator.allocate(128, 1).unwrap();
-        let c = allocator.allocate(128, 1).unwrap();
-        allocator.free(a.id).unwrap();
-        allocator.free(c.id).unwrap();
-        allocator.free(b.id).unwrap();
-        assert_eq!(free_regions(&allocator), [(0, 1024)]);
-        assert!(allocator.is_empty());
-        assert_eq!(allocator.stats().free_bytes, 1024);
-        check_invariants(&allocator);
-    }
-
-    #[test]
     fn a_freed_range_is_reused_by_the_next_request_of_its_size() {
         for (size, alignment) in [(300, 1), (1 << 20, 4096), (4096, 4096), (77, 16)] {
             let mut allocator = TlsfSuballocator::new(64 << 20);
@@ -742,199 +607,369 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    fn detects_double_free() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(128, 1).unwrap();
-        allocator.free(a.id).unwrap();
-        let before = allocator.clone();
-        assert!(allocator.free(a.id).is_none());
-        assert_eq!(allocator, before);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn invalid_free_does_not_change_stats() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(128, 1).unwrap();
-        let before = allocator.clone();
-        assert!(allocator.free(a.id + 1).is_none());
-        assert_eq!(allocator, before);
-        allocator.free(a.id).unwrap();
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn reports_stats_after_fragmentation() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(128, 1).unwrap();
-        let b = allocator.allocate(256, 1).unwrap();
-        allocator.free(a.id).unwrap();
-        let stats = allocator.stats();
-        assert_eq!(stats.allocation_count, 1);
-        assert_eq!(stats.allocated_bytes, b.size);
-        assert_eq!(stats.allocated_bytes + stats.free_bytes, 1024);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn non_power_of_two_alignment_is_supported() {
-        let mut allocator = TlsfSuballocator::new(4096);
-        let first = allocator.allocate(17, 1).unwrap();
-        let a = allocator.allocate(17, 192).unwrap();
-        assert_eq!(a.offset % 192, 0);
-        allocator.free(first.id).unwrap();
-        allocator.free(a.id).unwrap();
-        assert_eq!(allocator.stats().free_bytes, 4096);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn continues_after_alignment_unusable_candidate() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(32, 1).unwrap();
-        let b = allocator.allocate(224, 1).unwrap();
-        let c = allocator.allocate(32, 1).unwrap();
-        allocator.free(b.id).unwrap();
-
-        let allocation = allocator.allocate(200, 256).unwrap();
-        assert!(allocation.offset >= c.offset + c.size);
-        assert_eq!(allocation.offset % 256, 0);
-        allocator.free(a.id).unwrap();
-        allocator.free(c.id).unwrap();
-        allocator.free(allocation.id).unwrap();
-        assert_eq!(allocator.stats().free_bytes, 1024);
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn failed_fragmented_allocation_does_not_mutate_state() {
-        let mut allocator = TlsfSuballocator::new(1024);
-        let a = allocator.allocate(256, 1).unwrap();
-        let b = allocator.allocate(256, 1).unwrap();
-        let c = allocator.allocate(256, 1).unwrap();
-        let d = allocator.allocate(256, 1).unwrap();
-        allocator.free(b.id).unwrap();
-        allocator.free(d.id).unwrap();
-
-        let before = allocator.clone();
-        assert!(allocator.allocate(384, 1).is_none());
-        assert_eq!(allocator, before);
-
-        allocator.free(a.id).unwrap();
-        allocator.free(c.id).unwrap();
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn failed_impossible_alignment_does_not_mutate_state() {
-        let mut allocator = TlsfSuballocator::new(128);
-        let first = allocator.allocate(1, 1).unwrap();
-        let before = allocator.clone();
-        assert!(allocator.allocate(127, 128).is_none());
-        assert_eq!(allocator, before);
-        allocator.free(first.id).unwrap();
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn allocation_succeeds_exactly_when_a_free_region_can_hold_it() {
-        let mut seed = 0x1234_5678_9abc_def1_u64;
-        let mut next = move || {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            seed
-        };
-        for block_size in [1 << 16, 100_000, 1 << 24] {
-            let mut allocator = TlsfSuballocator::new(block_size);
-            let mut live: Vec<Suballocation> = Vec::new();
-            let mut refused = 0;
-            for step in 0..6000 {
-                if live.is_empty() || next() % 3 != 0 {
-                    let size = match next() % 4 {
-                        0 => 1 + next() % 64,
-                        1 => 1 + next() % 2048,
-                        2 => 1 + next() % (block_size / 8),
-                        _ => 1 + next() % block_size,
-                    };
-                    let alignment = match next() % 4 {
-                        0 => 1,
-                        1 => 1 << (next() % 13),
-                        2 => 1 + next() % 300,
-                        _ => 1 << (next() % 20),
-                    };
-                    let mut taken = live
-                        .iter()
-                        .map(|allocation| (allocation.offset, allocation.size))
-                        .collect::<Vec<_>>();
-                    taken.sort_unstable();
-                    let mut free_ranges = Vec::new();
-                    let mut end = 0;
-                    for (offset, length) in taken {
-                        if offset > end {
-                            free_ranges.push((end, offset - end));
-                        }
-                        end = offset + length;
-                    }
-                    if block_size > end {
-                        free_ranges.push((end, block_size - end));
-                    }
-                    assert_eq!(free_regions(&allocator), free_ranges, "step {step}");
-                    let fits = free_ranges.iter().any(|&(offset, length)| {
-                        let aligned = offset.next_multiple_of(alignment);
-                        aligned - offset + size <= length
-                    });
-                    let before = allocator.clone();
-                    match allocator.allocate(size, alignment) {
-                        Some(allocation) => {
-                            assert!(fits, "step {step}: {size} bytes aligned to {alignment}");
-                            assert_eq!(allocation.offset % alignment, 0);
-                            assert!(allocation.size >= size);
-                            assert!(allocation.size - size < MIN_SPLIT_SIZE);
-                            let was_free = free_ranges.iter().any(|&(offset, length)| {
-                                offset <= allocation.offset
-                                    && allocation.offset + allocation.size <= offset + length
-                            });
-                            assert!(was_free, "step {step}: the range was not free");
-                            assert_eq!(allocator.allocation(allocation.id), Some(allocation));
-                            live.push(allocation);
-                        }
-                        None => {
-                            assert!(!fits, "step {step}: {size} bytes aligned to {alignment}");
-                            assert_eq!(allocator, before);
-                            refused += 1;
-                        }
-                    }
-                } else {
-                    let index = (next() % live.len() as u64) as usize;
-                    let allocation = live.swap_remove(index);
-                    allocator.free(allocation.id).unwrap();
-                    assert_eq!(allocator.allocation(allocation.id), None);
-                }
-                check_invariants(&allocator);
-                for allocation in &live {
-                    assert_eq!(allocator.allocation(allocation.id), Some(*allocation));
-                }
-                let stats = allocator.stats();
-                assert_eq!(stats.allocated_bytes + stats.free_bytes, block_size);
-                assert_eq!(stats.allocation_count, live.len());
-                assert_eq!(
-                    stats.allocated_bytes,
-                    live.iter().map(|allocation| allocation.size).sum::<u64>()
-                );
+    fn gaps(block_size: u64, live: &[Suballocation]) -> Vec<(u64, u64)> {
+        let mut taken = live
+            .iter()
+            .map(|allocation| (allocation.offset, allocation.size))
+            .collect::<Vec<_>>();
+        taken.sort_unstable();
+        let mut gaps = Vec::new();
+        let mut end = 0;
+        for (offset, length) in taken {
+            if offset > end {
+                gaps.push((end, offset - end));
             }
-            assert!(
-                refused > 100,
-                "the block of {block_size} bytes never filled up"
-            );
-            for allocation in live {
-                allocator.free(allocation.id).unwrap();
-            }
-            assert_eq!(free_regions(&allocator), [(0, block_size)]);
-            assert!(allocator.is_empty());
-            check_invariants(&allocator);
+            end = offset + length;
         }
+        if block_size > end {
+            gaps.push((end, block_size - end));
+        }
+        gaps
+    }
+
+    fn fits(gap: (u64, u64), size: u64, alignment: u64) -> bool {
+        let (start, length) = gap;
+        let padding = (alignment - start % alignment) % alignment;
+        padding
+            .checked_add(size)
+            .is_some_and(|needed| needed <= length)
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Step {
+        Allocate { size: u64, alignment: u64 },
+        Free { pick: usize },
+    }
+
+    #[derive(Debug, Default)]
+    struct Seen {
+        placed: usize,
+        refused: usize,
+        refused_although_enough_bytes_are_free: usize,
+        padded: usize,
+        took_the_remainder: usize,
+        left_a_remainder: usize,
+        freed: usize,
+        merged: usize,
+    }
+
+    fn step_like_the_model(
+        allocator: &mut TlsfSuballocator,
+        live: &mut Vec<Suballocation>,
+        step: Step,
+        seen: &mut Seen,
+    ) -> Result<(), String> {
+        let block_size = allocator.size;
+        let free_before = gaps(block_size, live);
+        match step {
+            Step::Allocate { size, alignment } => {
+                let needed = alignment.max(1);
+                let fitting = size > 0 && free_before.iter().any(|&gap| fits(gap, size, needed));
+                let before = allocator.clone();
+                match allocator.allocate(size, alignment) {
+                    None => {
+                        if fitting {
+                            return Err(format!(
+                                "{size} bytes aligned to {alignment} fit in {free_before:?} but were refused"
+                            ));
+                        }
+                        if *allocator != before {
+                            return Err("a refused request changed the suballocator".to_string());
+                        }
+                        seen.refused += 1;
+                        if free_before.iter().map(|gap| gap.1).sum::<u64>() >= size {
+                            seen.refused_although_enough_bytes_are_free += 1;
+                        }
+                    }
+                    Some(allocation) => {
+                        if !fitting {
+                            return Err(format!(
+                                "{size} bytes aligned to {alignment} do not fit in {free_before:?} but got {allocation:?}"
+                            ));
+                        }
+                        let Some(&(start, length)) =
+                            free_before.iter().find(|&&(start, length)| {
+                                start <= allocation.offset
+                                    && allocation.offset - start <= length
+                                    && allocation.size <= length - (allocation.offset - start)
+                            })
+                        else {
+                            return Err(format!(
+                                "{allocation:?} is not inside one of {free_before:?}"
+                            ));
+                        };
+                        let padding = allocation.offset - start;
+                        if allocation.offset % needed != 0 || padding >= needed {
+                            return Err(format!(
+                                "{allocation:?} is not at the first multiple of {needed} from {start}"
+                            ));
+                        }
+                        let remainder = length - padding - size;
+                        let expected_size = if remainder < MIN_SPLIT_SIZE {
+                            size + remainder
+                        } else {
+                            size
+                        };
+                        if allocation.size != expected_size {
+                            return Err(format!(
+                                "{allocation:?} for {size} bytes with {remainder} bytes after it"
+                            ));
+                        }
+                        if live.iter().any(|other| other.id == allocation.id) {
+                            return Err(format!("{allocation:?} repeats a live id"));
+                        }
+                        let mut undone = allocator.clone();
+                        undone.free(allocation.id);
+                        if layout(&undone) != layout(&before) {
+                            return Err(format!(
+                                "freeing {allocation:?} at once does not restore the regions"
+                            ));
+                        }
+                        seen.placed += 1;
+                        seen.padded += usize::from(padding > 0);
+                        seen.took_the_remainder += usize::from(allocation.size > size);
+                        seen.left_a_remainder += usize::from(remainder >= MIN_SPLIT_SIZE);
+                        live.push(allocation);
+                    }
+                }
+            }
+            Step::Free { pick } => {
+                if live.is_empty() {
+                    return Ok(());
+                }
+                let allocation = live.remove(pick % live.len());
+                let before = allocator.clone();
+                if allocator.free(u64::MAX).is_some() || *allocator != before {
+                    return Err("an id that was never given out was freed".to_string());
+                }
+                if allocator.free(allocation.id).is_none() {
+                    return Err(format!("{allocation:?} could not be freed"));
+                }
+                let freed = allocator.clone();
+                if allocator.allocation(allocation.id).is_some()
+                    || allocator.free(allocation.id).is_some()
+                    || *allocator != freed
+                {
+                    return Err(format!("{allocation:?} is still known after it was freed"));
+                }
+                seen.freed += 1;
+                seen.merged += usize::from(gaps(block_size, live).len() <= free_before.len());
+            }
+        }
+        check_invariants(allocator);
+        if free_regions(allocator) != gaps(block_size, live) {
+            return Err(format!(
+                "free regions {:?} are not the gaps between the allocations {:?}",
+                free_regions(allocator),
+                gaps(block_size, live)
+            ));
+        }
+        for allocation in live.iter() {
+            if allocator.allocation(allocation.id) != Some(*allocation) {
+                return Err(format!("{allocation:?} is no longer reported"));
+            }
+        }
+        let stats = allocator.stats();
+        let allocated = live.iter().map(|allocation| allocation.size).sum::<u64>();
+        if (
+            stats.allocated_bytes,
+            stats.free_bytes,
+            stats.allocation_count,
+        ) != (allocated, block_size - allocated, live.len())
+            || allocator.is_empty() != live.is_empty()
+        {
+            return Err(format!(
+                "{stats:?} for {} allocations of {allocated} bytes",
+                live.len()
+            ));
+        }
+        Ok(())
+    }
+
+    fn block_sizes() -> impl Strategy<Value = u64> {
+        prop_oneof![
+            1 => Just(0u64),
+            2 => 1..=64u64,
+            2 => 250..=260u64,
+            4 => 1000..=5000u64,
+            4 => (8u32..=20).prop_map(|shift| 1u64 << shift),
+            2 => 60_000..=70_000u64,
+            1 => Just(1u64 << 40),
+            1 => Just(u64::MAX),
+        ]
+    }
+
+    fn steps(block_size: u64) -> impl Strategy<Value = Step> {
+        let near_a_size_class =
+            (0u32..=63, -2i64..=2, 0u64..32).prop_map(|(top, delta, second)| {
+                let power = 1u64 << top;
+                (power | (second << top.saturating_sub(SECOND_LEVEL_BITS)))
+                    .saturating_add_signed(delta)
+            });
+        let size = prop_oneof![
+            5 => 1..=64u64,
+            3 => 1..=2048u64,
+            2 => (MIN_SPLIT_SIZE - 2)..=(MIN_SPLIT_SIZE + 2),
+            3 => near_a_size_class,
+            3 => 1..=(block_size / 8).max(1),
+            2 => (prop::sample::select(vec![block_size / 4, block_size / 2, block_size]), 0u64..=258)
+                .prop_map(|(base, less)| base.saturating_sub(less)),
+            1 => Just(0u64),
+            1 => any::<u64>(),
+        ];
+        let alignment = prop_oneof![
+            6 => Just(1u64),
+            1 => Just(0u64),
+            5 => (1u32..=12).prop_map(|shift| 1u64 << shift),
+            2 => (13u32..=63).prop_map(|shift| 1u64 << shift),
+            2 => prop::sample::select(vec![3u64, 7, 12, 100, 192, 255, 1000, 4097]),
+            1 => any::<u64>(),
+        ];
+        prop_oneof![
+            3 => (size, alignment).prop_map(|(size, alignment)| Step::Allocate { size, alignment }),
+            2 => any::<usize>().prop_map(|pick| Step::Free { pick }),
+        ]
+    }
+
+    fn scenarios(longest: usize) -> impl Strategy<Value = (u64, Vec<Step>)> {
+        block_sizes().prop_flat_map(move |block_size| {
+            (
+                Just(block_size),
+                prop::collection::vec(steps(block_size), 0..=longest),
+            )
+        })
+    }
+
+    fn run(block_size: u64, steps: &[Step], seen: &mut Seen) -> Result<(), String> {
+        let mut allocator = TlsfSuballocator::new(block_size);
+        let mut live = Vec::new();
+        check_invariants(&allocator);
+        for (index, &step) in steps.iter().enumerate() {
+            step_like_the_model(&mut allocator, &mut live, step, seen)
+                .map_err(|problem| format!("step {index}, {step:?}: {problem}"))?;
+        }
+        while !live.is_empty() {
+            step_like_the_model(&mut allocator, &mut live, Step::Free { pick: 0 }, seen)?;
+        }
+        if block_size > 0 && free_regions(&allocator) != [(0, block_size)] {
+            return Err("the block is not one free region after everything was freed".to_string());
+        }
+        Ok(())
+    }
+
+    fn cases(default: u32) -> ProptestConfig {
+        let cases = std::env::var("PROPTEST_CASES")
+            .ok()
+            .and_then(|cases| cases.parse().ok())
+            .unwrap_or(default);
+        ProptestConfig {
+            cases,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        }
+    }
+
+    proptest! {
+        #![proptest_config(cases(256))]
+
+        #[test]
+        fn every_request_is_placed_exactly_when_a_free_range_can_hold_it(
+            (block_size, steps) in scenarios(120)
+        ) {
+            run(block_size, &steps, &mut Seen::default()).map_err(TestCaseError::fail)?;
+        }
+
+        #[test]
+        fn a_size_class_holds_the_sizes_between_its_smallest_size_and_the_next(size in any::<u64>()) {
+            let class = SizeClass::containing(size);
+            prop_assert!(class.second < SECOND_LEVEL_COUNT);
+            prop_assert!(class.first <= 64 - SECOND_LEVEL_BITS);
+            prop_assert!(class.smallest_size() <= size);
+            if let Some(smaller) = class.smallest_size().checked_sub(1) {
+                prop_assert_eq!(SizeClass::containing(smaller).next(), class);
+            }
+            if class != SizeClass::containing(u64::MAX) {
+                prop_assert!(size < class.next().smallest_size());
+                prop_assert_eq!(SizeClass::containing(class.next().smallest_size()), class.next());
+            }
+        }
+    }
+
+    #[test]
+    fn the_generated_steps_reach_every_way_a_request_can_end() {
+        use proptest::strategy::ValueTree;
+        use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
+
+        let mut runner = TestRunner::new_with_rng(
+            ProptestConfig::default(),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let strategy = scenarios(120);
+        let mut seen = Seen::default();
+        for _ in 0..300 {
+            let (block_size, steps) = strategy.new_tree(&mut runner).unwrap().current();
+            run(block_size, &steps, &mut seen).unwrap();
+        }
+        let requests = seen.placed + seen.refused;
+        assert!(seen.placed * 4 > requests, "{seen:?}");
+        assert!(seen.refused * 10 > requests, "{seen:?}");
+        assert!(
+            seen.refused_although_enough_bytes_are_free * 50 > requests,
+            "{seen:?}"
+        );
+        assert!(seen.padded * 20 > seen.placed, "{seen:?}");
+        assert!(seen.took_the_remainder * 20 > seen.placed, "{seen:?}");
+        assert!(seen.left_a_remainder * 4 > seen.placed, "{seen:?}");
+        assert!(seen.merged * 2 > seen.freed, "{seen:?}");
+    }
+
+    fn try_every_sequence(
+        allocator: &TlsfSuballocator,
+        live: &[Suballocation],
+        requests: &[(u64, u64)],
+        remaining: usize,
+        tried: &mut usize,
+    ) {
+        *tried += 1;
+        if remaining == 0 {
+            return;
+        }
+        let allocations = requests
+            .iter()
+            .map(|&(size, alignment)| Step::Allocate { size, alignment });
+        let frees = (0..live.len()).map(|pick| Step::Free { pick });
+        for step in allocations.chain(frees) {
+            let mut allocator = allocator.clone();
+            let mut live = live.to_vec();
+            step_like_the_model(&mut allocator, &mut live, step, &mut Seen::default())
+                .unwrap_or_else(|problem| panic!("{step:?} after {live:?}: {problem}"));
+            try_every_sequence(&allocator, &live, requests, remaining - 1, tried);
+        }
+    }
+
+    #[test]
+    fn every_short_sequence_of_requests_and_frees_in_a_small_block_follows_the_model() {
+        let requests = [(1, 1), (255, 1), (256, 1), (300, 256), (513, 1), (40, 96)];
+        let mut tried = 0;
+        try_every_sequence(&TlsfSuballocator::new(1024), &[], &requests, 5, &mut tried);
+        assert!(tried > 20_000, "{tried} sequences");
+    }
+
+    #[test]
+    fn slow_every_sequence_of_six_requests_and_frees_in_a_small_block_follows_the_model() {
+        let requests = [
+            (1, 1),
+            (255, 1),
+            (256, 1),
+            (257, 1),
+            (300, 256),
+            (513, 1),
+            (40, 96),
+            (1024, 1),
+        ];
+        let mut tried = 0;
+        try_every_sequence(&TlsfSuballocator::new(1024), &[], &requests, 6, &mut tried);
+        assert!(tried > 500_000, "{tried} sequences");
     }
 
     #[test]
@@ -953,15 +988,6 @@ pub(crate) mod tests {
         assert!(allocator.allocate(u64::MAX, u64::MAX).is_none());
         assert!(allocator.allocate(1 << 62, 1 << 63).is_none());
         assert!(allocator.allocate(1 << 62, 1 << 62).is_some());
-        check_invariants(&allocator);
-    }
-
-    #[test]
-    fn an_empty_suballocator_refuses_everything() {
-        let mut allocator = TlsfSuballocator::new(0);
-        assert!(allocator.allocate(1, 1).is_none());
-        assert!(layout(&allocator).is_empty());
-        assert!(allocator.is_empty());
         check_invariants(&allocator);
     }
 
