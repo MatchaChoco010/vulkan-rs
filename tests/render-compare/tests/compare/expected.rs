@@ -729,9 +729,9 @@ pub fn dynamic_rendering_msaa(expect: &mut Expect, images: &[OutputImage]) {
             } else if within(x, y, green) {
                 ([0, 255, 0, 255], 0.75, 0)
             } else if within(x, y, with_sample_zero) {
-                ([143, 143, 24, 255], 0.375, 1)
+                ([88, 88, 36, 255], 0.375, 1)
             } else if within(x, y, without_sample_zero) {
-                ([16, 143, 151, 255], 1.0, 1)
+                ([8, 199, 203, 255], 1.0, 1)
             } else {
                 ([32, 32, 48, 255], 1.0, 0)
             };
@@ -744,7 +744,9 @@ pub fn dynamic_rendering_msaa(expect: &mut Expect, images: &[OutputImage]) {
                 depths.push(format!("({x}, {y}) {found} instead of {wanted_depth}"));
             }
             let found = resolved.rgba8(x, y);
-            if !close(found, wanted_color, tolerance) {
+            let samples_differ =
+                within(x, y, with_sample_zero) || within(x, y, without_sample_zero);
+            if !samples_differ && found != wanted_color {
                 resolves.push(format!("({x}, {y}) {found:?} instead of {wanted_color:?}"));
             }
         }

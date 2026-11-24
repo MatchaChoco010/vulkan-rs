@@ -183,8 +183,8 @@ pub fn run(ctx: &mut Ctx) {
         let vertex = ctx.shader_module("dynamic_rendering_msaa.vert.spv");
         let fragment = ctx.shader_module("dynamic_rendering_msaa.frag.spv");
         let all_samples = msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0xf);
-        let two_samples = msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0x5);
-        let other_samples = msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0xa);
+        let sample_zero = msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0x1);
+        let other_samples = msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0xe);
         ctx.device.destroy_shader_module(fragment, None);
         ctx.device.destroy_shader_module(vertex, None);
 
@@ -310,7 +310,7 @@ pub fn run(ctx: &mut Ctx) {
             .cmd_set_depth_compare_op(command_buffer, vk::CompareOp::LESS);
         ctx.device.cmd_set_depth_write_enable(command_buffer, true);
         ctx.device
-            .cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, two_samples);
+            .cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, sample_zero);
         let yellow = push([1.0, 1.0, 0.0, 1.0], [16, 176, 80, 240], 0.375);
         draw_rect(ctx, command_buffer, layout, &yellow);
         ctx.device.cmd_bind_pipeline(
@@ -431,7 +431,7 @@ pub fn run(ctx: &mut Ctx) {
         );
 
         ctx.device.destroy_pipeline(other_samples, None);
-        ctx.device.destroy_pipeline(two_samples, None);
+        ctx.device.destroy_pipeline(sample_zero, None);
         ctx.device.destroy_pipeline(all_samples, None);
         ctx.device.destroy_pipeline_layout(layout, None);
     }
