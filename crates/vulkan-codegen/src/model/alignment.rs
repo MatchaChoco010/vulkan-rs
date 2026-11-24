@@ -209,7 +209,7 @@ impl AlignedInput {
 }
 
 impl Model<'_> {
-    fn command_behind<'n>(&'n self, name: &'n str) -> &'n str {
+    pub(crate) fn command_behind<'n>(&'n self, name: &'n str) -> &'n str {
         self.command_aliases.get(name).copied().unwrap_or(name)
     }
 

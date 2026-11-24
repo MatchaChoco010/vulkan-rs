@@ -1,9 +1,11 @@
 mod dispatch_tables;
 mod inputs;
+mod read_outputs;
 mod shape;
 mod uncounted_arrays;
 mod wrapper;
 
+pub(crate) use read_outputs::assert_listed_read_outputs_exist;
 pub(crate) use uncounted_arrays::assert_listed_uncounted_arrays_exist;
 
 use super::func_pointers::parameter_items;
@@ -1840,8 +1842,11 @@ mod tests {
     fn the_embedded_registry_generates_the_same_commands_under_other_command_names() {
         let (ir, docs) = (Registry::get(), Docs::get());
         let model = Model::with_docs(ir, docs);
-        let listed_by_name =
-            |c: &Command| !model.aligned_outputs(c).is_empty() || model.aligned_slice(c).is_some();
+        let listed_by_name = |c: &Command| {
+            !model.aligned_outputs(c).is_empty()
+                || model.aligned_slice(c).is_some()
+                || read_outputs::read_output(&model, c).is_some()
+        };
         assert_eq!(
             ir.commands
                 .iter()
@@ -1851,6 +1856,7 @@ mod tests {
             [
                 "vkGetQueryPoolResults",
                 "vkGetShaderBinaryDataEXT",
+                "vkRegisterCustomBorderColorEXT",
                 "vkWriteAccelerationStructuresPropertiesKHR",
                 "vkWriteMicromapsPropertiesEXT"
             ],

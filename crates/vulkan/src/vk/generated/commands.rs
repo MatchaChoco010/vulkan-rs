@@ -67055,7 +67055,10 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkRegisterCustomBorderColorEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkRegisterCustomBorderColorEXT.html)
     /// through [`Self::register_custom_border_color_ext_raw`], which describes the parameters.
-    /// Returns what the command writes to `pIndex`. The command is provided by
+    /// Returns what the command writes to `pIndex`. `index` is the value that `pIndex` points to
+    /// when the command is called: if `request_index` is true, it is the index that the command
+    /// tries to register, and the wrapper returns that same index; otherwise the command ignores it
+    /// and the wrapper returns the new index. The command is provided by
     /// [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME).
     ///
     /// # Errors
@@ -67081,9 +67084,10 @@ impl crate::Device {
         &self,
         border_color: &SamplerCustomBorderColorCreateInfoEXT<'_>,
         request_index: bool,
+        index: u32,
     ) -> crate::vk::Result<u32> {
         unsafe {
-            let mut value: u32 = core::mem::zeroed::<u32>();
+            let mut value: u32 = index;
             self.register_custom_border_color_ext_raw(
                 core::ptr::from_ref(border_color),
                 request_index as Bool32,

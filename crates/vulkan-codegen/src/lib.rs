@@ -149,6 +149,7 @@ pub fn assert_listed_members_exist(ir: &Registry) {
     emit::commands::assert_listed_uncounted_arrays_exist(ir);
     emit::structs::assert_listed_nullable_arrays_exist(ir);
     emit::structs::assert_listed_bounded_arrays_exist(ir);
+    emit::commands::assert_listed_read_outputs_exist(ir);
 }
 
 #[cfg(test)]
