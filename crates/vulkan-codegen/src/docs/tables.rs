@@ -42,6 +42,46 @@ fn attribute_entries(list: &str) -> Vec<String> {
     entries
 }
 
+struct ColumnSpec {
+    columns: usize,
+    styled: bool,
+}
+
+fn column_spec(record: &str) -> Option<ColumnSpec> {
+    let is_digits = |text: &str| !text.is_empty() && text.chars().all(|c| c.is_ascii_digit());
+    let (columns, rest) = match record.split_once('*') {
+        Some((multiplier, rest)) if is_digits(multiplier) => (multiplier.parse().ok()?, rest),
+        Some(_) => return None,
+        None => (1, record),
+    };
+    let alignment = ['<', '^', '>'];
+    let rest = rest.strip_prefix(alignment).unwrap_or(rest);
+    let rest = match rest.strip_prefix('.') {
+        Some(vertical) => vertical.strip_prefix(alignment)?,
+        None => rest,
+    };
+    let after_digits = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+    let rest = match rest.strip_prefix('~') {
+        Some(after_the_width) => after_the_width,
+        None if after_digits.len() < rest.len() => {
+            after_digits.strip_prefix('%').unwrap_or(after_digits)
+        }
+        None => rest,
+    };
+    let mut style = rest.chars();
+    match (style.next(), style.next()) {
+        (None, _) => Some(ColumnSpec {
+            columns,
+            styled: false,
+        }),
+        (Some(style), None) if style.is_ascii_lowercase() => Some(ColumnSpec {
+            columns,
+            styled: true,
+        }),
+        _ => None,
+    }
+}
+
 fn column_count(cols: &str) -> Option<usize> {
     let cols = cols.replace(' ', "");
     if let Ok(count) = cols.parse::<usize>()
@@ -49,19 +89,19 @@ fn column_count(cols: &str) -> Option<usize> {
     {
         return Some(count);
     }
-    let mut count = 0;
-    for column in cols.split([',', ';']) {
-        let column = column.trim();
-        if column.chars().any(|c| c.is_ascii_alphabetic()) {
-            return None;
-        }
-        count += match column.split_once('*') {
-            Some((multiplier, _)) => multiplier.trim().parse::<usize>().ok()?,
-            None if column.is_empty() => return None,
-            None => 1,
-        };
+    if cols.is_empty() {
+        return Some(0);
     }
-    (count > 0).then_some(count)
+    let separator = if cols.contains(',') { ',' } else { ';' };
+    let mut count = 0usize;
+    for record in cols.split(separator) {
+        match column_spec(record) {
+            Some(ColumnSpec { styled: true, .. }) => return None,
+            Some(ColumnSpec { columns, .. }) => count = count.checked_add(columns)?,
+            None => {}
+        }
+    }
+    Some(count)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -633,7 +673,8 @@ mod tests {
         assert_eq!(column_count("59%,28%,13%"), Some(3));
         assert_eq!(column_count("<35,<23"), Some(2));
         assert_eq!(column_count("3*,2"), Some(4));
-        assert_eq!(column_count(""), None);
+        assert_eq!(column_count("1, 2 ,3"), Some(3));
+        assert_eq!(column_count(">.^1,.>3,^~,2*<.>20%"), Some(5));
         assert_eq!(
             column_count("1,2a"),
             None,
@@ -641,6 +682,65 @@ mod tests {
         );
         assert_eq!(column_count("3*a"), None);
         assert_eq!(column_count("<1,^.^2l"), None);
+    }
+
+    #[test]
+    fn column_specifications_are_separated_by_commas_or_else_by_semicolons() {
+        assert_eq!(column_count("2;1"), Some(2));
+        assert_eq!(column_count("2;1;3*"), Some(5));
+        assert_eq!(column_count("1;2,3"), Some(1));
+        assert_eq!(column_count("1,2;3,4"), Some(2));
+        assert_eq!(column_count("1;2a,3"), Some(1));
+    }
+
+    #[test]
+    fn an_empty_column_specification_is_a_column_and_one_that_is_none_is_passed_over() {
+        assert_eq!(column_count("1,,2"), Some(3));
+        assert_eq!(column_count("1,"), Some(2));
+        assert_eq!(column_count(","), Some(2));
+        assert_eq!(column_count(";"), Some(2));
+        for (cols, columns) in [
+            ("*", 0),
+            ("1,*", 1),
+            ("x*,1", 1),
+            ("1,1.5,2", 2),
+            ("1,%,2", 2),
+            ("1,.,2", 2),
+            ("1,<.,2", 2),
+            ("1,2*3*,2", 2),
+            ("1,2A,2", 2),
+            ("1,2ab,2", 2),
+            ("1,-1,2", 2),
+            ("1,99999999999999999999999999*,2", 2),
+        ] {
+            assert_eq!(column_count(cols), Some(columns), "{cols:?}");
+        }
+    }
+
+    #[test]
+    fn columns_multiplied_by_zero_do_not_count_and_no_columns_leave_the_count_to_the_first_line() {
+        assert_eq!(column_count("0*"), Some(0));
+        assert_eq!(column_count("0*,1"), Some(1));
+        assert_eq!(column_count("2*,0*"), Some(2));
+        assert_eq!(column_count("0,0"), Some(2));
+        assert_eq!(column_count(""), Some(0));
+        assert_eq!(column_count("  "), Some(0));
+        for cols in ["0*", "0", "", "*", "0*;0*"] {
+            let unspecified = table(&[
+                &format!("[cols=\"{cols}\"]"),
+                "|===",
+                "|a |b |c",
+                "|d |e |f",
+                "|===",
+            ]);
+            assert_eq!(
+                unspecified.rows,
+                vec![row(&["a", "b", "c"]), row(&["d", "e", "f"])],
+                "{cols:?}"
+            );
+        }
+        let one_column = table(&["[cols=\"0*,1\"]", "|===", "|a |b", "|==="]);
+        assert_eq!(one_column.rows, vec![row(&["a"]), row(&["b"])]);
     }
 
     #[test]
