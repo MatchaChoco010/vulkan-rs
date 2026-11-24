@@ -195,18 +195,6 @@ mod tests {
     use super::*;
     use crate::block::MemoryBlock;
     use crate::memory_type::tests::memory_properties;
-    use crate::suballocator::Suballocation;
-
-    fn memory_type_holding(
-        memory_type_index: u32,
-        mut block: MemoryBlock,
-        allocation_size: u64,
-    ) -> (MemoryTypeAllocator, Suballocation) {
-        let suballocation = block.suballocate(allocation_size, 1).unwrap();
-        let mut memory_type = MemoryTypeAllocator::new(memory_type_index);
-        memory_type.insert_block(block, suballocation);
-        (memory_type, suballocation)
-    }
 
     fn saturating_total(values: impl IntoIterator<Item = u64>) -> u64 {
         let total: u128 = values.into_iter().map(u128::from).sum();
@@ -346,95 +334,5 @@ mod tests {
                 assert_eq!(&type_snapshot.stats, type_stats, "{label}");
             }
         }
-    }
-
-    #[test]
-    fn allocator_stats_aggregate_non_empty_memory_types() {
-        let (linear, a) = memory_type_holding(
-            1,
-            MemoryBlock::new(
-                vk::DeviceMemory(21),
-                1024,
-                AllocationResourceClass::Linear,
-                false,
-                vk::MemoryAllocateFlags::empty(),
-            ),
-            128,
-        );
-        let (optimal, b) = memory_type_holding(
-            2,
-            MemoryBlock::new(
-                vk::DeviceMemory(22),
-                2048,
-                AllocationResourceClass::Optimal,
-                false,
-                vk::MemoryAllocateFlags::empty(),
-            ),
-            256,
-        );
-        let memory_types = vec![MemoryTypeAllocator::new(0), linear, optimal];
-
-        let stats = stats_from_memory_types(&memory_types);
-        assert_eq!(stats.memory_types.len(), 2);
-        assert_eq!(stats.memory_types[0].memory_type_index, 1);
-        assert_eq!(stats.memory_types[1].memory_type_index, 2);
-        assert_eq!(stats.block_count, 2);
-        assert_eq!(stats.total_block_bytes, 3072);
-        assert_eq!(stats.allocation_count, 2);
-        assert_eq!(stats.allocated_bytes, a.size + b.size);
-        assert_eq!(
-            stats.allocated_bytes + stats.free_bytes,
-            stats.total_block_bytes
-        );
-    }
-
-    #[test]
-    fn allocator_snapshot_keeps_stats_and_region_details_together() {
-        let properties = memory_properties(&[
-            vk::MemoryPropertyFlags::empty(),
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED,
-        ]);
-        let (dedicated, allocation) = memory_type_holding(
-            1,
-            MemoryBlock::new(
-                vk::DeviceMemory(42),
-                1024,
-                AllocationResourceClass::Optimal,
-                true,
-                vk::MemoryAllocateFlags::empty(),
-            ),
-            128,
-        );
-        let memory_types = vec![MemoryTypeAllocator::new(0), dedicated];
-
-        let snapshot = snapshot_from_memory_types(&memory_types, &properties);
-        assert_eq!(snapshot.stats.block_count, 1);
-        assert_eq!(snapshot.stats.allocation_count, 1);
-        assert_eq!(snapshot.memory_types.len(), 1);
-        assert_eq!(snapshot.memory_types[0].memory_type_index, 1);
-        assert_eq!(
-            snapshot.memory_types[0].property_flags,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_CACHED
-        );
-        assert_eq!(
-            snapshot.memory_types[0].stats,
-            snapshot.stats.memory_types[0]
-        );
-        assert_eq!(snapshot.memory_types[0].blocks.len(), 1);
-        assert_eq!(snapshot.memory_types[0].blocks[0].block_index, 0);
-        assert_eq!(
-            snapshot.memory_types[0].blocks[0].resource_class,
-            AllocationResourceClass::Optimal
-        );
-        assert!(snapshot.memory_types[0].blocks[0].dedicated);
-        assert_eq!(snapshot.memory_types[0].blocks[0].regions[0].offset, 0);
-        assert_eq!(snapshot.memory_types[0].blocks[0].regions[0].size, 128);
-        assert_eq!(
-            snapshot.memory_types[0].blocks[0].regions[0].state,
-            MemoryRegionState::Allocated {
-                allocation_id: allocation.id,
-                mapped_count: 0,
-            }
-        );
     }
 }

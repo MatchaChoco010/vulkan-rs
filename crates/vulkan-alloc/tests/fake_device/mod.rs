@@ -24,6 +24,19 @@ pub struct MemoryObject {
     pub mapped: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dedicated {
+    Buffer(vk::Buffer),
+    Image(vk::Image),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Chain {
+    pub flags: Option<(vk::MemoryAllocateFlags, u32)>,
+    pub dedicated: Option<Dedicated>,
+    pub export: Option<vk::ExternalMemoryHandleTypeFlags>,
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Calls {
     pub allocate: usize,
@@ -32,18 +45,44 @@ pub struct Calls {
     pub unmap: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Synchronization {
+    Flush,
+    Invalidate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SynchronizedRange {
+    pub kind: Synchronization,
+    pub memory: vk::DeviceMemory,
+    pub offset: u64,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MapFault {
+    Fails(vk::VkResult),
+    ReturnsNull,
+    ReturnsAddress(usize),
+}
+
 struct Memory {
     object: MemoryObject,
+    chain: Chain,
     storage: Option<Box<[u8]>>,
 }
 
-#[derive(Default)]
 struct State {
     memories: HashMap<u64, Memory>,
     released_handles: BTreeSet<u64>,
     last_handle: u64,
     calls: Calls,
     misuse: Vec<String>,
+    non_coherent_atom_size: u64,
+    synchronized: Vec<SynchronizedRange>,
+    next_allocation_fails: Option<vk::VkResult>,
+    next_map_fault: Option<MapFault>,
+    next_synchronization_fails: Option<vk::VkResult>,
 }
 
 pub struct FakeDevice {
@@ -53,7 +92,22 @@ pub struct FakeDevice {
 
 impl FakeDevice {
     pub fn new() -> Self {
-        let state = Box::into_raw(Box::new(Mutex::new(State::default())));
+        Self::with_non_coherent_atom_size(NON_COHERENT_ATOM_SIZE)
+    }
+
+    pub fn with_non_coherent_atom_size(non_coherent_atom_size: u64) -> Self {
+        let state = Box::into_raw(Box::new(Mutex::new(State {
+            memories: HashMap::new(),
+            released_handles: BTreeSet::new(),
+            last_handle: 0,
+            calls: Calls::default(),
+            misuse: Vec::new(),
+            non_coherent_atom_size: non_coherent_atom_size.max(1),
+            synchronized: Vec::new(),
+            next_allocation_fails: None,
+            next_map_fault: None,
+            next_synchronization_fails: None,
+        })));
         let handle = vk::Device(state.cast());
         let fp = unsafe { vk::DeviceFn::load(Some(get_device_proc_addr), handle) };
         Self {
@@ -98,12 +152,53 @@ impl FakeDevice {
             .collect()
     }
 
+    pub fn chains(&self) -> HashMap<vk::DeviceMemory, Chain> {
+        self.state()
+            .memories
+            .iter()
+            .map(|(&handle, memory)| (vk::DeviceMemory(handle), memory.chain))
+            .collect()
+    }
+
     pub fn calls(&self) -> Calls {
         self.state().calls
     }
 
     pub fn misuse(&self) -> Vec<String> {
         self.state().misuse.clone()
+    }
+
+    pub fn synchronized(&self) -> Vec<SynchronizedRange> {
+        self.state().synchronized.clone()
+    }
+
+    pub fn base_address(&self, memory: vk::DeviceMemory) -> Option<usize> {
+        self.state()
+            .memories
+            .get(&memory.0)?
+            .storage
+            .as_ref()
+            .map(|storage| storage.as_ptr() as usize)
+    }
+
+    pub fn bytes(&self, memory: vk::DeviceMemory, offset: u64, size: u64) -> Option<Vec<u8>> {
+        let state = self.state();
+        let storage = state.memories.get(&memory.0)?.storage.as_ref()?;
+        let start = usize::try_from(offset).ok()?;
+        let end = start.checked_add(usize::try_from(size).ok()?)?;
+        storage.get(start..end).map(<[u8]>::to_vec)
+    }
+
+    pub fn fail_next_allocation(&self, result: vk::VkResult) {
+        self.state().next_allocation_fails = Some(result);
+    }
+
+    pub fn fault_next_map(&self, fault: MapFault) {
+        self.state().next_map_fault = Some(fault);
+    }
+
+    pub fn fail_next_synchronization(&self, result: vk::VkResult) {
+        self.state().next_synchronization_fails = Some(result);
     }
 
     fn state(&self) -> std::sync::MutexGuard<'_, State> {
@@ -136,25 +231,6 @@ pub fn desc(size: u64, alignment: u64, memory_type_index: u32) -> AllocationCrea
     }
 }
 
-pub struct Random(u64);
-
-impl Random {
-    pub fn new(seed: u64) -> Self {
-        Self(seed)
-    }
-
-    pub fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-
-    pub fn below(&mut self, bound: u64) -> u64 {
-        self.next() % bound
-    }
-}
-
 unsafe fn state_of<'a>(device: vk::Device) -> std::sync::MutexGuard<'a, State> {
     unsafe { &*device.0.cast::<Mutex<State>>() }.lock().unwrap()
 }
@@ -164,6 +240,11 @@ unsafe extern "system" fn get_device_proc_addr(
     p_name: *const c_char,
 ) -> vk::PFN_vkVoidFunction {
     type Void = unsafe extern "system" fn();
+    type SynchronizeRanges = unsafe extern "system" fn(
+        vk::Device,
+        u32,
+        *const vk::MappedMemoryRange<'_>,
+    ) -> vk::VkResult;
     let name = unsafe { CStr::from_ptr(p_name) }.to_bytes();
     unsafe {
         match name {
@@ -199,19 +280,59 @@ unsafe extern "system" fn get_device_proc_addr(
                 unsafe extern "system" fn(vk::Device, vk::DeviceMemory),
                 Void,
             >(unmap_memory)),
-            b"vkFlushMappedMemoryRanges" | b"vkInvalidateMappedMemoryRanges" => {
-                Some(std::mem::transmute::<
-                    unsafe extern "system" fn(
-                        vk::Device,
-                        u32,
-                        *const vk::MappedMemoryRange<'_>,
-                    ) -> vk::VkResult,
-                    Void,
-                >(synchronize_mapped_memory_ranges))
-            }
+            b"vkFlushMappedMemoryRanges" => Some(std::mem::transmute::<SynchronizeRanges, Void>(
+                flush_mapped_memory_ranges,
+            )),
+            b"vkInvalidateMappedMemoryRanges" => Some(
+                std::mem::transmute::<SynchronizeRanges, Void>(invalidate_mapped_memory_ranges),
+            ),
             _ => None,
         }
     }
+}
+
+unsafe fn read_chain(mut next: *const vk::BaseInStructure<'_>) -> Result<Chain, String> {
+    let mut chain = Chain {
+        flags: None,
+        dedicated: None,
+        export: None,
+    };
+    while !next.is_null() {
+        let s_type = unsafe { (*next).s_type };
+        let repeated = if s_type == vk::StructureType::MEMORY_ALLOCATE_FLAGS_INFO {
+            let info = unsafe { &*next.cast::<vk::MemoryAllocateFlagsInfo<'_>>() };
+            chain
+                .flags
+                .replace((info.flags, info.device_mask))
+                .is_some()
+        } else if s_type == vk::StructureType::MEMORY_DEDICATED_ALLOCATE_INFO {
+            let info = unsafe { &*next.cast::<vk::MemoryDedicatedAllocateInfo<'_>>() };
+            let dedicated = match (
+                info.buffer == vk::Buffer::null(),
+                info.image == vk::Image::null(),
+            ) {
+                (false, true) => Dedicated::Buffer(info.buffer),
+                (true, false) => Dedicated::Image(info.image),
+                _ => {
+                    return Err(format!(
+                        "VkMemoryDedicatedAllocateInfo with buffer {:?} and image {:?}",
+                        info.buffer, info.image
+                    ));
+                }
+            };
+            chain.dedicated.replace(dedicated).is_some()
+        } else if s_type == vk::StructureType::EXPORT_MEMORY_ALLOCATE_INFO {
+            let info = unsafe { &*next.cast::<vk::ExportMemoryAllocateInfo<'_>>() };
+            chain.export.replace(info.handle_types).is_some()
+        } else {
+            return Err(format!("unexpected {s_type:?} in the pNext chain"));
+        };
+        if repeated {
+            return Err(format!("{s_type:?} appears twice in the pNext chain"));
+        }
+        next = unsafe { (*next).p_next };
+    }
+    Ok(chain)
 }
 
 unsafe extern "system" fn allocate_memory(
@@ -223,6 +344,26 @@ unsafe extern "system" fn allocate_memory(
     let mut state = unsafe { state_of(device) };
     let info = unsafe { &*p_allocate_info };
     state.calls.allocate += 1;
+    if info.s_type != vk::StructureType::MEMORY_ALLOCATE_INFO {
+        state
+            .misuse
+            .push(format!("vkAllocateMemory with sType {:?}", info.s_type));
+    }
+    if info.allocation_size == 0 {
+        state
+            .misuse
+            .push("vkAllocateMemory with allocationSize 0".to_string());
+    }
+    let chain = match unsafe { read_chain(info.p_next.cast()) } {
+        Ok(chain) => chain,
+        Err(problem) => {
+            state.misuse.push(format!("vkAllocateMemory: {problem}"));
+            return vk::VkResult::ERROR_UNKNOWN;
+        }
+    };
+    if let Some(result) = state.next_allocation_fails.take() {
+        return result;
+    }
     let handle = state.released_handles.pop_first().unwrap_or_else(|| {
         state.last_handle += 1;
         state.last_handle
@@ -235,6 +376,7 @@ unsafe extern "system" fn allocate_memory(
                 memory_type_index: info.memory_type_index,
                 mapped: false,
             },
+            chain,
             storage: None,
         },
     );
@@ -268,6 +410,7 @@ unsafe extern "system" fn map_memory(
 ) -> vk::VkResult {
     let mut state = unsafe { state_of(device) };
     state.calls.map += 1;
+    let fault = state.next_map_fault.take();
     let problem = match state.memories.get_mut(&memory.0) {
         None => Some(format!("vkMapMemory of unknown memory {memory:?}")),
         Some(entry) if entry.object.mapped => {
@@ -276,19 +419,33 @@ unsafe extern "system" fn map_memory(
         Some(entry) if offset != 0 || size != entry.object.size => Some(format!(
             "vkMapMemory of {memory:?} with offset {offset} and size {size}"
         )),
-        Some(entry) if entry.object.size > LARGEST_BACKED_MEMORY => {
-            entry.object.mapped = true;
-            unsafe { pp_data.write(std::ptr::NonNull::<u8>::dangling().as_ptr().cast()) };
-            None
-        }
-        Some(entry) => {
-            entry.object.mapped = true;
-            let storage = entry
-                .storage
-                .insert(vec![0; entry.object.size as usize].into_boxed_slice());
-            unsafe { pp_data.write(storage.as_mut_ptr().cast()) };
-            None
-        }
+        Some(entry) => match fault {
+            Some(MapFault::Fails(result)) => return result,
+            Some(MapFault::ReturnsNull) => {
+                entry.object.mapped = true;
+                unsafe { pp_data.write(std::ptr::null_mut()) };
+                None
+            }
+            Some(MapFault::ReturnsAddress(address)) => {
+                entry.object.mapped = true;
+                unsafe { pp_data.write(std::ptr::without_provenance_mut(address)) };
+                None
+            }
+            None if entry.object.size > LARGEST_BACKED_MEMORY => {
+                entry.object.mapped = true;
+                unsafe { pp_data.write(std::ptr::NonNull::<u8>::dangling().as_ptr().cast()) };
+                None
+            }
+            None => {
+                entry.object.mapped = true;
+                let length = entry.object.size as usize;
+                let storage = entry
+                    .storage
+                    .get_or_insert_with(|| vec![0; length].into_boxed_slice());
+                unsafe { pp_data.write(storage.as_mut_ptr().cast()) };
+                None
+            }
+        },
     };
     match problem {
         None => vk::VkResult::SUCCESS,
@@ -303,35 +460,99 @@ unsafe extern "system" fn unmap_memory(device: vk::Device, memory: vk::DeviceMem
     let mut state = unsafe { state_of(device) };
     state.calls.unmap += 1;
     match state.memories.get_mut(&memory.0) {
-        Some(entry) if entry.object.mapped => {
-            entry.object.mapped = false;
-            entry.storage = None;
-        }
+        Some(entry) if entry.object.mapped => entry.object.mapped = false,
         _ => state.misuse.push(format!(
             "vkUnmapMemory of memory {memory:?} that is not mapped"
         )),
     }
 }
 
-unsafe extern "system" fn synchronize_mapped_memory_ranges(
+unsafe extern "system" fn flush_mapped_memory_ranges(
     device: vk::Device,
+    memory_range_count: u32,
+    p_memory_ranges: *const vk::MappedMemoryRange<'_>,
+) -> vk::VkResult {
+    unsafe {
+        synchronize(
+            device,
+            Synchronization::Flush,
+            memory_range_count,
+            p_memory_ranges,
+        )
+    }
+}
+
+unsafe extern "system" fn invalidate_mapped_memory_ranges(
+    device: vk::Device,
+    memory_range_count: u32,
+    p_memory_ranges: *const vk::MappedMemoryRange<'_>,
+) -> vk::VkResult {
+    unsafe {
+        synchronize(
+            device,
+            Synchronization::Invalidate,
+            memory_range_count,
+            p_memory_ranges,
+        )
+    }
+}
+
+unsafe fn synchronize(
+    device: vk::Device,
+    kind: Synchronization,
     memory_range_count: u32,
     p_memory_ranges: *const vk::MappedMemoryRange<'_>,
 ) -> vk::VkResult {
     let mut state = unsafe { state_of(device) };
     let ranges =
         unsafe { std::slice::from_raw_parts(p_memory_ranges, memory_range_count as usize) };
+    let atom = state.non_coherent_atom_size;
     for range in ranges {
-        let mapped = state
-            .memories
-            .get(&range.memory.0)
-            .is_some_and(|entry| entry.object.mapped);
-        if !mapped {
+        let problem = match state.memories.get(&range.memory.0) {
+            None => Some("unknown memory".to_string()),
+            Some(entry) if !entry.object.mapped => Some("memory that is not mapped".to_string()),
+            Some(entry) => mapped_range_problem(range.offset, range.size, entry.object.size, atom),
+        };
+        if let Some(problem) = problem {
             state.misuse.push(format!(
-                "synchronized a range of memory {:?} that is not mapped",
-                range.memory
+                "{kind:?} of offset {} size {} of {:?}: {problem}",
+                range.offset, range.size, range.memory
             ));
         }
+        state.synchronized.push(SynchronizedRange {
+            kind,
+            memory: range.memory,
+            offset: range.offset,
+            size: range.size,
+        });
     }
-    vk::VkResult::SUCCESS
+    match state.next_synchronization_fails.take() {
+        Some(result) => result,
+        None => vk::VkResult::SUCCESS,
+    }
+}
+
+fn mapped_range_problem(offset: u64, size: u64, mapped_size: u64, atom: u64) -> Option<String> {
+    if !offset.is_multiple_of(atom) {
+        return Some(format!(
+            "the offset is not a multiple of nonCoherentAtomSize {atom}"
+        ));
+    }
+    if size == vk::WHOLE_SIZE {
+        return (offset >= mapped_size)
+            .then(|| "the offset is outside the mapped range".to_string());
+    }
+    let Some(end) = offset.checked_add(size) else {
+        return Some("the range overflows".to_string());
+    };
+    if end > mapped_size {
+        return Some("the range is not inside the mapped range".to_string());
+    }
+    if !size.is_multiple_of(atom) && end != mapped_size {
+        return Some(format!(
+            "the size is not a multiple of nonCoherentAtomSize {atom} and the range does not end \
+             at the end of the memory"
+        ));
+    }
+    None
 }
