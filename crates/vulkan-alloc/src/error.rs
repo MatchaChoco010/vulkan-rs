@@ -19,9 +19,11 @@ pub enum AllocationError {
     /// [`Allocator::allocate`](crate::Allocator::allocate)).
     OutOfMemory,
     /// The [`AllocationCreateDesc`](crate::AllocationCreateDesc) asks for something the
-    /// allocator does not accept: a [`vk::MemoryRequirements::size`] of 0, or a
-    /// [`vk::MemoryRequirements::alignment`] that is neither 0 nor a power of two (see
-    /// [`Allocator::allocate`](crate::Allocator::allocate)).
+    /// allocator does not accept: a [`vk::MemoryRequirements::size`] of 0, a
+    /// [`vk::MemoryRequirements::alignment`] that is neither 0 nor a power of two, or
+    /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] in
+    /// [`AllocationCreateDesc::memory_allocate_flags`](crate::AllocationCreateDesc::memory_allocate_flags)
+    /// (see [`Allocator::allocate`](crate::Allocator::allocate)).
     ///
     /// It depends on the description alone, not on the device or the state of the
     /// allocator, and is returned before any Vulkan call.

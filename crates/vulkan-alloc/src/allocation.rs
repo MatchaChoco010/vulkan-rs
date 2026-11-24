@@ -63,8 +63,10 @@ pub struct AllocationCreateDesc<'a> {
     /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here.
     ///
     /// The `deviceMask` of the chained structure is always 0, so
-    /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] cannot be used: Vulkan requires a
-    /// `deviceMask` other than 0 when it is set. Memory on chosen physical devices of a
+    /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] is refused with
+    /// [`AllocationError::InvalidAllocationCreateDesc`](crate::AllocationError::InvalidAllocationCreateDesc):
+    /// Vulkan requires a `deviceMask` other than 0 when it is set. Memory on chosen
+    /// physical devices of a
     /// logical device that represents more than one physical device is allocated with
     /// `vkAllocateMemory` directly (see the
     /// [crate documentation](crate#what-the-allocator-does-and-does-not-do)).

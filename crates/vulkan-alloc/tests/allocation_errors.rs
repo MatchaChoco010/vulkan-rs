@@ -173,9 +173,10 @@ fn expected(
     size: u64,
     alignment: u64,
     memory_type_bits: u32,
+    device_mask: bool,
     allocate_memory_result: vk::VkResult,
 ) -> Expected {
-    if size == 0 || (alignment != 0 && !alignment.is_power_of_two()) {
+    if size == 0 || (alignment != 0 && !alignment.is_power_of_two()) || device_mask {
         return Expected::Refused(AllocationError::InvalidAllocationCreateDesc);
     }
     let Some(memory_type) = device.chosen_memory_type(memory_type_bits) else {
@@ -208,6 +209,7 @@ proptest! {
         alignment in alignments(),
         memory_type_bits in memory_type_bits(),
         kind in select(KINDS.to_vec()),
+        device_mask in prop::bool::weighted(0.1),
         allocate_memory_result in select(ALLOCATE_MEMORY_RESULTS.to_vec()),
         earlier_allocation in any::<bool>(),
     ) {
@@ -228,9 +230,13 @@ proptest! {
         let earlier = earlier.unwrap();
         let context = format!(
             "{device:?}, size {size}, alignment {alignment}, memory type bits \
-             {memory_type_bits:#b}, {kind:?}, vkAllocateMemory returns \
-             {allocate_memory_result:?}, earlier allocation {earlier_allocation}"
+             {memory_type_bits:#b}, {kind:?}, DEVICE_MASK {device_mask}, vkAllocateMemory \
+             returns {allocate_memory_result:?}, earlier allocation {earlier_allocation}"
         );
+        let mut request = of_kind(description(size, alignment, memory_type_bits, true), kind);
+        if device_mask {
+            request.memory_allocate_flags |= vk::MemoryAllocateFlags::DEVICE_MASK;
+        }
 
         if allocate_memory_result != vk::VkResult::SUCCESS {
             fake.fail_next_allocation(allocate_memory_result);
@@ -238,10 +244,15 @@ proptest! {
         let calls_before = fake.calls();
         let snapshot_before = allocator.snapshot();
         let memory_before = fake.memory_objects();
-        let result = unsafe {
-            allocator.allocate(of_kind(description(size, alignment, memory_type_bits, true), kind))
-        };
-        let expected = expected(&device, size, alignment, memory_type_bits, allocate_memory_result);
+        let result = unsafe { allocator.allocate(request) };
+        let expected = expected(
+            &device,
+            size,
+            alignment,
+            memory_type_bits,
+            device_mask,
+            allocate_memory_result,
+        );
         let fails = expected != Expected::Allocated;
 
         match expected {

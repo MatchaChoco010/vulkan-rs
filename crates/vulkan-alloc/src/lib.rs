@@ -134,7 +134,8 @@
 //! - allocate memory on chosen physical devices of a logical device that represents more
 //!   than one physical device. The allocator cannot pass the `deviceMask` of
 //!   `VkMemoryAllocateFlagsInfo`, so [`vulkan::vk::MemoryAllocateFlags::DEVICE_MASK`]
-//!   cannot be used, and memory on chosen physical devices is allocated with
+//!   is refused with [`AllocationError::InvalidAllocationCreateDesc`], and memory on
+//!   chosen physical devices is allocated with
 //!   `vkAllocateMemory` directly. Other allocations on such a device are made as on any
 //!   device, but memory from a heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` cannot be
 //!   mapped (see [Mapping](#mapping)).

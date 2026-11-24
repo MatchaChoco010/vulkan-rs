@@ -233,6 +233,7 @@ pub struct Request {
     pub location: Location,
     pub linear: bool,
     pub device_address: bool,
+    pub device_mask: bool,
     pub zero_initialize: bool,
     pub export: bool,
     pub scheme: Scheme,
@@ -251,6 +252,7 @@ impl Request {
             },
             linear: true,
             device_address: false,
+            device_mask: false,
             zero_initialize: false,
             export: false,
             scheme: Scheme::Managed,
@@ -266,6 +268,9 @@ impl Request {
         let mut flags = vk::MemoryAllocateFlags::empty();
         if self.device_address {
             flags |= vk::MemoryAllocateFlags::DEVICE_ADDRESS;
+        }
+        if self.device_mask {
+            flags |= vk::MemoryAllocateFlags::DEVICE_MASK;
         }
         if self.zero_initialize {
             flags |= vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT;
@@ -578,6 +583,7 @@ pub fn requests(world: &World) -> impl Strategy<Value = Request> + use<> {
         locations(),
         prop::bool::weighted(0.85),
         prop::bool::weighted(0.1),
+        prop::bool::weighted(0.02),
         prop::bool::weighted(0.06),
         prop::bool::weighted(0.05),
         scheme,
@@ -591,6 +597,7 @@ pub fn requests(world: &World) -> impl Strategy<Value = Request> + use<> {
                 location,
                 linear,
                 device_address,
+                device_mask,
                 zero_initialize,
                 export,
                 scheme,
@@ -602,6 +609,7 @@ pub fn requests(world: &World) -> impl Strategy<Value = Request> + use<> {
                 location,
                 linear,
                 device_address,
+                device_mask,
                 zero_initialize,
                 export,
                 scheme,
@@ -1089,6 +1097,8 @@ impl Harness {
             Some("0 bytes")
         } else if request.alignment != 0 && !request.alignment.is_power_of_two() {
             Some("alignment that is not a power of two")
+        } else if request.device_mask {
+            Some("DEVICE_MASK")
         } else {
             None
         };
