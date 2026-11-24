@@ -106,7 +106,11 @@ impl<'a> Model<'a> {
                  know: {text}",
                 source.page.as_deref().unwrap_or(&source.file)
             ),
-            Err(unread @ (Unsupported::EscapedSpan | Unsupported::Passthrough)) => panic!(
+            Err(
+                unread @ (Unsupported::EscapedSpan
+                | Unsupported::Passthrough
+                | Unsupported::MacroUse(_)),
+            ) => panic!(
                 "a table of {} has markup that the generator does not read ({unread:?}): {text}",
                 source.page.as_deref().unwrap_or(&source.file)
             ),
@@ -809,7 +813,12 @@ mod tests {
 
     #[test]
     fn unread_markup_in_a_table_aborts_generation() {
-        for (cell, unread) in [("\\#none#", "EscapedSpan"), ("+none +x+", "Passthrough")] {
+        for (cell, unread) in [
+            ("\\#none#", "EscapedSpan"),
+            ("+none +x+", "Passthrough"),
+            ("must:be none", "MacroUse(\"must:be\")"),
+            ("xpname:none", "MacroUse(\"pname:none\")"),
+        ] {
             let (ir, mut docs) = (ir(), docs());
             docs.tables[0].text = docs.tables[0].text.replace(
                 "|ename:VK_SHADE_PALE |none |",

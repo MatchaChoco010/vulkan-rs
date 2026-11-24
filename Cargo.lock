@@ -1470,6 +1470,7 @@ name = "vulkan-codegen"
 version = "0.4.0+vulkan-sdk-1.4.363.0"
 dependencies = [
  "proptest",
+ "regex",
  "syn 2.0.117",
  "vulkan-registry",
 ]
