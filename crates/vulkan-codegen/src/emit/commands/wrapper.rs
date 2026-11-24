@@ -6,9 +6,9 @@ use super::{
 use crate::docs::{Doc, join_and, join_or};
 use crate::emit::command_info::result_code;
 use crate::emit::{arrow, assert_distinct_names};
-use crate::model::AlignedOutput;
+use crate::model::{AlignedOutput, Alignment};
 use crate::model::{CType, Cfg, Dispatch, Model, null_ptr, parse_version};
-use crate::naming::{command_name, field_name};
+use crate::naming::{command_name, field_name, flag_bit_name};
 use std::collections::BTreeSet;
 use vulkan_registry::{Command, Field};
 
@@ -18,6 +18,7 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
     let shape = Shape::detect(model, c, params);
     let inputs = Inputs::plan(model, c, params, &shape.outputs());
     let aligned = aligned_output(model, c, params, &shape);
+    let alignment = alignment_check(model, c, params);
     let nested = nested_bytes(model, c, params, &shape);
     assert_distinct_names(
         &c.name,
@@ -84,13 +85,19 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         c,
         note.trim_end(),
         errors.or_else(|| ty.contains("Result<").then(|| error_codes(model, &cfg, c))),
-        panics(
-            model,
-            c,
-            inputs.checks.contains("assert_eq!"),
-            &inputs.narrowed_counts,
-            absent_before.is_some(),
-        ),
+        [
+            panics(
+                model,
+                c,
+                inputs.checks.contains("assert_eq!"),
+                &inputs.narrowed_counts,
+                absent_before.is_some(),
+            ),
+            alignment.panics,
+        ]
+        .join(" ")
+        .trim()
+        .to_string(),
     );
     format!(
         "{doc}{cfg}pub unsafe fn {name}{generics}(&self{signature}){arrow} {{
@@ -102,8 +109,69 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         generics = inputs.generics(),
         signature = inputs.signature(),
         arrow = arrow(&ty),
-        checks = inputs.checks,
+        checks = inputs.checks + &alignment.check,
     )
+}
+
+#[derive(Default)]
+struct AlignmentCheck {
+    check: String,
+    panics: String,
+}
+
+fn alignment_check(model: &Model<'_>, c: &Command, params: &[Field]) -> AlignmentCheck {
+    let Some(slice) = model.aligned_slice(c) else {
+        return AlignmentCheck::default();
+    };
+    let p = params
+        .iter()
+        .find(|p| p.name == slice.parameter)
+        .unwrap_or_else(|| panic!("{}: `{}` is not passed", c.name, slice.parameter));
+    let slice_name = argument_name(p);
+    let (alignment, of) = match slice.alignment {
+        Alignment::Bytes(bytes) => (bytes.to_string(), format!("{bytes} bytes")),
+        Alignment::Of(ty) => {
+            let ty = model.base_ty(ty, "'_");
+            (
+                format!("core::mem::align_of::<{ty}>()"),
+                format!("the alignment of [`{ty}`]"),
+            )
+        }
+    };
+    let (required, described) = match &slice.wider {
+        None => (alignment, of),
+        Some(wider) => {
+            let flags = params
+                .iter()
+                .find(|p| p.name == wider.flags)
+                .unwrap_or_else(|| panic!("{}: `{}` is not passed", c.name, wider.flags));
+            (
+                format!(
+                    "if {}.contains({}::{}) {{ {} }} else {{ {alignment} }}",
+                    argument_name(flags),
+                    model.base_ty(&flags.ty, "'_"),
+                    flag_bit_name(wider.bits, wider.bit, &model.ir.vendor_tags),
+                    wider.alignment
+                ),
+                format!(
+                    "{of}, or to {} bytes if `{}` contains `{}`",
+                    wider.alignment, wider.flags, wider.bit
+                ),
+            )
+        }
+    };
+    AlignmentCheck {
+        check: format!(
+            "assert!({slice_name}.as_ptr().addr().is_multiple_of({required}), \"{}: `{slice_name}` has to start at an address aligned to {described} ({})\");\n",
+            c.name,
+            slice.stated_by,
+            described = described.replace("[`", "`").replace("`]", "`"),
+        ),
+        panics: format!(
+            "Panics if `{slice_name}` does not start at an address aligned to {described}, as stated by {}: a slice of bytes does not guarantee it, so borrow it from memory with that alignment. {}",
+            slice.stated_by, slice.unchecked
+        ),
+    }
 }
 
 pub(super) fn absent_before(c: &Command, dispatch: Dispatch) -> Option<(u32, u32)> {

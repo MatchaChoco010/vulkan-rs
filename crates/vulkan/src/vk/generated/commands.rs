@@ -64735,7 +64735,17 @@ impl crate::Device {
     /// # Panics
     ///
     /// Panics if `vkGetQueryPoolResults` is not loaded: the loader returned no pointer for it, for
-    /// example because the version or the extension that provides it is not enabled.
+    /// example because the version or the extension that provides it is not enabled. Panics if
+    /// `data` does not start at an address aligned to 4 bytes, or to 8 bytes if `flags` contains
+    /// `VK_QUERY_RESULT_64_BIT`, as stated by VUID-vkGetQueryPoolResults-flags-02828 and
+    /// VUID-vkGetQueryPoolResults-flags-00815: a slice of bytes does not guarantee it, so borrow it
+    /// from memory with that alignment. For a pool of performance queries without
+    /// `VK_QUERY_RESULT_64_BIT`, VUID-vkGetQueryPoolResults-queryType-03229 requires the alignment
+    /// of [`PerformanceCounterResultKHR`], which the wrapper does not check, since it does not know
+    /// the type of the pool. Neither does it check `stride`, which
+    /// VUID-vkGetQueryPoolResults-queryCount-12251, VUID-vkGetQueryPoolResults-queryCount-12252 and
+    /// VUID-vkGetQueryPoolResults-queryCount-12253 require to be a multiple of the same alignment
+    /// when `queryCount` is greater than 1.
     #[doc(alias = "vkGetQueryPoolResults")]
     pub unsafe fn get_query_pool_results(
         &self,
@@ -64748,6 +64758,16 @@ impl crate::Device {
     ) -> crate::vk::Result<VkResult> {
         unsafe {
             let data_size_len: usize = data.len();
+            assert!(
+                data.as_ptr()
+                    .addr()
+                    .is_multiple_of(if flags.contains(QueryResultFlags::_64) {
+                        8
+                    } else {
+                        4
+                    }),
+                "vkGetQueryPoolResults: `data` has to start at an address aligned to 4 bytes, or to 8 bytes if `flags` contains `VK_QUERY_RESULT_64_BIT` (VUID-vkGetQueryPoolResults-flags-02828 and VUID-vkGetQueryPoolResults-flags-00815)"
+            );
             let result = self.get_query_pool_results_raw(
                 query_pool,
                 first_query,
@@ -68873,7 +68893,18 @@ impl crate::Device {
     /// Panics if `vkWriteAccelerationStructuresPropertiesKHR` is not loaded: the loader returned no
     /// pointer for it, for example because the version or the extension that provides it is not
     /// enabled. Also panics if `acceleration_structures` has more elements than
-    /// `accelerationStructureCount`, a `uint32_t`, can count.
+    /// `accelerationStructureCount`, a `uint32_t`, can count. Panics if `data` does not start at an
+    /// address aligned to the alignment of [`DeviceSize`], as stated by
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03449,
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03451,
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06732 and
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06734: a slice of bytes does not
+    /// guarantee it, so borrow it from memory with that alignment. The wrapper does not check
+    /// `stride`, which VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03448,
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03450,
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06731 and
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06733 require to be a multiple of
+    /// the size of `VkDeviceSize`.
     #[doc(alias = "vkWriteAccelerationStructuresPropertiesKHR")]
     pub unsafe fn write_acceleration_structures_properties_khr(
         &self,
@@ -68885,6 +68916,12 @@ impl crate::Device {
         unsafe {
             let acceleration_structure_count_len: usize = acceleration_structures.len();
             let data_size_len: usize = data.len();
+            assert!(
+                data.as_ptr()
+                    .addr()
+                    .is_multiple_of(core::mem::align_of::<DeviceSize>()),
+                "vkWriteAccelerationStructuresPropertiesKHR: `data` has to start at an address aligned to the alignment of `DeviceSize` (VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03449, VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03451, VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06732 and VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06734)"
+            );
             self.write_acceleration_structures_properties_khr_raw(
                 len_as_count(
                     acceleration_structure_count_len,
@@ -68924,6 +68961,11 @@ impl crate::Device {
     /// Panics if `vkWriteMicromapsPropertiesEXT` is not loaded: the loader returned no pointer for
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if `micromaps` has more elements than `micromapCount`, a `uint32_t`, can count.
+    /// Panics if `data` does not start at an address aligned to the alignment of [`DeviceSize`], as
+    /// stated by VUID-vkWriteMicromapsPropertiesEXT-queryType-10072: a slice of bytes does not
+    /// guarantee it, so borrow it from memory with that alignment. The wrapper does not check
+    /// `stride`, which VUID-vkWriteMicromapsPropertiesEXT-queryType-10071 requires to be a multiple
+    /// of the size of `VkDeviceSize`.
     #[doc(alias = "vkWriteMicromapsPropertiesEXT")]
     pub unsafe fn write_micromaps_properties_ext(
         &self,
@@ -68935,6 +68977,12 @@ impl crate::Device {
         unsafe {
             let micromap_count_len: usize = micromaps.len();
             let data_size_len: usize = data.len();
+            assert!(
+                data.as_ptr()
+                    .addr()
+                    .is_multiple_of(core::mem::align_of::<DeviceSize>()),
+                "vkWriteMicromapsPropertiesEXT: `data` has to start at an address aligned to the alignment of `DeviceSize` (VUID-vkWriteMicromapsPropertiesEXT-queryType-10072)"
+            );
             self.write_micromaps_properties_ext_raw(
                 len_as_count(
                     micromap_count_len,

@@ -8,7 +8,9 @@ mod platform;
 mod rust_types;
 mod void_arrays;
 
-pub(crate) use alignment::{AlignedOutput, aligned_input, assert_listed_aligned_memory_exists};
+pub(crate) use alignment::{
+    AlignedOutput, Alignment, aligned_input, assert_listed_aligned_memory_exists,
+};
 pub(crate) use cfg::{BETA_PROTECT, Cfg};
 pub(crate) use ctype::{CType, null_ptr};
 pub(crate) use depends::{Depends, named_version, parse_version};
