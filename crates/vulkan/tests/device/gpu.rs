@@ -1,9 +1,17 @@
 use std::ffi::{CStr, c_void};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use vulkan::vk;
 use vulkan::{Device, Entry, Instance};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
+
+static LOADER_DEVICE_LIST: Mutex<()> = Mutex::new(());
+
+pub fn exclusive_access_to_the_loaders_device_list() -> MutexGuard<'static, ()> {
+    LOADER_DEVICE_LIST
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 pub struct Gpu {
     pub instance: Instance,
@@ -280,7 +288,9 @@ impl Drop for Gpu {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();
+            let serialized = exclusive_access_to_the_loaders_device_list();
             self.device.destroy_device(None);
+            drop(serialized);
             if !self.messenger.is_null() {
                 self.instance
                     .destroy_debug_utils_messenger_ext(self.messenger, None);
@@ -481,6 +491,7 @@ unsafe fn create_device(
             .push_next(&mut heap_features)
             .push_next(&mut untyped_features);
     }
+    let _serialized = exclusive_access_to_the_loaders_device_list();
     unsafe { instance.create_device(physical_device, &device_info, None) }
         .map_err(|e| format!("vkCreateDevice: {e}"))
 }

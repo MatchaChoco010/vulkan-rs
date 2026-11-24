@@ -1,7 +1,7 @@
 use std::ffi::{CStr, c_void};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::ptr::NonNull;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use proptest::prelude::*;
 use proptest::sample::Index;
@@ -14,6 +14,14 @@ use vulkan_alloc::{
 };
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
+
+static LOADER_DEVICE_LIST: Mutex<()> = Mutex::new(());
+
+fn exclusive_access_to_the_loaders_device_list() -> MutexGuard<'static, ()> {
+    LOADER_DEVICE_LIST
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 struct Gpu {
     instance: Instance,
@@ -213,6 +221,7 @@ impl Gpu {
                 .queue_priorities(&priorities)];
             let mut vulkan12 =
                 vk::PhysicalDeviceVulkan12Features::default().buffer_device_address(true);
+            let serialized = exclusive_access_to_the_loaders_device_list();
             let device = instance
                 .create_device(
                     physical_device,
@@ -223,6 +232,7 @@ impl Gpu {
                     None,
                 )
                 .map_err(|e| format!("vkCreateDevice: {e}"))?;
+            drop(serialized);
             Ok((physical_device, device, external_memory_fd))
         }
     }
@@ -277,7 +287,9 @@ impl Gpu {
 impl Drop for Gpu {
     fn drop(&mut self) {
         unsafe {
+            let serialized = exclusive_access_to_the_loaders_device_list();
             self.device.destroy_device(None);
+            drop(serialized);
             if !self.messenger.is_null() {
                 self.instance
                     .destroy_debug_utils_messenger_ext(self.messenger, None);
