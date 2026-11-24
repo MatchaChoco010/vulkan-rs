@@ -17,12 +17,13 @@ use vulkan::vk;
 /// instead of taking memory that is not coherent. The Vulkan specification, describing
 /// `VkMemoryRequirements::memoryTypeBits`, guarantees that the requirements of a buffer
 /// created without `VK_BUFFER_CREATE_SPARSE_BINDING_BIT` and
-/// `VK_BUFFER_CREATE_PROTECTED_BIT`, and of a linear image created without
-/// `VK_IMAGE_CREATE_PROTECTED_BIT`, allow a memory type with both `HOST_VISIBLE` and
-/// `HOST_COHERENT`: "mappable coherent memory can always be attached to these objects".
-/// So for those resources the error does not happen, unless every such allowed type is
-/// one of the types left out below. For other resources, such as images with optimal
-/// tiling, it can.
+/// `VK_BUFFER_CREATE_PROTECTED_BIT`, of a linear image created without
+/// `VK_IMAGE_CREATE_PROTECTED_BIT`, and of a tensor (`VK_ARM_tensors`) created without
+/// `VK_TENSOR_CREATE_PROTECTED_BIT_ARM`, allow a memory type with both `HOST_VISIBLE`
+/// and `HOST_COHERENT`: "mappable coherent memory can always be attached to these
+/// objects". So for those resources the error does not happen, unless every such
+/// allowed type is one of the types left out below. For other resources, such as
+/// images with optimal tiling, sparse buffers and protected resources, it can.
 ///
 /// Memory that is `HOST_CACHED` but not `HOST_COHERENT` can be faster for the host to
 /// read. To use it, give
@@ -50,7 +51,7 @@ use vulkan::vk;
 pub enum MemoryLocation {
     /// Memory for resources only the device accesses: requires and prefers
     /// `DEVICE_LOCAL`. The chosen type may also be host-visible, but nothing guarantees
-    /// that.
+    /// that, and a host-visible type chosen here need not be `HOST_COHERENT`.
     GpuOnly,
     /// Memory the host writes and the device reads, such as staging and uniform
     /// buffers: requires and prefers `HOST_VISIBLE | HOST_COHERENT`, so the

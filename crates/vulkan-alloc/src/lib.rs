@@ -157,8 +157,9 @@
 //!
 //! Memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is always
 //! `HOST_COHERENT`, so mapped writes and reads need neither a flush nor an invalidate
-//! (see [`MemoryLocation`]). Memory without `HOST_COHERENT`, which only a
-//! [`MemoryLocation::Custom`] location can give, needs [`Allocator::flush_allocation`]
+//! (see [`MemoryLocation`]). [`MemoryLocation::GpuOnly`] and a
+//! [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
+//! host-visible memory without it. Such memory needs [`Allocator::flush_allocation`]
 //! after host writes and [`Allocator::invalidate_allocation`] before host reads (or
 //! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). Allocations in
 //! such memory are aligned to `nonCoherentAtomSize`, so the atom-rounded range that is
