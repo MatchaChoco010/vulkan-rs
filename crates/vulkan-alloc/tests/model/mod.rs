@@ -1012,6 +1012,11 @@ impl Harness {
             .contains(VISIBLE)
     }
 
+    fn is_coherent(&self, live: &Live) -> bool {
+        self.flags_of(live.allocation.memory_type_index())
+            .contains(COHERENT)
+    }
+
     fn shares_its_block(&self, live: &Live) -> bool {
         self.live
             .iter()
@@ -1717,6 +1722,15 @@ impl Harness {
     ) -> Checked {
         let live = &self.live[index];
         let logged = self.fake.synchronized();
+        let block = self.blocks[&live.memory()];
+        if self.flags_of(block.memory_type).contains(COHERENT) {
+            ensure_eq!(
+                logged.len(),
+                logged_before,
+                "ranges given to the device by {kind:?} of coherent memory"
+            );
+            return Ok(());
+        }
         ensure!(
             logged.len() >= logged_before + logged_at_least && logged_at_least == 1,
             "no range was given to the device by {kind:?}"
@@ -1729,7 +1743,6 @@ impl Harness {
         } = logged[logged_before];
         ensure_eq!(logged_kind, kind, "the command that was called");
         ensure_eq!(memory, live.allocation.memory(), "the memory of the range");
-        let block = self.blocks[&live.memory()];
         let end = if size == vk::WHOLE_SIZE {
             block.size
         } else {
@@ -1741,20 +1754,17 @@ impl Harness {
             "the range {offset}..{end} does not cover the allocation at {start_of_allocation} of \
              {length} bytes"
         );
-        let flags = self.flags_of(block.memory_type);
-        if !flags.contains(COHERENT) {
-            for other in &self.live {
-                let (other_start, other_length) = other.range();
-                let apart = other.memory() != live.memory()
-                    || other_start == start_of_allocation
-                    || other_start + other_length <= offset
-                    || end <= other_start;
-                ensure!(
-                    apart,
-                    "the range {offset}..{end} of the allocation at {start_of_allocation} reaches \
-                     into the allocation at {other_start} of {other_length} bytes"
-                );
-            }
+        for other in &self.live {
+            let (other_start, other_length) = other.range();
+            let apart = other.memory() != live.memory()
+                || other_start == start_of_allocation
+                || other_start + other_length <= offset
+                || end <= other_start;
+            ensure!(
+                apart,
+                "the range {offset}..{end} of the allocation at {start_of_allocation} reaches \
+                 into the allocation at {other_start} of {other_length} bytes"
+            );
         }
         Ok(())
     }
@@ -1781,6 +1791,18 @@ impl Harness {
             );
             self.coverage.step(format!("{kind:?} refused: {state}"));
             return self.nothing_happened_since(&before, "a refused flush or invalidate");
+        }
+        if self.is_coherent(&self.live[index]) {
+            ensure_eq!(
+                result,
+                Ok(()),
+                "{kind:?} of coherent memory that is {state}"
+            );
+            self.coverage.step(format!("{kind:?}: {state}"));
+            self.coverage
+                .note(format!("{kind:?} makes no Vulkan call for coherent memory"));
+            return self
+                .nothing_happened_since(&before, "a flush or invalidate of coherent memory");
         }
         let expected = match self.synchronization_fails.take() {
             Some(failure) => {
@@ -1819,6 +1841,7 @@ impl Harness {
         let length = self.live[index].allocation.size() as usize;
         let untouched_and_zeroed =
             self.live[index].zero_initialized && self.live[index].fill.is_none();
+        let coherent = self.is_coherent(&self.live[index]);
 
         let Self {
             allocator,
@@ -1881,7 +1904,7 @@ impl Harness {
                             Synchronization::Invalidate => mapped.invalidate(),
                         }
                     };
-                    let expected = match synchronization_fails.take() {
+                    let expected = match synchronization_fails.take_if(|_| !coherent) {
                         Some(failure) => Err(AllocationError::Vulkan(failure)),
                         None => Ok(()),
                     };
@@ -1933,7 +1956,11 @@ impl Harness {
         );
         for (kind, logged_before) in synchronized {
             self.check_synchronized(index, kind, logged_before, 1)?;
-            self.coverage.note(format!("{kind:?} through the guard"));
+            self.coverage.note(if coherent {
+                format!("{kind:?} through the guard makes no Vulkan call for coherent memory")
+            } else {
+                format!("{kind:?} through the guard")
+            });
         }
         self.live[index].fill = Some(fill);
         self.state_is_as(&before, "a dropped guard")

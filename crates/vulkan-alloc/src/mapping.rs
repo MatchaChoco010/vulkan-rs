@@ -95,6 +95,10 @@ impl<'a> MappedAllocation<'a> {
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
     /// it can give memory without it.
     ///
+    /// For a memory type with `HOST_COHERENT`, this makes no Vulkan call and returns
+    /// `Ok(())`, so it can be called after every host write without looking at the memory
+    /// type.
+    ///
     /// # Errors
     ///
     /// [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
@@ -114,6 +118,10 @@ impl<'a> MappedAllocation<'a> {
     /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
     /// it can give memory without it.
+    ///
+    /// For a memory type with `HOST_COHERENT`, this makes no Vulkan call and returns
+    /// `Ok(())`, so it can be called before every host read without looking at the memory
+    /// type.
     ///
     /// # Errors
     ///

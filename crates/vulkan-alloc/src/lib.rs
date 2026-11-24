@@ -168,9 +168,12 @@
 //! [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
 //! host-visible memory without it. Such memory needs [`Allocator::flush_allocation`]
 //! after host writes and [`Allocator::invalidate_allocation`] before host reads (or
-//! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). Allocations in
-//! such memory are aligned to `nonCoherentAtomSize`, so the atom-rounded range that is
-//! flushed or invalidated never reaches into another allocation. This holds because
+//! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). These functions do
+//! nothing for `HOST_COHERENT` memory, so the memory type need not be checked: call the
+//! flush after every host write and the invalidate before every host read. Allocations in
+//! memory that is not `HOST_COHERENT` are aligned to `nonCoherentAtomSize`, so the
+//! atom-rounded range that is flushed or invalidated never reaches into another
+//! allocation. This holds because
 //! `nonCoherentAtomSize` and the alignments of memory requirements are powers of two:
 //! [`AllocatorCreateDesc::non_coherent_atom_size`] requires it of the limit, and
 //! [`Allocator::allocate`] rejects any other alignment than 0, which is treated as 1
