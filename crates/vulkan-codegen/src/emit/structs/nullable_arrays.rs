@@ -128,20 +128,9 @@ pub(crate) fn assert_listed_nullable_arrays_exist(ir: &Registry) {
 mod tests {
     use super::*;
     use crate::test_support::{
-        catch_quietly, chapters_of_the_specification, counted, field, optional, registry, structure,
+        catch_quietly, chapters_of_the_specification, counted, description_in, field, optional,
+        registry, structure,
     };
-
-    fn description<'c>(chapters: &'c str, structure: &str) -> &'c str {
-        let Some(at) = chapters.find(&format!("refpage='{structure}'")) else {
-            return "";
-        };
-        let opened = &chapters[at..];
-        let start = opened
-            .find("\n--\n")
-            .map_or(opened.len(), |start| start + 4);
-        let body = &opened[start..];
-        &body[..body.find("\n--\n").unwrap_or(body.len())]
-    }
 
     fn gives_a_meaning_to_null(description: &str, member: &str) -> bool {
         let text = description.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -195,9 +184,9 @@ mod tests {
             assert_eq!(gives_a_meaning_to_null(text, "pValues"), expected, "{text}");
         }
         let chapters = "[open,refpage='VkFirst',desc='First',type='structs']\n--\nabout the first\n--\n\n[open,refpage='VkSecond',desc='Second',type='structs']\n--\nabout the second\n";
-        assert_eq!(description(chapters, "VkFirst"), "about the first");
-        assert_eq!(description(chapters, "VkSecond"), "about the second\n");
-        assert_eq!(description(chapters, "VkThird"), "");
+        assert_eq!(description_in(chapters, "VkFirst"), "about the first");
+        assert_eq!(description_in(chapters, "VkSecond"), "about the second\n");
+        assert_eq!(description_in(chapters, "VkThird"), "");
     }
 
     #[test]
@@ -208,7 +197,7 @@ mod tests {
         };
         let mut found = Vec::new();
         for s in Registry::get().structs.iter().filter(|s| !s.union) {
-            let description = description(&chapters, &s.name);
+            let description = description_in(&chapters, &s.name);
             for m in &s.members {
                 let ty = CType::of(m);
                 if ty.depth() == 0 || ty.is_array() || m.optional || count_member(s, m).is_none() {

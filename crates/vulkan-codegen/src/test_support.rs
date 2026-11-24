@@ -196,3 +196,15 @@ pub(crate) fn chapters_of_the_specification() -> Option<String> {
     }
     Some(text)
 }
+
+pub(crate) fn description_in<'c>(chapters: &'c str, name: &str) -> &'c str {
+    let Some(at) = chapters.find(&format!("refpage='{name}'")) else {
+        return "";
+    };
+    let opened = &chapters[at..];
+    let start = opened
+        .find("\n--\n")
+        .map_or(opened.len(), |start| start + 4);
+    let body = &opened[start..];
+    &body[..body.find("\n--\n").unwrap_or(body.len())]
+}
