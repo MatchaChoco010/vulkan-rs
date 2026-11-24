@@ -177,26 +177,6 @@ fn viewport_depths_takes_a_slice_and_sets_its_count() {
 }
 
 #[test]
-fn buffer_removal_times_takes_a_slice() {
-    let times = [10_u32, 20, 30];
-    let info = vk::StdVideoEncodeAV1PictureInfo::default().buffer_removal_times(&[]);
-    assert!(
-        info.p_buffer_removal_times.is_null(),
-        "an empty slice sets a null pointer"
-    );
-    for len in 1..=times.len() {
-        let info = vk::StdVideoEncodeAV1PictureInfo::default().buffer_removal_times(&times[..len]);
-        assert_eq!(
-            info.p_buffer_removal_times,
-            times.as_ptr(),
-            "pBufferRemovalTimes points to the first of {len} elements"
-        );
-        let passed = unsafe { std::slice::from_raw_parts(info.p_buffer_removal_times, len) };
-        assert_eq!(passed, &times[..len]);
-    }
-}
-
-#[test]
 fn the_string_member_of_a_union_takes_a_c_string() {
     for text in [c"", c"a", c"frequency", c"a longer value string"] {
         let data = vk::PerformanceValueDataINTEL::value_string(text);

@@ -3,21 +3,6 @@ use std::ffi::{CStr, c_char};
 use vulkan::Device;
 use vulkan::vk;
 
-fn check_setter<T: Default + Clone>(name: &str, pointer_set_by: impl Fn(&[T]) -> *const T) {
-    assert!(
-        pointer_set_by(&[]).is_null(),
-        "{name}: an empty slice sets a null pointer"
-    );
-    let values = vec![T::default(); 3];
-    for len in 1..=values.len() {
-        assert_eq!(
-            pointer_set_by(&values[..len]),
-            values.as_ptr(),
-            "{name}: a slice of {len} elements sets a pointer to its first element"
-        );
-    }
-}
-
 fn check_mut_setter<T: Default + Clone>(name: &str, pointer_set_by: impl Fn(&mut [T]) -> *mut T) {
     assert!(
         pointer_set_by(&mut []).is_null(),
@@ -36,14 +21,6 @@ fn check_mut_setter<T: Default + Clone>(name: &str, pointer_set_by: impl Fn(&mut
 
 #[test]
 fn every_slice_setter_without_a_count_member_sets_null_for_an_empty_slice() {
-    check_setter(
-        "StdVideoEncodeAV1PictureInfo::buffer_removal_times",
-        |value| {
-            vk::StdVideoEncodeAV1PictureInfo::default()
-                .buffer_removal_times(value)
-                .p_buffer_removal_times
-        },
-    );
     check_mut_setter("DeviceFaultInfoEXT::address_infos", |value| {
         vk::DeviceFaultInfoEXT::default()
             .address_infos(value)

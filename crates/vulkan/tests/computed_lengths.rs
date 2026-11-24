@@ -200,3 +200,22 @@ fn the_hrd_parameters_of_h265_have_an_element_for_every_sub_layer() {
             && unset.p_sub_layer_hrd_parameters_vcl.is_null()
     );
 }
+
+#[test]
+fn the_buffer_removal_times_of_av1_have_an_element_for_every_operating_point() {
+    let _: fn(
+        vk::StdVideoEncodeAV1PictureInfo<'static>,
+        &'static [u32; 32],
+    ) -> vk::StdVideoEncodeAV1PictureInfo<'static> =
+        vk::StdVideoEncodeAV1PictureInfo::buffer_removal_times;
+    let times = [7_u32; 32];
+    let picture = vk::StdVideoEncodeAV1PictureInfo::default().buffer_removal_times(&times);
+    assert_eq!(picture.p_buffer_removal_times, times.as_ptr());
+    let largest_operating_points_cnt_minus_1 = 0b1_1111;
+    assert_eq!(largest_operating_points_cnt_minus_1 + 1, times.len());
+    assert!(
+        vk::StdVideoEncodeAV1PictureInfo::default()
+            .p_buffer_removal_times
+            .is_null()
+    );
+}

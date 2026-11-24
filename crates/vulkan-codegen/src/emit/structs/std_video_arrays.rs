@@ -1493,16 +1493,13 @@ fn check_member(ir: &Registry, s: &Struct, m: &Field, generated: &str) {
         }
         Length::NotInTheStructure => {
             let unmarked = format!(
-                "{name} is not an array without a length in the registry that the generator lists, which the table takes from {source}"
+                "{name} is not an array without a length in the registry whose largest length the generator lists, which the table takes from {source}"
             );
             assert!(m.len.is_none(), "{unmarked}");
-            assert!(unmarked_arrays::length(s, m).is_some(), "{unmarked}");
-            let sets_the_pointer = format!(
-                "self.{field} = if value.is_empty() {{ core::ptr::null() }} else {{ value.as_ptr() }};"
-            );
+            assert!(unmarked_arrays::length(s, m).is_none(), "{unmarked}");
             assert!(
-                generated.contains(&sets_the_pointer),
-                "the setter of {name} does not take a slice: {generated}"
+                generated.contains(&format!("self.{field} = value.as_ptr();")),
+                "the setter of {name} does not take a reference to an array: {generated}"
             );
         }
         Length::One => {

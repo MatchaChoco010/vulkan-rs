@@ -430,10 +430,10 @@ fn pointer_setter(
         };
         (
             Doc::new().text(format!(
-                "Sets {} to point to an array of `{}` elements, the most that the C API accesses: it accesses `{}` elements, and {}. It does not access the elements after those.{null}",
+                "Sets {} to point to an array of `{}` elements, the most that the C API accesses: it accesses {}, and {}. It does not access the elements after those.{null}",
                 field_link(&m.name),
                 bounded.largest,
-                bounded.len,
+                bounded.count.elements(),
                 bounded.because
             )),
             borrow.reference(
@@ -889,7 +889,6 @@ mod tests {
         assert_eq!(
             uncounted,
             [
-                "StdVideoEncodeAV1PictureInfo::pBufferRemovalTimes",
                 "VkDeviceFaultInfoEXT::pAddressInfos",
                 "VkDeviceFaultInfoEXT::pVendorInfos",
             ]

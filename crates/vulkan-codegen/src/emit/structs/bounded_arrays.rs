@@ -5,11 +5,26 @@ use vulkan_registry::{Field, Registry, Struct};
 pub(super) struct BoundedArray {
     pub(super) structure: &'static str,
     pub(super) member: &'static str,
-    pub(super) len: &'static str,
+    pub(super) count: Count,
     pub(super) largest: &'static str,
     pub(super) largest_bit: Option<LargestBit>,
     pub(super) because: &'static str,
     pub(super) stated_by: &'static str,
+}
+
+#[derive(Debug)]
+pub(super) enum Count {
+    Computed(&'static str),
+    Elsewhere(&'static str),
+}
+
+impl Count {
+    pub(super) fn elements(&self) -> String {
+        match self {
+            Count::Computed(len) => format!("`{len}` elements"),
+            Count::Elsewhere(elements) => elements.to_string(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -21,9 +36,20 @@ pub(super) struct LargestBit {
 
 pub(super) const BOUNDED_ARRAYS: &[BoundedArray] = &[
     BoundedArray {
+        structure: "StdVideoEncodeAV1PictureInfo",
+        member: "pBufferRemovalTimes",
+        count: Count::Elsewhere(
+            "one element for each operating point of the active sequence header, whose number is the [`VideoEncodeAV1SessionParametersCreateInfoKHR::std_operating_point_count`] that the video session parameters were created with",
+        ),
+        largest: "32",
+        largest_bit: None,
+        because: "a sequence header of AV1 has at most 32 operating points",
+        stated_by: "AV1 5.5.1, where operating_points_cnt_minus_1 is f(5), and the description of StdVideoEncodeAV1PictureInfo in the section \"Std Picture Information\" of the chapter on AV1 encode operations",
+    },
+    BoundedArray {
         structure: "StdVideoH265HrdParameters",
         member: "pSubLayerHrdParametersNal",
-        len: "*_max_sub_layers_minus1 + 1",
+        count: Count::Computed("*_max_sub_layers_minus1 + 1"),
         largest: "STD_VIDEO_H265_SUBLAYERS_LIST_SIZE",
         largest_bit: None,
         because: "`vps_max_sub_layers_minus1` and `sps_max_sub_layers_minus1` are at most 6",
@@ -32,7 +58,7 @@ pub(super) const BOUNDED_ARRAYS: &[BoundedArray] = &[
     BoundedArray {
         structure: "StdVideoH265HrdParameters",
         member: "pSubLayerHrdParametersVcl",
-        len: "*_max_sub_layers_minus1 + 1",
+        count: Count::Computed("*_max_sub_layers_minus1 + 1"),
         largest: "STD_VIDEO_H265_SUBLAYERS_LIST_SIZE",
         largest_bit: None,
         because: "`vps_max_sub_layers_minus1` and `sps_max_sub_layers_minus1` are at most 6",
@@ -41,7 +67,7 @@ pub(super) const BOUNDED_ARRAYS: &[BoundedArray] = &[
     BoundedArray {
         structure: "VkPipelineMultisampleStateCreateInfo",
         member: "pSampleMask",
-        len: "(rasterizationSamples + 31) / 32",
+        count: Count::Computed("(rasterizationSamples + 31) / 32"),
         largest: "2",
         largest_bit: Some(LargestBit {
             member: "rasterizationSamples",
@@ -61,7 +87,7 @@ impl BoundedArray {
         let Self {
             structure,
             member,
-            len,
+            count,
             largest_bit,
             stated_by,
             ..
@@ -85,11 +111,24 @@ impl BoundedArray {
             "{structure}::{member} is a `{}`, not a pointer to values of a type that the bindings declare: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
             m.full_ty
         );
-        assert!(
-            m.len.as_deref() == Some(*len),
-            "{structure}::{member}: the registry gives the length {:?}, not `{len}`: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
-            m.len
-        );
+        let len = match count {
+            Count::Computed(len) => {
+                assert!(
+                    m.len.as_deref() == Some(*len),
+                    "{structure}::{member}: the registry gives the length {:?}, not `{len}`: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+                    m.len
+                );
+                *len
+            }
+            Count::Elsewhere(_) => {
+                assert!(
+                    m.len.is_none(),
+                    "{structure}::{member}: the registry gives the length `{}` now: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+                    m.len.as_deref().unwrap_or_default()
+                );
+                ""
+            }
+        };
         let Some(LargestBit {
             member: value,
             bits,
@@ -231,6 +270,7 @@ mod tests {
             computed,
             BOUNDED_ARRAYS
                 .iter()
+                .filter(|listed| matches!(listed.count, Count::Computed(_)))
                 .map(|listed| (listed.structure, listed.member))
                 .collect::<Vec<_>>(),
             "the list names the arrays in the order of the registry"
@@ -251,7 +291,14 @@ mod tests {
             .iter()
             .find(|listed| listed.member == "pSampleMask")
             .expect("the sample mask is listed");
-        assert_eq!(listed.len, "(rasterizationSamples + 31) / 32");
+        assert!(
+            matches!(
+                listed.count,
+                Count::Computed("(rasterizationSamples + 31) / 32")
+            ),
+            "{:?}",
+            listed.count
+        );
         let s = listed_struct(listed.structure);
         let samples = s
             .members
@@ -365,6 +412,53 @@ mod tests {
             [
                 "Sets [`p_sample_mask`](Self::p_sample_mask) to point to an array of `2` elements, the most that the C API accesses: it accesses `(rasterizationSamples + 31) / 32` elements, and `rasterizationSamples` is at most `VK_SAMPLE_COUNT_64_BIT`. It does not access the elements after those."
             ]
+        );
+    }
+
+    #[test]
+    fn an_array_whose_length_is_elsewhere_takes_the_largest_array_too() {
+        let model = Model::new(Registry::get());
+        let picture = definition(&model, &listed_struct("StdVideoEncodeAV1PictureInfo"));
+        assert!(
+            squash(&picture).contains(
+                "pub fn buffer_removal_times(mut self, value: &'a [u32; 32]) -> Self { self.p_buffer_removal_times = value.as_ptr(); self }"
+            ),
+            "{picture}"
+        );
+        assert_eq!(
+            doc_of(&picture, "pub fn buffer_removal_times("),
+            [
+                "Sets [`p_buffer_removal_times`](Self::p_buffer_removal_times) to point to an array of `32` elements, the most that the C API accesses: it accesses one element for each operating point of the active sequence header, whose number is the [`VideoEncodeAV1SessionParametersCreateInfoKHR::std_operating_point_count`] that the video session parameters were created with, and a sequence header of AV1 has at most 32 operating points. It does not access the elements after those. The registry marks the member as optional: it is a null pointer in a structure made by `default()`, and the setter cannot make it null again."
+            ]
+        );
+        let elsewhere = BOUNDED_ARRAYS
+            .iter()
+            .filter(|listed| matches!(listed.count, Count::Elsewhere(_)))
+            .map(|listed| (listed.structure, listed.member))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            elsewhere,
+            [("StdVideoEncodeAV1PictureInfo", "pBufferRemovalTimes")]
+        );
+        let mut counted = listed_struct("StdVideoEncodeAV1PictureInfo");
+        for m in counted
+            .members
+            .iter_mut()
+            .filter(|m| m.name == "pBufferRemovalTimes")
+        {
+            m.len = Some("reserved1".to_string());
+        }
+        let mut ir = registry();
+        ir.structs = Registry::get().structs.clone();
+        ir.structs.retain(|other| other.name != counted.name);
+        ir.structs.push(counted);
+        let message = catch_quietly(|| assert_listed_bounded_arrays_exist(&ir))
+            .expect_err("the registry gives the listed array a length");
+        assert!(
+            message.starts_with(
+                "StdVideoEncodeAV1PictureInfo::pBufferRemovalTimes: the registry gives the length `reserved1` now: correct the list of arrays whose length is computed from values that their setter cannot see, which takes this one from AV1 5.5.1, "
+            ),
+            "{message}"
         );
     }
 
@@ -516,7 +610,7 @@ mod tests {
             .expect_err("the registry has none of the listed structures");
         assert!(
             message.starts_with(
-                "the registry has no structure StdVideoH265HrdParameters: correct the list of arrays whose length is computed from values that their setter cannot see, which takes `pSubLayerHrdParametersNal` from H.265 "
+                "the registry has no structure StdVideoEncodeAV1PictureInfo: correct the list of arrays whose length is computed from values that their setter cannot see, which takes `pBufferRemovalTimes` from AV1 5.5.1, "
             ),
             "{message}"
         );
