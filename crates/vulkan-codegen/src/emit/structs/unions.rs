@@ -2,6 +2,7 @@ use super::{
     MARKER_DOC, MethodNames, field_link, marker_field, member_doc, member_origin,
     thread_safety_impls, type_doc,
 };
+use crate::docs::Doc;
 use crate::emit::{Borrow, assert_distinct_names, w};
 use crate::model::{CType, Model, is_opaque};
 use crate::naming::{field_name, pointer_setter_name, type_name};
@@ -102,8 +103,13 @@ fn constructor(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Str
     } else {
         " set to `value`"
     };
+    let doc = Doc::new()
+        .text(format!(
+            "Creates the union with {link}{how}. The bytes of the union outside {link} are zero.",
+            link = field_link(&m.name)
+        ))
+        .render();
     format!(
-        "/// Creates the union with {}{how}.\npub fn {name}(value: {value_ty}) -> Self {{ Self {{ {field}: {value} }} }}\n",
-        field_link(&m.name)
+        "{doc}pub fn {name}(value: {value_ty}) -> Self {{ let mut union = Self::default(); union.{field} = {value}; union }}\n"
     )
 }

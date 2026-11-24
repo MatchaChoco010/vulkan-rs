@@ -350,7 +350,7 @@ mod tests {
         let field = field_name(&m.name);
         ["from_ref", "from_mut"].iter().any(|from| {
             generated.contains(&format!("self.{field} = core::ptr::{from}(value);"))
-                || generated.contains(&format!("{field}: core::ptr::{from}(value)"))
+                || generated.contains(&format!("union.{field} = core::ptr::{from}(value);"))
         })
     }
 
@@ -430,7 +430,7 @@ mod tests {
                     generated.contains(&format!(
                         "(mut self, value: &'a CStr) -> Self {{ self.{field} = value.as_ptr(); self }}"
                     )) || generated.contains(&format!(
-                        "(value: &'a CStr) -> Self {{ Self {{ {field}: value.as_ptr() }} }}"
+                        "(value: &'a CStr) -> Self {{ let mut union = Self::default(); union.{field} = value.as_ptr(); union }}"
                     )),
                     "{}::{} does not take a `&CStr`: {generated}",
                     s.name,
@@ -459,19 +459,19 @@ mod tests {
         let out = unions::definition(&Model::new(&ir), &ir.structs[0]);
         assert!(
             squash(&out).contains(
-                "pub fn value_string(value: &'a CStr) -> Self { Self { value_string: value.as_ptr() } }"
+                "pub fn value_string(value: &'a CStr) -> Self { let mut union = Self::default(); union.value_string = value.as_ptr(); union }"
             ),
             "{out}"
         );
         assert_eq!(
             doc_of(&out, "pub fn value_string("),
             [
-                "Creates the union with [`value_string`](Self::value_string) pointing to the NUL-terminated string `value`."
+                "Creates the union with [`value_string`](Self::value_string) pointing to the NUL-terminated string `value`. The bytes of the union outside [`value_string`](Self::value_string) are zero."
             ]
         );
         assert!(
             squash(&out).contains(
-                "pub fn bytes(value: &'a c_char) -> Self { Self { p_bytes: core::ptr::from_ref(value) } }"
+                "pub fn bytes(value: &'a c_char) -> Self { let mut union = Self::default(); union.p_bytes = core::ptr::from_ref(value); union }"
             ),
             "{out}"
         );

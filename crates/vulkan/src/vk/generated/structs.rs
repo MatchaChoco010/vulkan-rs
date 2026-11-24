@@ -11272,17 +11272,26 @@ impl core::fmt::Debug for AccelerationStructureGeometryDataKHR<'_> {
 }
 
 impl<'a> AccelerationStructureGeometryDataKHR<'a> {
-    /// Creates the union with [`triangles`](Self::triangles) set to `value`.
+    /// Creates the union with [`triangles`](Self::triangles) set to `value`. The bytes of the union
+    /// outside [`triangles`](Self::triangles) are zero.
     pub fn triangles(value: AccelerationStructureGeometryTrianglesDataKHR<'a>) -> Self {
-        Self { triangles: value }
+        let mut union = Self::default();
+        union.triangles = value;
+        union
     }
-    /// Creates the union with [`aabbs`](Self::aabbs) set to `value`.
+    /// Creates the union with [`aabbs`](Self::aabbs) set to `value`. The bytes of the union outside
+    /// [`aabbs`](Self::aabbs) are zero.
     pub fn aabbs(value: AccelerationStructureGeometryAabbsDataKHR<'a>) -> Self {
-        Self { aabbs: value }
+        let mut union = Self::default();
+        union.aabbs = value;
+        union
     }
-    /// Creates the union with [`instances`](Self::instances) set to `value`.
+    /// Creates the union with [`instances`](Self::instances) set to `value`. The bytes of the union
+    /// outside [`instances`](Self::instances) are zero.
     pub fn instances(value: AccelerationStructureGeometryInstancesDataKHR<'a>) -> Self {
-        Self { instances: value }
+        let mut union = Self::default();
+        union.instances = value;
+        union
     }
 }
 
@@ -12543,23 +12552,27 @@ impl core::fmt::Debug for AccelerationStructureMotionInstanceDataNV {
 }
 
 impl AccelerationStructureMotionInstanceDataNV {
-    /// Creates the union with [`static_instance`](Self::static_instance) set to `value`.
+    /// Creates the union with [`static_instance`](Self::static_instance) set to `value`. The bytes
+    /// of the union outside [`static_instance`](Self::static_instance) are zero.
     pub fn static_instance(value: AccelerationStructureInstanceKHR) -> Self {
-        Self {
-            static_instance: value,
-        }
+        let mut union = Self::default();
+        union.static_instance = value;
+        union
     }
-    /// Creates the union with [`matrix_motion_instance`](Self::matrix_motion_instance) set to `value`.
+    /// Creates the union with [`matrix_motion_instance`](Self::matrix_motion_instance) set to
+    /// `value`. The bytes of the union outside
+    /// [`matrix_motion_instance`](Self::matrix_motion_instance) are zero.
     pub fn matrix_motion_instance(value: AccelerationStructureMatrixMotionInstanceNV) -> Self {
-        Self {
-            matrix_motion_instance: value,
-        }
+        let mut union = Self::default();
+        union.matrix_motion_instance = value;
+        union
     }
     /// Creates the union with [`srt_motion_instance`](Self::srt_motion_instance) set to `value`.
+    /// The bytes of the union outside [`srt_motion_instance`](Self::srt_motion_instance) are zero.
     pub fn srt_motion_instance(value: AccelerationStructureSRTMotionInstanceNV) -> Self {
-        Self {
-            srt_motion_instance: value,
-        }
+        let mut union = Self::default();
+        union.srt_motion_instance = value;
+        union
     }
 }
 
@@ -19471,17 +19484,26 @@ impl core::fmt::Debug for ClearColorValue {
 }
 
 impl ClearColorValue {
-    /// Creates the union with [`float32`](Self::float32) set to `value`.
+    /// Creates the union with [`float32`](Self::float32) set to `value`. The bytes of the union
+    /// outside [`float32`](Self::float32) are zero.
     pub fn float32(value: [f32; 4]) -> Self {
-        Self { float32: value }
+        let mut union = Self::default();
+        union.float32 = value;
+        union
     }
-    /// Creates the union with [`int32`](Self::int32) set to `value`.
+    /// Creates the union with [`int32`](Self::int32) set to `value`. The bytes of the union outside
+    /// [`int32`](Self::int32) are zero.
     pub fn int32(value: [i32; 4]) -> Self {
-        Self { int32: value }
+        let mut union = Self::default();
+        union.int32 = value;
+        union
     }
-    /// Creates the union with [`uint32`](Self::uint32) set to `value`.
+    /// Creates the union with [`uint32`](Self::uint32) set to `value`. The bytes of the union
+    /// outside [`uint32`](Self::uint32) are zero.
     pub fn uint32(value: [u32; 4]) -> Self {
-        Self { uint32: value }
+        let mut union = Self::default();
+        union.uint32 = value;
+        union
     }
 }
 
@@ -19603,15 +19625,19 @@ impl core::fmt::Debug for ClearValue {
 }
 
 impl ClearValue {
-    /// Creates the union with [`color`](Self::color) set to `value`.
+    /// Creates the union with [`color`](Self::color) set to `value`. The bytes of the union outside
+    /// [`color`](Self::color) are zero.
     pub fn color(value: ClearColorValue) -> Self {
-        Self { color: value }
+        let mut union = Self::default();
+        union.color = value;
+        union
     }
-    /// Creates the union with [`depth_stencil`](Self::depth_stencil) set to `value`.
+    /// Creates the union with [`depth_stencil`](Self::depth_stencil) set to `value`. The bytes of
+    /// the union outside [`depth_stencil`](Self::depth_stencil) are zero.
     pub fn depth_stencil(value: ClearDepthStencilValue) -> Self {
-        Self {
-            depth_stencil: value,
-        }
+        let mut union = Self::default();
+        union.depth_stencil = value;
+        union
     }
 }
 
@@ -20717,27 +20743,32 @@ impl core::fmt::Debug for ClusterAccelerationStructureOpInputNV<'_> {
 }
 
 impl<'a> ClusterAccelerationStructureOpInputNV<'a> {
-    /// Creates the union with [`p_clusters_bottom_level`](Self::p_clusters_bottom_level) pointing to `value`.
+    /// Creates the union with [`p_clusters_bottom_level`](Self::p_clusters_bottom_level) pointing
+    /// to `value`. The bytes of the union outside
+    /// [`p_clusters_bottom_level`](Self::p_clusters_bottom_level) are zero.
     pub fn clusters_bottom_level(
         value: &'a mut ClusterAccelerationStructureClustersBottomLevelInputNV<'a>,
     ) -> Self {
-        Self {
-            p_clusters_bottom_level: core::ptr::from_mut(value),
-        }
+        let mut union = Self::default();
+        union.p_clusters_bottom_level = core::ptr::from_mut(value);
+        union
     }
-    /// Creates the union with [`p_triangle_clusters`](Self::p_triangle_clusters) pointing to `value`.
+    /// Creates the union with [`p_triangle_clusters`](Self::p_triangle_clusters) pointing to
+    /// `value`. The bytes of the union outside [`p_triangle_clusters`](Self::p_triangle_clusters)
+    /// are zero.
     pub fn triangle_clusters(
         value: &'a mut ClusterAccelerationStructureTriangleClusterInputNV<'a>,
     ) -> Self {
-        Self {
-            p_triangle_clusters: core::ptr::from_mut(value),
-        }
+        let mut union = Self::default();
+        union.p_triangle_clusters = core::ptr::from_mut(value);
+        union
     }
-    /// Creates the union with [`p_move_objects`](Self::p_move_objects) pointing to `value`.
+    /// Creates the union with [`p_move_objects`](Self::p_move_objects) pointing to `value`. The
+    /// bytes of the union outside [`p_move_objects`](Self::p_move_objects) are zero.
     pub fn move_objects(value: &'a mut ClusterAccelerationStructureMoveObjectsInputNV<'a>) -> Self {
-        Self {
-            p_move_objects: core::ptr::from_mut(value),
-        }
+        let mut union = Self::default();
+        union.p_move_objects = core::ptr::from_mut(value);
+        union
     }
 }
 
@@ -29863,65 +29894,80 @@ impl core::fmt::Debug for DescriptorDataEXT<'_> {
 }
 
 impl<'a> DescriptorDataEXT<'a> {
-    /// Creates the union with [`p_sampler`](Self::p_sampler) pointing to `value`.
+    /// Creates the union with [`p_sampler`](Self::p_sampler) pointing to `value`. The bytes of the
+    /// union outside [`p_sampler`](Self::p_sampler) are zero.
     pub fn sampler(value: &'a Sampler) -> Self {
-        Self {
-            p_sampler: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_sampler = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_combined_image_sampler`](Self::p_combined_image_sampler) pointing to `value`.
+    /// Creates the union with [`p_combined_image_sampler`](Self::p_combined_image_sampler) pointing
+    /// to `value`. The bytes of the union outside
+    /// [`p_combined_image_sampler`](Self::p_combined_image_sampler) are zero.
     pub fn combined_image_sampler(value: &'a DescriptorImageInfo) -> Self {
-        Self {
-            p_combined_image_sampler: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_combined_image_sampler = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_input_attachment_image`](Self::p_input_attachment_image) pointing to `value`.
+    /// Creates the union with [`p_input_attachment_image`](Self::p_input_attachment_image) pointing
+    /// to `value`. The bytes of the union outside
+    /// [`p_input_attachment_image`](Self::p_input_attachment_image) are zero.
     pub fn input_attachment_image(value: &'a DescriptorImageInfo) -> Self {
-        Self {
-            p_input_attachment_image: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_input_attachment_image = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_sampled_image`](Self::p_sampled_image) pointing to `value`.
+    /// Creates the union with [`p_sampled_image`](Self::p_sampled_image) pointing to `value`. The
+    /// bytes of the union outside [`p_sampled_image`](Self::p_sampled_image) are zero.
     pub fn sampled_image(value: &'a DescriptorImageInfo) -> Self {
-        Self {
-            p_sampled_image: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_sampled_image = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_storage_image`](Self::p_storage_image) pointing to `value`.
+    /// Creates the union with [`p_storage_image`](Self::p_storage_image) pointing to `value`. The
+    /// bytes of the union outside [`p_storage_image`](Self::p_storage_image) are zero.
     pub fn storage_image(value: &'a DescriptorImageInfo) -> Self {
-        Self {
-            p_storage_image: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_storage_image = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_uniform_texel_buffer`](Self::p_uniform_texel_buffer) pointing to `value`.
+    /// Creates the union with [`p_uniform_texel_buffer`](Self::p_uniform_texel_buffer) pointing to
+    /// `value`. The bytes of the union outside
+    /// [`p_uniform_texel_buffer`](Self::p_uniform_texel_buffer) are zero.
     pub fn uniform_texel_buffer(value: &'a DescriptorAddressInfoEXT<'a>) -> Self {
-        Self {
-            p_uniform_texel_buffer: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_uniform_texel_buffer = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_storage_texel_buffer`](Self::p_storage_texel_buffer) pointing to `value`.
+    /// Creates the union with [`p_storage_texel_buffer`](Self::p_storage_texel_buffer) pointing to
+    /// `value`. The bytes of the union outside
+    /// [`p_storage_texel_buffer`](Self::p_storage_texel_buffer) are zero.
     pub fn storage_texel_buffer(value: &'a DescriptorAddressInfoEXT<'a>) -> Self {
-        Self {
-            p_storage_texel_buffer: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_storage_texel_buffer = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_uniform_buffer`](Self::p_uniform_buffer) pointing to `value`.
+    /// Creates the union with [`p_uniform_buffer`](Self::p_uniform_buffer) pointing to `value`. The
+    /// bytes of the union outside [`p_uniform_buffer`](Self::p_uniform_buffer) are zero.
     pub fn uniform_buffer(value: &'a DescriptorAddressInfoEXT<'a>) -> Self {
-        Self {
-            p_uniform_buffer: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_uniform_buffer = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_storage_buffer`](Self::p_storage_buffer) pointing to `value`.
+    /// Creates the union with [`p_storage_buffer`](Self::p_storage_buffer) pointing to `value`. The
+    /// bytes of the union outside [`p_storage_buffer`](Self::p_storage_buffer) are zero.
     pub fn storage_buffer(value: &'a DescriptorAddressInfoEXT<'a>) -> Self {
-        Self {
-            p_storage_buffer: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_storage_buffer = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`acceleration_structure`](Self::acceleration_structure) set to `value`.
+    /// Creates the union with [`acceleration_structure`](Self::acceleration_structure) set to
+    /// `value`. The bytes of the union outside
+    /// [`acceleration_structure`](Self::acceleration_structure) are zero.
     pub fn acceleration_structure(value: DeviceAddress) -> Self {
-        Self {
-            acceleration_structure: value,
-        }
+        let mut union = Self::default();
+        union.acceleration_structure = value;
+        union
     }
 }
 
@@ -30252,67 +30298,85 @@ impl core::fmt::Debug for DescriptorMappingSourceDataEXT<'_> {
 }
 
 impl<'a> DescriptorMappingSourceDataEXT<'a> {
-    /// Creates the union with [`constant_offset`](Self::constant_offset) set to `value`.
+    /// Creates the union with [`constant_offset`](Self::constant_offset) set to `value`. The bytes
+    /// of the union outside [`constant_offset`](Self::constant_offset) are zero.
     pub fn constant_offset(value: DescriptorMappingSourceConstantOffsetEXT<'a>) -> Self {
-        Self {
-            constant_offset: value,
-        }
+        let mut union = Self::default();
+        union.constant_offset = value;
+        union
     }
-    /// Creates the union with [`push_index`](Self::push_index) set to `value`.
+    /// Creates the union with [`push_index`](Self::push_index) set to `value`. The bytes of the
+    /// union outside [`push_index`](Self::push_index) are zero.
     pub fn push_index(value: DescriptorMappingSourcePushIndexEXT<'a>) -> Self {
-        Self { push_index: value }
+        let mut union = Self::default();
+        union.push_index = value;
+        union
     }
-    /// Creates the union with [`indirect_index`](Self::indirect_index) set to `value`.
+    /// Creates the union with [`indirect_index`](Self::indirect_index) set to `value`. The bytes of
+    /// the union outside [`indirect_index`](Self::indirect_index) are zero.
     pub fn indirect_index(value: DescriptorMappingSourceIndirectIndexEXT<'a>) -> Self {
-        Self {
-            indirect_index: value,
-        }
+        let mut union = Self::default();
+        union.indirect_index = value;
+        union
     }
     /// Creates the union with [`indirect_index_array`](Self::indirect_index_array) set to `value`.
+    /// The bytes of the union outside [`indirect_index_array`](Self::indirect_index_array) are
+    /// zero.
     pub fn indirect_index_array(value: DescriptorMappingSourceIndirectIndexArrayEXT<'a>) -> Self {
-        Self {
-            indirect_index_array: value,
-        }
+        let mut union = Self::default();
+        union.indirect_index_array = value;
+        union
     }
-    /// Creates the union with [`heap_data`](Self::heap_data) set to `value`.
+    /// Creates the union with [`heap_data`](Self::heap_data) set to `value`. The bytes of the union
+    /// outside [`heap_data`](Self::heap_data) are zero.
     pub fn heap_data(value: DescriptorMappingSourceHeapDataEXT) -> Self {
-        Self { heap_data: value }
+        let mut union = Self::default();
+        union.heap_data = value;
+        union
     }
-    /// Creates the union with [`push_data_offset`](Self::push_data_offset) set to `value`.
+    /// Creates the union with [`push_data_offset`](Self::push_data_offset) set to `value`. The
+    /// bytes of the union outside [`push_data_offset`](Self::push_data_offset) are zero.
     pub fn push_data_offset(value: u32) -> Self {
-        Self {
-            push_data_offset: value,
-        }
+        let mut union = Self::default();
+        union.push_data_offset = value;
+        union
     }
     /// Creates the union with [`push_address_offset`](Self::push_address_offset) set to `value`.
+    /// The bytes of the union outside [`push_address_offset`](Self::push_address_offset) are zero.
     pub fn push_address_offset(value: u32) -> Self {
-        Self {
-            push_address_offset: value,
-        }
+        let mut union = Self::default();
+        union.push_address_offset = value;
+        union
     }
-    /// Creates the union with [`indirect_address`](Self::indirect_address) set to `value`.
+    /// Creates the union with [`indirect_address`](Self::indirect_address) set to `value`. The
+    /// bytes of the union outside [`indirect_address`](Self::indirect_address) are zero.
     pub fn indirect_address(value: DescriptorMappingSourceIndirectAddressEXT) -> Self {
-        Self {
-            indirect_address: value,
-        }
+        let mut union = Self::default();
+        union.indirect_address = value;
+        union
     }
     /// Creates the union with [`shader_record_index`](Self::shader_record_index) set to `value`.
+    /// The bytes of the union outside [`shader_record_index`](Self::shader_record_index) are zero.
     pub fn shader_record_index(value: DescriptorMappingSourceShaderRecordIndexEXT<'a>) -> Self {
-        Self {
-            shader_record_index: value,
-        }
+        let mut union = Self::default();
+        union.shader_record_index = value;
+        union
     }
-    /// Creates the union with [`shader_record_data_offset`](Self::shader_record_data_offset) set to `value`.
+    /// Creates the union with [`shader_record_data_offset`](Self::shader_record_data_offset) set to
+    /// `value`. The bytes of the union outside
+    /// [`shader_record_data_offset`](Self::shader_record_data_offset) are zero.
     pub fn shader_record_data_offset(value: u32) -> Self {
-        Self {
-            shader_record_data_offset: value,
-        }
+        let mut union = Self::default();
+        union.shader_record_data_offset = value;
+        union
     }
-    /// Creates the union with [`shader_record_address_offset`](Self::shader_record_address_offset) set to `value`.
+    /// Creates the union with [`shader_record_address_offset`](Self::shader_record_address_offset)
+    /// set to `value`. The bytes of the union outside
+    /// [`shader_record_address_offset`](Self::shader_record_address_offset) are zero.
     pub fn shader_record_address_offset(value: u32) -> Self {
-        Self {
-            shader_record_address_offset: value,
-        }
+        let mut union = Self::default();
+        union.shader_record_address_offset = value;
+        union
     }
 }
 
@@ -34749,17 +34813,19 @@ impl core::fmt::Debug for DeviceOrHostAddressConstAMDX<'_> {
 
 #[cfg(feature = "beta")]
 impl<'a> DeviceOrHostAddressConstAMDX<'a> {
-    /// Creates the union with [`device_address`](Self::device_address) set to `value`.
+    /// Creates the union with [`device_address`](Self::device_address) set to `value`. The bytes of
+    /// the union outside [`device_address`](Self::device_address) are zero.
     pub fn device_address(value: DeviceAddress) -> Self {
-        Self {
-            device_address: value,
-        }
+        let mut union = Self::default();
+        union.device_address = value;
+        union
     }
-    /// Creates the union with [`host_address`](Self::host_address) set to `value`.
+    /// Creates the union with [`host_address`](Self::host_address) set to `value`. The bytes of the
+    /// union outside [`host_address`](Self::host_address) are zero.
     pub fn host_address(value: *const c_void) -> Self {
-        Self {
-            host_address: value,
-        }
+        let mut union = Self::default();
+        union.host_address = value;
+        union
     }
 }
 
@@ -34799,17 +34865,19 @@ impl core::fmt::Debug for DeviceOrHostAddressConstKHR<'_> {
 }
 
 impl<'a> DeviceOrHostAddressConstKHR<'a> {
-    /// Creates the union with [`device_address`](Self::device_address) set to `value`.
+    /// Creates the union with [`device_address`](Self::device_address) set to `value`. The bytes of
+    /// the union outside [`device_address`](Self::device_address) are zero.
     pub fn device_address(value: DeviceAddress) -> Self {
-        Self {
-            device_address: value,
-        }
+        let mut union = Self::default();
+        union.device_address = value;
+        union
     }
-    /// Creates the union with [`host_address`](Self::host_address) set to `value`.
+    /// Creates the union with [`host_address`](Self::host_address) set to `value`. The bytes of the
+    /// union outside [`host_address`](Self::host_address) are zero.
     pub fn host_address(value: *const c_void) -> Self {
-        Self {
-            host_address: value,
-        }
+        let mut union = Self::default();
+        union.host_address = value;
+        union
     }
 }
 
@@ -34849,17 +34917,19 @@ impl core::fmt::Debug for DeviceOrHostAddressKHR<'_> {
 }
 
 impl<'a> DeviceOrHostAddressKHR<'a> {
-    /// Creates the union with [`device_address`](Self::device_address) set to `value`.
+    /// Creates the union with [`device_address`](Self::device_address) set to `value`. The bytes of
+    /// the union outside [`device_address`](Self::device_address) are zero.
     pub fn device_address(value: DeviceAddress) -> Self {
-        Self {
-            device_address: value,
-        }
+        let mut union = Self::default();
+        union.device_address = value;
+        union
     }
-    /// Creates the union with [`host_address`](Self::host_address) set to `value`.
+    /// Creates the union with [`host_address`](Self::host_address) set to `value`. The bytes of the
+    /// union outside [`host_address`](Self::host_address) are zero.
     pub fn host_address(value: *mut c_void) -> Self {
-        Self {
-            host_address: value,
-        }
+        let mut union = Self::default();
+        union.host_address = value;
+        union
     }
 }
 
@@ -50513,29 +50583,33 @@ impl core::fmt::Debug for IndirectCommandsTokenDataEXT<'_> {
 }
 
 impl<'a> IndirectCommandsTokenDataEXT<'a> {
-    /// Creates the union with [`p_push_constant`](Self::p_push_constant) pointing to `value`.
+    /// Creates the union with [`p_push_constant`](Self::p_push_constant) pointing to `value`. The
+    /// bytes of the union outside [`p_push_constant`](Self::p_push_constant) are zero.
     pub fn push_constant(value: &'a IndirectCommandsPushConstantTokenEXT) -> Self {
-        Self {
-            p_push_constant: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_push_constant = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_vertex_buffer`](Self::p_vertex_buffer) pointing to `value`.
+    /// Creates the union with [`p_vertex_buffer`](Self::p_vertex_buffer) pointing to `value`. The
+    /// bytes of the union outside [`p_vertex_buffer`](Self::p_vertex_buffer) are zero.
     pub fn vertex_buffer(value: &'a IndirectCommandsVertexBufferTokenEXT) -> Self {
-        Self {
-            p_vertex_buffer: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_vertex_buffer = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_index_buffer`](Self::p_index_buffer) pointing to `value`.
+    /// Creates the union with [`p_index_buffer`](Self::p_index_buffer) pointing to `value`. The
+    /// bytes of the union outside [`p_index_buffer`](Self::p_index_buffer) are zero.
     pub fn index_buffer(value: &'a IndirectCommandsIndexBufferTokenEXT) -> Self {
-        Self {
-            p_index_buffer: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_index_buffer = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_execution_set`](Self::p_execution_set) pointing to `value`.
+    /// Creates the union with [`p_execution_set`](Self::p_execution_set) pointing to `value`. The
+    /// bytes of the union outside [`p_execution_set`](Self::p_execution_set) are zero.
     pub fn execution_set(value: &'a IndirectCommandsExecutionSetTokenEXT) -> Self {
-        Self {
-            p_execution_set: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_execution_set = core::ptr::from_ref(value);
+        union
     }
 }
 
@@ -50675,17 +50749,19 @@ impl core::fmt::Debug for IndirectExecutionSetInfoEXT<'_> {
 }
 
 impl<'a> IndirectExecutionSetInfoEXT<'a> {
-    /// Creates the union with [`p_pipeline_info`](Self::p_pipeline_info) pointing to `value`.
+    /// Creates the union with [`p_pipeline_info`](Self::p_pipeline_info) pointing to `value`. The
+    /// bytes of the union outside [`p_pipeline_info`](Self::p_pipeline_info) are zero.
     pub fn pipeline_info(value: &'a IndirectExecutionSetPipelineInfoEXT<'a>) -> Self {
-        Self {
-            p_pipeline_info: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_pipeline_info = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_shader_info`](Self::p_shader_info) pointing to `value`.
+    /// Creates the union with [`p_shader_info`](Self::p_shader_info) pointing to `value`. The bytes
+    /// of the union outside [`p_shader_info`](Self::p_shader_info) are zero.
     pub fn shader_info(value: &'a IndirectExecutionSetShaderInfoEXT<'a>) -> Self {
-        Self {
-            p_shader_info: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_shader_info = core::ptr::from_ref(value);
+        union
     }
 }
 
@@ -57817,29 +57893,47 @@ impl core::fmt::Debug for PerformanceCounterResultKHR {
 }
 
 impl PerformanceCounterResultKHR {
-    /// Creates the union with [`int32`](Self::int32) set to `value`.
+    /// Creates the union with [`int32`](Self::int32) set to `value`. The bytes of the union outside
+    /// [`int32`](Self::int32) are zero.
     pub fn int32(value: i32) -> Self {
-        Self { int32: value }
+        let mut union = Self::default();
+        union.int32 = value;
+        union
     }
-    /// Creates the union with [`int64`](Self::int64) set to `value`.
+    /// Creates the union with [`int64`](Self::int64) set to `value`. The bytes of the union outside
+    /// [`int64`](Self::int64) are zero.
     pub fn int64(value: i64) -> Self {
-        Self { int64: value }
+        let mut union = Self::default();
+        union.int64 = value;
+        union
     }
-    /// Creates the union with [`uint32`](Self::uint32) set to `value`.
+    /// Creates the union with [`uint32`](Self::uint32) set to `value`. The bytes of the union
+    /// outside [`uint32`](Self::uint32) are zero.
     pub fn uint32(value: u32) -> Self {
-        Self { uint32: value }
+        let mut union = Self::default();
+        union.uint32 = value;
+        union
     }
-    /// Creates the union with [`uint64`](Self::uint64) set to `value`.
+    /// Creates the union with [`uint64`](Self::uint64) set to `value`. The bytes of the union
+    /// outside [`uint64`](Self::uint64) are zero.
     pub fn uint64(value: u64) -> Self {
-        Self { uint64: value }
+        let mut union = Self::default();
+        union.uint64 = value;
+        union
     }
-    /// Creates the union with [`float32`](Self::float32) set to `value`.
+    /// Creates the union with [`float32`](Self::float32) set to `value`. The bytes of the union
+    /// outside [`float32`](Self::float32) are zero.
     pub fn float32(value: f32) -> Self {
-        Self { float32: value }
+        let mut union = Self::default();
+        union.float32 = value;
+        union
     }
-    /// Creates the union with [`float64`](Self::float64) set to `value`.
+    /// Creates the union with [`float64`](Self::float64) set to `value`. The bytes of the union
+    /// outside [`float64`](Self::float64) are zero.
     pub fn float64(value: f64) -> Self {
-        Self { float64: value }
+        let mut union = Self::default();
+        union.float64 = value;
+        union
     }
 }
 
@@ -58129,27 +58223,41 @@ impl core::fmt::Debug for PerformanceValueDataINTEL<'_> {
 }
 
 impl<'a> PerformanceValueDataINTEL<'a> {
-    /// Creates the union with [`value32`](Self::value32) set to `value`.
+    /// Creates the union with [`value32`](Self::value32) set to `value`. The bytes of the union
+    /// outside [`value32`](Self::value32) are zero.
     pub fn value32(value: u32) -> Self {
-        Self { value32: value }
+        let mut union = Self::default();
+        union.value32 = value;
+        union
     }
-    /// Creates the union with [`value64`](Self::value64) set to `value`.
+    /// Creates the union with [`value64`](Self::value64) set to `value`. The bytes of the union
+    /// outside [`value64`](Self::value64) are zero.
     pub fn value64(value: u64) -> Self {
-        Self { value64: value }
+        let mut union = Self::default();
+        union.value64 = value;
+        union
     }
-    /// Creates the union with [`value_float`](Self::value_float) set to `value`.
+    /// Creates the union with [`value_float`](Self::value_float) set to `value`. The bytes of the
+    /// union outside [`value_float`](Self::value_float) are zero.
     pub fn value_float(value: f32) -> Self {
-        Self { value_float: value }
+        let mut union = Self::default();
+        union.value_float = value;
+        union
     }
-    /// Creates the union with [`value_bool`](Self::value_bool) set to `value`.
+    /// Creates the union with [`value_bool`](Self::value_bool) set to `value`. The bytes of the
+    /// union outside [`value_bool`](Self::value_bool) are zero.
     pub fn value_bool(value: Bool32) -> Self {
-        Self { value_bool: value }
+        let mut union = Self::default();
+        union.value_bool = value;
+        union
     }
-    /// Creates the union with [`value_string`](Self::value_string) pointing to the NUL-terminated string `value`.
+    /// Creates the union with [`value_string`](Self::value_string) pointing to the NUL-terminated
+    /// string `value`. The bytes of the union outside [`value_string`](Self::value_string) are
+    /// zero.
     pub fn value_string(value: &'a CStr) -> Self {
-        Self {
-            value_string: value.as_ptr(),
-        }
+        let mut union = Self::default();
+        union.value_string = value.as_ptr();
+        union
     }
 }
 
@@ -102016,21 +102124,33 @@ impl core::fmt::Debug for PipelineExecutableStatisticValueKHR {
 }
 
 impl PipelineExecutableStatisticValueKHR {
-    /// Creates the union with [`b32`](Self::b32) set to `value`.
+    /// Creates the union with [`b32`](Self::b32) set to `value`. The bytes of the union outside
+    /// [`b32`](Self::b32) are zero.
     pub fn b32(value: Bool32) -> Self {
-        Self { b32: value }
+        let mut union = Self::default();
+        union.b32 = value;
+        union
     }
-    /// Creates the union with [`i64`](Self::i64) set to `value`.
+    /// Creates the union with [`i64`](Self::i64) set to `value`. The bytes of the union outside
+    /// [`i64`](Self::i64) are zero.
     pub fn i64(value: i64) -> Self {
-        Self { i64: value }
+        let mut union = Self::default();
+        union.i64 = value;
+        union
     }
-    /// Creates the union with [`u64`](Self::u64) set to `value`.
+    /// Creates the union with [`u64`](Self::u64) set to `value`. The bytes of the union outside
+    /// [`u64`](Self::u64) are zero.
     pub fn u64(value: u64) -> Self {
-        Self { u64: value }
+        let mut union = Self::default();
+        union.u64 = value;
+        union
     }
-    /// Creates the union with [`f64`](Self::f64) set to `value`.
+    /// Creates the union with [`f64`](Self::f64) set to `value`. The bytes of the union outside
+    /// [`f64`](Self::f64) are zero.
     pub fn f64(value: f64) -> Self {
-        Self { f64: value }
+        let mut union = Self::default();
+        union.f64 = value;
+        union
     }
 }
 
@@ -112082,29 +112202,33 @@ impl core::fmt::Debug for ResourceDescriptorDataEXT<'_> {
 }
 
 impl<'a> ResourceDescriptorDataEXT<'a> {
-    /// Creates the union with [`p_image`](Self::p_image) pointing to `value`.
+    /// Creates the union with [`p_image`](Self::p_image) pointing to `value`. The bytes of the
+    /// union outside [`p_image`](Self::p_image) are zero.
     pub fn image(value: &'a ImageDescriptorInfoEXT<'a>) -> Self {
-        Self {
-            p_image: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_image = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_texel_buffer`](Self::p_texel_buffer) pointing to `value`.
+    /// Creates the union with [`p_texel_buffer`](Self::p_texel_buffer) pointing to `value`. The
+    /// bytes of the union outside [`p_texel_buffer`](Self::p_texel_buffer) are zero.
     pub fn texel_buffer(value: &'a TexelBufferDescriptorInfoEXT<'a>) -> Self {
-        Self {
-            p_texel_buffer: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_texel_buffer = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_address_range`](Self::p_address_range) pointing to `value`.
+    /// Creates the union with [`p_address_range`](Self::p_address_range) pointing to `value`. The
+    /// bytes of the union outside [`p_address_range`](Self::p_address_range) are zero.
     pub fn address_range(value: &'a DeviceAddressRangeKHR) -> Self {
-        Self {
-            p_address_range: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_address_range = core::ptr::from_ref(value);
+        union
     }
-    /// Creates the union with [`p_tensor_arm`](Self::p_tensor_arm) pointing to `value`.
+    /// Creates the union with [`p_tensor_arm`](Self::p_tensor_arm) pointing to `value`. The bytes
+    /// of the union outside [`p_tensor_arm`](Self::p_tensor_arm) are zero.
     pub fn tensor_arm(value: &'a TensorViewCreateInfoARM<'a>) -> Self {
-        Self {
-            p_tensor_arm: core::ptr::from_ref(value),
-        }
+        let mut union = Self::default();
+        union.p_tensor_arm = core::ptr::from_ref(value);
+        union
     }
 }
 
