@@ -448,3 +448,29 @@ fn wrappers_are_cheap_to_clone() {
     assert!(std::mem::size_of::<Device>() <= 4 * std::mem::size_of::<usize>());
     assert!(std::mem::size_of::<Instance>() <= 4 * std::mem::size_of::<usize>());
 }
+
+#[inline(never)]
+fn dirty_the_stack() {
+    let mut garbage = [0xa5_u8; 4096];
+    std::hint::black_box(&mut garbage);
+}
+
+#[inline(never)]
+fn bytes_of_union<T: Copy, const N: usize>(make: fn() -> T) -> [u8; N] {
+    assert_eq!(size_of::<T>(), N);
+    dirty_the_stack();
+    let value = std::hint::black_box(make());
+    unsafe { std::mem::transmute_copy::<T, [u8; N]>(&value) }
+}
+
+#[test]
+fn union_constructors_zero_the_bytes_the_member_does_not_cover() {
+    let value: [u8; 8] = bytes_of_union(|| vk::PerformanceValueDataINTEL::value32(3));
+    assert_eq!(value[..4], 3_u32.to_ne_bytes());
+    assert_eq!(value[4..], [0; 4]);
+
+    let statistic: [u8; 8] =
+        bytes_of_union(|| vk::PipelineExecutableStatisticValueKHR::b32(vk::TRUE));
+    assert_eq!(statistic[..4], vk::TRUE.to_ne_bytes());
+    assert_eq!(statistic[4..], [0; 4]);
+}

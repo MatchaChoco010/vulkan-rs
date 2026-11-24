@@ -676,10 +676,10 @@ mod tests {
         let out = squash(&emit(&Model::new(&ir)));
         assert!(out.contains("pub union DeviceOrHostAddressConstKHR<'a> {"));
         assert!(out.contains(
-            "pub fn host_address(value: *const c_void) -> Self { Self { host_address: value } }"
+            "pub fn host_address(value: *const c_void) -> Self { let mut union = Self::default(); union.host_address = value; union }"
         ));
         assert!(out.contains(
-            "pub fn sampled_image(value: &'a ImageInfo) -> Self { Self { p_sampled_image: core::ptr::from_ref(value) } }"
+            "pub fn sampled_image(value: &'a ImageInfo) -> Self { let mut union = Self::default(); union.p_sampled_image = core::ptr::from_ref(value); union }"
         ));
     }
 }
