@@ -87,7 +87,10 @@
 //! smaller of [`AllocatorCreateDesc::block_size`] and the size of the type's memory heap
 //! (or of the allocation's size, if that is larger). An allocation larger than the
 //! memory heap of its type is refused with [`AllocationError::OutOfMemory`], without a
-//! `vkAllocateMemory` call, whenever the memory properties give the size of that heap.
+//! `vkAllocateMemory` call, whenever the memory properties give the size of that heap;
+//! `vkAllocateMemory` running out of device memory is reported with the same error. A
+//! description the allocator does not accept, such as one of size 0, is refused with
+//! [`AllocationError::InvalidAllocationCreateDesc`] before anything else is checked.
 //! Allocations that differ in [`AllocationCreateDesc::linear`] or
 //! [`AllocationCreateDesc::memory_allocate_flags`] never share a block. Dedicated
 //! allocations ([`AllocationScheme::DedicatedBuffer`],

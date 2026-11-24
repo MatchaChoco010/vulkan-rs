@@ -19,8 +19,9 @@ pub struct AllocationCreateDesc<'a> {
     /// `vkGetBufferMemoryRequirements` or `vkGetImageMemoryRequirements`.
     ///
     /// Only memory types whose bit is set in `memory_type_bits` are considered. A `size`
-    /// of 0, and a `size` larger than the memory heap of the chosen memory type, are
-    /// rejected with
+    /// of 0 is rejected with
+    /// [`AllocationError::InvalidAllocationCreateDesc`](crate::AllocationError::InvalidAllocationCreateDesc),
+    /// and a `size` larger than the memory heap of the chosen memory type with
     /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory) (see
     /// [`Allocator::allocate`](crate::Allocator::allocate) for when the heap is known).
     ///
@@ -28,7 +29,7 @@ pub struct AllocationCreateDesc<'a> {
     /// treated as 1. A caller may raise `alignment` to a larger power of two, for
     /// example to align a device address. An `alignment` that is neither 0 nor a power
     /// of two is rejected with
-    /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory). The
+    /// [`AllocationError::InvalidAllocationCreateDesc`](crate::AllocationError::InvalidAllocationCreateDesc). The
     /// allocator combines `alignment` with other alignments (see
     /// [`AllocatorCreateDesc::non_coherent_atom_size`](crate::AllocatorCreateDesc::non_coherent_atom_size))
     /// by taking the largest, which is a multiple of each of them.

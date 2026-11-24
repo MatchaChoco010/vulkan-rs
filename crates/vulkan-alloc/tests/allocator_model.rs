@@ -77,11 +77,14 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         }
     }
     for event in [
-        "allocate: 0 bytes",
+        "allocate: invalid description: 0 bytes",
+        "allocate: invalid description: alignment that is not a power of two",
+        "invalid description without a compatible memory type",
+        "invalid description larger than the memory heap",
         "allocate: no compatible memory type",
         "allocate: larger than the memory heap",
-        "allocate: alignment that is not a power of two",
-        "allocate: vkAllocateMemory fails",
+        "allocate: the device is out of memory",
+        "allocate: another Vulkan error",
         "allocate: into a shared block",
         "allocate: a new shared block",
         "allocate: a new block of the size of the allocation",

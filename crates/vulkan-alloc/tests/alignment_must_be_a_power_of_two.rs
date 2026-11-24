@@ -130,7 +130,7 @@ proptest! {
         } else {
             prop_assert_eq!(
                 &result,
-                &Err(AllocationError::OutOfMemory),
+                &Err(AllocationError::InvalidAllocationCreateDesc),
                 "{}: an alignment that is neither 0 nor a power of two must be refused",
                 context
             );

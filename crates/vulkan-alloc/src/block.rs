@@ -85,7 +85,8 @@ impl BlockRequest {
         if !self.export_handle_types.is_empty() {
             allocate_info = allocate_info.push_next(&mut export_info);
         }
-        Ok(unsafe { device.allocate_memory(&allocate_info, None) }?)
+        unsafe { device.allocate_memory(&allocate_info, None) }
+            .map_err(AllocationError::of_allocate_memory)
     }
 }
 
@@ -381,7 +382,8 @@ impl MemoryBlock {
         device: &Device,
     ) -> Result<NonNull<c_void>, AllocationError> {
         let ptr =
-            unsafe { device.map_memory(self.memory, 0, self.size, vk::MemoryMapFlags::empty()) }?;
+            unsafe { device.map_memory(self.memory, 0, self.size, vk::MemoryMapFlags::empty()) }
+                .map_err(AllocationError::Vulkan)?;
         let Some(ptr) = NonNull::new(ptr) else {
             unsafe { device.unmap_memory(self.memory) };
             return Err(AllocationError::InvalidAllocation);
@@ -475,7 +477,9 @@ impl MemoryBlock {
 
     fn mark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
         let count = self.mapped_allocations.entry(allocation_id).or_default();
-        *count = count.checked_add(1).ok_or(AllocationError::OutOfMemory)?;
+        *count = count
+            .checked_add(1)
+            .ok_or(AllocationError::InvalidAllocation)?;
         Ok(())
     }
 

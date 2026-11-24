@@ -16,6 +16,7 @@ fn allocation_errors_have_distinct_messages_that_name_the_vulkan_result() {
         AllocationError::InvalidAllocation,
         AllocationError::Vulkan(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
         AllocationError::Vulkan(vk::VkResult::ERROR_MEMORY_MAP_FAILED),
+        AllocationError::InvalidAllocationCreateDesc,
     ];
     let messages = errors.iter().map(ToString::to_string).collect::<Vec<_>>();
     assert_eq!(

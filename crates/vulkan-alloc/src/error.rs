@@ -13,30 +13,53 @@ pub enum AllocationError {
     /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) or
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu).
     NoCompatibleMemoryType,
-    /// The request cannot be met inside the allocator, for example because
-    /// [`vk::MemoryRequirements::size`] is 0 or larger than the memory heap of the chosen
-    /// memory type, or because [`vk::MemoryRequirements::alignment`] is neither 0 nor a
-    /// power of two (see [`Allocator::allocate`](crate::Allocator::allocate)).
-    ///
-    /// The device running out of memory is reported as [`AllocationError::Vulkan`] with
-    /// the result of `vkAllocateMemory`, such as
-    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
+    /// The device does not have the memory: the request is larger than the memory heap
+    /// of the chosen memory type, or `vkAllocateMemory` returned
+    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] (see
+    /// [`Allocator::allocate`](crate::Allocator::allocate)).
     OutOfMemory,
+    /// The [`AllocationCreateDesc`](crate::AllocationCreateDesc) asks for something the
+    /// allocator does not accept: a [`vk::MemoryRequirements::size`] of 0, or a
+    /// [`vk::MemoryRequirements::alignment`] that is neither 0 nor a power of two (see
+    /// [`Allocator::allocate`](crate::Allocator::allocate)).
+    ///
+    /// It depends on the description alone, not on the device or the state of the
+    /// allocator, and is returned before any Vulkan call.
+    InvalidAllocationCreateDesc,
     /// A Vulkan call (`vkAllocateMemory`, `vkMapMemory`, `vkFlushMappedMemoryRanges` or
     /// `vkInvalidateMappedMemoryRanges`) failed with this result.
+    ///
+    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] from `vkAllocateMemory` is reported as
+    /// [`AllocationError::OutOfMemory`] instead; from the other calls it is reported here.
     Vulkan(vk::VkResult),
     /// The allocator does not hold the allocation, for example because it comes from
     /// another allocator, or the operation does not apply to the allocation in its
     /// current state, such as mapping memory that is not host-visible or unmapping an
     /// allocation that is not mapped. Each function lists its cases under `# Errors`.
+    ///
+    /// [`Allocator::allocate`](crate::Allocator::allocate) returns it when no identifier
+    /// is left for a new allocation, after 2<sup>64</sup> − 2 allocations in the
+    /// process.
     InvalidAllocation,
+}
+
+impl AllocationError {
+    pub(crate) fn of_allocate_memory(result: vk::VkResult) -> Self {
+        match result {
+            vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY => Self::OutOfMemory,
+            result => Self::Vulkan(result),
+        }
+    }
 }
 
 impl fmt::Display for AllocationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoCompatibleMemoryType => write!(f, "no compatible Vulkan memory type"),
-            Self::OutOfMemory => write!(f, "Vulkan allocator is out of memory"),
+            Self::OutOfMemory => write!(f, "out of Vulkan device memory"),
+            Self::InvalidAllocationCreateDesc => {
+                write!(f, "the allocation description is not accepted")
+            }
             Self::Vulkan(err) => write!(f, "{err}"),
             Self::InvalidAllocation => write!(f, "invalid or already freed allocation"),
         }
@@ -44,12 +67,6 @@ impl fmt::Display for AllocationError {
 }
 
 impl std::error::Error for AllocationError {}
-
-impl From<vk::VkResult> for AllocationError {
-    fn from(value: vk::VkResult) -> Self {
-        Self::Vulkan(value)
-    }
-}
 
 /// The error of [`Allocator::free`](crate::Allocator::free): the reason, and the
 /// allocation that was not freed.
