@@ -869,13 +869,13 @@ const ARRAYS: &[StdVideoArray] = &[
         "StdVideoH265PictureParameterSet",
         "column_width_minus1",
         &[("STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_COLS_LIST_SIZE", 19)],
-        "H.265 7.3.2.3.1 reads column_width_minus1[i] for i < num_tile_columns_minus1, which A.4.1 f) limits to less than MaxTileCols, 20 in Table A.8 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 40",
+        "H.265 7.3.2.3.1 reads column_width_minus1[i] for i < num_tile_columns_minus1, which A.4.1 f) limits to less than MaxTileCols, at most 20 in Table A.8 at the levels that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 40",
     ),
     fixed(
         "StdVideoH265PictureParameterSet",
         "row_height_minus1",
         &[("STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_ROWS_LIST_SIZE", 21)],
-        "H.265 7.3.2.3.1 reads row_height_minus1[i] for i < num_tile_rows_minus1, which A.4.1 f) limits to less than MaxTileRows, 22 in Table A.8 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 44",
+        "H.265 7.3.2.3.1 reads row_height_minus1[i] for i < num_tile_rows_minus1, which A.4.1 f) limits to less than MaxTileRows, at most 22 in Table A.8 at the levels that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 44",
     ),
     one(
         "StdVideoH265PictureParameterSet",
@@ -1244,12 +1244,12 @@ const CONSTANTS: &[StdVideoConstant] = &[
     constant(
         "STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_COLS_LIST_SIZE",
         "19",
-        "H.265 A.4.1 f) and Table A.8: num_tile_columns_minus1 is less than MaxTileCols, 20 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 40",
+        "H.265 A.4.1 f) and Table A.8: num_tile_columns_minus1 is less than MaxTileCols, at most 20 at the levels that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 40",
     ),
     constant(
         "STD_VIDEO_H265_CHROMA_QP_OFFSET_TILE_ROWS_LIST_SIZE",
         "21",
-        "H.265 A.4.1 f) and Table A.8: num_tile_rows_minus1 is less than MaxTileRows, 22 at every level that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 44",
+        "H.265 A.4.1 f) and Table A.8: num_tile_rows_minus1 is less than MaxTileRows, at most 22 at the levels that StdVideoH265LevelIdc names; levels 7 to 7.2, which it does not name, allow 44",
     ),
     constant(
         "STD_VIDEO_H265_CPB_CNT_LIST_SIZE",
