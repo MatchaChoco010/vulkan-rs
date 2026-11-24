@@ -728,197 +728,1458 @@ impl SamplerHeapPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    use proptest::strategy::ValueTree;
+    use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
 
-    fn radv() -> vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'static> {
-        vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
-            .sampler_heap_alignment(16)
-            .resource_heap_alignment(32)
-            .max_sampler_heap_size(1 << 20)
-            .max_resource_heap_size(1 << 30)
-            .min_sampler_heap_reserved_range(0)
-            .min_resource_heap_reserved_range(0)
-            .sampler_descriptor_size(16)
-            .image_descriptor_size(32)
-            .buffer_descriptor_size(16)
-            .sampler_descriptor_alignment(16)
-            .image_descriptor_alignment(32)
-            .buffer_descriptor_alignment(16)
+    const U32_MAX: u128 = u32::MAX as u128;
+    const U64_MAX: u128 = u64::MAX as u128;
+    const USIZE_MAX: u128 = usize::MAX as u128;
+    const ADDRESS_SPACE: u128 = 1 << 64;
+    const HEAP_BYTES: usize = 1 << 16;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct Properties {
+        buffer_size: u64,
+        buffer_alignment: u64,
+        image_size: u64,
+        image_alignment: u64,
+        sampler_size: u64,
+        sampler_alignment: u64,
+        resource_heap_alignment: u64,
+        sampler_heap_alignment: u64,
+        max_resource_heap_size: u64,
+        max_sampler_heap_size: u64,
+        min_resource_reserved: u64,
+        min_sampler_reserved: u64,
+        min_sampler_reserved_with_embedded: u64,
     }
 
-    fn awkward() -> vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'static> {
-        vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
-            .sampler_heap_alignment(64)
-            .resource_heap_alignment(4096)
-            .max_sampler_heap_size(4096)
-            .max_resource_heap_size(1 << 16)
-            .min_sampler_heap_reserved_range(96)
-            .min_resource_heap_reserved_range(1024)
-            .sampler_descriptor_size(24)
-            .image_descriptor_size(72)
-            .buffer_descriptor_size(48)
-            .sampler_descriptor_alignment(8)
-            .image_descriptor_alignment(24)
-            .buffer_descriptor_alignment(16)
-    }
+    impl Properties {
+        fn fields_mut(&mut self) -> [&mut u64; 13] {
+            [
+                &mut self.buffer_size,
+                &mut self.buffer_alignment,
+                &mut self.image_size,
+                &mut self.image_alignment,
+                &mut self.sampler_size,
+                &mut self.sampler_alignment,
+                &mut self.resource_heap_alignment,
+                &mut self.sampler_heap_alignment,
+                &mut self.max_resource_heap_size,
+                &mut self.max_sampler_heap_size,
+                &mut self.min_resource_reserved,
+                &mut self.min_sampler_reserved,
+                &mut self.min_sampler_reserved_with_embedded,
+            ]
+        }
 
-    #[test]
-    fn typed_runs_do_not_overlap_and_index_in_units_of_their_own_size() {
-        for properties in [radv(), awkward()] {
-            let mut plan = ResourceHeapPlan::new(&properties);
-            let buffers = plan.buffers(3).unwrap();
-            let images = plan.images(2).unwrap();
-            let more_buffers = plan.buffers(1).unwrap();
-            let layout = plan.finish().unwrap();
-
-            assert_eq!(buffers.first_index, 0);
-            assert_eq!(buffers.stride, properties.buffer_descriptor_size);
-            assert_eq!(images.stride, properties.image_descriptor_size);
-            let mut previous_end = 0;
-            for run in [buffers, images, more_buffers] {
-                let alignment = if run.stride == properties.image_descriptor_size {
-                    properties.image_descriptor_alignment
-                } else {
-                    properties.buffer_descriptor_alignment
-                };
-                for slot in 0..run.count {
-                    let offset = run.offset(slot).unwrap();
-                    assert_eq!(offset, u64::from(run.index(slot).unwrap()) * run.stride);
-                    assert!(offset.is_multiple_of(alignment));
-                    assert!(offset >= previous_end);
-                    previous_end = offset + run.descriptor_size;
-                }
-                assert_eq!(run.index(run.count), None);
-                assert_eq!(run.offset(run.count), None);
-            }
-            assert!(layout.reserved_offset >= previous_end);
-            assert!(
-                layout
-                    .reserved_offset
-                    .is_multiple_of(properties.buffer_descriptor_alignment)
-            );
-            assert!(
-                layout
-                    .reserved_offset
-                    .is_multiple_of(properties.image_descriptor_alignment)
-            );
-            assert_eq!(
-                layout.reserved_size,
-                properties.min_resource_heap_reserved_range
-            );
-            assert_eq!(layout.size, layout.reserved_offset + layout.reserved_size);
-            assert_eq!(layout.alignment, properties.resource_heap_alignment);
+        fn vk(&self) -> vk::PhysicalDeviceDescriptorHeapPropertiesEXT<'static> {
+            vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+                .buffer_descriptor_size(self.buffer_size)
+                .buffer_descriptor_alignment(self.buffer_alignment)
+                .image_descriptor_size(self.image_size)
+                .image_descriptor_alignment(self.image_alignment)
+                .sampler_descriptor_size(self.sampler_size)
+                .sampler_descriptor_alignment(self.sampler_alignment)
+                .resource_heap_alignment(self.resource_heap_alignment)
+                .sampler_heap_alignment(self.sampler_heap_alignment)
+                .max_resource_heap_size(self.max_resource_heap_size)
+                .max_sampler_heap_size(self.max_sampler_heap_size)
+                .min_resource_heap_reserved_range(self.min_resource_reserved)
+                .min_sampler_heap_reserved_range(self.min_sampler_reserved)
+                .min_sampler_heap_reserved_range_with_embedded(
+                    self.min_sampler_reserved_with_embedded,
+                )
         }
     }
 
-    #[test]
-    fn uniform_slots_hold_either_kind() {
-        let properties = awkward();
-        let mut plan = ResourceHeapPlan::new(&properties);
-        let slots = plan.uniform(8).unwrap();
-        assert_eq!(slots.stride, 96);
-        assert_eq!(slots.descriptor_size, 72);
-        assert_eq!(slots.offset(7), Some(7 * 96));
-        let layout = plan.finish().unwrap();
-        assert_eq!(layout.reserved_offset, 8 * 96);
-        assert_eq!(layout.size, 8 * 96 + 1024);
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Heap {
+        Resource,
+        Sampler,
+        SamplerWithEmbedded,
     }
 
-    #[test]
-    fn rejected_descriptor_sizes_are_reported_as_the_device_reports_them() {
-        let values = [
-            0,
-            1,
-            2,
-            3,
-            8,
-            16,
-            24,
-            32,
-            40,
-            48,
-            64,
-            72,
-            96,
-            128,
-            1 << 32,
-            1 << 63,
-            u64::MAX - 1,
-            u64::MAX,
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Op {
+        Buffers(u32),
+        Images(u32),
+        Uniform(u32),
+        Samplers(u32),
+    }
+
+    enum Plan {
+        Resource(ResourceHeapPlan),
+        Sampler(SamplerHeapPlan),
+    }
+
+    impl Plan {
+        fn new(properties: &Properties, heap: Heap) -> Self {
+            let properties = properties.vk();
+            match heap {
+                Heap::Resource => Self::Resource(ResourceHeapPlan::new(&properties)),
+                Heap::Sampler => Self::Sampler(SamplerHeapPlan::new(&properties)),
+                Heap::SamplerWithEmbedded => {
+                    Self::Sampler(SamplerHeapPlan::with_embedded_samplers(&properties))
+                }
+            }
+        }
+
+        fn apply(&mut self, op: Op) -> Result<DescriptorSlots, HeapLayoutError> {
+            match (self, op) {
+                (Self::Resource(plan), Op::Buffers(count)) => plan.buffers(count),
+                (Self::Resource(plan), Op::Images(count)) => plan.images(count),
+                (Self::Resource(plan), Op::Uniform(count)) => plan.uniform(count),
+                (Self::Sampler(plan), Op::Samplers(count)) => plan.samplers(count),
+                _ => panic!("{op:?} is not a run of this heap"),
+            }
+        }
+
+        fn finish(&self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
+            match self {
+                Self::Resource(plan) => plan.clone().finish(),
+                Self::Sampler(plan) => plan.clone().finish(),
+            }
+        }
+    }
+
+    fn at_least_1(alignment: u64) -> u128 {
+        u128::from(alignment.max(1))
+    }
+
+    fn least_common_multiple(a: u128, b: u128) -> u128 {
+        let (mut x, mut y) = (a, b);
+        while y != 0 {
+            (x, y) = (y, x % y);
+        }
+        a * b / x
+    }
+
+    fn round_up(value: u128, multiple: u128) -> u128 {
+        value.div_ceil(multiple) * multiple
+    }
+
+    struct Model {
+        properties: Properties,
+        heap: Heap,
+        end: u128,
+    }
+
+    impl Model {
+        fn new(properties: Properties, heap: Heap) -> Self {
+            Self {
+                properties,
+                heap,
+                end: 0,
+            }
+        }
+
+        fn run(&mut self, op: Op) -> Result<DescriptorSlots, Vec<HeapLayoutError>> {
+            let p = self.properties;
+            match op {
+                Op::Buffers(count) => self.typed(count, p.buffer_size, p.buffer_alignment),
+                Op::Images(count) => self.typed(count, p.image_size, p.image_alignment),
+                Op::Samplers(count) => self.typed(count, p.sampler_size, p.sampler_alignment),
+                Op::Uniform(count) => self.uniform(count),
+            }
+        }
+
+        fn typed(
+            &mut self,
+            count: u32,
+            size: u64,
+            alignment: u64,
+        ) -> Result<DescriptorSlots, Vec<HeapLayoutError>> {
+            if size == 0 {
+                return Err(vec![HeapLayoutError::ZeroDescriptorSize]);
+            }
+            let mut errors = Vec::new();
+            if !u128::from(size).is_multiple_of(at_least_1(alignment)) {
+                errors.push(HeapLayoutError::UnalignedDescriptorSize { size, alignment });
+            }
+            self.place(count, u128::from(size), size, errors)
+        }
+
+        fn uniform(&mut self, count: u32) -> Result<DescriptorSlots, Vec<HeapLayoutError>> {
+            let p = self.properties;
+            let mut errors = Vec::new();
+            if p.buffer_size == 0 || p.image_size == 0 {
+                errors.push(HeapLayoutError::ZeroDescriptorSize);
+            }
+            let both = least_common_multiple(
+                at_least_1(p.buffer_alignment),
+                at_least_1(p.image_alignment),
+            );
+            let size = p.buffer_size.max(p.image_size);
+            let stride = round_up(u128::from(size), both);
+            if both > U64_MAX || stride > U64_MAX {
+                errors.push(HeapLayoutError::Overflow);
+                return Err(errors);
+            }
+            if stride == 0 {
+                return Err(errors);
+            }
+            self.place(count, stride, size, errors)
+        }
+
+        fn place(
+            &mut self,
+            count: u32,
+            stride: u128,
+            descriptor_size: u64,
+            mut errors: Vec<HeapLayoutError>,
+        ) -> Result<DescriptorSlots, Vec<HeapLayoutError>> {
+            let first_index = round_up(self.end, stride) / stride;
+            let every_index_fits = first_index <= U32_MAX
+                && (count == 0 || first_index + u128::from(count) - 1 <= U32_MAX);
+            let end = (first_index + u128::from(count)) * stride;
+            if !every_index_fits || end > U64_MAX {
+                errors.push(HeapLayoutError::Overflow);
+            }
+            if !errors.is_empty() {
+                return Err(errors);
+            }
+            self.end = end;
+            Ok(DescriptorSlots {
+                first_index: u32::try_from(first_index).unwrap(),
+                count,
+                stride: u64::try_from(stride).unwrap(),
+                descriptor_size,
+            })
+        }
+
+        fn finish(&self) -> Result<DescriptorHeapLayout, HeapLayoutError> {
+            let p = self.properties;
+            let (reserved_alignment, reserved_size, max, heap_alignment) = match self.heap {
+                Heap::Resource => (
+                    least_common_multiple(
+                        at_least_1(p.buffer_alignment),
+                        at_least_1(p.image_alignment),
+                    ),
+                    p.min_resource_reserved,
+                    p.max_resource_heap_size,
+                    p.resource_heap_alignment,
+                ),
+                Heap::Sampler => (
+                    at_least_1(p.sampler_alignment),
+                    p.min_sampler_reserved,
+                    p.max_sampler_heap_size,
+                    p.sampler_heap_alignment,
+                ),
+                Heap::SamplerWithEmbedded => (
+                    at_least_1(p.sampler_alignment),
+                    p.min_sampler_reserved
+                        .max(p.min_sampler_reserved_with_embedded),
+                    p.max_sampler_heap_size,
+                    p.sampler_heap_alignment,
+                ),
+            };
+            if reserved_alignment > U64_MAX {
+                return Err(HeapLayoutError::Overflow);
+            }
+            let reserved_offset = round_up(self.end, reserved_alignment);
+            let size = reserved_offset + u128::from(reserved_size);
+            if size > U64_MAX {
+                return Err(HeapLayoutError::Overflow);
+            }
+            let size = u64::try_from(size).unwrap();
+            if size > max {
+                return Err(HeapLayoutError::TooLarge { size, max });
+            }
+            Ok(DescriptorHeapLayout {
+                size,
+                alignment: heap_alignment.max(1),
+                reserved_offset: u64::try_from(reserved_offset).unwrap(),
+                reserved_size,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum Address {
+        Zero,
+        Multiple(u64),
+        PastAMultiple(u64, u64),
+        HighestThatFits(bool),
+        NearTheTop(u64),
+        Any(u64),
+    }
+
+    impl Address {
+        fn resolve(self, layout: &DescriptorHeapLayout) -> u64 {
+            let alignment = at_least_1(layout.alignment);
+            let address = match self {
+                Self::Zero => 0,
+                Self::Multiple(k) => alignment * u128::from(k),
+                Self::PastAMultiple(k, past) => alignment * u128::from(k) + u128::from(past),
+                Self::HighestThatFits(past) => {
+                    let highest = ADDRESS_SPACE - u128::from(layout.size);
+                    highest / alignment * alignment + if past { alignment } else { 0 }
+                }
+                Self::NearTheTop(below) => U64_MAX - u128::from(below),
+                Self::Any(address) => u128::from(address),
+            };
+            u64::try_from(address).unwrap_or(u64::MAX)
+        }
+    }
+
+    fn addresses() -> impl Strategy<Value = Address> {
+        prop_oneof![
+            1 => Just(Address::Zero),
+            4 => (1u64..=1024).prop_map(Address::Multiple),
+            2 => (0u64..=1024, 1u64..=3).prop_map(|(k, past)| Address::PastAMultiple(k, past)),
+            2 => any::<bool>().prop_map(Address::HighestThatFits),
+            1 => (0u64..=3).prop_map(Address::NearTheTop),
+            1 => any::<u64>().prop_map(Address::Any),
+        ]
+    }
+
+    #[derive(Debug, Clone)]
+    struct Scenario {
+        properties: Properties,
+        heap: Heap,
+        ops: Vec<Op>,
+        address: Address,
+        valid_multiple: u64,
+    }
+
+    fn pick_within(bound: u64, unit: u64, (choice, random): (u8, u64)) -> u64 {
+        match choice % 4 {
+            0 => 0,
+            1 => bound,
+            2 => random % (bound + 1),
+            _ => random % (bound / unit + 1) * unit,
+        }
+    }
+
+    fn pick_at_least(least: u64, (choice, random): (u8, u64)) -> u64 {
+        match choice % 4 {
+            0 => least,
+            1 => least + random % 4096,
+            2 => least * 2,
+            _ => u64::MAX,
+        }
+    }
+
+    fn conforming_properties() -> impl Strategy<Value = Properties> {
+        (
+            (0u32..=7, 0u32..=7),
+            (0u32..=6, 0u32..=6),
+            (0u32..=5, 0u32..=5),
+            (0u32..=16, 0u32..=16),
+            prop::array::uniform3((any::<u8>(), any::<u64>())),
+            prop::array::uniform2((any::<u8>(), any::<u64>())),
+        )
+            .prop_map(|(buffer, image, sampler, heap_alignments, reserved, max)| {
+                let size_and_alignment =
+                    |(size, alignment): (u32, u32)| (1u64 << size, 1u64 << alignment.min(size));
+                let (buffer_size, buffer_alignment) = size_and_alignment(buffer);
+                let (image_size, image_alignment) = size_and_alignment(image);
+                let (sampler_size, sampler_alignment) = size_and_alignment(sampler);
+                let largest = buffer_size.max(image_size);
+                let min_resource_reserved = pick_within((1 << 15) * largest, largest, reserved[0]);
+                let min_sampler_reserved =
+                    pick_within(96 * sampler_size, sampler_size, reserved[1]);
+                let min_sampler_reserved_with_embedded =
+                    pick_within(2048 * sampler_size, sampler_size, reserved[2]);
+                Properties {
+                    buffer_size,
+                    buffer_alignment,
+                    image_size,
+                    image_alignment,
+                    sampler_size,
+                    sampler_alignment,
+                    resource_heap_alignment: 1 << heap_alignments.0,
+                    sampler_heap_alignment: 1 << heap_alignments.1,
+                    max_resource_heap_size: pick_at_least(
+                        ((1 << 20) - (1 << 15)) * largest + min_resource_reserved,
+                        max[0],
+                    ),
+                    max_sampler_heap_size: pick_at_least(
+                        (4000 * sampler_size + min_sampler_reserved)
+                            .max(2048 * sampler_size + min_sampler_reserved_with_embedded),
+                        max[1],
+                    ),
+                    min_resource_reserved,
+                    min_sampler_reserved,
+                    min_sampler_reserved_with_embedded,
+                }
+            })
+    }
+
+    fn extreme_values() -> impl Strategy<Value = u64> {
+        prop_oneof![
+            2 => Just(0u64),
+            3 => prop::sample::select(vec![
+                1u64, 2, 3, 5, 6, 8, 12, 16, 24, 32, 48, 64, 72, 96, 128, 256,
+            ]),
+            2 => (0u32..64).prop_map(|shift| 1u64 << shift),
+            2 => prop::sample::select(vec![
+                1u64 << 32,
+                (1 << 32) + 16,
+                1 << 40,
+                1 << 62,
+                1 << 63,
+                (1 << 63) + 1,
+                u64::MAX / 3,
+                u64::MAX - 1,
+                u64::MAX,
+            ]),
+            1 => any::<u64>(),
+        ]
+    }
+
+    fn properties() -> impl Strategy<Value = Properties> {
+        let replaced = prop_oneof![
+            4 => Just(0u16),
+            3 => (0u32..13, 0u32..13).prop_map(|(a, b)| (1u16 << a) | (1u16 << b)),
+            2 => Just(0x1fff_u16),
         ];
-        let mut unaligned = 0;
-        let mut zero = 0;
-        for size in values {
-            for alignment in values {
-                for kind in 0..3 {
-                    let context = format!("kind {kind}, size {size}, alignment {alignment}");
-                    let pair = |of: usize, valid: u64| {
-                        if of == kind {
-                            (size, alignment)
-                        } else {
-                            (valid, valid)
-                        }
-                    };
-                    let (buffer_size, buffer_alignment) = pair(0, 16);
-                    let (image_size, image_alignment) = pair(1, 32);
-                    let (sampler_size, sampler_alignment) = pair(2, 8);
-                    let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
-                        .max_resource_heap_size(u64::MAX)
-                        .max_sampler_heap_size(u64::MAX)
-                        .buffer_descriptor_size(buffer_size)
-                        .buffer_descriptor_alignment(buffer_alignment)
-                        .image_descriptor_size(image_size)
-                        .image_descriptor_alignment(image_alignment)
-                        .sampler_descriptor_size(sampler_size)
-                        .sampler_descriptor_alignment(sampler_alignment);
-                    let expected = if size == 0 {
-                        zero += 1;
-                        Err(HeapLayoutError::ZeroDescriptorSize)
-                    } else if size.is_multiple_of(alignment.max(1)) {
-                        Ok(size)
-                    } else {
-                        unaligned += 1;
-                        Err(HeapLayoutError::UnalignedDescriptorSize { size, alignment })
-                    };
-
-                    let mut resources = ResourceHeapPlan::new(&properties);
-                    let mut samplers = SamplerHeapPlan::new(&properties);
-                    let run = match kind {
-                        0 => resources.buffers(1),
-                        1 => resources.images(1),
-                        _ => samplers.samplers(1),
-                    };
-                    assert_eq!(run.map(|slots| slots.stride), expected, "{context}");
-                    if let Err(HeapLayoutError::UnalignedDescriptorSize { size, alignment }) = run {
-                        assert!(
-                            size != 0 && !size.is_multiple_of(alignment.max(1)),
-                            "{context}"
-                        );
+        (
+            conforming_properties(),
+            prop::array::uniform13(extreme_values()),
+            replaced,
+        )
+            .prop_map(|(mut properties, extreme, replaced)| {
+                for (index, (field, value)) in
+                    properties.fields_mut().into_iter().zip(extreme).enumerate()
+                {
+                    if replaced & (1 << index) != 0 {
+                        *field = value;
                     }
+                }
+                properties
+            })
+    }
 
-                    if kind != 2 {
-                        let uniform = ResourceHeapPlan::new(&properties).uniform(1);
-                        assert!(
-                            !matches!(
-                                uniform,
-                                Err(HeapLayoutError::UnalignedDescriptorSize { .. })
-                            ),
-                            "{context}: {uniform:?}"
-                        );
-                        assert_eq!(
-                            uniform == Err(HeapLayoutError::ZeroDescriptorSize),
-                            size == 0,
-                            "{context}: {uniform:?}"
-                        );
-                        if let Ok(slots) = uniform {
-                            assert!(slots.stride >= slots.descriptor_size, "{context}");
-                            assert_eq!(slots.descriptor_size, buffer_size.max(image_size));
+    fn counts() -> impl Strategy<Value = u32> {
+        prop_oneof![
+            4 => Just(0u32),
+            3 => Just(1u32),
+            4 => 2u32..=16,
+            2 => 17u32..=5000,
+            1 => (1u32 << 16)..=(1u32 << 20),
+            2 => (0u32..=3).prop_map(|below| u32::MAX - below),
+            1 => (0u32..=2).prop_map(|past| (1u32 << 31) - 1 + past),
+            1 => any::<u32>(),
+        ]
+    }
+
+    fn scenarios(heaps: Vec<Heap>) -> impl Strategy<Value = Scenario> {
+        (
+            properties(),
+            prop::sample::select(heaps),
+            prop::collection::vec((0u8..3, counts()), 0..=8),
+            addresses(),
+            1u64..=1024,
+        )
+            .prop_map(|(properties, heap, runs, address, valid_multiple)| {
+                let ops = runs
+                    .into_iter()
+                    .map(|(kind, count)| match (heap, kind) {
+                        (Heap::Resource, 0) => Op::Buffers(count),
+                        (Heap::Resource, 1) => Op::Images(count),
+                        (Heap::Resource, _) => Op::Uniform(count),
+                        _ => Op::Samplers(count),
+                    })
+                    .collect();
+                Scenario {
+                    properties,
+                    heap,
+                    ops,
+                    address,
+                    valid_multiple,
+                }
+            })
+    }
+
+    fn every_heap() -> Vec<Heap> {
+        vec![Heap::Resource, Heap::Sampler, Heap::SamplerWithEmbedded]
+    }
+
+    #[derive(Debug, Default)]
+    struct Seen {
+        runs_placed: u32,
+        empty_runs_that_moved_the_end: u32,
+        uniform_strides_rounded_up: u32,
+        zero_descriptor_size: u32,
+        unaligned_descriptor_size: u32,
+        run_overflow: u32,
+        runs_after_a_rejected_run: u32,
+        layouts: u32,
+        too_large: u32,
+        finish_overflow: u32,
+        conforming_layouts_checked: u32,
+        conforming_runs_checked: u32,
+        bind_ok: u32,
+        bind_reserved_range_outside_heap: u32,
+        bind_misaligned: u32,
+        bind_null_address: u32,
+        bind_address_range_overflow: u32,
+        slot_outside_the_run: u32,
+        index_past_u32: u32,
+        offset_past_u64: u32,
+        range_past_usize: u32,
+        bytes_past_the_heap: u32,
+        bytes_in_the_heap: u32,
+        slices_with_a_stride_of_0: u32,
+        slices_of_an_empty_run: u32,
+        slices_in_the_heap: u32,
+        slices_cut_to_the_stride: u32,
+        slices_past_the_heap: u32,
+        slices_ending_with_the_last_descriptor: u32,
+    }
+
+    fn check_plan(scenario: &Scenario, seen: &mut Seen) -> Result<(), String> {
+        let mut plan = Plan::new(&scenario.properties, scenario.heap);
+        let mut model = Model::new(scenario.properties, scenario.heap);
+        let mut rejected = 0;
+        for (step, &op) in scenario.ops.iter().enumerate() {
+            let end_before = model.end;
+            let expected = model.run(op);
+            let actual = plan.apply(op);
+            if rejected > 0 {
+                seen.runs_after_a_rejected_run += 1;
+            }
+            match (&expected, &actual) {
+                (Ok(expected), Ok(actual)) if expected == actual => {
+                    seen.runs_placed += 1;
+                    if actual.count == 0 && model.end != end_before {
+                        seen.empty_runs_that_moved_the_end += 1;
+                    }
+                    if matches!(op, Op::Uniform(_)) && actual.stride > actual.descriptor_size {
+                        seen.uniform_strides_rounded_up += 1;
+                    }
+                }
+                (Err(errors), Err(actual)) if errors.first() == Some(actual) => {
+                    rejected += 1;
+                    match actual {
+                        HeapLayoutError::ZeroDescriptorSize => seen.zero_descriptor_size += 1,
+                        HeapLayoutError::UnalignedDescriptorSize { .. } => {
+                            seen.unaligned_descriptor_size += 1;
                         }
+                        _ => seen.run_overflow += 1,
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "step {step}, {op:?}, after {rejected} rejected runs that must leave \
+                         the plan unchanged: the plan gave {actual:?}, the documentation gives \
+                         {expected:?}"
+                    ));
+                }
+            }
+            let layout = plan.finish();
+            let expected_layout = model.finish();
+            if layout != expected_layout {
+                return Err(format!(
+                    "finish after step {step}, {op:?}, after {rejected} rejected runs: the plan \
+                     gave {layout:?}, the documentation gives {expected_layout:?}"
+                ));
+            }
+        }
+        match plan.finish() {
+            Ok(_) => seen.layouts += 1,
+            Err(HeapLayoutError::TooLarge { .. }) => seen.too_large += 1,
+            Err(_) => seen.finish_overflow += 1,
+        }
+        Ok(())
+    }
+
+    fn meets_the_required_limits(p: &Properties) -> bool {
+        let power_of_two_at_most = |value: u64, most: u64| value.is_power_of_two() && value <= most;
+        let largest = u128::from(p.buffer_size.max(p.image_size));
+        let sampler_size = u128::from(p.sampler_size);
+        power_of_two_at_most(p.sampler_size, 32)
+            && power_of_two_at_most(p.image_size, 64)
+            && power_of_two_at_most(p.buffer_size, 128)
+            && power_of_two_at_most(p.sampler_alignment, p.sampler_size.min(32))
+            && power_of_two_at_most(p.image_alignment, p.image_size.min(64))
+            && power_of_two_at_most(p.buffer_alignment, p.buffer_size.min(128))
+            && power_of_two_at_most(p.sampler_heap_alignment, 65536)
+            && power_of_two_at_most(p.resource_heap_alignment, 65536)
+            && u128::from(p.min_sampler_reserved) <= 96 * sampler_size
+            && u128::from(p.min_sampler_reserved_with_embedded) <= 2048 * sampler_size
+            && u128::from(p.min_resource_reserved) <= (1 << 15) * largest
+            && u128::from(p.max_sampler_heap_size)
+                >= (4000 * sampler_size + u128::from(p.min_sampler_reserved))
+                    .max(2048 * sampler_size + u128::from(p.min_sampler_reserved_with_embedded))
+            && u128::from(p.max_resource_heap_size)
+                >= ((1 << 20) - (1 << 15)) * largest + u128::from(p.min_resource_reserved)
+    }
+
+    struct BindRules {
+        reserved_range_in_the_heap: &'static str,
+        size_at_most_the_maximum: &'static str,
+        address_alignment: &'static str,
+        reserved_offset_alignments: Vec<(u64, &'static str)>,
+        min_reserved: Vec<(u64, &'static str)>,
+        max_size: u64,
+        heap_alignment: u64,
+    }
+
+    fn bind_rules(p: &Properties, heap: Heap) -> BindRules {
+        match heap {
+            Heap::Resource => BindRules {
+                reserved_range_in_the_heap: "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11232",
+                size_at_most_the_maximum: "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11234",
+                address_alignment: "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11235",
+                reserved_offset_alignments: vec![
+                    (
+                        p.buffer_alignment,
+                        "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11435",
+                    ),
+                    (
+                        p.image_alignment,
+                        "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11436",
+                    ),
+                ],
+                min_reserved: vec![(
+                    p.min_resource_reserved,
+                    "VUID-vkCmdBindResourceHeapEXT-pBindInfo-11233",
+                )],
+                max_size: p.max_resource_heap_size,
+                heap_alignment: p.resource_heap_alignment,
+            },
+            Heap::Sampler | Heap::SamplerWithEmbedded => BindRules {
+                reserved_range_in_the_heap: "VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11223",
+                size_at_most_the_maximum: "VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11225",
+                address_alignment: "VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11226",
+                reserved_offset_alignments: vec![(
+                    p.sampler_alignment,
+                    "VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11434",
+                )],
+                min_reserved: if heap == Heap::SamplerWithEmbedded {
+                    vec![
+                        (
+                            p.min_sampler_reserved,
+                            "VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11224",
+                        ),
+                        (
+                            p.min_sampler_reserved_with_embedded,
+                            "VUID-vkCmdDraw-pBindInfo-11375",
+                        ),
+                    ]
+                } else {
+                    vec![(
+                        p.min_sampler_reserved,
+                        "VUID-vkCmdBindSamplerHeapEXT-pBindInfo-11224",
+                    )]
+                },
+                max_size: p.max_sampler_heap_size,
+                heap_alignment: p.sampler_heap_alignment,
+            },
+        }
+    }
+
+    fn check_bind_against_the_specification(
+        rules: &BindRules,
+        bind: &vk::BindHeapInfoEXT<'_>,
+    ) -> Result<(), String> {
+        let address = bind.heap_range.address;
+        let size = bind.heap_range.size;
+        let reserved_offset = bind.reserved_range_offset;
+        let reserved_size = bind.reserved_range_size;
+        let mut problems = Vec::new();
+        if u128::from(reserved_offset) + u128::from(reserved_size) > u128::from(size) {
+            problems.push(format!(
+                "{}: the reserved range {reserved_offset} + {reserved_size} is past the heap \
+                 size {size}",
+                rules.reserved_range_in_the_heap
+            ));
+        }
+        for &(min, vuid) in &rules.min_reserved {
+            if reserved_size < min {
+                problems.push(format!(
+                    "{vuid}: the reserved range of {reserved_size} bytes is below {min}"
+                ));
+            }
+        }
+        if size > rules.max_size {
+            problems.push(format!(
+                "{}: the heap of {size} bytes is larger than {}",
+                rules.size_at_most_the_maximum, rules.max_size
+            ));
+        }
+        if !address.is_multiple_of(rules.heap_alignment) {
+            problems.push(format!(
+                "{}: address {address:#x} is not a multiple of {}",
+                rules.address_alignment, rules.heap_alignment
+            ));
+        }
+        for &(alignment, vuid) in &rules.reserved_offset_alignments {
+            if !reserved_offset.is_multiple_of(alignment) {
+                problems.push(format!(
+                    "{vuid}: the reserved offset {reserved_offset} is not a multiple of \
+                     {alignment}"
+                ));
+            }
+        }
+        if size != 0 && address == 0 {
+            problems.push(format!(
+                "VUID-VkDeviceAddressRangeKHR-size-11411: a heap of {size} bytes at address 0"
+            ));
+        }
+        if u128::from(address) + u128::from(size) > ADDRESS_SPACE {
+            problems.push(format!(
+                "VUID-VkDeviceAddressRangeKHR-address-11365: a heap of {size} bytes at \
+                 {address:#x} reaches past the address space"
+            ));
+        }
+        if problems.is_empty() {
+            Ok(())
+        } else {
+            Err(problems.join("; "))
+        }
+    }
+
+    type Requirements = Vec<(u64, &'static str)>;
+
+    fn run_rules(p: &Properties, op: Op) -> (Requirements, Requirements) {
+        let image = (
+            p.image_alignment,
+            "VUID-VkDescriptorSetAndBindingMappingEXT-source-11251",
+        );
+        let buffer = (
+            p.buffer_alignment,
+            "VUID-VkDescriptorSetAndBindingMappingEXT-source-11252",
+        );
+        let sampler = (
+            p.sampler_alignment,
+            "VUID-VkDescriptorSetAndBindingMappingEXT-source-11253",
+        );
+        let image_write = (
+            p.image_size,
+            "VUID-vkWriteResourceDescriptorsEXT-size-11207",
+        );
+        let buffer_write = (
+            p.buffer_size,
+            "VUID-vkWriteResourceDescriptorsEXT-size-11207",
+        );
+        let sampler_write = (
+            p.sampler_size,
+            "VUID-vkWriteSamplerDescriptorsEXT-size-11203",
+        );
+        match op {
+            Op::Buffers(_) => (vec![buffer], vec![buffer_write]),
+            Op::Images(_) => (vec![image], vec![image_write]),
+            Op::Uniform(_) => (vec![image, buffer], vec![image_write, buffer_write]),
+            Op::Samplers(_) => (vec![sampler], vec![sampler_write]),
+        }
+    }
+
+    fn check_the_specification(scenario: &Scenario, seen: &mut Seen) -> Result<(), String> {
+        let p = &scenario.properties;
+        if !meets_the_required_limits(p) {
+            return Ok(());
+        }
+        let mut plan = Plan::new(p, scenario.heap);
+        let runs: Vec<(Op, DescriptorSlots)> = scenario
+            .ops
+            .iter()
+            .filter_map(|&op| plan.apply(op).ok().map(|slots| (op, slots)))
+            .collect();
+        let Ok(layout) = plan.finish() else {
+            return Ok(());
+        };
+        seen.conforming_layouts_checked += 1;
+        let rules = bind_rules(p, scenario.heap);
+
+        let valid_address = rules.heap_alignment * scenario.valid_multiple;
+        if u128::from(valid_address) + u128::from(layout.size) <= ADDRESS_SPACE {
+            let bind = layout.bind_info(valid_address).map_err(|error| {
+                format!(
+                    "{layout:?} cannot be bound at {valid_address:#x}, a multiple of the heap \
+                     alignment {}: {error:?}",
+                    rules.heap_alignment
+                )
+            })?;
+            if (
+                bind.heap_range.address,
+                bind.heap_range.size,
+                bind.reserved_range_offset,
+                bind.reserved_range_size,
+            ) != (
+                valid_address,
+                layout.size,
+                layout.reserved_offset,
+                layout.reserved_size,
+            ) {
+                return Err(format!(
+                    "the VkBindHeapInfoEXT for {layout:?} at {valid_address:#x} does not name the \
+                     layout"
+                ));
+            }
+            check_bind_against_the_specification(&rules, &bind)?;
+        }
+        let address = scenario.address.resolve(&layout);
+        if let Ok(bind) = layout.bind_info(address) {
+            check_bind_against_the_specification(&rules, &bind)?;
+        }
+
+        let reserved = (
+            u128::from(layout.reserved_offset),
+            u128::from(layout.reserved_offset) + u128::from(layout.reserved_size),
+        );
+        let mut placed: Vec<(u128, u128, Op)> = Vec::new();
+        for &(op, slots) in &runs {
+            let (alignments, writes) = run_rules(p, op);
+            for &(alignment, vuid) in &alignments {
+                if !slots.stride.is_multiple_of(alignment) {
+                    return Err(format!(
+                        "{vuid}: {op:?} gave {slots:?}, whose stride as heapArrayStride is not \
+                         a multiple of {alignment}"
+                    ));
+                }
+            }
+            if slots.count == 0 {
+                continue;
+            }
+            seen.conforming_runs_checked += 1;
+            if slots.descriptor_size > slots.stride {
+                return Err(format!(
+                    "{op:?} gave {slots:?}, whose descriptors overlap the next slot"
+                ));
+            }
+            for slot in [0, slots.count - 1] {
+                let offset = slots.offset(slot).ok_or_else(|| {
+                    format!("{op:?} gave {slots:?}, which has no offset for slot {slot}")
+                })?;
+                for &(alignment, vuid) in &alignments {
+                    if !offset.is_multiple_of(alignment) {
+                        return Err(format!(
+                            "{vuid}: {op:?} gave {slots:?}, whose slot {slot} at heapOffset \
+                             {offset} is not a multiple of {alignment}"
+                        ));
                     }
                 }
             }
+            for &(size, vuid) in &writes {
+                if slots.descriptor_size < size {
+                    return Err(format!(
+                        "{vuid}: {op:?} gave {slots:?}, whose slots are smaller than a \
+                         descriptor of {size} bytes"
+                    ));
+                }
+            }
+            let start = u128::from(slots.offset(0).unwrap_or(u64::MAX));
+            let end = u128::from(slots.offset(slots.count - 1).unwrap_or(u64::MAX))
+                + u128::from(slots.descriptor_size);
+            if end > u128::from(layout.size) {
+                return Err(format!(
+                    "{op:?} gave {slots:?}, which ends at {end}, past the heap range of {} bytes",
+                    layout.size
+                ));
+            }
+            if start < reserved.1 && reserved.0 < end {
+                return Err(format!(
+                    "descriptorheaps-reservedranges: {op:?} gave {slots:?}, which reaches into \
+                     the reserved range {reserved:?} of {layout:?}"
+                ));
+            }
+            if let Some(&(other_start, other_end, other)) = placed
+                .iter()
+                .find(|&&(other_start, other_end, _)| start < other_end && other_start < end)
+            {
+                return Err(format!(
+                    "{op:?} gave {slots:?} over bytes {start}..{end}, which overlap the bytes \
+                     {other_start}..{other_end} of {other:?}"
+                ));
+            }
+            placed.push((start, end, op));
         }
-        assert!(unaligned > 100 && zero > 10);
+        Ok(())
+    }
 
+    fn documented_bind_info(
+        layout: &DescriptorHeapLayout,
+        address: u64,
+    ) -> Result<(u64, u64, u64, u64), HeapLayoutError> {
+        if u128::from(layout.reserved_offset) + u128::from(layout.reserved_size)
+            > u128::from(layout.size)
+        {
+            return Err(HeapLayoutError::ReservedRangeOutsideHeap {
+                reserved_offset: layout.reserved_offset,
+                reserved_size: layout.reserved_size,
+                heap_size: layout.size,
+            });
+        }
+        if !u128::from(address).is_multiple_of(at_least_1(layout.alignment)) {
+            return Err(HeapLayoutError::Misaligned {
+                address,
+                alignment: layout.alignment,
+            });
+        }
+        if address == 0 {
+            return Err(HeapLayoutError::NullAddress);
+        }
+        if layout.size != 0 && u128::from(address) + u128::from(layout.size) - 1 > U64_MAX {
+            return Err(HeapLayoutError::AddressRangeOverflow {
+                address,
+                size: layout.size,
+            });
+        }
+        Ok((
+            address,
+            layout.size,
+            layout.reserved_offset,
+            layout.reserved_size,
+        ))
+    }
+
+    fn check_bind_info(
+        layout: &DescriptorHeapLayout,
+        address: u64,
+        seen: &mut Seen,
+    ) -> Result<(), String> {
+        let expected = documented_bind_info(layout, address);
+        let actual = layout.bind_info(address);
+        if let Ok(bind) = &actual
+            && (bind.s_type != vk::StructureType::BIND_HEAP_INFO_EXT || !bind.p_next.is_null())
+        {
+            return Err(format!(
+                "{layout:?} at {address:#x}: the VkBindHeapInfoEXT has sType {:?} and a pNext \
+                 that is null: {}",
+                bind.s_type,
+                bind.p_next.is_null()
+            ));
+        }
+        let actual = actual.map(|bind| {
+            (
+                bind.heap_range.address,
+                bind.heap_range.size,
+                bind.reserved_range_offset,
+                bind.reserved_range_size,
+            )
+        });
+        if actual != expected {
+            return Err(format!(
+                "{layout:?} at {address:#x}: bind_info gave {actual:?}, the first documented \
+                 error or the layout is {expected:?}"
+            ));
+        }
+        match actual {
+            Ok(_) => seen.bind_ok += 1,
+            Err(HeapLayoutError::ReservedRangeOutsideHeap { .. }) => {
+                seen.bind_reserved_range_outside_heap += 1;
+            }
+            Err(HeapLayoutError::Misaligned { .. }) => seen.bind_misaligned += 1,
+            Err(HeapLayoutError::NullAddress) => seen.bind_null_address += 1,
+            Err(_) => seen.bind_address_range_overflow += 1,
+        }
+        Ok(())
+    }
+
+    fn heap_sizes() -> impl Strategy<Value = u64> {
+        prop_oneof![
+            2 => Just(0u64),
+            1 => Just(1u64),
+            3 => prop::sample::select(vec![2u64, 0x100, 0x1000, 0x2_0000, 1 << 32]),
+            2 => prop::sample::select(vec![1u64 << 63, u64::MAX - 1, u64::MAX]),
+            1 => any::<u64>(),
+        ]
+    }
+
+    fn heap_alignments() -> impl Strategy<Value = u64> {
+        prop_oneof![
+            1 => Just(0u64),
+            1 => Just(1u64),
+            3 => (1u32..=16).prop_map(|shift| 1u64 << shift),
+            1 => prop::sample::select(vec![3u64, 24, 1 << 63, u64::MAX]),
+            1 => any::<u64>(),
+        ]
+    }
+
+    fn layouts() -> impl Strategy<Value = DescriptorHeapLayout> {
+        (
+            heap_sizes(),
+            heap_alignments(),
+            (0u8..5, any::<u64>()),
+            (0u8..5, any::<u64>()),
+        )
+            .prop_map(
+                |(size, alignment, (size_choice, size_random), (offset_choice, offset_random))| {
+                    let reserved_size = match size_choice {
+                        0 => 0,
+                        1 => size,
+                        2 => {
+                            u64::try_from(u128::from(size_random) % (u128::from(size) + 1)).unwrap()
+                        }
+                        3 => size / 2,
+                        _ => [1, 0x100, u64::MAX][(size_random % 3) as usize],
+                    };
+                    let room = size.saturating_sub(reserved_size);
+                    let reserved_offset = match offset_choice {
+                        0 => room,
+                        1 => 0,
+                        2 => u64::try_from(u128::from(offset_random) % (u128::from(room) + 1))
+                            .unwrap(),
+                        3 => room.saturating_add(1),
+                        _ => [1, 1 << 63, u64::MAX][(offset_random % 3) as usize],
+                    };
+                    DescriptorHeapLayout {
+                        size,
+                        alignment,
+                        reserved_offset,
+                        reserved_size,
+                    }
+                },
+            )
+    }
+
+    fn documented_index(slots: &DescriptorSlots, slot: u32) -> Option<u128> {
+        let index = u128::from(slots.first_index) + u128::from(slot);
+        (slot < slots.count && index <= U32_MAX).then_some(index)
+    }
+
+    fn documented_offset(slots: &DescriptorSlots, slot: u32) -> Option<u128> {
+        let offset = documented_index(slots, slot)? * u128::from(slots.stride);
+        (offset <= U64_MAX).then_some(offset)
+    }
+
+    fn documented_range(slots: &DescriptorSlots, slot: u32) -> Option<(u128, u128)> {
+        let start = documented_offset(slots, slot)?;
+        let end = start + u128::from(slots.descriptor_size);
+        (end <= USIZE_MAX).then_some((start, end))
+    }
+
+    fn documented_slices(slots: &DescriptorSlots, heap_length: usize) -> Option<Vec<(u128, u128)>> {
+        if slots.stride == 0 {
+            return None;
+        }
+        let length = u128::from(slots.descriptor_size.min(slots.stride));
+        let slice = |slot: u32| -> Option<(u128, u128)> {
+            let start = documented_offset(slots, slot)?;
+            let end = start + length;
+            (end <= USIZE_MAX && end <= heap_length as u128).then_some((start, end))
+        };
+        if let Some(last) = slots.count.checked_sub(1) {
+            slice(last)?;
+        }
+        (0..slots.count).map(slice).collect()
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct SlotCase {
+        slots: DescriptorSlots,
+        slot: u32,
+        heap_length: usize,
+    }
+
+    fn slot_cases() -> impl Strategy<Value = SlotCase> {
+        let first_index = prop_oneof![
+            3 => Just(0u32),
+            2 => Just(1u32),
+            3 => 2u32..64,
+            1 => 64u32..4096,
+            2 => (0u32..=3).prop_map(|below| u32::MAX - below),
+            1 => any::<u32>(),
+        ];
+        let count = prop_oneof![
+            2 => Just(0u32),
+            3 => Just(1u32),
+            3 => 2u32..8,
+            2 => 8u32..300,
+            1 => (0u32..=3).prop_map(|below| u32::MAX - below),
+            1 => any::<u32>(),
+        ];
+        let stride = prop_oneof![
+            2 => Just(0u64),
+            2 => Just(1u64),
+            3 => 2u64..=16,
+            3 => prop::sample::select(vec![24u64, 32, 48, 64, 72, 96, 128, 256]),
+            2 => (0u32..64).prop_map(|shift| 1u64 << shift),
+            1 => (0u64..=3).prop_map(|below| u64::MAX - below),
+            1 => (0u64..=2).prop_map(|past| u64::MAX / 2 + past),
+            1 => any::<u64>(),
+        ];
+        (
+            first_index,
+            count,
+            stride,
+            (0u8..8, any::<u64>()),
+            (0u8..7, any::<u32>()),
+            (0u8..6, any::<u64>()),
+        )
+            .prop_map(
+                |(
+                    first_index,
+                    count,
+                    stride,
+                    (size_choice, size_random),
+                    (slot_choice, slot_random),
+                    (heap_choice, heap_random),
+                )| {
+                    let descriptor_size = match size_choice {
+                        0 => 0,
+                        1 => 1,
+                        2 | 3 => stride,
+                        4 => stride.saturating_sub(1),
+                        5 => stride.saturating_add(1 + size_random % 64),
+                        6 => size_random % stride.max(1),
+                        _ => [u64::MAX, 1 << 32, size_random][(size_random % 3) as usize],
+                    };
+                    let slot = match slot_choice {
+                        0 => 0,
+                        1 => 1,
+                        2 | 3 => count.saturating_sub(1),
+                        4 => count,
+                        5 => u32::MAX,
+                        _ => slot_random,
+                    };
+                    let slot_end = |slot: u32, size: u64| {
+                        (u128::from(first_index) + u128::from(slot)) * u128::from(stride)
+                            + u128::from(size)
+                    };
+                    let last = count.saturating_sub(1);
+                    let heap_length = match heap_choice {
+                        0 => slot_end(last, descriptor_size.min(stride)),
+                        1 => slot_end(last, descriptor_size.min(stride)).saturating_sub(1),
+                        2 => slot_end(slot, descriptor_size),
+                        3 => slot_end(slot, descriptor_size).saturating_sub(1),
+                        4 => slot_end(last, stride),
+                        _ => u128::from(heap_random % (HEAP_BYTES as u64 + 1)),
+                    }
+                    .min(HEAP_BYTES as u128);
+                    SlotCase {
+                        slots: DescriptorSlots {
+                            first_index,
+                            count,
+                            stride,
+                            descriptor_size,
+                        },
+                        slot,
+                        heap_length: usize::try_from(heap_length).unwrap(),
+                    }
+                },
+            )
+    }
+
+    fn offsets_in<'a>(
+        heap: *const u8,
+        slices: impl Iterator<Item = &'a mut [u8]>,
+        most: usize,
+    ) -> Vec<(u128, u128)> {
+        slices
+            .take(most)
+            .map(|slice| {
+                let start = (slice.as_ptr() as usize - heap as usize) as u128;
+                (start, start + slice.len() as u128)
+            })
+            .collect()
+    }
+
+    fn check_slots(case: &SlotCase, seen: &mut Seen) -> Result<(), String> {
+        let SlotCase {
+            slots,
+            slot,
+            heap_length,
+        } = *case;
+        let mut buffer = vec![0u8; HEAP_BYTES];
+        let heap = &mut buffer[..heap_length];
+        let base = heap.as_ptr();
+
+        let index = slots.index(slot).map(u128::from);
+        if index != documented_index(&slots, slot) {
+            return Err(format!(
+                "index({slot}) gave {index:?}, the documentation gives {:?}",
+                documented_index(&slots, slot)
+            ));
+        }
+        let offset = slots.offset(slot).map(u128::from);
+        if offset != documented_offset(&slots, slot) {
+            return Err(format!(
+                "offset({slot}) gave {offset:?}, the documentation gives {:?}",
+                documented_offset(&slots, slot)
+            ));
+        }
+        let range = slots
+            .range(slot)
+            .map(|range| (range.start as u128, range.end as u128));
+        if range != documented_range(&slots, slot) {
+            return Err(format!(
+                "range({slot}) gave {range:?}, the documentation gives {:?}",
+                documented_range(&slots, slot)
+            ));
+        }
+        let expected_end = ((u128::from(slots.first_index) + u128::from(slots.count))
+            * u128::from(slots.stride))
+        .min(U64_MAX);
+        if u128::from(slots.end()) != expected_end {
+            return Err(format!(
+                "end() gave {}, the documentation gives {expected_end}",
+                slots.end()
+            ));
+        }
+        let expected_bytes =
+            documented_range(&slots, slot).filter(|&(_, end)| end <= heap_length as u128);
+        let bytes = slots.bytes(heap, slot).map(|bytes| {
+            let start = (bytes.as_ptr() as usize - base as usize) as u128;
+            (start, start + bytes.len() as u128)
+        });
+        if bytes != expected_bytes {
+            return Err(format!(
+                "bytes of a {heap_length}-byte heap, slot {slot}, gave {bytes:?}, the \
+                 documentation gives {expected_bytes:?}"
+            ));
+        }
+        let expected_slices = documented_slices(&slots, heap_length);
+        let most = expected_slices.as_ref().map_or(0, Vec::len) + 1;
+        let slices = slots
+            .slices(heap)
+            .map(|slices| offsets_in(base, slices, most));
+        if slices != expected_slices {
+            return Err(format!(
+                "slices of a {heap_length}-byte heap gave {slices:?}, the documentation gives \
+                 {expected_slices:?}"
+            ));
+        }
+
+        if slot >= slots.count {
+            seen.slot_outside_the_run += 1;
+        } else if index.is_none() {
+            seen.index_past_u32 += 1;
+        } else if offset.is_none() {
+            seen.offset_past_u64 += 1;
+        } else if range.is_none() {
+            seen.range_past_usize += 1;
+        } else if bytes.is_none() {
+            seen.bytes_past_the_heap += 1;
+        } else {
+            seen.bytes_in_the_heap += 1;
+        }
+        match &slices {
+            None if slots.stride == 0 => seen.slices_with_a_stride_of_0 += 1,
+            None => seen.slices_past_the_heap += 1,
+            Some(slices) if slices.is_empty() => seen.slices_of_an_empty_run += 1,
+            Some(slices) => {
+                seen.slices_in_the_heap += 1;
+                if slots.descriptor_size > slots.stride {
+                    seen.slices_cut_to_the_stride += 1;
+                }
+                if slices
+                    .last()
+                    .is_some_and(|&(_, end)| end == heap_length as u128)
+                {
+                    seen.slices_ending_with_the_last_descriptor += 1;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn check_slices_against_bytes(case: &SlotCase) -> Result<(), String> {
+        let stride = case.slots.stride.max(1);
+        let slots = DescriptorSlots {
+            stride,
+            descriptor_size: case.slots.descriptor_size.min(stride),
+            ..case.slots
+        };
+        let mut buffer = vec![0u8; HEAP_BYTES];
+        let heap = &mut buffer[..case.heap_length];
+        let base = heap.as_ptr();
+        let span = |bytes: &mut [u8]| {
+            let start = (bytes.as_ptr() as usize - base as usize) as u128;
+            (start, start + bytes.len() as u128)
+        };
+        let every_bytes: Option<Vec<(u128, u128)>> = if slots.count as usize <= HEAP_BYTES + 1 {
+            (0..slots.count)
+                .map(|slot| slots.bytes(heap, slot).map(span))
+                .collect()
+        } else if slots.bytes(heap, slots.count - 1).is_none() {
+            None
+        } else {
+            return Err(format!(
+                "{slots:?}: the last of {} slots fits in a heap of {} bytes",
+                slots.count, case.heap_length
+            ));
+        };
+        let most = every_bytes.as_ref().map_or(0, Vec::len) + 1;
+        let slices = slots
+            .slices(heap)
+            .map(|slices| offsets_in(base, slices, most));
+        if slices != every_bytes {
+            return Err(format!(
+                "{slots:?} in a heap of {} bytes: slices gave {slices:?}, but bytes of every \
+                 slot gives {every_bytes:?}",
+                case.heap_length
+            ));
+        }
+        Ok(())
+    }
+
+    fn cases(default: u32) -> ProptestConfig {
+        let cases = std::env::var("PROPTEST_CASES")
+            .ok()
+            .and_then(|cases| cases.parse().ok())
+            .unwrap_or(default);
+        ProptestConfig {
+            cases,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        }
+    }
+
+    proptest! {
+        #![proptest_config(cases(2000))]
+
+        #[test]
+        fn plans_give_the_runs_errors_and_layouts_the_documentation_describes(
+            scenario in scenarios(every_heap())
+        ) {
+            check_plan(&scenario, &mut Seen::default()).map_err(TestCaseError::fail)?;
+        }
+
+        #[test]
+        fn conforming_resource_heaps_meet_vuid_11232_11233_11234_11235_11251_11252_11365_11411_11435_11436_and_11207(
+            scenario in scenarios(vec![Heap::Resource])
+        ) {
+            check_the_specification(&scenario, &mut Seen::default())
+                .map_err(TestCaseError::fail)?;
+        }
+
+        #[test]
+        fn conforming_sampler_heaps_meet_vuid_11223_11224_11225_11226_11253_11365_11375_11411_11434_and_11203(
+            scenario in scenarios(vec![Heap::Sampler, Heap::SamplerWithEmbedded])
+        ) {
+            check_the_specification(&scenario, &mut Seen::default())
+                .map_err(TestCaseError::fail)?;
+        }
+    }
+
+    proptest! {
+        #![proptest_config(cases(5000))]
+
+        #[test]
+        fn bind_info_gives_the_first_documented_error_or_the_layout(
+            layout in layouts(),
+            address in addresses(),
+        ) {
+            check_bind_info(&layout, address.resolve(&layout), &mut Seen::default())
+                .map_err(TestCaseError::fail)?;
+        }
+
+        #[test]
+        fn slot_accessors_follow_the_documented_arithmetic_without_panicking(
+            case in slot_cases()
+        ) {
+            check_slots(&case, &mut Seen::default()).map_err(TestCaseError::fail)?;
+        }
+
+        #[test]
+        fn slices_are_the_bytes_of_every_slot_when_descriptors_fit_their_stride(
+            case in slot_cases()
+        ) {
+            check_slices_against_bytes(&case).map_err(TestCaseError::fail)?;
+        }
+    }
+
+    #[test]
+    fn the_generated_inputs_reach_every_error_and_success() {
+        let mut runner = TestRunner::new_with_rng(
+            ProptestConfig::default(),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let mut seen = Seen::default();
+        let cases = 2000;
+
+        let conforming = conforming_properties();
+        for _ in 0..cases {
+            let properties = conforming.new_tree(&mut runner).unwrap().current();
+            assert!(
+                meets_the_required_limits(&properties),
+                "the conforming generator made {properties:?}"
+            );
+        }
+
+        let plans = scenarios(every_heap());
+        let mut conforming_scenarios = 0;
+        for _ in 0..cases {
+            let scenario = plans.new_tree(&mut runner).unwrap().current();
+            if meets_the_required_limits(&scenario.properties) {
+                conforming_scenarios += 1;
+            }
+            check_plan(&scenario, &mut seen).unwrap();
+            check_the_specification(&scenario, &mut seen).unwrap();
+        }
+        let bind = (layouts(), addresses());
+        for _ in 0..cases {
+            let (layout, address) = bind.new_tree(&mut runner).unwrap().current();
+            check_bind_info(&layout, address.resolve(&layout), &mut seen).unwrap();
+        }
+        let slots = slot_cases();
+        for _ in 0..cases {
+            let case = slots.new_tree(&mut runner).unwrap().current();
+            check_slots(&case, &mut seen).unwrap();
+        }
+
+        let runs = seen.runs_placed
+            + seen.zero_descriptor_size
+            + seen.unaligned_descriptor_size
+            + seen.run_overflow;
+        let finishes = seen.layouts + seen.too_large + seen.finish_overflow;
+        assert!(
+            conforming_scenarios * 4 > cases,
+            "{conforming_scenarios} of {cases} scenarios have conforming properties"
+        );
+        assert!(seen.runs_placed * 3 > runs, "{seen:?}");
+        assert!(seen.run_overflow * 20 > runs, "{seen:?}");
+        assert!(seen.unaligned_descriptor_size * 20 > runs, "{seen:?}");
+        assert!(seen.zero_descriptor_size * 50 > runs, "{seen:?}");
+        assert!(seen.runs_after_a_rejected_run * 10 > runs, "{seen:?}");
+        assert!(seen.empty_runs_that_moved_the_end > 20, "{seen:?}");
+        assert!(seen.uniform_strides_rounded_up > 50, "{seen:?}");
+        assert!(seen.layouts * 3 > finishes, "{seen:?}");
+        assert!(seen.too_large * 10 > finishes, "{seen:?}");
+        assert!(seen.finish_overflow * 40 > finishes, "{seen:?}");
+        assert!(seen.conforming_layouts_checked * 8 > cases, "{seen:?}");
+        assert!(seen.conforming_runs_checked * 4 > cases, "{seen:?}");
+
+        let binds = seen.bind_ok
+            + seen.bind_reserved_range_outside_heap
+            + seen.bind_misaligned
+            + seen.bind_null_address
+            + seen.bind_address_range_overflow;
+        for (name, count) in [
+            ("Ok", seen.bind_ok),
+            (
+                "ReservedRangeOutsideHeap",
+                seen.bind_reserved_range_outside_heap,
+            ),
+            ("Misaligned", seen.bind_misaligned),
+            ("NullAddress", seen.bind_null_address),
+            ("AddressRangeOverflow", seen.bind_address_range_overflow),
+        ] {
+            assert!(
+                count * 25 > binds,
+                "bind_info gave {name} {count} times: {seen:?}"
+            );
+        }
+
+        for (name, count) in [
+            ("a slot outside the run", seen.slot_outside_the_run),
+            ("an index past u32", seen.index_past_u32),
+            ("an offset past u64", seen.offset_past_u64),
+            ("bytes past the heap", seen.bytes_past_the_heap),
+            ("bytes in the heap", seen.bytes_in_the_heap),
+            ("slices with a stride of 0", seen.slices_with_a_stride_of_0),
+            ("slices of an empty run", seen.slices_of_an_empty_run),
+            ("slices in the heap", seen.slices_in_the_heap),
+            ("slices cut to the stride", seen.slices_cut_to_the_stride),
+            ("slices past the heap", seen.slices_past_the_heap),
+            (
+                "slices ending with the last descriptor",
+                seen.slices_ending_with_the_last_descriptor,
+            ),
+        ] {
+            assert!(count * 100 > cases, "{name}: {count} of {cases}: {seen:?}");
+        }
+        assert!(seen.range_past_usize * 200 > cases, "{seen:?}");
+    }
+
+    #[test]
+    fn properties_that_were_not_queried_have_zero_descriptor_sizes() {
         let unqueried = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default();
         let mut plan = ResourceHeapPlan::new(&unqueried);
         assert_eq!(plan.buffers(1), Err(HeapLayoutError::ZeroDescriptorSize));
@@ -927,147 +2188,6 @@ mod tests {
         assert_eq!(
             SamplerHeapPlan::new(&unqueried).samplers(1),
             Err(HeapLayoutError::ZeroDescriptorSize)
-        );
-    }
-
-    #[test]
-    fn bytes_are_exactly_one_descriptor_and_stay_inside_the_heap() {
-        let properties = radv();
-        let mut plan = ResourceHeapPlan::new(&properties);
-        let buffers = plan.buffers(1).unwrap();
-        let images = plan.images(2).unwrap();
-        let layout = plan.finish().unwrap();
-        let mut heap = vec![0u8; layout.size as usize];
-
-        assert_eq!(buffers.range(0), Some(0..16));
-        assert_eq!(images.first_index, 1);
-        assert_eq!(images.range(1), Some(64..96));
-        images.bytes(&mut heap, 1).unwrap().fill(0xff);
-        assert!(heap[..64].iter().all(|byte| *byte == 0));
-        assert!(heap[64..96].iter().all(|byte| *byte == 0xff));
-
-        assert!(images.bytes(&mut heap, 2).is_none());
-        assert!(images.bytes(&mut heap[..80], 1).is_none());
-    }
-
-    #[test]
-    fn sampler_heap_reserves_after_the_samplers() {
-        let properties = awkward();
-        let mut plan = SamplerHeapPlan::new(&properties);
-        let samplers = plan.samplers(5).unwrap();
-        let layout = plan.finish().unwrap();
-        assert_eq!(samplers.stride, 24);
-        assert_eq!(samplers.end(), 120);
-        assert_eq!(layout.reserved_offset, 120);
-        assert_eq!(layout.reserved_size, 96);
-        assert_eq!(layout.size, 216);
-        assert_eq!(layout.alignment, 64);
-    }
-
-    #[test]
-    fn embedded_samplers_reserve_the_larger_of_the_two_reserved_ranges() {
-        let mut seed = 0x2545_f491_4f6c_dd1d_u64;
-        let mut next = move || {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            seed
-        };
-        let mut reserved = |choice: u64| match choice % 5 {
-            0 => 0,
-            1 => next() % 4096,
-            2 => next() % (1 << 20),
-            3 => next(),
-            _ => u64::MAX - next() % 4096,
-        };
-        let mut outcomes = [0; 3];
-        for case in 0..5000_u64 {
-            let without = reserved(case);
-            let with = reserved(case / 5);
-            let sampler_size = 1 << (case % 7);
-            let alignment = (sampler_size >> (case % 3)).max(1);
-            let count = (case * 7919 % 4001) as u32;
-            let max = match case % 3 {
-                0 => u64::MAX,
-                1 => 1 << 20,
-                _ => 1 << 16,
-            };
-            let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
-                .sampler_heap_alignment(64)
-                .max_sampler_heap_size(max)
-                .min_sampler_heap_reserved_range(without)
-                .min_sampler_heap_reserved_range_with_embedded(with)
-                .sampler_descriptor_size(sampler_size)
-                .sampler_descriptor_alignment(alignment);
-            let context = format!(
-                "{count} samplers of {sampler_size} bytes, reserved {without} or {with} \
-                 with embedded samplers, at most {max} bytes"
-            );
-            let samplers_end = u128::from(count) * u128::from(sampler_size);
-            let expected = |reserved_size: u64| {
-                let size = samplers_end + u128::from(reserved_size);
-                match u64::try_from(size) {
-                    Err(_) => Err(HeapLayoutError::Overflow),
-                    Ok(size) if size > max => Err(HeapLayoutError::TooLarge { size, max }),
-                    Ok(size) => Ok((samplers_end as u64, reserved_size, size)),
-                }
-            };
-            let layout = |mut plan: SamplerHeapPlan| {
-                plan.samplers(count).unwrap();
-                plan.finish().map(|layout| {
-                    assert_eq!(layout.alignment, 64);
-                    (layout.reserved_offset, layout.reserved_size, layout.size)
-                })
-            };
-
-            let embedded = layout(SamplerHeapPlan::with_embedded_samplers(&properties));
-            outcomes[match embedded {
-                Ok(_) => 0,
-                Err(HeapLayoutError::TooLarge { .. }) => 1,
-                Err(_) => 2,
-            }] += 1;
-            assert_eq!(embedded, expected(without.max(with)), "{context}");
-            assert_eq!(
-                layout(SamplerHeapPlan::new(&properties)),
-                expected(without),
-                "{context}"
-            );
-        }
-        assert!(
-            outcomes.iter().all(|&count| count > 100),
-            "every outcome is exercised: {outcomes:?}"
-        );
-    }
-
-    #[test]
-    fn limits_are_errors_not_panics() {
-        let properties = awkward();
-        let mut plan = SamplerHeapPlan::new(&properties);
-        plan.samplers(1000).unwrap();
-        assert_eq!(
-            plan.finish(),
-            Err(HeapLayoutError::TooLarge {
-                size: 24_096,
-                max: 4096
-            })
-        );
-
-        let mut plan = ResourceHeapPlan::new(&properties);
-        plan.images(u32::MAX).unwrap();
-        assert_eq!(
-            plan.images(1).map(|slots| slots.index(0)),
-            Ok(Some(u32::MAX))
-        );
-        assert_eq!(plan.images(0), Err(HeapLayoutError::Overflow));
-        assert_eq!(plan.images(1), Err(HeapLayoutError::Overflow));
-
-        let odd = radv().image_descriptor_size(40);
-        assert_eq!(
-            ResourceHeapPlan::new(&odd).images(1),
-            Err(HeapLayoutError::UnalignedDescriptorSize {
-                size: 40,
-                alignment: 32
-            })
         );
     }
 
@@ -1083,7 +2203,10 @@ mod tests {
             u32::MAX - 1,
             u32::MAX,
         ];
-        let properties = awkward();
+        let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+            .max_resource_heap_size(1 << 16)
+            .image_descriptor_size(72)
+            .image_descriptor_alignment(24);
         let stride = properties.image_descriptor_size;
         let mut fitting = 0;
         let mut overflowing = 0;
@@ -1128,401 +2251,33 @@ mod tests {
     }
 
     #[test]
-    fn descriptor_alignments_of_any_size_are_laid_out_or_rejected() {
-        let mut seed = 0x9e37_79b9_7f4a_7c15_u64;
-        let mut next = move || {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            seed
-        };
-        let mut alignment = |random: u64| match random % 6 {
-            0 => 1 << (next() % 64),
-            1 => next(),
-            2 => next() >> 32,
-            3 => (next() >> 31) | 1,
-            4 => u64::MAX - next() % 4,
-            _ => next() % 64,
-        };
-        let mut overflowing = 0;
-        let mut fitting = 0;
-        for case in 0..4000_u64 {
-            let buffer_alignment = alignment(case);
-            let image_alignment = alignment(case / 6);
-            let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
-                .max_resource_heap_size(u64::MAX)
-                .buffer_descriptor_size(16)
-                .image_descriptor_size(32)
-                .buffer_descriptor_alignment(buffer_alignment)
-                .image_descriptor_alignment(image_alignment);
-            let (a, b) = (
-                u128::from(buffer_alignment.max(1)),
-                u128::from(image_alignment.max(1)),
-            );
-            let gcd = {
-                let (mut a, mut b) = (a, b);
-                while b != 0 {
-                    (a, b) = (b, a % b);
-                }
-                a
-            };
-            let both = u64::try_from(a / gcd * b).ok();
-            let context = format!("alignments {buffer_alignment} and {image_alignment}");
-
-            let mut plan = ResourceHeapPlan::new(&properties);
-            let uniform = plan.uniform(1);
-            let mut after_one_byte = ResourceHeapPlan::new(&properties);
-            after_one_byte.plan.cursor = 1;
-            let layout = after_one_byte.finish();
-            match both {
-                None => {
-                    overflowing += 1;
-                    assert_eq!(uniform, Err(HeapLayoutError::Overflow), "{context}");
-                    assert_eq!(layout, Err(HeapLayoutError::Overflow), "{context}");
-                    assert_eq!(plan.finish(), Err(HeapLayoutError::Overflow), "{context}");
-                }
-                Some(both) => {
-                    fitting += 1;
-                    let stride = 32_u64.checked_next_multiple_of(both);
-                    assert_eq!(uniform.map(|slots| slots.stride).ok(), stride, "{context}");
-                    assert_eq!(
-                        layout.map(|layout| layout.reserved_offset),
-                        Ok(both),
-                        "{context}"
-                    );
-                }
-            }
-        }
-        assert!(overflowing > 100 && fitting > 100);
-    }
-
-    #[test]
-    fn slices_cover_each_slot_once() {
-        let properties = awkward();
-        let mut plan = ResourceHeapPlan::new(&properties);
-        plan.buffers(1).unwrap();
-        let slots = plan.uniform(3).unwrap();
-        let layout = plan.finish().unwrap();
-        let mut heap = vec![0u8; layout.size as usize];
-
-        for (slot, bytes) in slots.slices(&mut heap).unwrap().enumerate() {
-            assert_eq!(bytes.len() as u64, slots.descriptor_size);
-            bytes.fill(slot as u8 + 1);
-        }
-        for slot in 0..3 {
-            let range = slots.range(slot).unwrap();
-            assert!(heap[range].iter().all(|&byte| byte == slot as u8 + 1));
-        }
-        let written = heap.iter().filter(|&&byte| byte != 0).count() as u64;
-        assert_eq!(written, 3 * slots.descriptor_size);
-
-        assert!(slots.slices(&mut heap[..10]).is_none());
-        let broken = DescriptorSlots {
-            first_index: u32::MAX,
-            count: u32::MAX,
-            stride: 0,
-            descriptor_size: u64::MAX,
-        };
-        assert!(broken.slices(&mut heap).is_none());
-        let huge = DescriptorSlots {
-            stride: u64::MAX,
-            ..broken
-        };
-        assert_eq!(huge.end(), u64::MAX);
-        assert!(huge.slices(&mut heap).is_none());
-        let empty = DescriptorSlots { count: 0, ..slots };
-        assert_eq!(empty.slices(&mut heap).unwrap().count(), 0);
-    }
-
-    #[test]
-    fn slices_accept_exactly_the_heaps_that_bytes_accepts_for_every_slot() {
-        let mut next = xorshift(0xd1b5_4a32_d192_ed03);
-        let mut buffer = vec![0u8; 1 << 16];
+    fn a_heap_that_ends_with_the_last_descriptor_holds_the_slices_of_the_run() {
+        let mut heap = [0u8; 1];
         let one_byte_descriptor = DescriptorSlots {
             first_index: 0,
             count: 1,
             stride: 8,
             descriptor_size: 1,
         };
-        assert!(
-            one_byte_descriptor.bytes(&mut buffer[..1], 0).is_some()
-                && one_byte_descriptor.slices(&mut buffer[..1]).is_some(),
-            "a heap that ends with the last descriptor holds the slices of the run"
-        );
-        let mut outcomes = [0; 3];
-        let mut zero_strides = 0;
-        let mut wide_near_the_limit = 0;
-        for case in 0..20_000_u64 {
-            let stride = match case % 8 {
-                0 => 1 + next() % 8,
-                1 => [8, 16, 24, 32, 48, 72, 96, 256][(next() % 8) as usize],
-                2 => 1 + next() % 4096,
-                3 => 1 << (next() % 64),
-                4 => u64::MAX - next() % 4,
-                5 => next() | 1,
-                6 => 0,
-                _ => 1,
-            };
-            let first_index = match next() % 6 {
-                0 => 0,
-                1 => 1,
-                2 => (next() % 64) as u32,
-                3 => (next() % 4096) as u32,
-                4 => u32::MAX - (next() % 4) as u32,
-                _ => next() as u32,
-            };
-            let count = (next() % 6) as u32;
-            let descriptor_size = match next() % 5 {
-                0 => 0,
-                1 => 1,
-                2 => stride,
-                3 => stride.saturating_sub(1),
-                _ => next() % stride.max(1),
-            }
-            .min(stride);
-            let slots = DescriptorSlots {
-                first_index,
-                count,
-                stride,
-                descriptor_size,
-            };
-            let last_end = (u128::from(first_index) + u128::from(count.saturating_sub(1)))
-                * u128::from(stride)
-                + u128::from(descriptor_size);
-            let heap_length = match next() % 5 {
-                0 => last_end,
-                1 => last_end.saturating_sub(1),
-                2 => last_end + 1,
-                3 => u128::from(slots.end()),
-                _ => u128::from(next() % (1 << 16)),
-            }
-            .min(1 << 16) as usize;
-            let heap = &mut buffer[..heap_length];
-            let context = format!("{slots:?} in a heap of {heap_length} bytes");
-
-            if stride == 0 {
-                zero_strides += 1;
-                assert!(
-                    slots.slices(heap).is_none(),
-                    "{context}: a stride of 0 gives no slices"
-                );
-                continue;
-            }
-            let expected: Option<Vec<(usize, usize)>> = (0..count)
-                .map(|slot| {
-                    slots
-                        .bytes(heap, slot)
-                        .map(|bytes| (bytes.as_ptr() as usize, bytes.len()))
-                })
-                .collect();
-            let actual = slots.slices(heap).map(|slices| {
-                slices
-                    .map(|bytes| (bytes.as_ptr() as usize, bytes.len()))
-                    .collect::<Vec<_>>()
-            });
-            outcomes[match (&actual, count) {
-                (None, _) => 0,
-                (Some(_), 0) => 1,
-                (Some(_), _) => 2,
-            }] += 1;
-            assert_eq!(
-                actual, expected,
-                "{context}: slices is Some exactly when bytes is Some for every slot, with the same slices"
-            );
-
-            if stride == u64::MAX {
-                continue;
-            }
-            let wide = DescriptorSlots {
-                descriptor_size: stride + 1 + next() % (u64::MAX - stride).min(64),
-                ..slots
-            };
-            assert!(wide.descriptor_size > stride, "{context}");
-            if stride > u64::MAX - 64 {
-                wide_near_the_limit += 1;
-            }
-            let cut = DescriptorSlots {
-                descriptor_size: stride,
-                ..slots
-            };
-            let slices = |slots: DescriptorSlots, heap: &mut [u8]| {
-                slots.slices(heap).map(|slices| {
-                    slices
-                        .map(|bytes| (bytes.as_ptr() as usize, bytes.len()))
-                        .collect::<Vec<_>>()
-                })
-            };
-            assert_eq!(
-                slices(wide, heap),
-                slices(cut, heap),
-                "{context}: a descriptor larger than the stride is cut to the stride"
-            );
-        }
-        assert!(
-            outcomes.iter().all(|&count| count > 500)
-                && zero_strides > 500
-                && wide_near_the_limit > 500,
-            "every outcome is exercised: {outcomes:?}, {zero_strides} strides of 0, \
-             {wide_near_the_limit} descriptors larger than a stride near u64::MAX"
-        );
-    }
-
-    #[test]
-    fn bind_info_checks_the_address() {
-        let properties = awkward();
-        let mut plan = ResourceHeapPlan::new(&properties);
-        plan.images(4).unwrap();
-        let layout = plan.finish().unwrap();
-
-        let bind = layout.bind_info(0x1_0000).unwrap();
-        assert_eq!(bind.heap_range.address, 0x1_0000);
-        assert_eq!(bind.heap_range.size, layout.size);
-        assert_eq!(bind.reserved_range_offset, layout.reserved_offset);
-        assert_eq!(bind.reserved_range_size, 1024);
+        assert!(one_byte_descriptor.bytes(&mut heap, 0).is_some());
         assert_eq!(
-            layout.bind_info(0x1_0040).err(),
-            Some(HeapLayoutError::Misaligned {
-                address: 0x1_0040,
-                alignment: 4096
-            })
+            one_byte_descriptor
+                .slices(&mut heap)
+                .map(|slices| slices.map(|slice| slice.len()).collect::<Vec<_>>()),
+            Some(vec![1]),
+            "the heap reaches the end of the last descriptor, not the end of its slot"
         );
     }
 
     #[test]
-    fn bind_info_accepts_exactly_the_multiples_of_the_alignment_with_0_as_1() {
-        let alignments = [0, 1, 2, 3, 16, 24, 4096, 65536, 1 << 63, u64::MAX];
-        let addresses = [
-            0,
-            1,
-            2,
-            3,
-            16,
-            24,
-            48,
-            0x1_0000,
-            0x1_0040,
-            0xdead_beef,
-            1 << 63,
-            u64::MAX - 1,
-            u64::MAX,
-        ];
-        let mut accepted = 0;
-        let mut rejected = 0;
-        for alignment in alignments {
-            let layout = DescriptorHeapLayout {
-                size: 0x2_0000,
-                alignment,
-                reserved_offset: 0x1_f000,
-                reserved_size: 0x1000,
-            };
-            for address in addresses {
-                let context = format!("address {address:#x}, alignment {alignment}");
-                let inside_the_address_space =
-                    address != 0 && u128::from(address) + u128::from(layout.size) <= 1 << 64;
-                match layout.bind_info(address) {
-                    Ok(bind) => {
-                        accepted += 1;
-                        assert!(address.is_multiple_of(alignment.max(1)), "{context}");
-                        assert!(inside_the_address_space, "{context}");
-                        assert_eq!(bind.heap_range.address, address, "{context}");
-                        assert_eq!(bind.heap_range.size, layout.size, "{context}");
-                        assert_eq!(
-                            bind.reserved_range_offset, layout.reserved_offset,
-                            "{context}"
-                        );
-                        assert_eq!(bind.reserved_range_size, layout.reserved_size, "{context}");
-                    }
-                    Err(HeapLayoutError::Misaligned {
-                        address: rejected_address,
-                        alignment: required,
-                    }) => {
-                        rejected += 1;
-                        assert!(!address.is_multiple_of(alignment.max(1)), "{context}");
-                        assert_eq!((rejected_address, required), (address, alignment));
-                    }
-                    Err(error) => {
-                        assert!(address.is_multiple_of(alignment.max(1)), "{context}");
-                        assert!(!inside_the_address_space, "{context}: {error:?}");
-                    }
-                }
-            }
-        }
-        assert!(accepted > 20 && rejected > 20);
-    }
-
-    #[test]
-    fn bind_info_rejects_exactly_the_ranges_the_device_must_not_be_given() {
-        let sizes = [0, 1, 0x100, 0x1000, 0x2_0000, 1 << 63, u64::MAX];
-        let reserved_offsets = [0, 0x100, 0x1000, 0x1_f000, 1 << 63, u64::MAX];
-        let reserved_sizes = [0, 0x100, 0x1000, u64::MAX];
-        let alignments = [0, 1, 0x100, 4096];
-        let addresses = [
-            0,
-            1,
-            0x100,
-            0x1000,
-            0x1_0000,
-            1 << 63,
-            u64::MAX - 0x1_ffff,
-            u64::MAX - 0xfff,
-            u64::MAX - 0xff,
-            u64::MAX,
-        ];
-        let mut outcomes = [0; 5];
-        for size in sizes {
-            for reserved_offset in reserved_offsets {
-                for reserved_size in reserved_sizes {
-                    for alignment in alignments {
-                        let layout = DescriptorHeapLayout {
-                            size,
-                            alignment,
-                            reserved_offset,
-                            reserved_size,
-                        };
-                        for address in addresses {
-                            let expected = if u128::from(reserved_offset)
-                                + u128::from(reserved_size)
-                                > u128::from(size)
-                            {
-                                outcomes[0] += 1;
-                                Err(HeapLayoutError::ReservedRangeOutsideHeap {
-                                    reserved_offset,
-                                    reserved_size,
-                                    heap_size: size,
-                                })
-                            } else if u128::from(address) % u128::from(alignment.max(1)) != 0 {
-                                outcomes[1] += 1;
-                                Err(HeapLayoutError::Misaligned { address, alignment })
-                            } else if address == 0 {
-                                outcomes[2] += 1;
-                                Err(HeapLayoutError::NullAddress)
-                            } else if u128::from(address) + u128::from(size) > 1 << 64 {
-                                outcomes[3] += 1;
-                                Err(HeapLayoutError::AddressRangeOverflow { address, size })
-                            } else {
-                                outcomes[4] += 1;
-                                Ok((address, size, reserved_offset, reserved_size))
-                            };
-                            let bind = layout.bind_info(address).map(|bind| {
-                                (
-                                    bind.heap_range.address,
-                                    bind.heap_range.size,
-                                    bind.reserved_range_offset,
-                                    bind.reserved_range_size,
-                                )
-                            });
-                            assert_eq!(bind, expected, "{layout:?} at {address:#x}");
-                        }
-                    }
-                }
-            }
-        }
-        assert!(
-            outcomes.iter().all(|&count| count > 50),
-            "every outcome is exercised: {outcomes:?}"
-        );
-
-        let nothing_to_hold = radv();
+    fn plans_without_slots_or_reserved_range_have_size_0_and_cannot_be_bound_at_0() {
+        let nothing_to_hold = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
+            .buffer_descriptor_size(16)
+            .buffer_descriptor_alignment(16)
+            .image_descriptor_size(32)
+            .image_descriptor_alignment(32)
+            .sampler_descriptor_size(16)
+            .sampler_descriptor_alignment(16);
         let mut empty_runs = ResourceHeapPlan::new(&nothing_to_hold);
         empty_runs.buffers(0).unwrap();
         empty_runs.images(0).unwrap();
@@ -1542,194 +2297,5 @@ mod tests {
                 "{layout:?}: no buffer has device address 0, whatever the size of the heap"
             );
         }
-    }
-
-    fn xorshift(mut seed: u64) -> impl FnMut() -> u64 {
-        move || {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            seed
-        }
-    }
-
-    fn random_run(
-        resources: &mut ResourceHeapPlan,
-        samplers: &mut SamplerHeapPlan,
-        kind: u64,
-        count: u32,
-    ) -> Result<DescriptorSlots, HeapLayoutError> {
-        match kind % 4 {
-            0 => resources.buffers(count),
-            1 => resources.images(count),
-            2 => resources.uniform(count),
-            _ => samplers.samplers(count),
-        }
-    }
-
-    #[test]
-    fn a_run_of_0_slots_moves_the_plan_to_a_multiple_of_its_stride_if_that_fits() {
-        let mut next = xorshift(0x6a09_e667_f3bc_c908);
-        let sizes = [
-            1,
-            3,
-            8,
-            16,
-            24,
-            48,
-            72,
-            96,
-            1 << 20,
-            1 << 32,
-            1 << 63,
-            (1 << 63) + 1,
-            u64::MAX,
-        ];
-        let mut outcomes = [0; 4];
-        for _ in 0..5000 {
-            let mut pick = || sizes[(next() % sizes.len() as u64) as usize];
-            let (buffer_size, image_size, sampler_size) = (pick(), pick(), pick());
-            let properties = vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
-                .max_resource_heap_size(u64::MAX)
-                .max_sampler_heap_size(u64::MAX)
-                .buffer_descriptor_size(buffer_size)
-                .buffer_descriptor_alignment(1)
-                .image_descriptor_size(image_size)
-                .image_descriptor_alignment(1)
-                .sampler_descriptor_size(sampler_size)
-                .sampler_descriptor_alignment(1);
-            let mut resources = ResourceHeapPlan::new(&properties);
-            let mut samplers = SamplerHeapPlan::new(&properties);
-            for _ in 0..6 {
-                let kind = next() % 4;
-                let count = match next() % 4 {
-                    0 | 1 => 0,
-                    2 => (next() % 4) as u32,
-                    _ => next() as u32,
-                };
-                let stride = match kind {
-                    0 => buffer_size,
-                    1 => image_size,
-                    2 => buffer_size.max(image_size),
-                    _ => sampler_size,
-                };
-                let cursor = |resources: &ResourceHeapPlan, samplers: &SamplerHeapPlan| {
-                    if kind == 3 {
-                        samplers.plan.cursor
-                    } else {
-                        resources.plan.cursor
-                    }
-                };
-                let before = cursor(&resources, &samplers);
-                let run = random_run(&mut resources, &mut samplers, kind, count);
-                let after = cursor(&resources, &samplers);
-                if count != 0 {
-                    continue;
-                }
-                let context = format!("a run of 0 slots of stride {stride} at byte {before}");
-                let first_index = u128::from(before).div_ceil(u128::from(stride));
-                let start = first_index * u128::from(stride);
-                if first_index > u128::from(u32::MAX) || start > u128::from(u64::MAX) {
-                    outcomes[if first_index > u128::from(u32::MAX) {
-                        2
-                    } else {
-                        3
-                    }] += 1;
-                    assert_eq!(run, Err(HeapLayoutError::Overflow), "{context}");
-                    assert_eq!(after, before, "{context}: a rejected run leaves the plan");
-                } else {
-                    outcomes[usize::from(after != before)] += 1;
-                    assert_eq!(
-                        run,
-                        Ok(DescriptorSlots {
-                            first_index: first_index as u32,
-                            count: 0,
-                            stride,
-                            descriptor_size: stride,
-                        }),
-                        "{context}"
-                    );
-                    assert_eq!(
-                        u128::from(after),
-                        start,
-                        "{context}: the plan moves up to the next multiple of the stride"
-                    );
-                }
-            }
-        }
-        assert!(
-            outcomes.iter().all(|&count| count > 20),
-            "every outcome is exercised: {outcomes:?}"
-        );
-    }
-
-    #[test]
-    fn a_descriptor_alignment_of_0_lays_out_heaps_as_an_alignment_of_1() {
-        let mut next = xorshift(0xbb67_ae85_84ca_a73b);
-        let sizes = [0, 1, 3, 8, 16, 24, 32, 48, 72, 96, 1 << 32, u64::MAX];
-        let alignments = [0, 0, 0, 1, 2, 8, 16, 24, 32];
-        let mut with_0 = 0;
-        let mut laid_out = 0;
-        for _ in 0..5000 {
-            let mut size = || sizes[(next() % sizes.len() as u64) as usize];
-            let (buffer_size, image_size, sampler_size) = (size(), size(), size());
-            let mut alignment = || alignments[(next() % alignments.len() as u64) as usize];
-            let (buffer_alignment, image_alignment, sampler_alignment) =
-                (alignment(), alignment(), alignment());
-            let properties = |zero_as: u64| {
-                let alignment = |alignment: u64| if alignment == 0 { zero_as } else { alignment };
-                vk::PhysicalDeviceDescriptorHeapPropertiesEXT::default()
-                    .resource_heap_alignment(64)
-                    .sampler_heap_alignment(32)
-                    .max_resource_heap_size(1 << 40)
-                    .max_sampler_heap_size(1 << 40)
-                    .min_resource_heap_reserved_range(96)
-                    .min_sampler_heap_reserved_range(48)
-                    .buffer_descriptor_size(buffer_size)
-                    .buffer_descriptor_alignment(alignment(buffer_alignment))
-                    .image_descriptor_size(image_size)
-                    .image_descriptor_alignment(alignment(image_alignment))
-                    .sampler_descriptor_size(sampler_size)
-                    .sampler_descriptor_alignment(alignment(sampler_alignment))
-            };
-            if [buffer_alignment, image_alignment, sampler_alignment].contains(&0) {
-                with_0 += 1;
-            }
-            let (zero, one) = (properties(0), properties(1));
-            let context = format!(
-                "descriptor sizes {buffer_size}, {image_size} and {sampler_size}, alignments \
-                 {buffer_alignment}, {image_alignment} and {sampler_alignment}"
-            );
-            let mut resources = [ResourceHeapPlan::new(&zero), ResourceHeapPlan::new(&one)];
-            let mut samplers = [SamplerHeapPlan::new(&zero), SamplerHeapPlan::new(&one)];
-            for _ in 0..6 {
-                let kind = next() % 4;
-                let count = match next() % 3 {
-                    0 => 0,
-                    1 => (next() % 8) as u32,
-                    _ => next() as u32,
-                };
-                let [resources_0, resources_1] = &mut resources;
-                let [samplers_0, samplers_1] = &mut samplers;
-                assert_eq!(
-                    random_run(resources_0, samplers_0, kind, count),
-                    random_run(resources_1, samplers_1, kind, count),
-                    "{context}: run {kind} of {count} slots"
-                );
-            }
-            let [resources_0, resources_1] = resources;
-            let resource_layout = resources_0.finish();
-            assert_eq!(resource_layout, resources_1.finish(), "{context}");
-            let [samplers_0, samplers_1] = samplers;
-            let sampler_layout = samplers_0.finish();
-            assert_eq!(sampler_layout, samplers_1.finish(), "{context}");
-            if resource_layout.is_ok() && sampler_layout.is_ok() {
-                laid_out += 1;
-            }
-        }
-        assert!(
-            with_0 > 1000 && laid_out > 500,
-            "{with_0} cases with an alignment of 0, {laid_out} laid out"
-        );
     }
 }

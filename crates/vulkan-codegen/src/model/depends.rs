@@ -475,6 +475,27 @@ mod tests {
     }
 
     #[test]
+    fn a_character_that_no_dependency_expression_has_aborts_generation_and_is_named() {
+        for unexpected in ['&', '|', '-', '.', ':', '!', '[', '"', '*', 'é'] {
+            let text = format!("VK_A{unexpected}VK_B");
+            assert_eq!(
+                catch_quietly(|| Depends::parse(&text)),
+                Err(format!("unexpected `{unexpected}` in dependency `{text}`"))
+            );
+        }
+        for space in [' ', '\t', '\n', '\u{a0}'] {
+            let text = format!("{space}VK_A{space}+{space}VK_B{space}");
+            assert_eq!(
+                Depends::parse(&text),
+                Depends::All(vec![
+                    Depends::Extension("VK_A".to_string()),
+                    Depends::Extension("VK_B".to_string())
+                ])
+            );
+        }
+    }
+
+    #[test]
     fn empty_dependencies_abort_generation() {
         for text in ["", " ", "()", "(())"] {
             assert!(

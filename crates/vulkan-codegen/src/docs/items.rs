@@ -301,7 +301,7 @@ impl<'a> Reader<'a> {
         let mut block_title = None;
         for line in header {
             match title(line) {
-                Some(text) if !is_attributes(line) => block_title = Some(text.trim().to_string()),
+                Some(text) => block_title = Some(text.trim().to_string()),
                 _ => style.extend(
                     line[1..line.len() - 1]
                         .split(',')
@@ -397,6 +397,26 @@ mod tests {
     }
 
     #[test]
+    fn a_dot_alone_or_before_a_blank_starts_no_block_title() {
+        assert_eq!(
+            parts(&["pname:a is:", "+", ".", "text"]),
+            [paragraph("pname:a is:"), paragraph(".\ntext")]
+        );
+        for lead in ["+", ""] {
+            for item in [". the first", ".\tthe first"] {
+                let text = ["pname:a is:", lead, item, "text"].join("\n");
+                assert_eq!(
+                    read(&text),
+                    Err(Unsupported::Block(format!(
+                        "a list that starts with `{item}`"
+                    ))),
+                    "{text}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn the_text_goes_on_over_lines_that_start_with_markup() {
         for lines in [
             [
@@ -436,6 +456,26 @@ mod tests {
                 list([vec![paragraph("this")]])
             ]
         );
+    }
+
+    #[test]
+    fn a_list_item_starts_with_stars_a_blank_and_text() {
+        for stars in 0..6 {
+            for blank in ["", " ", "  ", "\t"] {
+                for text in ["a", "a b", "*a*", "**a**", ""] {
+                    if text.starts_with('*') && blank.is_empty() {
+                        continue;
+                    }
+                    let line = format!("{}{blank}{text}", "*".repeat(stars));
+                    let item = (stars > 0 && !blank.is_empty() && !text.is_empty())
+                        .then_some((stars, text));
+                    assert_eq!(list_item(&line), item, "{line:?}");
+                }
+            }
+        }
+        for line in ["**a** b", " ** a", " a", "** \t "] {
+            assert_eq!(list_item(line), None, "{line:?}");
+        }
     }
 
     #[test]
@@ -538,6 +578,29 @@ mod tests {
                 ]]),
                 paragraph("Whichever it is, it stays."),
             ]
+        );
+        assert_eq!(
+            parts(&[
+                "pname:a is:",
+                "+",
+                "[NOTE]",
+                "====",
+                "* this",
+                "** or rather this",
+                "",
+                "+",
+                "Whichever it is, it stays.",
+                "====",
+            ]),
+            [
+                paragraph("pname:a is:"),
+                note(vec![list([vec![
+                    paragraph("this"),
+                    list([vec![paragraph("or rather this")]]),
+                    paragraph("Whichever it is, it stays."),
+                ]])]),
+            ],
+            "in a block, the outermost item is the item of the first list"
         );
     }
 
@@ -650,6 +713,10 @@ mod tests {
                 "a `--` block with the attributes []",
             ),
             (
+                vec!["pname:a is:", "+", "[source,c++]", "--", "a", "--"],
+                "a `--` block with the attributes [\"source\", \"c++\"]",
+            ),
+            (
                 vec![
                     "pname:a is:",
                     "+",
@@ -692,6 +759,24 @@ mod tests {
             ),
             (
                 vec!["pname:a is:", "----", "a", "----"],
+                "a `----` block that nothing attaches",
+            ),
+            (
+                vec!["pname:a is:", "", "----", "a", "----"],
+                "a `----` block that nothing attaches",
+            ),
+            (
+                vec![
+                    "pname:a is:",
+                    "+",
+                    "[NOTE]",
+                    "====",
+                    "a",
+                    "----",
+                    "b",
+                    "----",
+                    "====",
+                ],
                 "a `----` block that nothing attaches",
             ),
             (
@@ -760,6 +845,12 @@ mod tests {
                 "pname:a is slink:VkThing::pname:a, i.e. the",
                 "e.g. first -- or",
                 "-1.",
+            ],
+            [
+                "pname:a is one,",
+                "etc. and so on,",
+                ":: names no term,",
+                ":x:y sets no attribute",
             ],
             [
                 "pname:a is 2 * 3",

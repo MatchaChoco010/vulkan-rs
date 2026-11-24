@@ -150,4 +150,55 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn a_bit_field_that_is_not_a_part_of_a_32_bit_unit_aborts_generation_with_its_name() {
+        let mut ir = registry();
+        ir.flags.push(vulkan_registry::Flags {
+            name: "VkMarkFlags".to_string(),
+            bit_width: 32,
+            ..Default::default()
+        });
+        let bits = |full_ty: &str, width: u32| {
+            let mut f = field("mark", full_ty);
+            f.bit_field_width = Some(width);
+            f
+        };
+        let slots_of = |member: Field| {
+            let s = structure("StdVideoMarks", vec![member]);
+            let model = Model::new(&ir);
+            crate::test_support::catch_quietly(|| slots(&model, &s).len())
+        };
+        for supported in [
+            bits("uint32_t", 1),
+            bits("uint32_t", 32),
+            bits("VkMarkFlags", 7),
+        ] {
+            assert_eq!(slots_of(supported.clone()), Ok(1), "{supported:?}");
+        }
+        for (unsupported, message) in [
+            (
+                bits("uint64_t", 3),
+                "StdVideoMarks::mark: bit-field of unsupported type uint64_t",
+            ),
+            (
+                bits("int32_t", 3),
+                "StdVideoMarks::mark: bit-field of unsupported type int32_t",
+            ),
+            (
+                bits("uint32_t", 0),
+                "StdVideoMarks::mark: unsupported bit-field",
+            ),
+            (
+                bits("uint32_t", 33),
+                "StdVideoMarks::mark: unsupported bit-field",
+            ),
+            (
+                bits("uint32_t*", 3),
+                "StdVideoMarks::mark: unsupported bit-field",
+            ),
+        ] {
+            assert_eq!(slots_of(unsupported), Err(message.to_string()));
+        }
+    }
 }

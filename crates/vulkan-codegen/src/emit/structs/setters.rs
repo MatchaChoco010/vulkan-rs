@@ -249,7 +249,6 @@ pub(super) fn member_methods(
             value_ty: "bool".to_string(),
             assignments: format!("self.{field} = value as Bool32;"),
         },
-        0 => value_setter(model, m, names),
         1 => pointer_setter(model, s, m, &ty, counted, names),
         _ => pointer_array_setter(model, s, m, &ty, counted, names)
             .unwrap_or_else(|| value_setter(model, m, names)),
@@ -681,6 +680,39 @@ mod tests {
             message,
             "VkLayerSettingEXT::pValues: the specification counts this `void` array in values, and `valueCount` is not a member that a setter could store their number in"
         );
+    }
+
+    #[test]
+    fn a_void_array_counted_in_values_without_the_listed_type_member_stops_the_generator() {
+        type Change = fn(&mut Field);
+        let changes: [(&str, Change); 2] = [
+            ("has another type", |ty| {
+                ty.ty = "uint32_t".to_string();
+                ty.full_ty = "uint32_t".to_string();
+            }),
+            ("has another name", |ty| ty.name = "kind".to_string()),
+        ];
+        for (what, change) in changes {
+            let mut layer_setting = registry_struct("VkLayerSettingEXT").clone();
+            let ty = layer_setting
+                .members
+                .iter_mut()
+                .find(|m| m.name == "type")
+                .expect("the member that names the type of the values");
+            change(ty);
+            let mut ir = Registry::get().clone();
+            ir.structs.retain(|s| s.name != "VkLayerSettingEXT");
+            ir.structs.push(layer_setting);
+            let message = crate::test_support::catch_quietly(|| {
+                let model = Model::new(&ir);
+                definition(&model, ir.structs.last().expect("the structure"))
+            })
+            .expect_err(&format!("the type member {what}"));
+            assert_eq!(
+                message, "VkLayerSettingEXT has no member `type` of the type VkLayerSettingTypeEXT",
+                "the type member {what}"
+            );
+        }
     }
 
     #[test]

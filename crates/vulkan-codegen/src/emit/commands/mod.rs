@@ -298,6 +298,7 @@ mod tests {
     fn every_name_that_a_wrapper_of_the_registry_binds_is_checked_against_its_parameters() {
         let model = Model::with_docs(Registry::get(), Docs::get());
         let mut wrappers = 0;
+        let mut binding_next_to_parameters = 0;
         for dispatch in Dispatch::ALL {
             for c in commands(&model, dispatch).filter(|c| !creates_a_dispatching_handle(c)) {
                 let source = wrapper::wrapper(&model, c, dispatch);
@@ -306,6 +307,12 @@ mod tests {
                 let mut bindings = Bindings::default();
                 syn::visit::Visit::visit_block(&mut bindings, &function.block);
                 let checked = wrapper::checked_names(&model, c, dispatch);
+                let mut parameters = Bindings::default();
+                for input in &function.sig.inputs {
+                    syn::visit::Visit::visit_fn_arg(&mut parameters, input);
+                }
+                binding_next_to_parameters +=
+                    usize::from(!bindings.0.is_empty() && !parameters.0.is_empty());
                 for binding in bindings.0 {
                     assert!(
                         checked.contains(binding.trim_start_matches("r#")),
@@ -313,11 +320,21 @@ mod tests {
                          against the parameters",
                         c.name
                     );
+                    assert!(
+                        !parameters.0.contains(&binding),
+                        "{}: the wrapper binds `{binding}`, which hides its own parameter of \
+                         that name",
+                        c.name
+                    );
                 }
                 wrappers += 1;
             }
         }
         assert!(wrappers > 500, "only {wrappers} wrappers were checked");
+        assert!(
+            binding_next_to_parameters > 100,
+            "only {binding_next_to_parameters} wrappers have parameters and bind names"
+        );
     }
 
     fn base() -> Registry {
@@ -784,6 +801,106 @@ mod tests {
     }
 
     #[test]
+    fn a_computed_length_reads_sizes_and_flag_bits_as_numbers() {
+        let mut ir = base();
+        ir.bitmasks.push(vulkan_registry::Bitmask {
+            name: "VkSampleCountFlagBits".to_string(),
+            flags_name: "VkSampleCountFlags".to_string(),
+            bit_width: 32,
+            ..Default::default()
+        });
+        ir.commands.push(device(command(
+            "vkCmdSetSampleMaskEXT",
+            vec![
+                field("commandBuffer", "VkCommandBuffer"),
+                field("byteCount", "size_t"),
+                field("samples", "VkSampleCountFlagBits"),
+                counted("pBytes", "const uint8_t*", "2*byteCount"),
+                counted("pSampleMask", "const uint32_t*", "(samples + 31) / 32"),
+            ],
+        )));
+        let out = generate(&ir);
+        for check in [
+            "assert!(bytes.is_empty() || 2*(byte_count as u128) <= bytes.len() as u128,",
+            "assert!(sample_mask.is_empty() || (u128::from(samples.as_raw()) + 31) / 32 <= sample_mask.len() as u128,",
+        ] {
+            assert!(out.contains(check), "no `{check}` in {out}");
+        }
+    }
+
+    #[test]
+    fn a_count_that_a_pointer_parameter_points_to_is_cast_unless_it_is_a_size() {
+        for (count_ty, read) in [
+            ("uint32_t*", "*fault_counts as usize"),
+            ("size_t*", "*fault_counts"),
+        ] {
+            let mut ir = fault_reports(&["VK_SUCCESS", "VK_TIMEOUT"]);
+            let c = ir.commands.last_mut().expect("the command");
+            let count = c
+                .params
+                .iter_mut()
+                .find(|p| p.name == "pFaultCounts")
+                .expect("the count");
+            *count = field("pFaultCounts", count_ty);
+            let out = generate(&ir);
+            let check = format!(
+                "assert_eq!(x.len(), {read}, \"vkGetDeviceFaultReportsKHR: `fault_info` must have `*fault_counts` elements\");"
+            );
+            assert!(out.contains(&check), "no `{check}` in {out}");
+        }
+    }
+
+    #[test]
+    fn only_the_handles_that_a_deferrable_command_creates_are_documented_as_its_outputs() {
+        let ir = only(result_command(
+            "vkCreatePipelinesFromBuffersNV",
+            &[
+                "VK_SUCCESS",
+                "VK_OPERATION_DEFERRED_KHR",
+                "VK_OPERATION_NOT_DEFERRED_KHR",
+            ],
+            vec![
+                field("device", "VkDevice"),
+                optional(field("deferredOperation", "VkDeferredOperationKHR")),
+                field("createInfoCount", "uint32_t"),
+                counted("pSources", "const VkBuffer*", "createInfoCount"),
+                counted("pPipelines", "VkPipeline*", "createInfoCount"),
+            ],
+        ));
+        let model = Model::new(&ir);
+        let c = ir.commands.last().expect("the command");
+        let wrapper = wrapper::wrapper(&model, c, Dispatch::Device).replace("///", "");
+        let wrapper = wrapper.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            wrapper.contains("What `pipelines` holds depends on the result"),
+            "{wrapper}"
+        );
+    }
+
+    #[test]
+    fn only_a_const_pointer_to_characters_that_end_with_nul_is_taken_as_a_c_string() {
+        let mut name = field("pName", "const char*");
+        name.null_terminated = true;
+        let mut list = field("pList", "const uint32_t*");
+        list.null_terminated = true;
+        let ir = only(command(
+            "vkSetNamesNV",
+            vec![
+                field("device", "VkDevice"),
+                name,
+                field("pLetter", "const char*"),
+                list,
+                field("pValue", "uint32_t"),
+            ],
+        ));
+        let out = generate(&ir);
+        assert!(
+            out.contains("pub unsafe fn set_names_nv(&self, name: &CStr, letter: &c_char, list: &u32, p_value: u32)"),
+            "{out}"
+        );
+    }
+
+    #[test]
     fn a_length_that_the_wrappers_cannot_evaluate_stops_the_generator() {
         for len in [
             "2*VK_UUID_SIZE",
@@ -796,6 +913,12 @@ mod tests {
             "latexmath:[\\lceil{samples \\over 32}\\rceil]",
         ] {
             let mut ir = base();
+            ir.bitmasks.push(vulkan_registry::Bitmask {
+                name: "VkSampleCountFlagBits".to_string(),
+                flags_name: "VkSampleCountFlags".to_string(),
+                bit_width: 32,
+                ..Default::default()
+            });
             ir.commands.push(device(command(
                 "vkCmdSetSampleMaskEXT",
                 vec![
@@ -1466,6 +1589,76 @@ mod tests {
     fn arrays_of_arrays_without_a_described_inner_length_stop_the_generator() {
         let (ir, _) = widgets();
         generate(&ir);
+    }
+
+    #[test]
+    fn the_owner_of_an_inner_length_is_a_required_array_that_shares_the_outer_count() {
+        type Change = fn(&mut Field);
+        let changes: [(&str, Change); 4] = [
+            ("is optional", |batches| batches.optional = true),
+            ("is counted by another parameter", |batches| {
+                batches.len = Some("otherCount".to_string());
+            }),
+            ("is not counted", |batches| batches.len = None),
+            ("is passed by value", |batches| {
+                batches.full_ty = "VkWidgetBatchNV".to_string();
+            }),
+        ];
+        for (what, change) in changes {
+            let (mut ir, docs) = widgets();
+            for c in &mut ir.commands {
+                for p in &mut c.params {
+                    if p.name == "pBatches" {
+                        change(p);
+                    }
+                }
+                c.params.insert(1, field("otherCount", "uint32_t"));
+            }
+            let message = crate::test_support::catch_quietly(|| generate_with_docs(&ir, &docs))
+                .expect_err(&format!(
+                    "an inner length is read from an array that {what}"
+                ));
+            assert!(
+                message.contains("the specification describes no inner length for ppParts"),
+                "an array that {what}: {message}"
+            );
+        }
+        let (mut ir, docs) = widgets();
+        for c in &mut ir.commands {
+            c.params.insert(1, field("otherCount", "uint32_t"));
+        }
+        assert!(
+            generate_with_docs(&ir, &docs).contains("parts: &[Option<&[WidgetPartNV]>]"),
+            "the unchanged array gives the inner length"
+        );
+    }
+
+    #[test]
+    fn an_array_that_the_wrapper_does_not_borrow_leaves_its_count_to_the_caller() {
+        let mut ir = base();
+        ir.commands.push(device(command(
+            "vkGetStatesNV",
+            vec![
+                field("device", "VkDevice"),
+                field("stateCount", "uint32_t"),
+                counted("pStates", "uint32_t*", "stateCount"),
+            ],
+        )));
+        ir.commands.push(device(command(
+            "vkGetBlocksNV",
+            vec![
+                field("device", "VkDevice"),
+                field("blockCount", "uint32_t"),
+                counted("ppBlocks", "void**", "blockCount"),
+            ],
+        )));
+        let out = generate(&ir);
+        for signature in [
+            "pub unsafe fn get_states_nv(&self, states: &mut [u32]) {",
+            "pub unsafe fn get_blocks_nv(&self, block_count: u32, blocks: *mut *mut c_void) {",
+        ] {
+            assert!(out.contains(signature), "no `{signature}` in {out}");
+        }
     }
 
     #[test]

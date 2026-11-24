@@ -228,6 +228,8 @@ fn atoms(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{deterministic_values, proptest_config};
+    use proptest::prelude::*;
 
     #[test]
     fn blocks_are_separated_by_empty_doc_lines_and_aliases_follow() {
@@ -305,13 +307,30 @@ mod tests {
 
     #[test]
     fn a_wrapped_line_never_starts_with_a_markdown_block_marker() {
-        let filler = "x".repeat(88);
-        for marker in ["+", "-", "*", ">", "#1", "12.", "3)", "==="] {
+        let filler = "x".repeat(WIDTH);
+        for marker in [
+            "+", "-", "*", ">", "#1", "12.", "3)", "0.", "===", "|", "~~~", "-x", "*x*",
+        ] {
             let rendered = Doc::new().text(format!("{filler} {marker} tail")).render();
             assert_eq!(
                 rendered,
                 format!("/// {filler} {marker}\n/// tail\n"),
                 "{marker}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_word_that_starts_no_markdown_block_wraps_to_the_next_line() {
+        let filler = "x".repeat(WIDTH);
+        for word in [
+            "word.", "a)", ".", ")", "1.5", "12", "a1.", "1.)", "x-", "x+", "`-`",
+        ] {
+            let rendered = Doc::new().text(format!("{filler} {word} tail")).render();
+            assert_eq!(
+                rendered,
+                format!("/// {filler}\n/// {word} tail\n"),
+                "{word}"
             );
         }
     }
@@ -336,6 +355,17 @@ mod tests {
 
     fn text(text: &str) -> Block {
         Block::Text(text.to_string())
+    }
+
+    #[test]
+    fn a_list_that_starts_an_item_puts_its_first_marker_after_the_marker_of_the_item() {
+        let rendered = Doc::new()
+            .blocks([Block::List(vec![
+                vec![Block::list(["a".to_string(), "b".to_string()])],
+                vec![text("c")],
+            ])])
+            .render();
+        assert_eq!(rendered, "/// - - a\n///   - b\n/// - c\n");
     }
 
     #[test]
@@ -433,5 +463,117 @@ mod tests {
     #[should_panic(expected = "without documentation")]
     fn an_empty_doc_does_not_render() {
         Doc::new().alias("VkThing").render();
+    }
+
+    struct Wrapped {
+        lines: Vec<String>,
+        margin: usize,
+    }
+
+    impl Wrapped {
+        fn words(&self, line: usize) -> Vec<&str> {
+            self.lines[line][self.margin..].split(' ').collect()
+        }
+
+        fn room_after(&self, line: usize) -> Option<usize> {
+            let next = self.words(line + 1)[0].chars().count();
+            WIDTH.checked_sub(self.lines[line].chars().count() + 1 + next)
+        }
+    }
+
+    fn words() -> impl Strategy<Value = Vec<String>> {
+        proptest::collection::vec("[a-z]{1,24}", 1..60)
+    }
+
+    fn wrapped(words: &[String], list_level: Option<usize>) -> Wrapped {
+        let text = words.join(" ");
+        let doc = match list_level {
+            Some(level) => {
+                let mut item = Block::list([text]);
+                for _ in 0..level {
+                    item = Block::List(vec![vec![Block::Text("parent".to_string()), item]]);
+                }
+                Doc::new().blocks([item])
+            }
+            None => Doc::new().text(text),
+        };
+        let lines = doc
+            .render()
+            .lines()
+            .skip(list_level.unwrap_or(0))
+            .map(|line| {
+                line.strip_prefix("/// ")
+                    .unwrap_or_else(|| panic!("`{line}` is not a doc comment"))
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        if let Some(level) = list_level {
+            for (index, line) in lines.iter().enumerate() {
+                let margin = match index {
+                    0 => format!("{}- ", "  ".repeat(level)),
+                    _ => "  ".repeat(level + 1),
+                };
+                assert!(
+                    line.starts_with(&margin) && !line[margin.len()..].starts_with(' '),
+                    "the line `{line}` of an item at the level {level} does not start with \
+                     `{margin}` and a word"
+                );
+            }
+        }
+        Wrapped {
+            lines,
+            margin: list_level.map_or(0, |level| 2 * level + 2),
+        }
+    }
+
+    proptest! {
+        #![proptest_config(proptest_config(512))]
+
+        #[test]
+        fn wrapped_text_keeps_its_words_and_breaks_only_where_the_next_word_does_not_fit(
+            words in words(),
+            list_level in proptest::option::of(0..3usize),
+        ) {
+            let wrapped = wrapped(&words, list_level);
+            let mut kept = Vec::new();
+            for (index, line) in wrapped.lines.iter().enumerate() {
+                prop_assert!(
+                    line.chars().count() <= WIDTH,
+                    "the line `{}` is wider than {} characters", line, WIDTH
+                );
+                prop_assert!(
+                    index + 1 == wrapped.lines.len() || wrapped.room_after(index).is_none(),
+                    "the first word of the next line fits after `{}`", line
+                );
+                kept.extend(wrapped.words(index));
+            }
+            prop_assert_eq!(kept, words);
+        }
+    }
+
+    #[test]
+    fn the_generated_words_fill_lines_exactly_and_miss_the_width_by_one() {
+        let mut full = 0;
+        let mut one_too_wide = 0;
+        let cases = deterministic_values((words(), proptest::option::of(0..3usize)), 256);
+        for (words, list_level) in cases {
+            let wrapped = wrapped(&words, list_level);
+            for (index, line) in wrapped.lines.iter().enumerate() {
+                full += usize::from(line.chars().count() == WIDTH);
+                if index + 1 < wrapped.lines.len() {
+                    let width_with_the_next_word =
+                        line.chars().count() + 1 + wrapped.words(index + 1)[0].chars().count();
+                    one_too_wide += usize::from(width_with_the_next_word == WIDTH + 1);
+                }
+            }
+        }
+        assert!(
+            full >= 20,
+            "only {full} generated lines are exactly as wide as allowed"
+        );
+        assert!(
+            one_too_wide >= 20,
+            "only {one_too_wide} generated lines end where the next word is one character too wide"
+        );
     }
 }

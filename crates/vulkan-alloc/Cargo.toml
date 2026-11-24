@@ -15,3 +15,6 @@ missing_safety_doc = "warn"
 [dependencies]
 log = "0.4"
 vulkan = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+proptest = { version = "1", default-features = false, features = ["std"] }

@@ -609,6 +609,51 @@ mod tests {
     }
 
     #[test]
+    fn only_a_single_array_of_characters_is_read_as_a_c_string() {
+        let mut ir = registry();
+        let mut lines = field("lines", "char");
+        lines.fixed_size_array = vec!["4".to_string(), "16".to_string()];
+        let mut names = field("names", "const char*");
+        names.fixed_size_array = vec!["4".to_string()];
+        let mut name = field("name", "char");
+        name.fixed_size_array = vec!["16".to_string()];
+        ir.structs
+            .push(structure("VkLabels", vec![lines, names, name]));
+        let out = squash(&emit(&Model::new(&ir)));
+        assert!(out.contains("pub lines: [[c_char; 16]; 4],"), "{out}");
+        assert!(out.contains("pub names: [*const c_char; 4],"), "{out}");
+        assert!(out.contains("pub fn name_as_c_str(&self)"), "{out}");
+        assert_eq!(out.matches("_as_c_str").count(), 1, "{out}");
+        assert_eq!(out.matches("_as_slice").count(), 0, "{out}");
+    }
+
+    #[test]
+    fn only_a_const_pointer_to_characters_that_end_with_nul_is_set_from_a_c_string() {
+        let mut ir = registry();
+        let mut name = field("pName", "const char*");
+        name.null_terminated = true;
+        let mut list = field("pList", "const uint32_t*");
+        list.null_terminated = true;
+        let mut buffer = field("pBuffer", "char*");
+        buffer.null_terminated = true;
+        ir.structs.push(structure(
+            "VkNames",
+            vec![name, field("pLetter", "const char*"), list, buffer],
+        ));
+        let out = squash(&emit(&Model::new(&ir)));
+        assert!(
+            out.contains(
+                "pub fn name(mut self, value: &'a CStr) -> Self { self.p_name = value.as_ptr(); self }"
+            ),
+            "{out}"
+        );
+        assert_eq!(out.matches("&'a CStr").count(), 1, "{out}");
+        for setter in ["pub fn letter(", "pub fn list(", "pub fn buffer("] {
+            assert!(out.contains(setter), "no `{setter}` in {out}");
+        }
+    }
+
+    #[test]
     fn unions_with_pointers_borrow_in_constructors() {
         let mut ir = registry();
         let mut u = structure(

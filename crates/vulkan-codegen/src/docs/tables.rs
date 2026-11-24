@@ -170,8 +170,8 @@ fn is_block_attribute(line: &str) -> bool {
 }
 
 fn is_ordered_list_item(line: &str) -> bool {
-    let digits = line.chars().take_while(char::is_ascii_digit).count();
-    digits > 0 && line[digits..].starts_with('.')
+    line.trim_start_matches(|c: char| c.is_ascii_digit())
+        .starts_with('.')
 }
 
 fn asciidoc_lines(content: &str) -> Option<Vec<String>> {
@@ -943,6 +943,123 @@ mod tests {
                 "reading\n{}", generated.text
             );
         }
+    }
+
+    #[test]
+    fn only_a_cell_with_exactly_one_line_has_a_single_line() {
+        assert_eq!(lines(&["a"]).single_line(), Some("a"));
+        assert_eq!(lines(&[]).single_line(), None);
+        assert_eq!(lines(&["a", "b"]).single_line(), None);
+        assert_eq!(Cell::Unsupported.single_line(), None);
+    }
+
+    #[test]
+    fn empty_lines_before_the_first_cell_are_skipped_and_text_there_is_refused() {
+        let row = vec![lines(&["a"]), lines(&["b"])];
+        for blank in ["", "  ", "\t"] {
+            let text = format!("|===\n{blank}\n{blank}\n|a |b\n|===");
+            assert_eq!(
+                read(&text).map(|table| table.rows),
+                Some(vec![row.clone()]),
+                "{text:?}"
+            );
+        }
+        for stray in ["stray", " x", "a b c"] {
+            let text = format!("|===\n{stray}\n|a |b\n|===");
+            assert_eq!(read(&text), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_table_is_delimited_by_a_bar_and_three_or_more_equals_signs() {
+        for delimiter in ["|===", "|====", "|=======", "|===  "] {
+            let text = format!("{delimiter}\n|a\n{delimiter}");
+            assert_eq!(
+                read(&text).map(|table| table.rows),
+                Some(vec![vec![lines(&["a"])]]),
+                "{delimiter:?}"
+            );
+        }
+        for other in [
+            "|==", "|=", "|", "====", "=====", "|abc", "|==x", "x|===", "!===",
+        ] {
+            let text = format!("{other}\n|a\n{other}");
+            assert_eq!(read(&text), None, "{other:?}");
+        }
+    }
+
+    #[test]
+    fn the_header_option_is_read_from_its_long_and_short_forms_only() {
+        let rows = |attributes: &str| {
+            let table = table(&[attributes, "|===", "|a |b", "|c |d", "|==="]);
+            (table.header.is_some(), table.rows.len())
+        };
+        for with_header in [
+            "[options=\"header\"]",
+            "[opts=\"header\"]",
+            "[opts=header]",
+            "[%header]",
+            "[%header,cols=\"1,1\"]",
+            "[cols=\"1,1\",%header%autowidth]",
+            "[%autowidth%header]",
+        ] {
+            assert_eq!(rows(with_header), (true, 1), "{with_header}");
+        }
+        for without_header in [
+            "[header]",
+            "[cols=\"1,1\"]",
+            "[%autowidth]",
+            "[%noheader]",
+            "[options=\"noheader\"]",
+            "[role=\"header\"]",
+            "[headers]",
+        ] {
+            assert_eq!(rows(without_header), (false, 2), "{without_header}");
+        }
+    }
+
+    #[test]
+    fn asciidoc_cells_keep_lines_of_text_and_refuse_block_attributes() {
+        let cell = |content: &[&str]| {
+            let mut text = vec!["[cols=\"1,1\"]", "|===", "|ename:VK_A a|"];
+            text.extend(content);
+            text.push("|===");
+            table(&text).rows[0][1].clone()
+        };
+        for kept in [
+            "[eq]#x# and more",
+            "[[anchor]]",
+            "[[anchor]]text",
+            "text [x]",
+            "2 planes",
+            "2x.",
+            "a. b",
+        ] {
+            assert_eq!(cell(&[kept]), lines(&[kept]), "{kept}");
+        }
+        for block in [
+            "[source,c]",
+            "[NOTE]",
+            "[x]",
+            "1. first",
+            "12. twelfth",
+            ". first",
+            "include::file.adoc[]",
+            "image::picture.svg[]",
+            "++++",
+            "....",
+        ] {
+            assert_eq!(cell(&[block, "text"]), Cell::Unsupported, "{block}");
+        }
+        assert_eq!(
+            cell(&["text", "++++", "x", "++++"]),
+            Cell::Unsupported,
+            "a passthrough block that no `[latexmath]` line introduces"
+        );
+        assert_eq!(
+            cell(&["[latexmath]", "++++", "x +", " y", "++++", "text"]),
+            lines(&["latexmath:[x + y]\ntext"])
+        );
     }
 
     #[test]

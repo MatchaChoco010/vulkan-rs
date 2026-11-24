@@ -1,4 +1,5 @@
-use proptest::test_runner::Config as ProptestConfig;
+use proptest::strategy::{Strategy, ValueTree};
+use proptest::test_runner::{Config as ProptestConfig, RngAlgorithm, TestRng, TestRunner};
 use std::cell::Cell;
 use std::sync::Once;
 use vulkan_registry::{Command, Enum, Field, Registry, Struct};
@@ -32,6 +33,21 @@ pub(crate) fn proptest_config(default_cases: u32) -> ProptestConfig {
         failure_persistence: None,
         ..ProptestConfig::default()
     }
+}
+
+pub(crate) fn deterministic_values<S: Strategy>(strategy: S, count: usize) -> Vec<S::Value> {
+    let mut runner = TestRunner::new_with_rng(
+        ProptestConfig::default(),
+        TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+    );
+    (0..count)
+        .map(|_| {
+            strategy
+                .new_tree(&mut runner)
+                .expect("the strategy generates a value")
+                .current()
+        })
+        .collect()
 }
 
 thread_local! {

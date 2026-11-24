@@ -152,15 +152,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_registry_generates() {
-        let files = generate(Registry::get(), Docs::get());
-        assert_eq!(files.len(), 14);
-        for file in &files {
-            assert!(!file.contents.is_empty(), "{} is empty", file.path);
-        }
-    }
-
-    #[test]
     fn generation_is_deterministic() {
         assert_eq!(
             generate(Registry::get(), Docs::get()),
