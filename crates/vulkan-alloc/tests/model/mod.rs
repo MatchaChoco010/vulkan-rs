@@ -187,8 +187,11 @@ impl Location {
     fn documented_flags(self) -> (vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) {
         match self {
             Location::GpuOnly => (LOCAL, LOCAL),
-            Location::CpuToGpu => (VISIBLE, VISIBLE.union(COHERENT)),
-            Location::GpuToCpu => (VISIBLE, VISIBLE.union(CACHED)),
+            Location::CpuToGpu => (VISIBLE.union(COHERENT), VISIBLE.union(COHERENT)),
+            Location::GpuToCpu => (
+                VISIBLE.union(COHERENT),
+                VISIBLE.union(COHERENT).union(CACHED),
+            ),
             Location::Custom {
                 required,
                 preferred,

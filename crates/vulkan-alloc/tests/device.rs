@@ -835,7 +835,10 @@ impl Coverage {
 fn required_flags(location: MemoryLocation) -> vk::MemoryPropertyFlags {
     match location {
         MemoryLocation::GpuOnly => vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        _ => vk::MemoryPropertyFlags::HOST_VISIBLE,
+        MemoryLocation::CpuToGpu | MemoryLocation::GpuToCpu => {
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
+        }
+        MemoryLocation::Custom { required, .. } => required,
     }
 }
 

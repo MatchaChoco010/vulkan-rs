@@ -16,7 +16,9 @@
 //!    physical device it was created from.
 //! 2. Create a buffer or an image and query its memory requirements.
 //! 3. Describe the memory in an [`AllocationCreateDesc`] and pass it to
-//!    [`Allocator::allocate`]. The [`MemoryLocation`] chooses the memory type.
+//!    [`Allocator::allocate`]. The [`MemoryLocation`] chooses the memory type; the
+//!    memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is
+//!    host-visible and host-coherent.
 //! 4. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`]. The
 //!    allocator does not bind anything itself.
 //! 5. Access host-visible memory through one of the mapping functions (see
@@ -62,18 +64,12 @@
 //!         })?;
 //!         device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
 //!
-//!         let coherent = allocator
-//!             .allocation_memory_flags(&allocation)?
-//!             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
 //!         {
 //!             let mut mapped = allocator.map(&allocation)?;
 //!             mapped
 //!                 .byte_range_mut(0, data.len())
 //!                 .ok_or("the allocation is smaller than the data")?
 //!                 .copy_from_slice(data);
-//!             if !coherent {
-//!                 mapped.flush()?;
-//!             }
 //!         }
 //!
 //!         device.destroy_buffer(buffer, None);
@@ -159,8 +155,12 @@
 //! Such allocations can be made and bound to resources, but must not be passed to any
 //! of the mapping functions. The allocator does not check this.
 //!
-//! Memory without `HOST_COHERENT` needs [`Allocator::flush_allocation`] after host
-//! writes and [`Allocator::invalidate_allocation`] before host reads (or
+//! Memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is always
+//! `HOST_COHERENT`, so mapped writes and reads need neither a flush nor an invalidate
+//! (see [`MemoryLocation`]). [`MemoryLocation::GpuOnly`] and a
+//! [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
+//! host-visible memory without it. Such memory needs [`Allocator::flush_allocation`]
+//! after host writes and [`Allocator::invalidate_allocation`] before host reads (or
 //! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). Allocations in
 //! such memory are aligned to `nonCoherentAtomSize`, so the atom-rounded range that is
 //! flushed or invalidated never reaches into another allocation. This holds because
