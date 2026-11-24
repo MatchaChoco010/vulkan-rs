@@ -15,7 +15,7 @@ pub(super) const UNCOUNTED_ARRAYS: &[UncountedArray] = &[UncountedArray {
     command: "vkGetShaderInstrumentationValuesARM",
     parameter: "pMetricValues",
     count: "pMetricBlockCount",
-    element: "a metric block, a [`ShaderInstrumentationMetricDataHeaderARM`] followed by [`PhysicalDeviceShaderInstrumentationPropertiesARM::num_metrics`] `u64` values",
+    element: "a metric block, a [`ShaderInstrumentationMetricDataHeaderARM`] followed by as many `u64` values as [`PhysicalDeviceShaderInstrumentationPropertiesARM::num_metrics`] says",
     stated_by: "the description of vkGetShaderInstrumentationValuesARM",
 }];
 
@@ -36,8 +36,11 @@ impl UncountedArray {
             panic!("{command} has no parameter `{parameter}`: {CORRECT_THE_LIST}, which takes this one from {stated_by}")
         });
         assert!(
-            CType::of(array).pointers == [false] && array.ty == "void" && array.len.is_none(),
-            "{command}::{parameter} is a `{}` with the length {:?}, not a `void*` without a length: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+            CType::of(array).pointers == [false]
+                && array.ty == "void"
+                && array.len.is_none()
+                && array.optional,
+            "{command}::{parameter} is a `{}` with the length {:?}, not an optional `void*` without a length: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
             array.full_ty,
             array.len
         );
@@ -54,7 +57,7 @@ impl UncountedArray {
         let count = pointer_setter_name(self.count);
         let array = pointer_setter_name(self.parameter);
         format!(
-            "`{count}` is the element count of `{array}`, which the command reads and writes: if `{array}` is null, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements that `{array}` has room for when the wrapper is called, and the command overwrites it with the number of elements that it wrote. Each element is {}, so the size of an element depends on the device, and the wrapper passes `{array}` as it is, without checking it.",
+            "`{count}` is the element count of `{array}`, which the command reads and writes: if `{array}` is null, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements that `{array}` has room for when the wrapper is called, and the command overwrites it with the number of elements that it wrote. Each element is {}, so the size of an element depends on the device. The wrapper passes `{array}` as it is, without checking it: unless it is null, it has to be valid for writes of that many elements.",
             self.element
         )
     }
@@ -87,7 +90,7 @@ pub(crate) fn assert_listed_uncounted_arrays_exist(ir: &Registry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{catch_quietly, counted, field, registry, result_command};
+    use crate::test_support::{catch_quietly, counted, field, optional, registry, result_command};
 
     fn points_to_a_count(c: &Command, p: &vulkan_registry::Field) -> bool {
         CType::of(p).pointers == [false]
@@ -99,7 +102,7 @@ mod tests {
     }
 
     #[test]
-    fn every_command_that_counts_bytes_without_a_length_is_listed() {
+    fn every_command_with_a_count_and_untyped_memory_without_a_length_is_listed() {
         let ir = Registry::get();
         assert_listed_uncounted_arrays_exist(ir);
         let mut found = Vec::new();
@@ -128,7 +131,7 @@ mod tests {
             vec![
                 field("device", "VkDevice"),
                 field("pMetricBlockCount", "uint32_t*"),
-                field("pMetricValues", "void*"),
+                optional(field("pMetricValues", "void*")),
             ],
         )
     }
@@ -142,6 +145,8 @@ mod tests {
         counted_values.params[2] = counted("pMetricValues", "void*", "pMetricBlockCount");
         let mut typed = listed();
         typed.params[2] = field("pMetricValues", "uint64_t*");
+        let mut required = listed();
+        required.params[2] = field("pMetricValues", "void*");
         let mut without_count = listed();
         without_count.params[1] = field("pMetricBlockCount", "uint32_t");
         for (c, message) in [
@@ -154,13 +159,19 @@ mod tests {
             (
                 counted_values,
                 format!(
-                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `void*` with the length Some(\"pMetricBlockCount\"), not a `void*` without a length: {CORRECT}"
+                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `void*` with the length Some(\"pMetricBlockCount\"), not an optional `void*` without a length: {CORRECT}"
                 ),
             ),
             (
                 typed,
                 format!(
-                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `uint64_t*` with the length None, not a `void*` without a length: {CORRECT}"
+                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `uint64_t*` with the length None, not an optional `void*` without a length: {CORRECT}"
+                ),
+            ),
+            (
+                required,
+                format!(
+                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `void*` with the length None, not an optional `void*` without a length: {CORRECT}"
                 ),
             ),
             (

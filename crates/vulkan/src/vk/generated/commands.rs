@@ -65520,13 +65520,13 @@ impl crate::Device {
     /// return to it; otherwise it has to hold the number of elements that `metric_values` has room
     /// for when the wrapper is called, and the command overwrites it with the number of elements
     /// that it wrote. Each element is a metric block, a
-    /// [`ShaderInstrumentationMetricDataHeaderARM`] followed by
-    /// [`PhysicalDeviceShaderInstrumentationPropertiesARM::num_metrics`] `u64` values, so the size
-    /// of an element depends on the device, and the wrapper passes `metric_values` as it is,
-    /// without checking it. Returns the result code of the command when it is not an error, which
-    /// the registry lists as [`VK_SUCCESS`](VkResult::SUCCESS) or
-    /// [`VK_INCOMPLETE`](VkResult::INCOMPLETE). The command is provided by
-    /// [`VK_ARM_shader_instrumentation`](ARM_SHADER_INSTRUMENTATION_NAME).
+    /// [`ShaderInstrumentationMetricDataHeaderARM`] followed by as many `u64` values as
+    /// [`PhysicalDeviceShaderInstrumentationPropertiesARM::num_metrics`] says, so the size of an
+    /// element depends on the device. The wrapper passes `metric_values` as it is, without checking
+    /// it: unless it is null, it has to be valid for writes of that many elements. Returns the
+    /// result code of the command when it is not an error, which the registry lists as
+    /// [`VK_SUCCESS`](VkResult::SUCCESS) or [`VK_INCOMPLETE`](VkResult::INCOMPLETE). The command is
+    /// provided by [`VK_ARM_shader_instrumentation`](ARM_SHADER_INSTRUMENTATION_NAME).
     ///
     /// # Errors
     ///

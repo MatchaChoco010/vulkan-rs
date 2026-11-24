@@ -2043,6 +2043,7 @@ mod tests {
     fn the_wrappers_of_the_registry_describe_every_count_that_they_read_through_a_pointer() {
         let model = Model::with_docs(Registry::get(), Docs::get());
         let mut found = BTreeSet::new();
+        let mut passed_on = BTreeSet::new();
         for c in &model.ir.commands {
             if creates_a_dispatching_handle(c) {
                 continue;
@@ -2085,6 +2086,21 @@ mod tests {
                 );
                 found.insert(c.name.as_str());
             }
+            let signature = code.split(" {").next().expect("the signature");
+            for integer in ["u32", "usize"] {
+                for (at, _) in signature.match_indices(&format!(": &mut {integer}")) {
+                    let argument = signature[..at]
+                        .rsplit([' ', '('])
+                        .next()
+                        .expect("the name of the argument");
+                    assert!(
+                        documented.contains(&format!("`{argument}` is the element count of `")),
+                        "{}: the wrapper passes the integer `{argument}` on by reference and does not say what it counts: {documented}",
+                        c.name
+                    );
+                    passed_on.insert((c.name.as_str(), argument.to_string()));
+                }
+            }
         }
         assert_eq!(
             found,
@@ -2092,6 +2108,24 @@ mod tests {
                 "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM",
                 "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR",
                 "vkGetDeviceFaultReportsKHR",
+            ])
+        );
+        assert_eq!(
+            passed_on,
+            BTreeSet::from([
+                (
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceCountersByRegionARM",
+                    "counter_count".to_string()
+                ),
+                (
+                    "vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR",
+                    "counter_count".to_string()
+                ),
+                ("vkGetDeviceFaultReportsKHR", "fault_counts".to_string()),
+                (
+                    "vkGetShaderInstrumentationValuesARM",
+                    "metric_block_count".to_string()
+                ),
             ])
         );
     }
