@@ -375,7 +375,7 @@ pub enum Op {
     FreeAll,
     UseStale(Pick, HandleUse),
     UseForeign(Pick, HandleUse),
-    FailNextAllocation,
+    FailNextAllocation(vk::VkResult),
     FaultNextMap { returns_null: bool },
     FailNextSynchronization,
 }
@@ -429,7 +429,7 @@ impl Op {
             Op::FreeAll => OpKind::FreeAll,
             Op::UseStale(..) => OpKind::UseStale,
             Op::UseForeign(..) => OpKind::UseForeign,
-            Op::FailNextAllocation => OpKind::FailNextAllocation,
+            Op::FailNextAllocation(_) => OpKind::FailNextAllocation,
             Op::FaultNextMap { .. } => OpKind::FaultNextMap,
             Op::FailNextSynchronization => OpKind::FailNextSynchronization,
         }
@@ -676,7 +676,12 @@ pub fn ops(world: &World, mix: Mix) -> impl Strategy<Value = Op> + use<> {
             OpKind::UseForeign => (picks(), handle_uses())
                 .prop_map(|(pick, handle_use)| Op::UseForeign(pick, handle_use))
                 .boxed(),
-            OpKind::FailNextAllocation => Just(Op::FailNextAllocation).boxed(),
+            OpKind::FailNextAllocation => prop_oneof![
+                2 => Just(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
+                1 => prop::sample::select(OTHER_ALLOCATION_FAILURES.to_vec()),
+            ]
+            .prop_map(Op::FailNextAllocation)
+            .boxed(),
             OpKind::FaultNextMap => any::<bool>()
                 .prop_map(|returns_null| Op::FaultNextMap { returns_null })
                 .boxed(),
@@ -822,7 +827,12 @@ pub struct Harness {
     pub coverage: Coverage,
 }
 
-const INJECTED_ALLOCATION_FAILURE: vk::VkResult = vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY;
+const OTHER_ALLOCATION_FAILURES: [vk::VkResult; 4] = [
+    vk::VkResult::ERROR_OUT_OF_HOST_MEMORY,
+    vk::VkResult::ERROR_TOO_MANY_OBJECTS,
+    vk::VkResult::ERROR_INVALID_EXTERNAL_HANDLE,
+    vk::VkResult::ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS,
+];
 const INJECTED_MAP_FAILURE: vk::VkResult = vk::VkResult::ERROR_MEMORY_MAP_FAILED;
 const INJECTED_SYNCHRONIZATION_FAILURE: vk::VkResult = vk::VkResult::ERROR_OUT_OF_HOST_MEMORY;
 
@@ -906,9 +916,9 @@ impl Harness {
             Op::FreeAll => self.free_all()?,
             Op::UseStale(pick, handle_use) => self.use_stale(pick, handle_use)?,
             Op::UseForeign(pick, handle_use) => self.use_foreign(pick, handle_use)?,
-            Op::FailNextAllocation => {
-                self.allocation_fails = Some(INJECTED_ALLOCATION_FAILURE);
-                self.fake.fail_next_allocation(INJECTED_ALLOCATION_FAILURE);
+            Op::FailNextAllocation(failure) => {
+                self.allocation_fails = Some(failure);
+                self.fake.fail_next_allocation(failure);
                 self.coverage.step("arm a failing vkAllocateMemory");
             }
             Op::FaultNextMap { returns_null } => {
@@ -1075,6 +1085,38 @@ impl Harness {
                 .allocate(create_desc(request, name.as_deref(), resource))
         };
 
+        let invalid = if request.size == 0 {
+            Some("0 bytes")
+        } else if request.alignment != 0 && !request.alignment.is_power_of_two() {
+            Some("alignment that is not a power of two")
+        } else {
+            None
+        };
+        if let Some(invalid) = invalid {
+            ensure_eq!(
+                result,
+                Err(AllocationError::InvalidAllocationCreateDesc),
+                "a description with {invalid}"
+            );
+            self.coverage
+                .step(format!("allocate: invalid description: {invalid}"));
+            match documented_memory_type(&self.world, request) {
+                None => self
+                    .coverage
+                    .note("invalid description without a compatible memory type"),
+                Some(memory_type)
+                    if self
+                        .world
+                        .known_heap_size(memory_type)
+                        .is_some_and(|heap_size| request.size > heap_size) =>
+                {
+                    self.coverage
+                        .note("invalid description larger than the memory heap")
+                }
+                Some(_) => {}
+            }
+            return self.nothing_happened_since(&before, "an invalid description");
+        }
         let Some(memory_type) = documented_memory_type(&self.world, request) else {
             ensure_eq!(
                 result,
@@ -1084,15 +1126,6 @@ impl Harness {
             self.coverage.step("allocate: no compatible memory type");
             return self.nothing_happened_since(&before, "a refused allocation");
         };
-        if request.size == 0 {
-            ensure_eq!(
-                result,
-                Err(AllocationError::OutOfMemory),
-                "an allocation of 0 bytes"
-            );
-            self.coverage.step("allocate: 0 bytes");
-            return self.nothing_happened_since(&before, "an allocation of 0 bytes");
-        }
         if self
             .world
             .known_heap_size(memory_type)
@@ -1105,16 +1138,6 @@ impl Harness {
             );
             self.coverage.step("allocate: larger than the memory heap");
             return self.nothing_happened_since(&before, "an allocation larger than its heap");
-        }
-        if request.alignment != 0 && !request.alignment.is_power_of_two() {
-            ensure_eq!(
-                result,
-                Err(AllocationError::OutOfMemory),
-                "an alignment that is neither 0 nor a power of two"
-            );
-            self.coverage
-                .step("allocate: alignment that is not a power of two");
-            return self.nothing_happened_since(&before, "an allocation with a bad alignment");
         }
 
         let alignment = self.effective_alignment(memory_type, request.alignment);
@@ -1162,12 +1185,21 @@ impl Harness {
                 "vkAllocateMemory calls for a request that needs new memory"
             );
             if let Some(failure) = self.allocation_fails.take() {
-                ensure_eq!(
-                    result,
-                    Err(AllocationError::Vulkan(failure)),
-                    "the result when vkAllocateMemory fails"
-                );
-                self.coverage.step("allocate: vkAllocateMemory fails");
+                if failure == vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY {
+                    ensure_eq!(
+                        result,
+                        Err(AllocationError::OutOfMemory),
+                        "the result when vkAllocateMemory runs out of device memory"
+                    );
+                    self.coverage.step("allocate: the device is out of memory");
+                } else {
+                    ensure_eq!(
+                        result,
+                        Err(AllocationError::Vulkan(failure)),
+                        "the result when vkAllocateMemory fails with {failure:?}"
+                    );
+                    self.coverage.step("allocate: another Vulkan error");
+                }
                 return self.state_is_as(&before, "a failed allocation");
             }
             let allocation =

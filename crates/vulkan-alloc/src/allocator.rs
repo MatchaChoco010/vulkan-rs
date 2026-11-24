@@ -164,30 +164,37 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
-    ///   required flags, not counting the types that are left out as described above.
-    ///   For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
-    ///   [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu), whose required
-    ///   flags are `HOST_VISIBLE | HOST_COHERENT`, the specification guarantees such a
-    ///   type to buffers that are neither sparse nor protected, to linear images that
-    ///   are not protected and to tensors that are not protected, but not to other
-    ///   resources, such as images with optimal tiling (see
-    ///   [`MemoryLocation`](crate::MemoryLocation)).
-    /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0, if it is
-    ///   larger than the `size` of the memory heap of the chosen type, or if
-    ///   `desc.requirements.alignment` is neither 0 nor a power of two. The heap is the
-    ///   entry `heap_index` of the type in [`AllocatorCreateDesc::memory_properties`]; it
-    ///   is checked only if `heap_index` is below `memory_heap_count` (and
-    ///   [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0, as for
-    ///   [`AllocatorCreateDesc::block_size`]. This applies to every allocation, shared,
-    ///   dedicated, exportable or zero-initialized.
-    /// - [`AllocationError::Vulkan`] if `vkAllocateMemory` fails, for example with
-    ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
+    /// When several of these apply, the one listed first is returned:
     ///
-    /// When no memory type can be chosen, the error is
-    /// [`AllocationError::NoCompatibleMemoryType`], whatever the size and alignment. The
-    /// first two errors are returned before any Vulkan call. Nothing is allocated when an
-    /// error is returned.
+    /// 1. [`AllocationError::InvalidAllocationCreateDesc`] if `desc.requirements.size` is
+    ///    0, or if `desc.requirements.alignment` is neither 0 nor a power of two. It
+    ///    depends on `desc` alone, so it is returned whatever the memory types and heaps
+    ///    of the device.
+    /// 2. [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
+    ///    required flags, not counting the types that are left out as described above.
+    ///    For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    ///    [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu), whose required
+    ///    flags are `HOST_VISIBLE | HOST_COHERENT`, the specification guarantees such a
+    ///    type to buffers that are neither sparse nor protected, to linear images that
+    ///    are not protected and to tensors that are not protected, but not to other
+    ///    resources, such as images with optimal tiling (see
+    ///    [`MemoryLocation`](crate::MemoryLocation)).
+    /// 3. [`AllocationError::OutOfMemory`] if `desc.requirements.size` is larger than the
+    ///    `size` of the memory heap of the chosen type. The heap is the entry
+    ///    `heap_index` of the type in [`AllocatorCreateDesc::memory_properties`]; it is
+    ///    checked only if `heap_index` is below `memory_heap_count` (and
+    ///    [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0, as for
+    ///    [`AllocatorCreateDesc::block_size`]. This applies to every allocation, shared,
+    ///    dedicated, exportable or zero-initialized.
+    /// 4. [`AllocationError::OutOfMemory`] if `vkAllocateMemory` returns
+    ///    [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`], and [`AllocationError::Vulkan`]
+    ///    with the result if it fails otherwise, for example with
+    ///    [`vk::VkResult::ERROR_OUT_OF_HOST_MEMORY`] or
+    ///    [`vk::VkResult::ERROR_TOO_MANY_OBJECTS`].
+    ///
+    /// The first three are returned before any Vulkan call. Nothing is allocated when an
+    /// error is returned. [`AllocationError::InvalidAllocation`] is returned only when no
+    /// identifier is left for a new allocation (see that variant).
     ///
     /// # Safety
     ///
@@ -237,6 +244,9 @@ impl Allocator {
         &mut self,
         desc: AllocationCreateDesc<'_>,
     ) -> Result<Allocation, AllocationError> {
+        if !is_accepted(&desc) {
+            return Err(AllocationError::InvalidAllocationCreateDesc);
+        }
         let resource_class = if desc.linear {
             AllocationResourceClass::Linear
         } else {
@@ -253,10 +263,6 @@ impl Allocator {
             .heap_size(memory_type_index)
             .is_some_and(|heap_size| desc.requirements.size > heap_size)
         {
-            return Err(AllocationError::OutOfMemory);
-        }
-        let alignment = desc.requirements.alignment;
-        if alignment != 0 && !alignment.is_power_of_two() {
             return Err(AllocationError::OutOfMemory);
         }
         let requirements = self.adjusted_requirements(memory_type_index, desc.requirements)?;
@@ -327,9 +333,11 @@ impl Allocator {
     ///
     /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
     ///   allocation, if its memory type is not `HOST_VISIBLE`, if `vkMapMemory` returns
-    ///   a null pointer, or if the address of the allocation (the address of the mapped
-    ///   block plus [`Allocation::offset`]) cannot be represented as a non-null pointer.
-    /// - [`AllocationError::Vulkan`] if `vkMapMemory` fails.
+    ///   a null pointer, if the address of the allocation (the address of the mapped
+    ///   block plus [`Allocation::offset`]) cannot be represented as a non-null pointer,
+    ///   or if the allocation already holds [`usize::MAX`] mapping references.
+    /// - [`AllocationError::Vulkan`] if `vkMapMemory` fails, also with
+    ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
     ///
     /// # Safety
     ///
@@ -514,7 +522,7 @@ impl Allocator {
     /// The device the allocator was created with must not have been destroyed.
     pub unsafe fn flush_allocation(&self, allocation: &Allocation) -> Result<(), AllocationError> {
         let range = self.mapped_range(allocation)?;
-        Ok(unsafe { self.device.flush_mapped_memory_ranges(&[range]) }?)
+        unsafe { self.device.flush_mapped_memory_ranges(&[range]) }.map_err(AllocationError::Vulkan)
     }
 
     /// Invalidates the host's view of a mapped allocation with
@@ -543,7 +551,8 @@ impl Allocator {
         allocation: &Allocation,
     ) -> Result<(), AllocationError> {
         let range = self.mapped_range(allocation)?;
-        Ok(unsafe { self.device.invalidate_mapped_memory_ranges(&[range]) }?)
+        unsafe { self.device.invalidate_mapped_memory_ranges(&[range]) }
+            .map_err(AllocationError::Vulkan)
     }
 
     /// Totals of the memory the allocator holds, overall and per memory type.
@@ -610,9 +619,6 @@ impl Allocator {
         resource_class: AllocationResourceClass,
         request: BlockRequest,
     ) -> Result<Allocation, AllocationError> {
-        if requirements.size == 0 {
-            return Err(AllocationError::OutOfMemory);
-        }
         let shared_block_size = self.shared_block_size(memory_type_index);
         let memory_type = self
             .memory_types
@@ -641,7 +647,7 @@ impl Allocator {
         let Some(suballocation) = block.suballocate(requirements.size, requirements.alignment)
         else {
             unsafe { block.free_memory(&self.device) };
-            return Err(AllocationError::OutOfMemory);
+            return Err(AllocationError::InvalidAllocation);
         };
         Ok(memory_type.insert_block(block, suballocation))
     }
@@ -734,6 +740,11 @@ impl Drop for Allocator {
             );
         }
     }
+}
+
+fn is_accepted(desc: &AllocationCreateDesc<'_>) -> bool {
+    let alignment = desc.requirements.alignment;
+    desc.requirements.size != 0 && (alignment == 0 || alignment.is_power_of_two())
 }
 
 fn memory_type_mut<'a>(
