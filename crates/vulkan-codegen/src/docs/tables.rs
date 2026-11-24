@@ -23,6 +23,7 @@ pub(crate) struct Table {
 struct RawCell {
     style: Option<char>,
     line: usize,
+    starts_its_line: bool,
     content: String,
 }
 
@@ -149,6 +150,7 @@ fn raw_cells(content: &[&str]) -> Option<Vec<RawCell>> {
             cells.push(RawCell {
                 style,
                 line: line_index,
+                starts_its_line: segment_start == 0 && text.trim().is_empty(),
                 content: String::new(),
             });
             segment_start = index + 1;
@@ -317,12 +319,15 @@ pub(crate) fn read(text: &str) -> Option<Table> {
     if cells.len() % columns != 0 {
         return None;
     }
-    let implicit_header = cells.len() > columns
-        && cells[..columns].iter().all(|cell| cell.line == first_line)
-        && cells[columns].line > first_line
-        && content
-            .get(first_line + 1)
-            .is_some_and(|line| line.trim().is_empty());
+    let is_blank = |line: &&str| line.trim().is_empty();
+    let after_the_gap = content.iter().skip(1).position(|line| !is_blank(line));
+    let implicit_header = first_line == 0
+        && content.get(1).is_some_and(is_blank)
+        && after_the_gap.is_none_or(|skipped| {
+            cells
+                .iter()
+                .any(|cell| cell.line == skipped + 1 && cell.starts_its_line)
+        });
     let mut rows = cells
         .chunks(columns)
         .map(|row| row.iter().map(cell).collect::<Vec<_>>())
@@ -540,6 +545,87 @@ mod tests {
         ]);
         assert_eq!(refused.header, None);
         assert_eq!(refused.rows.len(), 2);
+    }
+
+    fn header_and_rows(content: &[&str]) -> (Option<Vec<Cell>>, Vec<Vec<Cell>>) {
+        let mut text = vec!["[cols=\"1,1\"]", "|==="];
+        text.extend(content);
+        text.push("|===");
+        let table = table(&text);
+        (table.header, table.rows)
+    }
+
+    fn row(cells: &[&str]) -> Vec<Cell> {
+        cells.iter().map(|cell| lines(&[cell])).collect()
+    }
+
+    #[test]
+    fn the_implicit_header_is_the_first_row_however_the_cells_are_spread_over_the_lines() {
+        assert_eq!(
+            header_and_rows(&["|a |b |c |d", "", "|e |f"]),
+            (
+                Some(row(&["a", "b"])),
+                vec![row(&["c", "d"]), row(&["e", "f"])]
+            )
+        );
+        assert_eq!(
+            header_and_rows(&["|a |b |c", "", "|d"]),
+            (Some(row(&["a", "b"])), vec![row(&["c", "d"])])
+        );
+        assert_eq!(
+            header_and_rows(&["|a", "", "|b |e |f"]),
+            (Some(row(&["a", "b"])), vec![row(&["e", "f"])])
+        );
+        assert_eq!(
+            header_and_rows(&["|a |b", ""]),
+            (Some(row(&["a", "b"])), vec![])
+        );
+        for gap in [
+            vec![""],
+            vec!["", ""],
+            vec!["  "],
+            vec!["// a comment", ""],
+            vec!["", "// a comment"],
+        ] {
+            let mut content = vec!["|a |b"];
+            content.extend(&gap);
+            content.push("|c |d");
+            assert_eq!(
+                header_and_rows(&content),
+                (Some(row(&["a", "b"])), vec![row(&["c", "d"])]),
+                "{gap:?}"
+            );
+        }
+        for next in ["  |c |d", "\t|c |d", "d|c |d", "^.^|c |d"] {
+            assert_eq!(
+                header_and_rows(&["|a |b", "", next]),
+                (Some(row(&["a", "b"])), vec![row(&["c", "d"])]),
+                "{next:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_first_line_that_no_empty_line_follows_or_whose_cell_goes_on_is_no_header() {
+        for content in [
+            vec!["|a", "|b", "", "|c |d"],
+            vec!["|a |b", "|c |d", ""],
+            vec!["|a |b", "// a comment", "|c |d"],
+            vec!["", "|a |b", "", "|c |d"],
+            vec!["  ", "|a |b", "", "|c |d"],
+        ] {
+            assert_eq!(
+                header_and_rows(&content),
+                (None, vec![row(&["a", "b"]), row(&["c", "d"])]),
+                "{content:?}"
+            );
+        }
+        for next in ["more of b", "x |c |d", "x ||d", "x | |d"] {
+            let (header, rows) = header_and_rows(&["|a |b", "", next, "|c |d"]);
+            assert_eq!(header, None, "{next:?}");
+            assert_eq!(rows[0][0], lines(&["a"]), "{next:?}");
+            assert_eq!(rows[0][1], Cell::Unsupported, "{next:?}");
+        }
     }
 
     #[test]
@@ -862,8 +948,12 @@ mod tests {
             next += 1;
             choices[next % choices.len()] % range
         };
-        let implicit_header = header && rows.len() > 1 && choose(2) == 0;
+        let implicit_header = header && choose(2) == 0;
         let first_row_on_one_line = matches!(cols, Cols::Absent) || implicit_header;
+        let cells_before_the_gap = match cols {
+            Cols::Absent => columns,
+            _ => 1 + choose(columns as u8) as usize,
+        };
         if first_row_on_one_line {
             rows[0] = std::mem::take(&mut rows[0])
                 .into_iter()
@@ -908,12 +998,13 @@ mod tests {
                 } else {
                     text.extend(cell.lines().map(str::to_string));
                 }
+                if index == 0 && implicit_header && column + 1 == cells_before_the_gap {
+                    text.push(std::mem::take(&mut line));
+                    text.push(String::new());
+                }
             }
-            if one_line {
+            if !line.is_empty() {
                 text.push(line);
-            }
-            if index == 0 && implicit_header {
-                text.push(String::new());
             }
         }
         text.push(delimiter.to_string());
