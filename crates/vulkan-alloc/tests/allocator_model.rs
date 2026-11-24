@@ -120,6 +120,10 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         "Invalidate fails on the device",
         "Flush through the guard",
         "Invalidate through the guard",
+        "Flush makes no Vulkan call for coherent memory",
+        "Invalidate makes no Vulkan call for coherent memory",
+        "Flush through the guard makes no Vulkan call for coherent memory",
+        "Invalidate through the guard makes no Vulkan call for coherent memory",
     ] {
         assert!(coverage.count(event) > 0, "never reached: {event}");
     }
@@ -251,6 +255,12 @@ fn every_pair_of_mapping_operations_from_every_mapping_state_follows_the_model()
         "map SharesTheMapping: unmapped",
         "free the last of a block: persistent",
         "free one of several: persistent",
+        "Flush makes no Vulkan call for coherent memory",
+        "Invalidate makes no Vulkan call for coherent memory",
+        "Flush through the guard makes no Vulkan call for coherent memory",
+        "Invalidate through the guard makes no Vulkan call for coherent memory",
+        "Flush through the guard",
+        "Invalidate through the guard",
     ] {
         assert!(coverage.count(event) > 0, "never reached: {event}");
     }

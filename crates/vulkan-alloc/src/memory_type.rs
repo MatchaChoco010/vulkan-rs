@@ -10,7 +10,8 @@ use vulkan::vk;
 /// and `HOST_COHERENT`, so their memory is always host-coherent: mapped memory can be
 /// written and read without
 /// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) or
-/// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation). If no
+/// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation), which
+/// make no Vulkan call for such memory. If no
 /// memory type allowed by the resource's `memory_type_bits` is host-visible and
 /// host-coherent, [`Allocator::allocate`](crate::Allocator::allocate) fails with
 /// [`AllocationError::NoCompatibleMemoryType`](crate::AllocationError::NoCompatibleMemoryType)
@@ -27,10 +28,9 @@ use vulkan::vk;
 ///
 /// Memory that is `HOST_CACHED` but not `HOST_COHERENT` can be faster for the host to
 /// read. To use it, give
-/// `MemoryLocation::Custom { required: HOST_VISIBLE, preferred: HOST_VISIBLE | HOST_CACHED }`
-/// and, when [`Allocator::allocation_memory_flags`](crate::Allocator::allocation_memory_flags)
-/// shows that the chosen type is not `HOST_COHERENT`, invalidate before reading and flush
-/// after writing.
+/// `MemoryLocation::Custom { required: HOST_VISIBLE, preferred: HOST_VISIBLE | HOST_CACHED }`,
+/// invalidate before reading and flush after writing. Both do nothing if the chosen type
+/// is `HOST_COHERENT`, so they need not be skipped for it.
 ///
 /// Two kinds of memory types are considered only when the location names their flag as
 /// required or preferred, which only [`MemoryLocation::Custom`] can do:
@@ -66,9 +66,11 @@ pub enum MemoryLocation {
     /// Explicit flags.
     ///
     /// The chosen type is certain to be `HOST_COHERENT` only if `required` contains that
-    /// flag; otherwise check
-    /// [`Allocator::allocation_memory_flags`](crate::Allocator::allocation_memory_flags)
-    /// to know whether mapped writes need a flush and mapped reads an invalidate.
+    /// flag; otherwise flush after mapped writes and invalidate before mapped reads.
+    /// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) and
+    /// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation) do
+    /// nothing for a type that is `HOST_COHERENT`, so they can be called whichever type is
+    /// chosen.
     Custom {
         /// Flags the memory type must have.
         required: vk::MemoryPropertyFlags,

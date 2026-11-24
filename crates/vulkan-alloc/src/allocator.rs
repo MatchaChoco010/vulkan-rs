@@ -476,9 +476,10 @@ impl Allocator {
         memory_type_flags(&self.memory_properties, memory_type_index)
     }
 
-    /// The property flags of the memory type the allocation was made in. Check
-    /// `HOST_COHERENT` here to know whether mapped writes and reads need
-    /// [`Allocator::flush_allocation`] and [`Allocator::invalidate_allocation`]. It is
+    /// The property flags of the memory type the allocation was made in.
+    /// `HOST_COHERENT` tells whether mapped writes and reads need
+    /// [`Allocator::flush_allocation`] and [`Allocator::invalidate_allocation`]; both do
+    /// nothing for memory with it, so they can be called without checking. It is
     /// always set for allocations made with
     /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu).
@@ -507,21 +508,29 @@ impl Allocator {
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
     /// it can give memory without it.
     ///
+    /// For a memory type with `HOST_COHERENT`, this makes no Vulkan call and returns
+    /// `Ok(())` once the allocation passes the checks below. So it can be called after
+    /// every host write without looking at the memory type.
+    ///
     /// The flushed range is the allocation, widened to multiples of
     /// [`AllocatorCreateDesc::non_coherent_atom_size`] (or to the end of the block).
     ///
     /// # Errors
     ///
     /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation or the allocation is not mapped.
+    ///   allocation or the allocation is not mapped, whether its memory type has
+    ///   `HOST_COHERENT` or not.
     /// - [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
     ///
     /// # Safety
     ///
     /// The device the allocator was created with must not have been destroyed.
     pub unsafe fn flush_allocation(&self, allocation: &Allocation) -> Result<(), AllocationError> {
-        let range = self.mapped_range(allocation)?;
-        unsafe { self.device.flush_mapped_memory_ranges(&[range]) }.map_err(AllocationError::Vulkan)
+        if let Some(range) = self.range_to_synchronize(allocation)? {
+            unsafe { self.device.flush_mapped_memory_ranges(&[range]) }
+                .map_err(AllocationError::Vulkan)?;
+        }
+        Ok(())
     }
 
     /// Invalidates the host's view of a mapped allocation with
@@ -533,13 +542,18 @@ impl Allocator {
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
     /// it can give memory without it.
     ///
+    /// For a memory type with `HOST_COHERENT`, this makes no Vulkan call and returns
+    /// `Ok(())` once the allocation passes the checks below. So it can be called before
+    /// every host read without looking at the memory type.
+    ///
     /// The invalidated range is the allocation, widened to multiples of
     /// [`AllocatorCreateDesc::non_coherent_atom_size`] (or to the end of the block).
     ///
     /// # Errors
     ///
     /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation or the allocation is not mapped.
+    ///   allocation or the allocation is not mapped, whether its memory type has
+    ///   `HOST_COHERENT` or not.
     /// - [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
     ///
     /// # Safety
@@ -549,9 +563,11 @@ impl Allocator {
         &self,
         allocation: &Allocation,
     ) -> Result<(), AllocationError> {
-        let range = self.mapped_range(allocation)?;
-        unsafe { self.device.invalidate_mapped_memory_ranges(&[range]) }
-            .map_err(AllocationError::Vulkan)
+        if let Some(range) = self.range_to_synchronize(allocation)? {
+            unsafe { self.device.invalidate_mapped_memory_ranges(&[range]) }
+                .map_err(AllocationError::Vulkan)?;
+        }
+        Ok(())
     }
 
     /// Totals of the memory the allocator holds, overall and per memory type.
@@ -678,12 +694,17 @@ impl Allocator {
             .block(allocation)
     }
 
-    fn mapped_range(
+    fn range_to_synchronize(
         &self,
         allocation: &Allocation,
-    ) -> Result<vk::MappedMemoryRange<'static>, AllocationError> {
-        self.block(allocation)?
-            .mapped_range(allocation, self.non_coherent_atom_size)
+    ) -> Result<Option<vk::MappedMemoryRange<'static>>, AllocationError> {
+        let range = self
+            .block(allocation)?
+            .mapped_range(allocation, self.non_coherent_atom_size)?;
+        let coherent = self
+            .allocation_memory_flags(allocation)?
+            .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
+        Ok((!coherent).then_some(range))
     }
 
     fn heap_size(&self, memory_type_index: u32) -> Option<u64> {

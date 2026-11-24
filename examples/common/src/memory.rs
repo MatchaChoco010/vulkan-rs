@@ -94,39 +94,31 @@ pub unsafe fn buffer_device_address(gpu: &Gpu, buffer: vk::Buffer) -> vk::Device
 
 /// Copies `bytes` to the start of a host-visible buffer. An error when they are more
 /// than the buffer holds; its allocation may be larger, but the device sees only the
-/// buffer. `CpuToGpu` and `GpuToCpu` memory is host-coherent. Memory that is not
-/// (host-visible memory of a `GpuOnly` or `Custom` location) is flushed after the copy.
+/// buffer. The copy is flushed, which does nothing for host-coherent memory, such as
+/// that of `CpuToGpu` and `GpuToCpu`, and makes it visible to the device in memory that
+/// is not (host-visible memory of a `GpuOnly` or `Custom` location).
 pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<()> {
     check_fits(bytes.len(), buffer.size)?;
     gpu.with_allocator(|allocator| unsafe {
-        let coherent = allocator
-            .allocation_memory_flags(&buffer.allocation)?
-            .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
         let mut mapped = allocator.map(&buffer.allocation)?;
         mapped
             .byte_range_mut(0, bytes.len())
             .context("the buffer is larger than its allocation")?
             .copy_from_slice(bytes);
-        if !coherent {
-            mapped.flush()?;
-        }
+        mapped.flush()?;
         Ok(())
     })
 }
 
 /// The contents of a host-visible buffer that the device has written. The writes must
-/// have been made visible to the host, with a barrier to `HOST` and a wait.
-/// `CpuToGpu` and `GpuToCpu` memory is host-coherent. Memory that is not (host-visible
-/// memory of a `GpuOnly` or `Custom` location) is invalidated before the read.
+/// have been made visible to the host, with a barrier to `HOST` and a wait. The mapping
+/// is invalidated before the read, which does nothing for host-coherent memory, such as
+/// that of `CpuToGpu` and `GpuToCpu`, and is needed for memory that is not (host-visible
+/// memory of a `GpuOnly` or `Custom` location).
 pub unsafe fn read_buffer(gpu: &Gpu, buffer: &Buffer) -> Result<Vec<u8>> {
     gpu.with_allocator(|allocator| unsafe {
-        let coherent = allocator
-            .allocation_memory_flags(&buffer.allocation)?
-            .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
         let mut mapped = allocator.map(&buffer.allocation)?;
-        if !coherent {
-            mapped.invalidate()?;
-        }
+        mapped.invalidate()?;
         Ok(mapped
             .byte_range(0, host_len(buffer.size)?)
             .context("the buffer is larger than its allocation")?
