@@ -145,7 +145,7 @@ pub fn required_features(ir: &Registry) -> Vec<String> {
 
 pub fn assert_listed_members_exist(ir: &Registry) {
     emit::structs::assert_listed_structures_exist(ir);
-    emit::structs::assert_listed_read_only_arrays_exist(ir);
+    emit::structs::assert_listed_read_only_members_exist(ir);
     emit::commands::assert_listed_uncounted_arrays_exist(ir);
 }
 

@@ -49,6 +49,34 @@ fn arrays_that_the_implementation_only_reads_are_borrowed_from_read_only_memory(
 }
 
 #[test]
+fn union_members_that_the_implementation_only_reads_are_borrowed_shared() {
+    let bottom_level = vk::ClusterAccelerationStructureClustersBottomLevelInputNV::default();
+    let triangles = vk::ClusterAccelerationStructureTriangleClusterInputNV::default();
+    let moved = vk::ClusterAccelerationStructureMoveObjectsInputNV::default();
+    let inputs = [
+        vk::ClusterAccelerationStructureOpInputNV::clusters_bottom_level(&bottom_level),
+        vk::ClusterAccelerationStructureOpInputNV::clusters_bottom_level(&bottom_level),
+        vk::ClusterAccelerationStructureOpInputNV::triangle_clusters(&triangles),
+        vk::ClusterAccelerationStructureOpInputNV::move_objects(&moved),
+    ];
+    unsafe {
+        assert!(core::ptr::eq(
+            inputs[0].p_clusters_bottom_level,
+            &raw const bottom_level
+        ));
+        assert!(core::ptr::eq(
+            inputs[1].p_clusters_bottom_level,
+            &raw const bottom_level
+        ));
+        assert!(core::ptr::eq(
+            inputs[2].p_triangle_clusters,
+            &raw const triangles
+        ));
+        assert!(core::ptr::eq(inputs[3].p_move_objects, &raw const moved));
+    }
+}
+
+#[test]
 fn arrays_sharing_a_count_must_agree() {
     let semaphores = [vk::Semaphore::null(); 2];
     let stages = [vk::PipelineStageFlags::empty(); 2];

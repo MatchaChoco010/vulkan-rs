@@ -20746,28 +20746,37 @@ impl<'a> ClusterAccelerationStructureOpInputNV<'a> {
     /// Creates the union with [`p_clusters_bottom_level`](Self::p_clusters_bottom_level) pointing
     /// to `value`. The bytes of the union outside
     /// [`p_clusters_bottom_level`](Self::p_clusters_bottom_level) are zero.
+    ///
+    /// The C declaration of the member is a pointer to writable memory, but the implementation only
+    /// reads the value, so the constructor borrows it shared.
     pub fn clusters_bottom_level(
-        value: &'a mut ClusterAccelerationStructureClustersBottomLevelInputNV<'a>,
+        value: &'a ClusterAccelerationStructureClustersBottomLevelInputNV<'a>,
     ) -> Self {
         let mut union = Self::default();
-        union.p_clusters_bottom_level = core::ptr::from_mut(value);
+        union.p_clusters_bottom_level = core::ptr::from_ref(value).cast_mut();
         union
     }
     /// Creates the union with [`p_triangle_clusters`](Self::p_triangle_clusters) pointing to
     /// `value`. The bytes of the union outside [`p_triangle_clusters`](Self::p_triangle_clusters)
     /// are zero.
+    ///
+    /// The C declaration of the member is a pointer to writable memory, but the implementation only
+    /// reads the value, so the constructor borrows it shared.
     pub fn triangle_clusters(
-        value: &'a mut ClusterAccelerationStructureTriangleClusterInputNV<'a>,
+        value: &'a ClusterAccelerationStructureTriangleClusterInputNV<'a>,
     ) -> Self {
         let mut union = Self::default();
-        union.p_triangle_clusters = core::ptr::from_mut(value);
+        union.p_triangle_clusters = core::ptr::from_ref(value).cast_mut();
         union
     }
     /// Creates the union with [`p_move_objects`](Self::p_move_objects) pointing to `value`. The
     /// bytes of the union outside [`p_move_objects`](Self::p_move_objects) are zero.
-    pub fn move_objects(value: &'a mut ClusterAccelerationStructureMoveObjectsInputNV<'a>) -> Self {
+    ///
+    /// The C declaration of the member is a pointer to writable memory, but the implementation only
+    /// reads the value, so the constructor borrows it shared.
+    pub fn move_objects(value: &'a ClusterAccelerationStructureMoveObjectsInputNV<'a>) -> Self {
         let mut union = Self::default();
-        union.p_move_objects = core::ptr::from_mut(value);
+        union.p_move_objects = core::ptr::from_ref(value).cast_mut();
         union
     }
 }
