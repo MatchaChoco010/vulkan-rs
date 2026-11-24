@@ -21,7 +21,9 @@ env:
   VULKAN_RS_REQUIRE_DEVICE_TEST: "1"
 
 jobs:
-  check:
+  # What does not run the tests: the formatting, the rules for comments and versions, the
+  # generated files, the lints and the documentation.
+  lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -40,17 +42,12 @@ jobs:
             | xargs --no-run-if-empty git -C third_party/vulkan fetch --quiet --depth=1 origin
           git -C third_party/vulkan tag --points-at HEAD
 
-      # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
-      # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
-      - name: Install lavapipe, the Vulkan loader and the validation layers
+      # Build dependencies of the Wayland examples (winit), whose build scripts run for
+      # clippy and rustdoc as well.
+      - name: Install the build dependencies of the examples
         uses: ./.github/actions/install-apt-packages
         with:
-          packages: >-
-            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
-            libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
-
-      - name: Show the Vulkan devices and layers
-        run: vulkaninfo --summary
+          packages: pkg-config libwayland-dev libxkbcommon-dev
 
       # The version, profile and components come from rust-toolchain.toml.
       - name: Install Rust
@@ -65,7 +62,7 @@ jobs:
 
       # The Rust sources under crates/ have no comments other than doc comments on the
       # public API of the user-facing crates. This also runs as part of the workspace
-      # tests; it is a step of its own so that it fails early.
+      # tests; it is a step of its own so that its failure is easy to find.
       - name: Comment rules under crates/
         run: cargo test -p source-lint --test crates_follow_the_comment_rules
 
@@ -91,13 +88,39 @@ jobs:
           cargo doc --workspace --all-features --no-deps
           cargo doc -p vulkan -p vulkan-alloc --no-deps
 
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      # The submodules: the C headers (crates/vulkan/tests/layout.rs) and the
+      # specification sources (crates/vulkan/tests/docs.rs).
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
+      # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
+      - name: Install lavapipe, the Vulkan loader and the validation layers
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: >-
+            libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
+            libvulkan-dev pkg-config libwayland-dev libxkbcommon-dev
+
+      - name: Show the Vulkan devices and layers
+        run: vulkaninfo --summary
+
+      # The version, profile and components come from rust-toolchain.toml.
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
       # Includes the examples in the documentation (doctests) and the comparison of the
       # generated documentation with the specification sources (crates/vulkan/tests/docs.rs).
       - name: Test
         run: cargo test --workspace --all-features
-
-      - name: Test without default features
-        run: cargo test -p vulkan --no-default-features
 
       # A device test skips itself when the driver lacks the extension it exercises.
       # cargo hides the output of passing tests, so list the skips where they can be seen.
@@ -140,6 +163,25 @@ jobs:
           name: example-output
           path: target/example-output/
           if-no-files-found: ignore
+
+  # Without the `std` feature the crate neither loads nor links the Vulkan loader, so
+  # this job installs none, and the device tests are compiled out.
+  test-no-default-features:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test without default features
+        run: cargo test -p vulkan --no-default-features
 
   # The device tests and the headless examples on the lavapipe of a recent Mesa, which
   # has Vulkan 1.4 and the extensions that the lavapipe of Ubuntu 24.04 lacks
@@ -287,9 +329,6 @@ jobs:
       - name: Test
         run: cargo test -p vulkan -p vulkan-alloc --all-features --no-fail-fast
 
-      - name: Test without default features
-        run: cargo test -p vulkan --no-default-features
-
       - name: Report what the device tests skipped
         run: |
           {
@@ -300,3 +339,30 @@ jobs:
               | sed -E 's/^test [a-z_0-9:]+ \.\.\. //' | sort | uniq -c
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  test-i686-no-default-features:
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_BUILD_TARGET: i686-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # gcc-multilib: links the test binaries and builds the C side of the layout test
+      # (crates/vulkan/tests/layout.rs) with -m32.
+      - name: Install the 32-bit C toolchain
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: gcc-multilib
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install
+          rustup target add "$CARGO_BUILD_TARGET"
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test without default features
+        run: cargo test -p vulkan --no-default-features
