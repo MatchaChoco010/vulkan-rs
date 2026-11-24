@@ -220,6 +220,7 @@ const ORDERS: [[Run; 3]; 3] = [
 ];
 
 #[test]
+#[cfg_attr(miri, ignore)]
 fn the_resource_heap_plan_returns_the_first_documented_error_that_applies() {
     let mut seen = Seen::default();
     for buffer_size in SIZES {
@@ -316,6 +317,7 @@ fn resource_plan_follows_its_documentation(
 }
 
 #[test]
+#[cfg_attr(miri, ignore)]
 fn the_sampler_heap_plan_returns_the_first_documented_error_that_applies() {
     let mut seen = Seen::default();
     for size in SIZES {
