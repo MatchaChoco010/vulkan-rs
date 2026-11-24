@@ -465,12 +465,9 @@ fn typed_values_doc(
     );
     let types = typed.value_types.iter().map(|(value, rust_ty)| {
         let variant = model.enum_variant(typed.type_enum, value);
-        (
-            0,
-            format!(
-                "[`{}::{variant}`] stands for {rust_ty}",
-                type_name(typed.type_enum)
-            ),
+        format!(
+            "[`{}::{variant}`] stands for {rust_ty}",
+            type_name(typed.type_enum)
         )
     });
     vec![
@@ -479,7 +476,7 @@ fn typed_values_doc(
             field_link(&type_member.name),
             count.name
         )),
-        Block::List(types.collect()),
+        Block::list(types),
         Block::Text(format!(
             "[`{}`] is implemented for these types and for no other.",
             typed.value_trait

@@ -22,7 +22,6 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
             .params
             .iter()
             .filter_map(|p| model.described(&cfg, &fp.name, &p.name))
-            .flat_map(parameter_item)
             .collect::<Vec<_>>();
         let mut doc = model.type_doc(&cfg, &fp.name, "C function pointer type", "");
         if !described.is_empty() {
@@ -62,20 +61,6 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         ));
     }
     out
-}
-
-pub(crate) fn parameter_item(described: Vec<Block>) -> Vec<(usize, String)> {
-    described
-        .into_iter()
-        .flat_map(|block| match block {
-            Block::Text(text) => vec![(0, text)],
-            Block::List(items) => items
-                .into_iter()
-                .map(|(level, text)| (level + 1, text))
-                .collect(),
-            Block::Heading(_) => Vec::new(),
-        })
-        .collect()
 }
 
 fn alias(cfg: &Cfg, name: &str, params: &[(String, String)], return_ty: &str) -> String {

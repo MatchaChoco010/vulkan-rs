@@ -122,15 +122,12 @@ mod tests {
         };
         let model = Model::with_docs(&ir, &docs);
         let from = Cfg::default();
-        let nested = Block::List(vec![
-            (0, "on success".to_string()),
-            (0, "always".to_string()),
-        ]);
+        let nested = Block::list(["on success".to_string(), "always".to_string()]);
         assert_eq!(
             model.described(&from, "vkGetDrmDisplayEXT", "display"),
             Some(vec![
                 Block::Text(
-                    "`display`, which the specification describes under the name `pDisplay`: `pDisplay` is a pointer to a handle where the display\nis returned:\n"
+                    "`display`, which the specification describes under the name `pDisplay`: `pDisplay` is a pointer to a handle where the display\nis returned:"
                         .to_string()
                 ),
                 nested.clone(),
@@ -139,14 +136,14 @@ mod tests {
         assert_eq!(
             model.described(&from, "vkGetDrmDisplayEXT", "drmFd"),
             Some(vec![Block::Text(
-                "`drmFd` is the DRM primary file descriptor.\n".to_string()
+                "`drmFd` is the DRM primary file descriptor.".to_string()
             )])
         );
         assert_eq!(
             model.described(&from, "vkGetDrmDisplayEXT", "pDisplay"),
             Some(vec![
                 Block::Text(
-                    "`pDisplay` is a pointer to a handle where the display\nis returned:\n"
+                    "`pDisplay` is a pointer to a handle where the display\nis returned:"
                         .to_string()
                 ),
                 nested,

@@ -2742,7 +2742,7 @@
     },
     {
      "name": "accelerationStructureReference",
-     "text": "pname:accelerationStructureReference is\neither"
+     "text": "pname:accelerationStructureReference is\neither\n:\n** a device address containing the value obtained from\nflink:vkGetAccelerationStructureDeviceAddressKHR\nor\nflink:vkGetAccelerationStructureHandleNV\nfor a bottom level acceleration structure (used by device operations\nwhich reference acceleration structures)\nor,\n** a device address containing a bottom level cluster acceleration\nstructure built using\nflink:vkCmdBuildClusterAccelerationStructureIndirectNV\n** a slink:VkAccelerationStructureKHR object (used by host operations\nwhich reference acceleration structures)."
     }
    ],
    "kind": "structs",
@@ -3406,7 +3406,7 @@
     },
     {
      "name": "VK_ACCESS_2_SHADER_READ_BIT",
-     "text": "ename:VK_ACCESS_2_SHADER_READ_BIT\nis equivalent to the logical OR of:"
+     "text": "ename:VK_ACCESS_2_SHADER_READ_BIT\nis equivalent to the logical OR of:\ninclude::{generated}/sync/flagDefinitions/VK_ACCESS_2_SHADER_READ_BIT.adoc[]"
     },
     {
      "name": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT",
@@ -6369,7 +6369,7 @@
    "items": [
     {
      "name": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR",
-     "text": "ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR specifies\nthat the specified acceleration structure can: be updated with\na pname:mode of ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR in\nslink:VkAccelerationStructureBuildGeometryInfoKHR\nor\nan pname:update of ename:VK_TRUE in\nflink:vkCmdBuildAccelerationStructureNV"
+     "text": "ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR specifies\nthat the specified acceleration structure can: be updated with\na pname:mode of ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR in\nslink:VkAccelerationStructureBuildGeometryInfoKHR\nor\nan pname:update of ename:VK_TRUE in\nflink:vkCmdBuildAccelerationStructureNV\n.\nFor sphere and LSS primitives, only positions and radii may be updated,\nthe provided index buffers and flags must: remain unchanged from the\ninitial build."
     },
     {
      "name": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR",
@@ -7763,7 +7763,7 @@
     },
     {
      "name": "framebuffer",
-     "text": "pname:framebuffer can: refer to the slink:VkFramebuffer object that the\nsname:VkCommandBuffer will be rendering to if it is executed within a\nrender pass instance.\nIt can: be dlink:VK_NULL_HANDLE if the framebuffer is not known."
+     "text": "pname:framebuffer can: refer to the slink:VkFramebuffer object that the\nsname:VkCommandBuffer will be rendering to if it is executed within a\nrender pass instance.\nIt can: be dlink:VK_NULL_HANDLE if the framebuffer is not known.\n+\n[NOTE]\n====\nSpecifying the exact framebuffer that the secondary command buffer will be\nexecuted with may: result in better performance at command buffer execution\ntime.\n===="
     },
     {
      "name": "occlusionQueryEnable",
@@ -8102,11 +8102,11 @@
     },
     {
      "name": "VK_COMPARE_OP_LESS",
-     "text": "ename:VK_COMPARE_OP_LESS specifies that the comparison evaluates"
+     "text": "ename:VK_COMPARE_OP_LESS specifies that the comparison evaluates\n[eq]#_reference_ < _test_#."
     },
     {
      "name": "VK_COMPARE_OP_EQUAL",
-     "text": "ename:VK_COMPARE_OP_EQUAL specifies that the comparison evaluates"
+     "text": "ename:VK_COMPARE_OP_EQUAL specifies that the comparison evaluates\n[eq]#_reference_ = _test_#."
     },
     {
      "name": "VK_COMPARE_OP_LESS_OR_EQUAL",
@@ -8114,11 +8114,11 @@
     },
     {
      "name": "VK_COMPARE_OP_GREATER",
-     "text": "ename:VK_COMPARE_OP_GREATER specifies that the comparison evaluates"
+     "text": "ename:VK_COMPARE_OP_GREATER specifies that the comparison evaluates\n[eq]#_reference_ > _test_#."
     },
     {
      "name": "VK_COMPARE_OP_NOT_EQUAL",
-     "text": "ename:VK_COMPARE_OP_NOT_EQUAL specifies that the comparison evaluates"
+     "text": "ename:VK_COMPARE_OP_NOT_EQUAL specifies that the comparison evaluates\n[eq]#_reference_ {neq} _test_#."
     },
     {
      "name": "VK_COMPARE_OP_GREATER_OR_EQUAL",
@@ -8949,7 +8949,7 @@
    "items": [
     {
      "name": "VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR",
-     "text": "ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR creates a direct\ncopy of the acceleration structure specified in pname:src into the one\nspecified by pname:dst.\nThe pname:dst acceleration structure must: have been created with the\nsame parameters as pname:src\nwith the exception of pname:size, which must: at least as large as the\nqueried ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR size"
+     "text": "ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR creates a direct\ncopy of the acceleration structure specified in pname:src into the one\nspecified by pname:dst.\nThe pname:dst acceleration structure must: have been created with the\nsame parameters as pname:src\nwith the exception of pname:size, which must: at least as large as the\nqueried ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR size\n.\nIf pname:src contains references to other acceleration structures,\npname:dst will reference the same acceleration structures."
     },
     {
      "name": "VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR",
@@ -10536,11 +10536,11 @@
     },
     {
      "name": "outputGridSize",
-     "text": "pname:outputGridSize is exactly one bit of\ntlink:VkDataGraphOpticalFlowGridSizeFlagsARM specifying the grid size of\nthe output flow and cost maps to be bound to this optical flow pipeline.\nThe size of the output flow and cost maps is a function of the input\nimage dimensions and pname:outputGridSize and is calculated as follows: +"
+     "text": "pname:outputGridSize is exactly one bit of\ntlink:VkDataGraphOpticalFlowGridSizeFlagsARM specifying the grid size of\nthe output flow and cost maps to be bound to this optical flow pipeline.\nThe size of the output flow and cost maps is a function of the input\nimage dimensions and pname:outputGridSize and is calculated as follows: +\n[eq]#OutputWidth = {lceil} pname:width / OutputGridWidth {rceil}# +\n[eq]#OutputHeight = {lceil} pname:height / OutputGridHeight {rceil}# +\nwhere OutputGridWidth and OutputGridHeight are determined by\npname:outputGridSize."
     },
     {
      "name": "hintGridSize",
-     "text": "pname:hintGridSize is one exactly bit of\ntlink:VkDataGraphOpticalFlowGridSizeFlagsARM specifying the grid size of\nthe hint flow vector map to be bound to this optical flow pipeline.\nThe size of the hint maps is a function of the input image dimensions\nand pname:hintGridSize and is calculated as follows: +"
+     "text": "pname:hintGridSize is one exactly bit of\ntlink:VkDataGraphOpticalFlowGridSizeFlagsARM specifying the grid size of\nthe hint flow vector map to be bound to this optical flow pipeline.\nThe size of the hint maps is a function of the input image dimensions\nand pname:hintGridSize and is calculated as follows: +\n[eq]#HintWidth = {lceil} pname:width / HintGridWidth {rceil}# +\n[eq]#HintHeight = {lceil} pname:height / HintGridHeight {rceil}# +\nwhere HintGridWidth and HintGridHeight are determined by\npname:hintGridSize."
     },
     {
      "name": "performanceLevel",
@@ -11827,11 +11827,11 @@
    "items": [
     {
      "name": "VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT",
-     "text": "ename:VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT\nspecifies that the depth bias representation is a factor of the format's"
+     "text": "ename:VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORMAT_EXT\nspecifies that the depth bias representation is a factor of the format's\n[eq]#r# as described in <<primsrast-depthbias-computation>>."
     },
     {
      "name": "VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT",
-     "text": "ename:VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT\nspecifies that the depth bias representation is a factor of a constant"
+     "text": "ename:VK_DEPTH_BIAS_REPRESENTATION_LEAST_REPRESENTABLE_VALUE_FORCE_UNORM_EXT\nspecifies that the depth bias representation is a factor of a constant\n[eq]#r# defined by the bit-size or mantissa of the format as described\nin <<primsrast-depthbias-computation>>."
     },
     {
      "name": "VK_DEPTH_BIAS_REPRESENTATION_FLOAT_EXT",
@@ -11873,7 +11873,7 @@
    "items": [
     {
      "name": "VK_DEPTH_CLAMP_MODE_VIEWPORT_RANGE_EXT",
-     "text": "ename:VK_DEPTH_CLAMP_MODE_VIEWPORT_RANGE_EXT specifies that the depth\nclamp range follows the viewport depth range.\nThe depth clamp range of each viewport will implicitly be set to"
+     "text": "ename:VK_DEPTH_CLAMP_MODE_VIEWPORT_RANGE_EXT specifies that the depth\nclamp range follows the viewport depth range.\nThe depth clamp range of each viewport will implicitly be set to\n[eq]#z~min~ = min(n,f)# and [eq]#z~max~ = max(n,f)#, where [eq]#n# and\n[eq]#f# are the pname:minDepth and pname:maxDepth depth range values of\nthe viewport."
     },
     {
      "name": "VK_DEPTH_CLAMP_MODE_USER_DEFINED_RANGE_EXT",
@@ -12023,7 +12023,7 @@
     },
     {
      "name": "range",
-     "text": "pname:range is the size in bytes that is used for this descriptor\nupdate, or ename:VK_WHOLE_SIZE to use the range from pname:offset to the\nend of the buffer."
+     "text": "pname:range is the size in bytes that is used for this descriptor\nupdate, or ename:VK_WHOLE_SIZE to use the range from pname:offset to the\nend of the buffer.\n+\n[NOTE]\n====\nWhen setting pname:range to ename:VK_WHOLE_SIZE, the\n<<buffer-info-effective-range, effective range>> must: not be larger than\nthe maximum range for the descriptor type (<<limits-maxUniformBufferRange,\npname:maxUniformBufferRange>> or <<limits-maxStorageBufferRange,\npname:maxStorageBufferRange>>).\nThis means that ename:VK_WHOLE_SIZE is not typically useful in the common\ncase where uniform buffer descriptors are suballocated from a buffer that is\nmuch larger than pname:maxUniformBufferRange.\n===="
     }
    ],
    "kind": "structs",
@@ -12755,7 +12755,7 @@
     },
     {
      "name": "stageFlags",
-     "text": "pname:stageFlags member is a bitmask of elink:VkShaderStageFlagBits\nspecifying which pipeline shader stages can: access a resource for this\nbinding.\nename:VK_SHADER_STAGE_ALL is a shorthand specifying that all defined\nshader stages, including any additional stages defined by extensions,\ncan: access the resource."
+     "text": "pname:stageFlags member is a bitmask of elink:VkShaderStageFlagBits\nspecifying which pipeline shader stages can: access a resource for this\nbinding.\nename:VK_SHADER_STAGE_ALL is a shorthand specifying that all defined\nshader stages, including any additional stages defined by extensions,\ncan: access the resource.\n+\nIf a shader stage is not included in pname:stageFlags, then a resource must:\nnot be accessed from that stage via this binding within any pipeline using\nthe set layout.\nOther than input attachments which are limited to the fragment shader, there\nare no limitations on what combinations of stages can: use a descriptor\nbinding, and in particular a binding can: be used by both graphics stages\nand the compute stage."
     },
     {
      "name": "pImmutableSamplers",
@@ -13116,7 +13116,7 @@
     },
     {
      "name": "stride",
-     "text": "pname:stride is the stride in bytes between two consecutive array\nelements of the descriptor update information in the raw data structure.\nThe actual pointer ptr for each array element j of update entry i is\ncomputed using the following formula:"
+     "text": "pname:stride is the stride in bytes between two consecutive array\nelements of the descriptor update information in the raw data structure.\nThe actual pointer ptr for each array element j of update entry i is\ncomputed using the following formula:\n+\n[source,c++]\n----\n    const char *ptr = (const char *)pData + pDescriptorUpdateEntries[i].offset + j * pDescriptorUpdateEntries[i].stride\n----\n+\nThe stride is useful in case the bindings are stored in structs along with\nother data.\nIf pname:descriptorType is ename:VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK\nthen the value of pname:stride is ignored and the stride is assumed to be\n`1`, i.e. the descriptor update information for them is always specified as\na contiguous range."
     }
    ],
    "kind": "structs",
@@ -18637,7 +18637,7 @@
     },
     {
      "name": "VK_FORMAT_R16G16_SFIXED5_NV",
-     "text": "ename:VK_FORMAT_R16G16_SFIXED5_NV specifies a two-component, 16-bit\nsigned fixed-point format with linear encoding.\nThe components are signed two's-complement integers where the most\nsignificant bit specifies the sign bit, the next 10 bits specify the\ninteger value, and the last 5 bits represent the fractional value.\nThe signed 16-bit values can: be converted to floats in the range"
+     "text": "ename:VK_FORMAT_R16G16_SFIXED5_NV specifies a two-component, 16-bit\nsigned fixed-point format with linear encoding.\nThe components are signed two's-complement integers where the most\nsignificant bit specifies the sign bit, the next 10 bits specify the\ninteger value, and the last 5 bits represent the fractional value.\nThe signed 16-bit values can: be converted to floats in the range\n[eq]#[-1024,1023.96875]# by dividing the value by 32 [eq]#(2^5^)#."
     },
     {
      "name": "VK_FORMAT_R10X6_UINT_PACK16_ARM",
@@ -18754,7 +18754,7 @@
     },
     {
      "name": "VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT",
-     "text": "ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT specifies that\nif ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT is also set, an image view\ncan: be used with a sampler that has either of pname:magFilter or\npname:minFilter set to ename:VK_FILTER_LINEAR, or pname:mipmapMode set\nto ename:VK_SAMPLER_MIPMAP_MODE_LINEAR.\nIf ename:VK_FORMAT_FEATURE_BLIT_SRC_BIT is also set, an image can be\nused as the pname:srcImage to\nfname:vkCmdBlitImage2 and fname:vkCmdBlitImage\nwith a pname:filter of ename:VK_FILTER_LINEAR.\nThis bit must: only be exposed for formats that also support the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT or\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT."
+     "text": "ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT specifies that\nif ename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT is also set, an image view\ncan: be used with a sampler that has either of pname:magFilter or\npname:minFilter set to ename:VK_FILTER_LINEAR, or pname:mipmapMode set\nto ename:VK_SAMPLER_MIPMAP_MODE_LINEAR.\nIf ename:VK_FORMAT_FEATURE_BLIT_SRC_BIT is also set, an image can be\nused as the pname:srcImage to\nfname:vkCmdBlitImage2 and fname:vkCmdBlitImage\nwith a pname:filter of ename:VK_FILTER_LINEAR.\nThis bit must: only be exposed for formats that also support the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT or\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT.\n+\nIf the format being queried is a depth/stencil format, this bit only\nspecifies that the depth aspect (not the stencil aspect) of an image of this\nformat supports linear filtering, and that linear filtering of the depth\naspect is supported whether depth compare is enabled in the sampler or not.\nWhere depth comparison is supported it may: be linear filtered whether this\nbit is present or not, but where this bit is not present the filtered value\nmay: be computed in an implementation-dependent manner which differs from\nthe normal rules of linear filtering.\nThe resulting value must: be in the range [eq]#[0,1]# and should: be\nproportional to, or a weighted average of, the number of comparison passes\nor failures."
     },
     {
      "name": "VK_FORMAT_FEATURE_TRANSFER_SRC_BIT",
@@ -18822,7 +18822,7 @@
     },
     {
      "name": "VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR",
-     "text": "ename:VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR specifies that an image\nview with this format can: be used as an output <<reconstructed-picture,\nreconstructed picture>> or an input <<reference-picture,reference\npicture>> in <<video-encode-operations,video encode operations>>."
+     "text": "ename:VK_FORMAT_FEATURE_VIDEO_ENCODE_DPB_BIT_KHR specifies that an image\nview with this format can: be used as an output <<reconstructed-picture,\nreconstructed picture>> or an input <<reference-picture,reference\npicture>> in <<video-encode-operations,video encode operations>>.\n+\n[NOTE]\n====\nSpecific <<video-profiles,video profiles>> may: have additional restrictions\non the format and other image creation parameters corresponding to image\nviews used by video coding operations that can: be enumerated using the\nflink:vkGetPhysicalDeviceVideoFormatPropertiesKHR command.\n===="
     },
     {
      "name": "VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT",
@@ -18887,7 +18887,7 @@
     },
     {
      "name": "VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT",
-     "text": "ename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT specifies that\nif ename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT is also set, an image\nview can: be used with a sampler that has either of pname:magFilter or\npname:minFilter set to ename:VK_FILTER_LINEAR, or pname:mipmapMode set\nto ename:VK_SAMPLER_MIPMAP_MODE_LINEAR.\nIf ename:VK_FORMAT_FEATURE_2_BLIT_SRC_BIT is also set, an image can be\nused as the pname:srcImage for\nflink:vkCmdBlitImage2 and\nfname:vkCmdBlitImage with a pname:filter of ename:VK_FILTER_LINEAR.\nThis bit must: only be exposed for formats that also support the\nename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT or\nename:VK_FORMAT_FEATURE_2_BLIT_SRC_BIT."
+     "text": "ename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT specifies that\nif ename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT is also set, an image\nview can: be used with a sampler that has either of pname:magFilter or\npname:minFilter set to ename:VK_FILTER_LINEAR, or pname:mipmapMode set\nto ename:VK_SAMPLER_MIPMAP_MODE_LINEAR.\nIf ename:VK_FORMAT_FEATURE_2_BLIT_SRC_BIT is also set, an image can be\nused as the pname:srcImage for\nflink:vkCmdBlitImage2 and\nfname:vkCmdBlitImage with a pname:filter of ename:VK_FILTER_LINEAR.\nThis bit must: only be exposed for formats that also support the\nename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT or\nename:VK_FORMAT_FEATURE_2_BLIT_SRC_BIT.\n+\nIf the format being queried is a depth/stencil format, this bit only\nspecifies that the depth aspect (not the stencil aspect) of an image of this\nformat supports linear filtering.\nWhere depth comparison is supported it may: be linear filtered whether this\nbit is present or not, but where this bit is not present the filtered value\nmay: be computed in an implementation-dependent manner which differs from\nthe normal rules of linear filtering.\nThe resulting value must: be in the range [eq]#[0,1]# and should: be\nproportional to, or a weighted average of, the number of comparison passes\nor failures."
     },
     {
      "name": "VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT",
@@ -18971,7 +18971,7 @@
     },
     {
      "name": "VK_FORMAT_FEATURE_2_STENCIL_COPY_ON_TRANSFER_QUEUE_BIT_KHR",
-     "text": "ename:VK_FORMAT_FEATURE_2_STENCIL_COPY_ON_TRANSFER_QUEUE_BIT_KHR\nspecifies that the stencil aspect of this format can be copied using a\nqueue family that supports ename:VK_QUEUE_TRANSFER_BIT but does not\nsupport ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT."
+     "text": "ename:VK_FORMAT_FEATURE_2_STENCIL_COPY_ON_TRANSFER_QUEUE_BIT_KHR\nspecifies that the stencil aspect of this format can be copied using a\nqueue family that supports ename:VK_QUEUE_TRANSFER_BIT but does not\nsupport ename:VK_QUEUE_GRAPHICS_BIT or ename:VK_QUEUE_COMPUTE_BIT.\n+\n[NOTE]\n====\nSpecific <<video-profiles,video profiles>> may: have additional restrictions\non the format and other image creation parameters corresponding to image\nviews used by video coding operations that can: be enumerated using the\nflink:vkGetPhysicalDeviceVideoFormatPropertiesKHR command.\n===="
     },
     {
      "name": "VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT",
@@ -19019,7 +19019,7 @@
     },
     {
      "name": "VK_FORMAT_FEATURE_2_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR",
-     "text": "ename:VK_FORMAT_FEATURE_2_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR specifies\nthat an image view with this format can: be used as an\n<<encode-emphasis-map,emphasis map>> in <<video-encode-operations,video\nencode operations>>."
+     "text": "ename:VK_FORMAT_FEATURE_2_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR specifies\nthat an image view with this format can: be used as an\n<<encode-emphasis-map,emphasis map>> in <<video-encode-operations,video\nencode operations>>.\n+\n[NOTE]\n====\n<<encode-quantization-map,Video encode quantization maps>> have additional\nrestrictions specific to the <<video-profiles,video profile>> they are used\nwith that can: be enumerated using the\nflink:vkGetPhysicalDeviceVideoFormatPropertiesKHR command.\n===="
     },
     {
      "name": "VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_2D_BIT_IMG",
@@ -21484,7 +21484,7 @@
     },
     {
      "name": "VK_IMAGE_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR",
-     "text": "ename:VK_IMAGE_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR specifies that\nthe image can: be used in <<video-coding,video coding operations>>\nwithout having to specify at image creation time the set of video\nprofiles the image will be used with, except for images used only as\n<<dpb,DPB>> pictures, as long as the image is otherwise\n<<video-profile-compatibility,compatible>> with the video profile in\nquestion."
+     "text": "ename:VK_IMAGE_CREATE_VIDEO_PROFILE_INDEPENDENT_BIT_KHR specifies that\nthe image can: be used in <<video-coding,video coding operations>>\nwithout having to specify at image creation time the set of video\nprofiles the image will be used with, except for images used only as\n<<dpb,DPB>> pictures, as long as the image is otherwise\n<<video-profile-compatibility,compatible>> with the video profile in\nquestion.\n+\n[NOTE]\n====\nThis enables exchanging video picture data without additional copies or\nconversions when used as:\n\n  * <<decode-output-picture,Decode output pictures>>, regardless of the\n    video profile used to produce them.\n  * <<encode-input-picture,Encode input pictures>>, regardless of the video\n    profile used to consume them.\n\nThis includes images created with both\nename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR and\nename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR, which is necessary to use the\nsame video picture as the <<reconstructed-picture,reconstructed picture>>\nand <<decode-output-picture,decode output picture>> in a video decode\noperation on implementations supporting\nename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR.\n\nHowever, images with only DPB usage remain tied to the video profiles the\nimage was created with, as the data layout of such DPB-only images may: be\nimplementation- and codec-dependent.\n\nIf an application would like to share or reuse the device memory backing\nsuch images (e.g. for the purposes of temporal aliasing), then it should:\ncreate separate image objects for each video profile and bind them to the\nsame underlying device memory range, similar to how memory resources can: be\nshared across separate video sessions or any other memory-backed resource.\n===="
     }
    ],
    "kind": "enums",
@@ -21573,7 +21573,7 @@
     },
     {
      "name": "VK_IMAGE_CREATE_2_VIDEO_PROFILE_INDEPENDENT_BIT_KHR",
-     "text": "ename:VK_IMAGE_CREATE_2_VIDEO_PROFILE_INDEPENDENT_BIT_KHR specifies that\nthe image can: be used in <<video-coding,video coding operations>>\nwithout having to specify at image creation time the set of video\nprofiles the image will be used with, except for images used only as\n<<dpb,DPB>> pictures, as long as the image is otherwise\n<<video-profile-compatibility,compatible>> with the video profile in\nquestion."
+     "text": "ename:VK_IMAGE_CREATE_2_VIDEO_PROFILE_INDEPENDENT_BIT_KHR specifies that\nthe image can: be used in <<video-coding,video coding operations>>\nwithout having to specify at image creation time the set of video\nprofiles the image will be used with, except for images used only as\n<<dpb,DPB>> pictures, as long as the image is otherwise\n<<video-profile-compatibility,compatible>> with the video profile in\nquestion.\n+\n[NOTE]\n====\nThis enables exchanging video picture data without additional copies or\nconversions when used as:\n\n  * <<decode-output-picture,Decode output pictures>>, regardless of the\n    video profile used to produce them.\n  * <<encode-input-picture,Encode input pictures>>, regardless of the video\n    profile used to consume them.\n\nThis includes images created with both\nename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR and\nename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR, which is necessary to use the\nsame video picture as the <<reconstructed-picture,reconstructed picture>>\nand <<decode-output-picture,decode output picture>> in a video decode\noperation on implementations supporting\nename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR.\n\nHowever, images with only DPB usage remain tied to the video profiles the\nimage was created with, as the data layout of such DPB-only images may: be\nimplementation- and codec-dependent.\n\nIf an application would like to share or reuse the device memory backing\nsuch images (e.g. for the purposes of temporal aliasing), then it should:\ncreate separate image objects for each video profile and bind them to the\nsame underlying device memory range, similar to how memory resources can: be\nshared across separate video sessions or any other memory-backed resource.\n===="
     }
    ],
    "kind": "enums",
@@ -21870,7 +21870,7 @@
     },
     {
      "name": "maxMipLevels",
-     "text": "pname:maxMipLevels is the maximum number of mipmap levels.\npname:maxMipLevels must: be equal to the number of levels in the\ncomplete mipmap chain based on the [eq]#pname:maxExtent.width#,"
+     "text": "pname:maxMipLevels is the maximum number of mipmap levels.\npname:maxMipLevels must: be equal to the number of levels in the\ncomplete mipmap chain based on the [eq]#pname:maxExtent.width#,\n[eq]#pname:maxExtent.height#, and [eq]#pname:maxExtent.depth#, except\nwhen one of the following conditions is true, in which case it may:\ninstead be `1`:\n** fname:vkGetPhysicalDeviceImageFormatProperties::pname:tiling was\nename:VK_IMAGE_TILING_LINEAR\n** slink:VkPhysicalDeviceImageFormatInfo2::pname:tiling was\nename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT\n** the slink:VkPhysicalDeviceImageFormatInfo2::pname:pNext chain included\na slink:VkPhysicalDeviceExternalImageFormatInfo structure with a handle\ntype included in the pname:handleTypes member for which mipmap image\nsupport is not required\n** image pname:format is one of the\n<<formats-requiring-sampler-ycbcr-conversion, formats that require a\nsampler {YCbCr} conversion>>\n** pname:flags contains ename:VK_IMAGE_CREATE_SUBSAMPLED_BIT_EXT"
     },
     {
      "name": "maxArrayLayers",
@@ -31535,15 +31535,15 @@
     },
     {
      "name": "textureCompressionETC2",
-     "text": "pname:textureCompressionETC2\nspecifies whether all of the ETC2 and EAC compressed texture formats are\nsupported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:"
+     "text": "pname:textureCompressionETC2\nspecifies whether all of the ETC2 and EAC compressed texture formats are\nsupported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:\n+\n** ename:VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK\n** ename:VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK\n** ename:VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK\n** ename:VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK\n** ename:VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK\n** ename:VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK\n** ename:VK_FORMAT_EAC_R11_UNORM_BLOCK\n** ename:VK_FORMAT_EAC_R11_SNORM_BLOCK\n** ename:VK_FORMAT_EAC_R11G11_UNORM_BLOCK\n** ename:VK_FORMAT_EAC_R11G11_SNORM_BLOCK\n+\nTo query for additional properties, or if the feature is not enabled,\nflink:vkGetPhysicalDeviceFormatProperties and\nflink:vkGetPhysicalDeviceImageFormatProperties can: be used to check for\nsupported properties of individual formats as normal."
     },
     {
      "name": "textureCompressionASTC_LDR",
-     "text": "pname:textureCompressionASTC_LDR\nspecifies whether all of the ASTC LDR compressed texture formats are\nsupported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:"
+     "text": "pname:textureCompressionASTC_LDR\nspecifies whether all of the ASTC LDR compressed texture formats are\nsupported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:\n+\n** ename:VK_FORMAT_ASTC_4x4_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_4x4_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_5x4_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_5x4_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_5x5_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_5x5_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_6x5_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_6x5_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_6x6_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_6x6_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_8x5_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_8x5_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_8x6_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_8x6_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_8x8_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_8x8_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_10x5_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_10x5_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_10x6_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_10x6_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_10x8_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_10x8_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_10x10_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_10x10_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_12x10_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_12x10_SRGB_BLOCK\n** ename:VK_FORMAT_ASTC_12x12_UNORM_BLOCK\n** ename:VK_FORMAT_ASTC_12x12_SRGB_BLOCK\n+\nTo query for additional properties, or if the feature is not enabled,\nflink:vkGetPhysicalDeviceFormatProperties and\nflink:vkGetPhysicalDeviceImageFormatProperties can: be used to check for\nsupported properties of individual formats as normal."
     },
     {
      "name": "textureCompressionBC",
-     "text": "pname:textureCompressionBC specifies\nwhether all of the BC compressed texture formats are supported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:"
+     "text": "pname:textureCompressionBC specifies\nwhether all of the BC compressed texture formats are supported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:\n+\n** ename:VK_FORMAT_BC1_RGB_UNORM_BLOCK\n** ename:VK_FORMAT_BC1_RGB_SRGB_BLOCK\n** ename:VK_FORMAT_BC1_RGBA_UNORM_BLOCK\n** ename:VK_FORMAT_BC1_RGBA_SRGB_BLOCK\n** ename:VK_FORMAT_BC2_UNORM_BLOCK\n** ename:VK_FORMAT_BC2_SRGB_BLOCK\n** ename:VK_FORMAT_BC3_UNORM_BLOCK\n** ename:VK_FORMAT_BC3_SRGB_BLOCK\n** ename:VK_FORMAT_BC4_UNORM_BLOCK\n** ename:VK_FORMAT_BC4_SNORM_BLOCK\n** ename:VK_FORMAT_BC5_UNORM_BLOCK\n** ename:VK_FORMAT_BC5_SNORM_BLOCK\n** ename:VK_FORMAT_BC6H_UFLOAT_BLOCK\n** ename:VK_FORMAT_BC6H_SFLOAT_BLOCK\n** ename:VK_FORMAT_BC7_UNORM_BLOCK\n** ename:VK_FORMAT_BC7_SRGB_BLOCK\n+\nTo query for additional properties, or if the feature is not enabled,\nflink:vkGetPhysicalDeviceFormatProperties and\nflink:vkGetPhysicalDeviceImageFormatProperties can: be used to check for\nsupported properties of individual formats as normal."
     },
     {
      "name": "occlusionQueryPrecise",
@@ -31571,7 +31571,7 @@
     },
     {
      "name": "shaderStorageImageExtendedFormats",
-     "text": "pname:shaderStorageImageExtendedFormats specifies whether all the\n\"`storage image extended formats`\" below are supported; if this feature\nis supported, then the ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT must:\nbe supported in pname:optimalTilingFeatures for the following formats:"
+     "text": "pname:shaderStorageImageExtendedFormats specifies whether all the\n\"`storage image extended formats`\" below are supported; if this feature\nis supported, then the ename:VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT must:\nbe supported in pname:optimalTilingFeatures for the following formats:\n+\n** ename:VK_FORMAT_R16G16_SFLOAT\n** ename:VK_FORMAT_B10G11R11_UFLOAT_PACK32\n** ename:VK_FORMAT_R16_SFLOAT\n** ename:VK_FORMAT_R16G16B16A16_UNORM\n** ename:VK_FORMAT_A2B10G10R10_UNORM_PACK32\n** ename:VK_FORMAT_R16G16_UNORM\n** ename:VK_FORMAT_R8G8_UNORM\n** ename:VK_FORMAT_R16_UNORM\n** ename:VK_FORMAT_R8_UNORM\n** ename:VK_FORMAT_R16G16B16A16_SNORM\n** ename:VK_FORMAT_R16G16_SNORM\n** ename:VK_FORMAT_R8G8_SNORM\n** ename:VK_FORMAT_R16_SNORM\n** ename:VK_FORMAT_R8_SNORM\n** ename:VK_FORMAT_R16G16_SINT\n** ename:VK_FORMAT_R8G8_SINT\n** ename:VK_FORMAT_R16_SINT\n** ename:VK_FORMAT_R8_SINT\n** ename:VK_FORMAT_A2B10G10R10_UINT_PACK32\n** ename:VK_FORMAT_R16G16_UINT\n** ename:VK_FORMAT_R8G8_UINT\n** ename:VK_FORMAT_R16_UINT\n** ename:VK_FORMAT_R8_UINT\n+\n[NOTE]\n====\npname:shaderStorageImageExtendedFormats feature only adds a guarantee of\nformat support, which is specified for the whole physical device.\nTherefore enabling or disabling the feature via flink:vkCreateDevice has no\npractical effect.\n\nTo query for additional properties, or if the feature is not supported,\nflink:vkGetPhysicalDeviceFormatProperties and\nflink:vkGetPhysicalDeviceImageFormatProperties can: be used to check for\nsupported properties of individual formats, as usual rules allow.\n\nename:VK_FORMAT_R32G32_UINT, ename:VK_FORMAT_R32G32_SINT, and\nename:VK_FORMAT_R32G32_SFLOAT from code:StorageImageExtendedFormats SPIR-V\ncapability, are already covered by core Vulkan\n<<formats-mandatory-features-32bit,mandatory format support>>.\n===="
     },
     {
      "name": "shaderStorageImageMultisample",
@@ -32177,7 +32177,7 @@
     },
     {
      "name": "maxFragmentShadingRateAttachmentTexelSizeAspectRatio",
-     "text": "pname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio indicates the\nmaximum ratio between the width and height of the portion of the\nframebuffer corresponding to each texel in a fragment shading rate\nattachment.\npname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio must: be a\npower-of-two value, and must: be less than or equal to"
+     "text": "pname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio indicates the\nmaximum ratio between the width and height of the portion of the\nframebuffer corresponding to each texel in a fragment shading rate\nattachment.\npname:maxFragmentShadingRateAttachmentTexelSizeAspectRatio must: be a\npower-of-two value, and must: be less than or equal to\n[eq]#max(pname:maxFragmentShadingRateAttachmentTexelSize.width /\npname:minFragmentShadingRateAttachmentTexelSize.height,\npname:maxFragmentShadingRateAttachmentTexelSize.height /\npname:minFragmentShadingRateAttachmentTexelSize.width)#.\nIt must: be 0 if the <<features-attachmentFragmentShadingRate,\npname:attachmentFragmentShadingRate>> feature is not supported."
     },
     {
      "name": "primitiveFragmentShadingRateWithMultipleViewports",
@@ -32221,15 +32221,15 @@
     },
     {
      "name": "fragmentShadingRateWithConservativeRasterization",
-     "text": "pname:fragmentShadingRateWithConservativeRasterization\nspecifies whether <<primsrast-conservativeraster, conservative\nrasterization>> is supported for multi-pixel fragments.\nIt must: be ename:VK_FALSE if `apiext:VK_EXT_conservative_rasterization`\nis not supported.\nIf this value is ename:VK_FALSE, using <<primsrast-conservativeraster,\nconservative rasterization>> will clamp the fragment shading rate to"
+     "text": "pname:fragmentShadingRateWithConservativeRasterization\nspecifies whether <<primsrast-conservativeraster, conservative\nrasterization>> is supported for multi-pixel fragments.\nIt must: be ename:VK_FALSE if `apiext:VK_EXT_conservative_rasterization`\nis not supported.\nIf this value is ename:VK_FALSE, using <<primsrast-conservativeraster,\nconservative rasterization>> will clamp the fragment shading rate to\n[eq]#(1,1)#."
     },
     {
      "name": "fragmentShadingRateWithFragmentShaderInterlock",
-     "text": "pname:fragmentShadingRateWithFragmentShaderInterlock\nspecifies whether <<fragops-shader-interlock, fragment shader\ninterlock>> is supported for multi-pixel fragments.\nIt must: be ename:VK_FALSE if `apiext:VK_EXT_fragment_shader_interlock`\nis not supported.\nIf this value is ename:VK_FALSE, using <<fragops-shader-interlock,\nfragment shader interlock>> will clamp the fragment shading rate to"
+     "text": "pname:fragmentShadingRateWithFragmentShaderInterlock\nspecifies whether <<fragops-shader-interlock, fragment shader\ninterlock>> is supported for multi-pixel fragments.\nIt must: be ename:VK_FALSE if `apiext:VK_EXT_fragment_shader_interlock`\nis not supported.\nIf this value is ename:VK_FALSE, using <<fragops-shader-interlock,\nfragment shader interlock>> will clamp the fragment shading rate to\n[eq]#(1,1)#."
     },
     {
      "name": "fragmentShadingRateWithCustomSampleLocations",
-     "text": "pname:fragmentShadingRateWithCustomSampleLocations\nspecifies whether <<primsrast-samplelocations, custom sample locations>>\nare supported for multi-pixel fragments.\nIt must: be ename:VK_FALSE if `apiext:VK_EXT_sample_locations` is not\nsupported.\nIf this value is ename:VK_FALSE, using <<primsrast-samplelocations,\ncustom sample locations>> will clamp the fragment shading rate to"
+     "text": "pname:fragmentShadingRateWithCustomSampleLocations\nspecifies whether <<primsrast-samplelocations, custom sample locations>>\nare supported for multi-pixel fragments.\nIt must: be ename:VK_FALSE if `apiext:VK_EXT_sample_locations` is not\nsupported.\nIf this value is ename:VK_FALSE, using <<primsrast-samplelocations,\ncustom sample locations>> will clamp the fragment shading rate to\n[eq]#(1,1)#."
     },
     {
      "name": "fragmentShadingRateStrictMultiplyCombiner",
@@ -33460,7 +33460,7 @@
     },
     {
      "name": "maxPerStageDescriptorInputAttachments",
-     "text": "pname:maxPerStageDescriptorInputAttachments is the maximum number of\ninput attachments that can: be accessible to a single shader stage in a\npipeline layout, as well as the maximum usable input attachment index.\nDescriptors with a type of ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT\ncount against this limit.\nOnly descriptors in descriptor set layouts created without the\nename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT bit set\ncount against this limit.\nA descriptor is accessible to a pipeline shader stage when the\npname:stageFlags member of the sname:VkDescriptorSetLayoutBinding\nstructure has the bit for that shader stage set.\nThese are only supported for the fragment stage.\nSee <<descriptors-inputattachment>>."
+     "text": "pname:maxPerStageDescriptorInputAttachments is the maximum number of\ninput attachments that can: be accessible to a single shader stage in a\npipeline layout, as well as the maximum usable input attachment index.\nDescriptors with a type of ename:VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT\ncount against this limit.\nOnly descriptors in descriptor set layouts created without the\nename:VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT bit set\ncount against this limit.\nA descriptor is accessible to a pipeline shader stage when the\npname:stageFlags member of the sname:VkDescriptorSetLayoutBinding\nstructure has the bit for that shader stage set.\nThese are only supported for the fragment stage.\nSee <<descriptors-inputattachment>>.\n+\n[NOTE]\n====\npname:maxPerStageDescriptorInputAttachments was originally only intended to\nlimit the number of attachments per stage, not the number of available input\nindices across all shaders in a render pass.\nThe input indices were allowed to be semi arbitrary for render pass objects,\nor fully arbitrary for dynamic rendering,\nhowever some implementations have fixed limits for them.\nApplications already exist that exceed this limit, and they will continue to\nwork where they already did, but will fail to render on some platforms.\nFor forward looking applications, this can be worked around by\neither making careful use of index remapping with\nslink:VkRenderingInputAttachmentIndexInfo for dynamic rendering, or\nsplitting a subpass with too many input attachments into multiple subpasses.\n===="
     },
     {
      "name": "maxPerStageResources",
@@ -33604,15 +33604,15 @@
     },
     {
      "name": "subPixelPrecisionBits",
-     "text": "pname:subPixelPrecisionBits is the\nnumber of bits of subpixel precision in framebuffer coordinates"
+     "text": "pname:subPixelPrecisionBits is the\nnumber of bits of subpixel precision in framebuffer coordinates\n[eq]#x~f~# and [eq]#y~f~#.\nSee <<primsrast>>."
     },
     {
      "name": "subTexelPrecisionBits",
-     "text": "pname:subTexelPrecisionBits is the\nnumber of bits of precision in the division along an axis of an image\nused for minification and magnification filters."
+     "text": "pname:subTexelPrecisionBits is the\nnumber of bits of precision in the division along an axis of an image\nused for minification and magnification filters.\n[eq]#2^pname:subTexelPrecisionBits^# is the actual number of divisions\nalong each axis of the image represented.\nSub-texel values calculated during image sampling will snap to these\nlocations when generating the filtered results."
     },
     {
      "name": "mipmapPrecisionBits",
-     "text": "pname:mipmapPrecisionBits is the number\nof bits of division that the LOD calculation for mipmap fetching get\nsnapped to when determining the contribution from each mip level to the\nmip filtered results."
+     "text": "pname:mipmapPrecisionBits is the number\nof bits of division that the LOD calculation for mipmap fetching get\nsnapped to when determining the contribution from each mip level to the\nmip filtered results.\n[eq]#2^pname:mipmapPrecisionBits^# is the actual number of divisions."
     },
     {
      "name": "maxDrawIndexedIndexValue",
@@ -33624,7 +33624,7 @@
     },
     {
      "name": "maxSamplerLodBias",
-     "text": "pname:maxSamplerLodBias is the maximum\nabsolute sampler LOD bias.\nThe sum of the pname:mipLodBias member of the slink:VkSamplerCreateInfo\nstructure and the code:Bias operand of image sampling operations in\nshader modules (or 0 if no code:Bias operand is provided to an image\nsampling operation) are clamped to the range"
+     "text": "pname:maxSamplerLodBias is the maximum\nabsolute sampler LOD bias.\nThe sum of the pname:mipLodBias member of the slink:VkSamplerCreateInfo\nstructure and the code:Bias operand of image sampling operations in\nshader modules (or 0 if no code:Bias operand is provided to an image\nsampling operation) are clamped to the range\n[eq]#[-pname:maxSamplerLodBias,+pname:maxSamplerLodBias]#.\nSee <<samplers-mipLodBias>>."
     },
     {
      "name": "maxSamplerAnisotropy",
@@ -33640,7 +33640,7 @@
     },
     {
      "name": "viewportBoundsRange",
-     "text": "pname:viewportBoundsRange[2] is the"
+     "text": "pname:viewportBoundsRange[2] is the\n[eq]#[minimum, maximum]# range that the corners of a viewport must: be\ncontained in.\nThis range must: be at least [eq]#[-2 {times} pname:size, 2 {times}\npname:size - 1]#, where [eq]#pname:size =\nmax(pname:maxViewportDimensions[0], pname:maxViewportDimensions[1])#.\nSee <<vertexpostproc-viewport,Controlling the Viewport>>.\n+\n[NOTE]\n====\nThe wide range of values required for pname:viewportBoundsRange allows the\nviewport to be arbitrarily shifted relative to the output render target\nwhile still partially overlapping.\nHowever, the minimum range required to achieve this would actually be\n[eq]#[-pname:size {plus} 1, 2 {times} pname:size - 1]#.\nAs these limits in implementations are typically simple power-of-two values,\nthe specification reflects this convention, rounding the lower bound\naccordingly.\n===="
     },
     {
      "name": "viewportSubPixelBits",
@@ -33772,11 +33772,11 @@
     },
     {
      "name": "pointSizeRange",
-     "text": "pname:pointSizeRange[2] is the range"
+     "text": "pname:pointSizeRange[2] is the range\n[eq]#[pname:minimum,pname:maximum]# of supported sizes for points.\nValues written to variables decorated with the code:PointSize built-in\ndecoration are clamped to this range."
     },
     {
      "name": "lineWidthRange",
-     "text": "pname:lineWidthRange[2] is the range"
+     "text": "pname:lineWidthRange[2] is the range\n[eq]#[pname:minimum,pname:maximum]# of supported widths for lines.\nValues specified by the pname:lineWidth member of the\nslink:VkPipelineRasterizationStateCreateInfo or the pname:lineWidth\nparameter to fname:vkCmdSetLineWidth are clamped to this range."
     },
     {
      "name": "pointSizeGranularity",
@@ -34270,7 +34270,7 @@
     },
     {
      "name": "defaultVertexAttributeValue",
-     "text": "pname:defaultVertexAttributeValue\nis a elink:VkDefaultVertexAttributeValueKHR that indicates what value\nthe implementation will return when the vertex shader reads unbound\nvertex attributes.\nUnbound attributes are those that have no corresponding\nslink:VkVertexInputAttributeDescription::pname:location defined in the\nbound graphics pipeline\nor no corresponding\nslink:VkVertexInputAttributeDescription2EXT::pname:location set by the\nmost recent call to flink:vkCmdSetVertexInputEXT when the state is\ndynamic"
+     "text": "pname:defaultVertexAttributeValue\nis a elink:VkDefaultVertexAttributeValueKHR that indicates what value\nthe implementation will return when the vertex shader reads unbound\nvertex attributes.\nUnbound attributes are those that have no corresponding\nslink:VkVertexInputAttributeDescription::pname:location defined in the\nbound graphics pipeline\nor no corresponding\nslink:VkVertexInputAttributeDescription2EXT::pname:location set by the\nmost recent call to flink:vkCmdSetVertexInputEXT when the state is\ndynamic\n."
     }
    ],
    "kind": "structs",
@@ -39105,7 +39105,7 @@
     },
     {
      "name": "maxTensorElements",
-     "text": "pname:maxTensorElements is the maximum\nnumber of data elements in a created tensor as specified in the\nslink:VkTensorDescriptionARM of slink:VkTensorCreateInfoARM.\nThe number of data elements in a tensor is computed as the product of"
+     "text": "pname:maxTensorElements is the maximum\nnumber of data elements in a created tensor as specified in the\nslink:VkTensorDescriptionARM of slink:VkTensorCreateInfoARM.\nThe number of data elements in a tensor is computed as the product of\n[eq]#pname:pDimensions[i]# for all [eq]#0 {leq} i {leq}\ndimensionCount-1#."
     },
     {
      "name": "maxPerDimensionTensorElements",
@@ -39224,7 +39224,7 @@
     },
     {
      "name": "textureCompressionASTC_3D",
-     "text": "pname:textureCompressionASTC_3D\nindicates whether all of the ASTC 3D compressed texture formats are\nsupported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:"
+     "text": "pname:textureCompressionASTC_3D\nindicates whether all of the ASTC 3D compressed texture formats are\nsupported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:\n+\n** ename:VK_FORMAT_ASTC_3x3x3_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_3x3x3_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_3x3x3_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x3x3_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x3x3_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x3x3_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x4x3_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x4x3_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x4x3_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x4x4_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x4x4_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_4x4x4_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x4x4_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x4x4_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x4x4_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x5x4_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x5x4_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x5x4_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x5x5_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x5x5_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_5x5x5_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x5x5_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x5x5_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x5x5_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x6x5_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x6x5_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x6x5_SFLOAT_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x6x6_UNORM_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x6x6_SRGB_BLOCK_EXT\n** ename:VK_FORMAT_ASTC_6x6x6_SFLOAT_BLOCK_EXT"
     }
    ],
    "kind": "structs",
@@ -39245,7 +39245,7 @@
     },
     {
      "name": "textureCompressionASTC_HDR",
-     "text": "pname:textureCompressionASTC_HDR indicates whether all of the ASTC HDR\ncompressed texture formats are supported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:"
+     "text": "pname:textureCompressionASTC_HDR indicates whether all of the ASTC HDR\ncompressed texture formats are supported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:\n+\n** ename:VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK\n+\nTo query for additional properties, or if the feature is not enabled,\nflink:vkGetPhysicalDeviceFormatProperties and\nflink:vkGetPhysicalDeviceImageFormatProperties can: be used to check for\nsupported properties of individual formats as normal."
     }
    ],
    "kind": "structs",
@@ -39855,7 +39855,7 @@
     },
     {
      "name": "videoEncodeFeedback2",
-     "text": "pname:videoEncodeFeedback2 specifies\nthat the implementation supports\n<<queries-video-encode-per-partition-feedback,per picture partition\nfeedback>> and the following additional\n<<queries-video-encode-feedback,video encode feedback flags>>, as\nreported in slink:VkVideoEncodeFeedback2CapabilitiesKHR and/or\nslink:VkVideoEncodeCapabilitiesKHR::pname:supportedEncodeFeedbackFlags,\nrespectively:\n** ename:VK_VIDEO_ENCODE_FEEDBACK_AVERAGE_QUANTIZATION_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_MIN_QUANTIZATION_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_MAX_QUANTIZATION_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_INTRA_PIXELS_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_INTER_PIXELS_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_SKIPPED_PIXELS_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_PICTURE_PARTITION_COUNT_BIT_KHR."
+     "text": "pname:videoEncodeFeedback2 specifies\nthat the implementation supports\n<<queries-video-encode-per-partition-feedback,per picture partition\nfeedback>> and the following additional\n<<queries-video-encode-feedback,video encode feedback flags>>, as\nreported in slink:VkVideoEncodeFeedback2CapabilitiesKHR and/or\nslink:VkVideoEncodeCapabilitiesKHR::pname:supportedEncodeFeedbackFlags,\nrespectively:\n** ename:VK_VIDEO_ENCODE_FEEDBACK_AVERAGE_QUANTIZATION_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_MIN_QUANTIZATION_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_MAX_QUANTIZATION_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_INTRA_PIXELS_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_INTER_PIXELS_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_SKIPPED_PIXELS_BIT_KHR.\n** ename:VK_VIDEO_ENCODE_FEEDBACK_PICTURE_PARTITION_COUNT_BIT_KHR.\n+\n[NOTE]\n====\nSupport for pname:videoEncodeFeedback2 does not indicate that all video\nencode profiles support per picture partition feedback and the new video\nencode feedback flags.\nSupport for individual video encode profiles is subject to\nvideo-profile-specific capabilities.\n===="
     }
    ],
    "kind": "structs",
@@ -39876,7 +39876,7 @@
     },
     {
      "name": "videoEncodeIntraRefresh",
-     "text": "pname:videoEncodeIntraRefresh\nspecifies that the implementation supports <<encode-intra-refresh,video\nencode intra refresh>>."
+     "text": "pname:videoEncodeIntraRefresh\nspecifies that the implementation supports <<encode-intra-refresh,video\nencode intra refresh>>.\n+\n[NOTE]\n====\nSupport for pname:videoEncodeIntraRefresh does not indicate that all video\nencode profiles support intra refresh.\nSupport for intra refresh for any specific video encode profile is subject\nto video-profile-specific capabilities.\n===="
     }
    ],
    "kind": "structs",
@@ -39922,7 +39922,7 @@
     },
     {
      "name": "videoEncodeQuantizationMap",
-     "text": "pname:videoEncodeQuantizationMap\nindicates that the implementation supports\n<<encode-quantization-map,video encode quantization maps>>."
+     "text": "pname:videoEncodeQuantizationMap\nindicates that the implementation supports\n<<encode-quantization-map,video encode quantization maps>>.\n+\n[NOTE]\n====\nSupport for pname:videoEncodeQuantizationMap does not indicate that all\nvideo encode profiles support quantization maps.\nSupport for quantization maps for any specific video encode profile is\nsubject to video-profile-specific capabilities.\n===="
     }
    ],
    "kind": "structs",
@@ -40635,7 +40635,7 @@
     },
     {
      "name": "textureCompressionASTC_HDR",
-     "text": "pname:textureCompressionASTC_HDR indicates whether all of the ASTC HDR\ncompressed texture formats are supported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:"
+     "text": "pname:textureCompressionASTC_HDR indicates whether all of the ASTC HDR\ncompressed texture formats are supported.\nIf this feature is enabled, then the\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,\nename:VK_FORMAT_FEATURE_BLIT_SRC_BIT and\nename:VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT features must:\nbe supported in pname:optimalTilingFeatures for the following formats:\n+\n** ename:VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK\n** ename:VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK\n+\nTo query for additional properties, or if the feature is not enabled,\nflink:vkGetPhysicalDeviceFormatProperties and\nflink:vkGetPhysicalDeviceImageFormatProperties can: be used to check for\nsupported properties of individual formats as normal."
     },
     {
      "name": "shaderZeroInitializeWorkgroupMemory",
@@ -42312,11 +42312,11 @@
     },
     {
      "name": "VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT",
-     "text": "ename:VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT\nspecifies that a readily usable pipeline or pipeline stage was found in\nthe pname:pipelineCache specified by the application in the pipeline\ncreation command."
+     "text": "ename:VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT\nspecifies that a readily usable pipeline or pipeline stage was found in\nthe pname:pipelineCache specified by the application in the pipeline\ncreation command.\n+\nAn implementation should: set the\nename:VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT bit\nif it was able to avoid the large majority of pipeline or pipeline stage\ncreation work by using the pname:pipelineCache parameter of\nflink:vkCreateGraphicsPipelines,\nflink:vkCreateRayTracingPipelinesKHR,\nflink:vkCreateRayTracingPipelinesNV,\nflink:vkCreateDataGraphPipelinesARM,\nor flink:vkCreateComputePipelines.\nWhen an implementation sets this bit for the entire pipeline, it may: leave\nit unset for any stage.\n+\n[NOTE]\n====\nImplementations are encouraged to provide a meaningful signal to\napplications using this bit.\nThe intention is to communicate to the application that the pipeline or\npipeline stage was created \"`as fast as it gets`\" using the pipeline cache\nprovided by the application.\nIf an implementation uses an internal cache, it is discouraged from setting\nthis bit as the feedback would be unactionable.\n===="
     },
     {
      "name": "VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT",
-     "text": "ename:VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT\nspecifies that the base pipeline specified by the\npname:basePipelineHandle or pname:basePipelineIndex member of the\nstext:Vk*PipelineCreateInfo structure was used to accelerate the\ncreation of the pipeline."
+     "text": "ename:VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT\nspecifies that the base pipeline specified by the\npname:basePipelineHandle or pname:basePipelineIndex member of the\nstext:Vk*PipelineCreateInfo structure was used to accelerate the\ncreation of the pipeline.\n+\nAn implementation should: set the\nename:VK_PIPELINE_CREATION_FEEDBACK_BASE_PIPELINE_ACCELERATION_BIT bit if it\nwas able to avoid a significant amount of work by using the base pipeline.\n+\n[NOTE]\n====\nWhile \"`significant amount of work`\" is subjective, implementations are\nencouraged to provide a meaningful signal to applications using this bit.\nFor example, a 1% reduction in duration may not warrant setting this bit,\nwhile a 50% reduction would.\n===="
     }
    ],
    "kind": "enums",
@@ -42886,7 +42886,7 @@
     },
     {
      "name": "pPushConstantRanges",
-     "text": "pname:pPushConstantRanges is a pointer to an array of\nslink:VkPushConstantRange structures defining a set of push constant\nranges for use in a single pipeline layout.\nIn addition to descriptor set layouts, a pipeline layout also describes\nhow many push constants can: be accessed by each stage of the pipeline."
+     "text": "pname:pPushConstantRanges is a pointer to an array of\nslink:VkPushConstantRange structures defining a set of push constant\nranges for use in a single pipeline layout.\nIn addition to descriptor set layouts, a pipeline layout also describes\nhow many push constants can: be accessed by each stage of the pipeline.\n+\n[NOTE]\n====\nPush constants represent a high speed path to modify constant data in\npipelines that is expected to outperform memory-backed resource updates.\n===="
     }
    ],
    "kind": "structs",
@@ -43693,7 +43693,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT is equivalent to the logical\nOR of:"
+     "text": "ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT is equivalent to the logical\nOR of:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT.adoc[]"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT",
@@ -43713,7 +43713,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT is equivalent to\nspecifying all supported\n<<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader\nstages>>:"
+     "text": "ename:VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT is equivalent to\nspecifying all supported\n<<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader\nstages>>:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT.adoc[]"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT",
@@ -43757,7 +43757,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT is equivalent to specifying\nall of:"
+     "text": "ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT is equivalent to specifying\nall of:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT.adoc[]"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR",
@@ -43773,7 +43773,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT specifies the execution of\nall graphics pipeline stages, and is equivalent to the logical OR of:"
+     "text": "ename:VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT specifies the execution of\nall graphics pipeline stages, and is equivalent to the logical OR of:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT.adoc[]"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT",
@@ -44060,7 +44060,7 @@
     },
     {
      "name": "negativeOneToOne",
-     "text": "pname:negativeOneToOne sets the [eq]#z~m~# in the _view volume_ to"
+     "text": "pname:negativeOneToOne sets the [eq]#z~m~# in the _view volume_ to\n[eq]#-w~c~#"
     }
    ],
    "kind": "structs",
@@ -44267,7 +44267,7 @@
     },
     {
      "name": "VK_POLYGON_MODE_FILL_RECTANGLE_NV",
-     "text": "ename:VK_POLYGON_MODE_FILL_RECTANGLE_NV specifies that polygons are\nrendered using polygon rasterization rules, modified to consider a\nsample within the primitive if the sample location is inside the\naxis-aligned bounding box of the triangle after projection.\nNote that the barycentric weights used in attribute interpolation can:\nextend outside the range [eq]#[0,1]# when these primitives are shaded.\nSpecial treatment is given to a sample position on the boundary edge of\nthe bounding box.\nIn such a case, if two rectangles lie on either side of a common edge\n(with identical endpoints) on which a sample position lies, then exactly\none of the triangles must: produce a fragment that covers that sample\nduring rasterization."
+     "text": "ename:VK_POLYGON_MODE_FILL_RECTANGLE_NV specifies that polygons are\nrendered using polygon rasterization rules, modified to consider a\nsample within the primitive if the sample location is inside the\naxis-aligned bounding box of the triangle after projection.\nNote that the barycentric weights used in attribute interpolation can:\nextend outside the range [eq]#[0,1]# when these primitives are shaded.\nSpecial treatment is given to a sample position on the boundary edge of\nthe bounding box.\nIn such a case, if two rectangles lie on either side of a common edge\n(with identical endpoints) on which a sample position lies, then exactly\none of the triangles must: produce a fragment that covers that sample\nduring rasterization.\n+\nPolygons rendered in ename:VK_POLYGON_MODE_FILL_RECTANGLE_NV mode may: be\nclipped by the frustum or by user clip planes.\nIf clipping is applied, the triangle is culled rather than clipped.\n+\nArea calculation and facingness are determined for\nename:VK_POLYGON_MODE_FILL_RECTANGLE_NV mode using the triangle's vertices."
     }
    ],
    "kind": "enums",
@@ -45955,7 +45955,7 @@
     },
     {
      "name": "VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV",
-     "text": "ename:VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV specifies a\nsuccessive implicit indexing format, in which each LSS primitive is\ndefined by two successive positions and radii, [eq]#(k, k + 1)#, where"
+     "text": "ename:VK_RAY_TRACING_LSS_INDEXING_MODE_SUCCESSIVE_NV specifies a\nsuccessive implicit indexing format, in which each LSS primitive is\ndefined by two successive positions and radii, [eq]#(k, k + 1)#, where\n[eq]#k# is a single index provided in the index buffer.\nIn this indexing scheme, there is a 1:1 mapping between the index buffer\nand primitive index within the geometry."
     }
    ],
    "kind": "enums",
@@ -47571,7 +47571,7 @@
     },
     {
      "name": "VK_INCOMPATIBLE_SHADER_BINARY_EXT",
-     "text": "ename:VK_INCOMPATIBLE_SHADER_BINARY_EXT The provided binary shader code\nis not compatible with this device."
+     "text": "ename:VK_INCOMPATIBLE_SHADER_BINARY_EXT The provided binary shader code\nis not compatible with this device.\n+\n[NOTE]\n====\nIn the initial version of the `apiext:VK_EXT_shader_object` extension, this\nreturn code was named ename:VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT and\nimproperly described as an error code.\nThe name has been changed, but the old name is retained as an alias for\ncompatibility with old code.\n===="
     },
     {
      "name": "VK_ERROR_OUT_OF_HOST_MEMORY",
@@ -48121,7 +48121,7 @@
     },
     {
      "name": "unnormalizedCoordinates",
-     "text": "pname:unnormalizedCoordinates\ncontrols whether to use unnormalized or normalized texel coordinates to\naddress texels of the image.\nWhen pname:unnormalizedCoordinates is ename:VK_TRUE, the range of the\nimage coordinates used to lookup the texel is in the range of zero to\nthe image size in each dimension.\nWhen pname:unnormalizedCoordinates is ename:VK_FALSE, the range of image\ncoordinates is zero to one."
+     "text": "pname:unnormalizedCoordinates\ncontrols whether to use unnormalized or normalized texel coordinates to\naddress texels of the image.\nWhen pname:unnormalizedCoordinates is ename:VK_TRUE, the range of the\nimage coordinates used to lookup the texel is in the range of zero to\nthe image size in each dimension.\nWhen pname:unnormalizedCoordinates is ename:VK_FALSE, the range of image\ncoordinates is zero to one.\n+\nWhen pname:unnormalizedCoordinates is ename:VK_TRUE, images the sampler is\nused with in the shader have the following requirements:\n+\n** The pname:viewType must: be either ename:VK_IMAGE_VIEW_TYPE_1D or\nename:VK_IMAGE_VIEW_TYPE_2D.\n** The image view must: have a single layer and a single mip level.\n+\nWhen pname:unnormalizedCoordinates is ename:VK_TRUE, image built-in\nfunctions in the shader that use the sampler have the following\nrequirements:\n+\n** The functions must: not use projection.\n** The functions must: not use offsets."
     }
    ],
    "kind": "structs",
@@ -49777,7 +49777,7 @@
     },
     {
      "name": "extent",
-     "text": "pname:extent is the size in texels of the region within the image\nsubresource to bind.\nThe extent must: be a multiple of the sparse image block dimensions,\nexcept when binding sparse image blocks along the edge of an image\nsubresource it can: instead be such that any coordinate of"
+     "text": "pname:extent is the size in texels of the region within the image\nsubresource to bind.\nThe extent must: be a multiple of the sparse image block dimensions,\nexcept when binding sparse image blocks along the edge of an image\nsubresource it can: instead be such that any coordinate of\n[eq]#pname:offset {plus} pname:extent# equals the corresponding\ndimensions of the image subresource."
     },
     {
      "name": "memory",
@@ -51450,7 +51450,7 @@
     },
     {
      "name": "minScaledImageExtent",
-     "text": "pname:minScaledImageExtent contains the smallest valid swapchain extent\nfor the surface on the specified device when one of the scaling methods\nspecified in pname:supportedPresentScaling is used, or the special value"
+     "text": "pname:minScaledImageExtent contains the smallest valid swapchain extent\nfor the surface on the specified device when one of the scaling methods\nspecified in pname:supportedPresentScaling is used, or the special value\n[eq]#(0xFFFFFFFF, 0xFFFFFFFF)# indicating that the surface size will be\ndetermined by the extent of a swapchain targeting the surface.\nThe pname:width and pname:height of the extent will each be smaller than\nor equal to the corresponding pname:width and pname:height of\nslink:VkSurfaceCapabilitiesKHR::pname:minImageExtent."
     },
     {
      "name": "maxScaledImageExtent",
@@ -51668,7 +51668,7 @@
     },
     {
      "name": "imageExtent",
-     "text": "pname:imageExtent is the size (in pixels) of the swapchain image(s).\nThe behavior is platform-dependent if the image extent does not match\nthe surface's pname:currentExtent as returned by\nfname:vkGetPhysicalDeviceSurfaceCapabilitiesKHR."
+     "text": "pname:imageExtent is the size (in pixels) of the swapchain image(s).\nThe behavior is platform-dependent if the image extent does not match\nthe surface's pname:currentExtent as returned by\nfname:vkGetPhysicalDeviceSurfaceCapabilitiesKHR.\n+\n[NOTE]\n====\nOn some platforms, it is normal that pname:maxImageExtent may: become `(0,\n0)`, for example when the window is minimized.\nIn such a case, it is not possible to create a swapchain due to the Valid\nUsage requirements\n, unless scaling is selected through\nslink:VkSwapchainPresentScalingCreateInfoKHR, if supported\n.\n===="
     },
     {
      "name": "imageArrayLayers",
@@ -51704,7 +51704,7 @@
     },
     {
      "name": "clipped",
-     "text": "pname:clipped specifies whether the Vulkan implementation is allowed to\ndiscard rendering operations that affect regions of the surface that are\nnot visible.\n** If pname:clipped is ename:VK_TRUE, the presentable images associated\nwith the swapchain may: not own all of their pixels.\nPixels in the presentable images that correspond to regions of the\ntarget surface obscured by another window on the desktop, or subject to\nsome other clipping mechanism will have undefined: content when read\nback.\nFragment shaders may: not execute for these pixels, and thus any side\neffects they would have had will not occur.\nSetting ename:VK_TRUE does not guarantee any clipping will occur, but\nallows more efficient presentation methods to be used on some\nplatforms.\n** If pname:clipped is ename:VK_FALSE, presentable images associated with\nthe swapchain will own all of the pixels they contain."
+     "text": "pname:clipped specifies whether the Vulkan implementation is allowed to\ndiscard rendering operations that affect regions of the surface that are\nnot visible.\n** If pname:clipped is ename:VK_TRUE, the presentable images associated\nwith the swapchain may: not own all of their pixels.\nPixels in the presentable images that correspond to regions of the\ntarget surface obscured by another window on the desktop, or subject to\nsome other clipping mechanism will have undefined: content when read\nback.\nFragment shaders may: not execute for these pixels, and thus any side\neffects they would have had will not occur.\nSetting ename:VK_TRUE does not guarantee any clipping will occur, but\nallows more efficient presentation methods to be used on some\nplatforms.\n** If pname:clipped is ename:VK_FALSE, presentable images associated with\nthe swapchain will own all of the pixels they contain.\n+\n[NOTE]\n====\nApplications should: set this value to ename:VK_TRUE if they do not expect\nto read back the content of presentable images before presenting them or\nafter reacquiring them, and if their fragment shaders do not have any side\neffects that require them to run for all pixels in the presentable image.\n===="
     },
     {
      "name": "oldSwapchain",
@@ -53809,7 +53809,7 @@
     },
     {
      "name": "VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR",
-     "text": "ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR\nspecifies support for using distinct video picture resources as the\n<<reconstructed-picture,reconstructed picture>> and\n<<decode-output-picture,decode output picture>> in a video decode\noperation."
+     "text": "ename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR\nspecifies support for using distinct video picture resources as the\n<<reconstructed-picture,reconstructed picture>> and\n<<decode-output-picture,decode output picture>> in a video decode\noperation.\n+\n[NOTE]\n====\nSome video profiles allow using distinct video picture resources as the\nreconstructed picture and decode output picture in specific video decode\noperations even when the video decode profile does not support\nename:VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_DISTINCT_BIT_KHR.\nEven if the implementation only reports coincide, the decode output picture\nfor <<decode-av1-film-grain,film grain>> enabled frames must be a different\nvideo picture resource from the reconstructed picture because film grain is\napplied outside of the coding loop.\n===="
     }
    ],
    "kind": "enums",
@@ -55167,7 +55167,7 @@
     },
     {
      "name": "VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR",
-     "text": "ename:VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR\nspecifies that the implementation is able to detect and report when the\ndestination video bitstream buffer range provided by the application is\nnot sufficiently large to fit the encoded bitstream data produced by a\nvideo encode operation by reporting the\nename:VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR\n<<query-result-status-codes,query result status code>>."
+     "text": "ename:VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR\nspecifies that the implementation is able to detect and report when the\ndestination video bitstream buffer range provided by the application is\nnot sufficiently large to fit the encoded bitstream data produced by a\nvideo encode operation by reporting the\nename:VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR\n<<query-result-status-codes,query result status code>>.\n+\n[NOTE]\n====\nSome implementations may: not be able to reliably detect insufficient\nbitstream buffer range conditions in all situations.\nSuch implementations will not report support for the\nename:VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR\nencode capability flag for the video profile, but may: still report the\nename:VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR query\nresult status code in certain cases.\nApplications should: always check for the specific query result status code\nename:VK_QUERY_RESULT_STATUS_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_KHR even\nwhen this encode capability flag is not supported by the implementation for\nthe video profile in question.\nHowever, applications must: not assume that a different negative query\nresult status code indicating an unsuccessful completion of a video encode\noperation is not the result of an insufficient bitstream buffer condition\nunless this encode capability flag is supported.\n===="
     }
    ],
    "kind": "enums",
@@ -55348,7 +55348,7 @@
     },
     {
      "name": "maxPPictureL0ReferenceCount",
-     "text": "pname:maxPPictureL0ReferenceCount indicates the maximum number of\nreference pictures the implementation supports in the reference list L0\nfor <<encode-h264-p-pic,P pictures>>."
+     "text": "pname:maxPPictureL0ReferenceCount indicates the maximum number of\nreference pictures the implementation supports in the reference list L0\nfor <<encode-h264-p-pic,P pictures>>.\n+\n[NOTE]\n====\nAs implementations may: <<encode-overrides,override>> the reference lists,\npname:maxPPictureL0ReferenceCount does not limit the number of elements that\nthe application can: specify in the L0 reference list for P pictures.\nHowever, if pname:maxPPictureL0ReferenceCount is zero, then the use of P\npictures is not allowed.\n===="
     },
     {
      "name": "maxBPictureL0ReferenceCount",
@@ -55356,7 +55356,7 @@
     },
     {
      "name": "maxL1ReferenceCount",
-     "text": "pname:maxL1ReferenceCount indicates the maximum number of reference\npictures the implementation supports in the reference list L1 if\nencoding of <<encode-h264-b-pic,B pictures>> is supported."
+     "text": "pname:maxL1ReferenceCount indicates the maximum number of reference\npictures the implementation supports in the reference list L1 if\nencoding of <<encode-h264-b-pic,B pictures>> is supported.\n+\n[NOTE]\n====\nAs implementations may: <<encode-overrides,override>> the reference lists,\npname:maxBPictureL0ReferenceCount and pname:maxL1ReferenceCount does not\nlimit the number of elements that the application can: specify in the L0 and\nL1 reference lists for B pictures.\nHowever, if pname:maxBPictureL0ReferenceCount and pname:maxL1ReferenceCount\nare both zero, then the use of B pictures is not allowed.\n===="
     },
     {
      "name": "maxTemporalLayerCount",
@@ -55433,7 +55433,7 @@
     },
     {
      "name": "VK_VIDEO_ENCODE_H264_CAPABILITY_MB_QP_DIFF_WRAPAROUND_BIT_KHR",
-     "text": "ename:VK_VIDEO_ENCODE_H264_CAPABILITY_MB_QP_DIFF_WRAPAROUND_BIT_KHR\nspecifies support for wraparound during the calculation of the QP values\nof subsequently encoded macroblocks, as defined in equation 7-37 of the\n<<itu-t-h264,ITU-T H.264 Specification>>.\nIf not supported, equation 7-37 of the <<itu-t-h264,ITU-T H.264\nSpecification>> is effectively reduced to the following:"
+     "text": "ename:VK_VIDEO_ENCODE_H264_CAPABILITY_MB_QP_DIFF_WRAPAROUND_BIT_KHR\nspecifies support for wraparound during the calculation of the QP values\nof subsequently encoded macroblocks, as defined in equation 7-37 of the\n<<itu-t-h264,ITU-T H.264 Specification>>.\nIf not supported, equation 7-37 of the <<itu-t-h264,ITU-T H.264\nSpecification>> is effectively reduced to the following:\n+\n[eq]#QP~Y~ = QP~Y,PREV~ {plus} code:mb_qp_delta#\n+\n[NOTE]\n====\nThe effect of this is that the maximum QP difference across subsequent\nmacroblocks is limited to the [eq]#[-(26 {plus} QpBdOffset~Y~ / 2), 25\n{plus} QpBdOffset~Y~ / 2]# range.\n===="
     },
     {
      "name": "VK_VIDEO_ENCODE_H264_CAPABILITY_B_PICTURE_INTRA_REFRESH_BIT_KHR",
@@ -56104,7 +56104,7 @@
     },
     {
      "name": "maxPPictureL0ReferenceCount",
-     "text": "pname:maxPPictureL0ReferenceCount indicates the maximum number of\nreference pictures the implementation supports in the reference list L0\nfor <<encode-h265-p-pic,P pictures>>."
+     "text": "pname:maxPPictureL0ReferenceCount indicates the maximum number of\nreference pictures the implementation supports in the reference list L0\nfor <<encode-h265-p-pic,P pictures>>.\n+\n[NOTE]\n====\nAs implementations may: <<encode-overrides,override>> the reference lists,\npname:maxPPictureL0ReferenceCount does not limit the number of elements that\nthe application can: specify in the L0 reference list for P pictures.\nHowever, if pname:maxPPictureL0ReferenceCount is zero, then the use of P\npictures is not allowed.\nIn case of H.265 encoding, pictures can: be encoded using only forward\nprediction even if P pictures are not supported, as the <<itu-t-h265,ITU-T\nH.265 Specification>> supports _generalized P & B frames_ (also known as low\ndelay B frames) whereas B frames can: refer to past frames through both the\nL0 and L1 reference lists.\n===="
     },
     {
      "name": "maxBPictureL0ReferenceCount",
@@ -56112,7 +56112,7 @@
     },
     {
      "name": "maxL1ReferenceCount",
-     "text": "pname:maxL1ReferenceCount indicates the maximum number of reference\npictures the implementation supports in the reference list L1 if\nencoding of <<encode-h265-b-pic,B pictures>> is supported."
+     "text": "pname:maxL1ReferenceCount indicates the maximum number of reference\npictures the implementation supports in the reference list L1 if\nencoding of <<encode-h265-b-pic,B pictures>> is supported.\n+\n[NOTE]\n====\nAs implementations may: <<encode-overrides,override>> the reference lists,\npname:maxBPictureL0ReferenceCount and pname:maxL1ReferenceCount does not\nlimit the number of elements that the application can: specify in the L0 and\nL1 reference lists for B pictures.\nHowever, if pname:maxBPictureL0ReferenceCount and pname:maxL1ReferenceCount\nare both zero, then the use of B pictures is not allowed.\n===="
     },
     {
      "name": "maxSubLayerCount",
@@ -56193,7 +56193,7 @@
     },
     {
      "name": "VK_VIDEO_ENCODE_H265_CAPABILITY_CU_QP_DIFF_WRAPAROUND_BIT_KHR",
-     "text": "ename:VK_VIDEO_ENCODE_H265_CAPABILITY_CU_QP_DIFF_WRAPAROUND_BIT_KHR\nindicates support for wraparound during the calculation of the QP values\nof subsequently encoded coding units, as defined in section 7.4.9.14 of\nthe <<itu-t-h265,ITU-T H.265 Specification>>.\nIf not supported, equation 8-283 of the <<itu-t-h265,ITU-T H.265\nSpecification>> is effectively reduced to the following:"
+     "text": "ename:VK_VIDEO_ENCODE_H265_CAPABILITY_CU_QP_DIFF_WRAPAROUND_BIT_KHR\nindicates support for wraparound during the calculation of the QP values\nof subsequently encoded coding units, as defined in section 7.4.9.14 of\nthe <<itu-t-h265,ITU-T H.265 Specification>>.\nIf not supported, equation 8-283 of the <<itu-t-h265,ITU-T H.265\nSpecification>> is effectively reduced to the following:\n+\n[eq]#Qp~Y~ = qP~Y_PRED~ {plus} code:CuQpDeltaVal#\n+\n[NOTE]\n====\nThe effect of this is that the maximum QP difference across subsequent\ncoding units is limited to the [eq]#[-(26 {plus} QpBdOffset~Y~ / 2), 25\n{plus} QpBdOffset~Y~ / 2]# range.\n===="
     },
     {
      "name": "VK_VIDEO_ENCODE_H265_CAPABILITY_B_PICTURE_INTRA_REFRESH_BIT_KHR",
@@ -56987,11 +56987,11 @@
     },
     {
      "name": "partitionIndependentIntraRefreshRegions",
-     "text": "pname:partitionIndependentIntraRefreshRegions specifies whether the\nimplementation supports intra refresh regions that are independent of\nthe picture partitioning used during encoding.\nIf it is ename:VK_TRUE, then pictures can: be encoded with multiple\npicture partitions, independent of the used intra refresh mode.\nOtherwise, pictures cannot: be encoded with multiple picture partitions\nwith any intra refresh mode other than\nename:VK_VIDEO_ENCODE_INTRA_REFRESH_MODE_PER_PICTURE_PARTITION_BIT_KHR."
+     "text": "pname:partitionIndependentIntraRefreshRegions specifies whether the\nimplementation supports intra refresh regions that are independent of\nthe picture partitioning used during encoding.\nIf it is ename:VK_TRUE, then pictures can: be encoded with multiple\npicture partitions, independent of the used intra refresh mode.\nOtherwise, pictures cannot: be encoded with multiple picture partitions\nwith any intra refresh mode other than\nename:VK_VIDEO_ENCODE_INTRA_REFRESH_MODE_PER_PICTURE_PARTITION_BIT_KHR.\n+\n[NOTE]\n====\nThis capability is only indicative for <<encode-av1-profile,AV1 encode\nprofiles>> and does not impose any restrictions on the application as\nimplementations may change the application requested picture partitioning\naccording to implementation-specific restrictions.\n===="
     },
     {
      "name": "nonRectangularIntraRefreshRegions",
-     "text": "pname:nonRectangularIntraRefreshRegions specifies whether the\nimplementation supports non-rectangular intra refresh regions."
+     "text": "pname:nonRectangularIntraRefreshRegions specifies whether the\nimplementation supports non-rectangular intra refresh regions.\n+\n[NOTE]\n====\nIf this capability is not supported, then using per picture partition intra\nrefresh may impose additional restrictions on the number of picture\npartitions a picture can be encoded with.\n===="
     }
    ],
    "kind": "structs",
@@ -57439,11 +57439,11 @@
    "items": [
     {
      "name": "VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_FULL_RANGE_BIT_VALVE",
-     "text": "ename:VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_FULL_RANGE_BIT_VALVE\nspecifies the following transformations are applied:"
+     "text": "ename:VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_FULL_RANGE_BIT_VALVE\nspecifies the following transformations are applied:\n+\n[latexmath]\n++++\n\\begin{aligned}\nY' &= C'_{rgba}[G] \\\\\nC_B &= C'_{rgba}[B] - {{2^{(n-1)}}\\over{(2^n) - 1}} \\\\\nC_R &= C'_{rgba}[R] - {{2^{(n-1)}}\\over{(2^n) - 1}}\n\\end{aligned}\n++++\n+\n[NOTE]\n====\nThese formulae correspond to the \"`full range`\" encoding in the\n\"`Quantization schemes`\" chapter of the <<data-format,Khronos Data Format\nSpecification>>.\n\nShould any future amendments be made to the ITU specifications from which\nthese equations are derived, the formulae used by Vulkan may: also be\nupdated to maintain parity.\n===="
     },
     {
      "name": "VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_NARROW_RANGE_BIT_VALVE",
-     "text": "ename:VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_NARROW_RANGE_BIT_VALVE\nspecifies the following transformations are applied:"
+     "text": "ename:VK_VIDEO_ENCODE_RGB_RANGE_COMPRESSION_NARROW_RANGE_BIT_VALVE\nspecifies the following transformations are applied:\n+\n[latexmath]\n++++\n\\begin{aligned}\nY' &= {{C'_{rgba}[G] \\times (2^n-1) - 16\\times 2^{n-8}}\\over{219\\times 2^{n-8}}} \\\\\nC_B &= {{C'_{rgba}[B] \\times \\left(2^n-1\\right) - 128\\times 2^{n-8}}\\over{224\\times 2^{n-8}}} \\\\\nC_R &= {{C'_{rgba}[R] \\times \\left(2^n-1\\right) - 128\\times 2^{n-8}}\\over{224\\times 2^{n-8}}}\n\\end{aligned}\n++++\n+\n[NOTE]\n====\nThese formulae correspond to the \"`narrow range`\" encoding in the\n\"`Quantization schemes`\" chapter of the <<data-format,Khronos Data Format\nSpecification>>.\n\nUnlike <<textures-sampler-YCbCr-conversion-rangeexpand, sampler {YCbCr}\nrange expansion>>, no precision guarantees are made for video encode\n{RGBprime} range compression.\n===="
     }
    ],
    "kind": "enums",
@@ -57688,7 +57688,7 @@
     },
     {
      "name": "compatibleSuperblockSizes",
-     "text": "pname:compatibleSuperblockSizes is a bitmask of\nelink:VkVideoEncodeAV1SuperblockSizeFlagBitsKHR indicating the AV1\nsuperblock sizes that quantization maps using this video format are\ncompatible with."
+     "text": "pname:compatibleSuperblockSizes is a bitmask of\nelink:VkVideoEncodeAV1SuperblockSizeFlagBitsKHR indicating the AV1\nsuperblock sizes that quantization maps using this video format are\ncompatible with.\n+\n[NOTE]\n====\nThe value of pname:compatibleSuperblockSizes does not limit the use of the\nspecific quantization map format, but does limit the implementation in being\nable to encode pictures with superblock sizes not included in\npname:compatibleSuperblockSizes but otherwise supported by the used video\nprofile, as indicated by\nslink:VkVideoEncodeAV1CapabilitiesKHR::pname:superblockSizes.\nIn particular, using smaller\n<<encode-quantization-map-texel-size,quantization map texel sizes>> may\nprevent implementations from encoding with larger superblock sizes which may\nhave a negative impact on the efficiency of the encoder.\n===="
     }
    ],
    "kind": "structs",
@@ -57709,7 +57709,7 @@
     },
     {
      "name": "compatibleCtbSizes",
-     "text": "pname:compatibleCtbSizes is a bitmask of\nelink:VkVideoEncodeH265CtbSizeFlagBitsKHR indicating the CTB sizes that\nquantization maps using this video format are compatible with."
+     "text": "pname:compatibleCtbSizes is a bitmask of\nelink:VkVideoEncodeH265CtbSizeFlagBitsKHR indicating the CTB sizes that\nquantization maps using this video format are compatible with.\n+\n[NOTE]\n====\nThe value of pname:compatibleCtbSizes does not limit the use of the specific\nquantization map format, but does limit the implementation in being able to\nencode pictures with CTB sizes not included in pname:compatibleCtbSizes but\notherwise supported by the used video profile, as indicated by\nslink:VkVideoEncodeH265CapabilitiesKHR::pname:ctbSizes.\nIn particular, using smaller\n<<encode-quantization-map-texel-size,quantization map texel sizes>> may\nprevent implementations from encoding with larger CTB sizes which may have a\nnegative impact on the efficiency of the encoder.\n===="
     }
    ],
    "kind": "structs",
@@ -57800,7 +57800,7 @@
     },
     {
      "name": "queryCount",
-     "text": "pname:queryCount is the number of queries to execute."
+     "text": "pname:queryCount is the number of queries to execute.\n+\n[NOTE]\n====\nIn practice, if pname:queryPool is not dname:VK_NULL_HANDLE, then\npname:queryCount will always have to match the number of video coding\noperations issued by the video coding command this structure is specified\nto, meaning that using inline queries in a video coding command will always\nexecute a query for each issued video coding operation.\n===="
     }
    ],
    "kind": "structs",
@@ -57970,7 +57970,7 @@
     },
     {
      "name": "VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR",
-     "text": "ename:VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR\nspecifies that the implementation is allowed to\n<<encode-overrides,override>> video session parameters and other\ncodec-specific encoding parameters to optimize video encode operations\nbased on the use case information specified in the\n<<video-profiles,video profile>> and the used\n<<encode-quality-level,video encode quality level>>."
+     "text": "ename:VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR\nspecifies that the implementation is allowed to\n<<encode-overrides,override>> video session parameters and other\ncodec-specific encoding parameters to optimize video encode operations\nbased on the use case information specified in the\n<<video-profiles,video profile>> and the used\n<<encode-quality-level,video encode quality level>>.\n+\n[NOTE]\n====\nNot specifying\nename:VK_VIDEO_SESSION_CREATE_ALLOW_ENCODE_PARAMETER_OPTIMIZATIONS_BIT_KHR\ndoes not guarantee that the implementation will not do any codec-specific\nparameter overrides, as certain overrides are necessary for the correct\noperation of the video encoder implementation due to limitations to the\navailable encoding tools on that implementation.\nThis flag, however, enables the implementation to apply further optimizing\noverrides.\n===="
     },
     {
      "name": "VK_VIDEO_SESSION_CREATE_INLINE_QUERIES_BIT_KHR",
@@ -75733,6 +75733,7 @@
   "memory-protected-access-rules": "Protected Memory Access Rules",
   "pipelines-binaries": "Pipeline Binaries",
   "primsrast": "Rasterization",
+  "primsrast-depthbias-computation": "Depth Bias Computation",
   "primsrast-polygonmode": "Polygon Mode",
   "queries-pipestats": "Pipeline Statistics Queries",
   "resources-memory-aliasing": "Memory Aliasing",

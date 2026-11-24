@@ -223,17 +223,31 @@ struct Markup {
     math_block: Regex,
     asciidoc_block: Regex,
     unsupported_macro: Regex,
+    list_item: Regex,
+    described_item: Regex,
+    block_attributes: Regex,
+    block_delimiter: Regex,
+    admonition: Regex,
+    block_of_the_page: Regex,
 }
 
 impl Markup {
     fn new() -> Self {
         Self {
+            list_item: regex(r"^[ \t]*\*[ \t]+\S"),
+            described_item: regex(r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)(pname|ename):(\w+)\b"),
+            block_attributes: regex(r#"^\[(?:|[\w.#%{,"'].*)\]$"#),
+            block_delimiter: regex(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|\|={3,})$"),
+            admonition: regex(r"^\[(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$"),
+            block_of_the_page: regex(
+                r"^include::\{(?:generated\}/(?:validity|api)|chapters\}/commonvalidity)/",
+            ),
             anchor: regex(r"\[\[[^\]]*\]\]"),
             cross_reference: regex(r"(?s)<<([^,>]*)(?:,(.*?))?>>"),
             attribute_reference: regex(r"\{([\w-]+)\}"),
             labelled_url: regex(r"(?:link:)?(https?://[^\s\[]+)\[([^\]]*)\]"),
             unconstrained_role: regex(r"(?s)\[[\w.-]+\]##(.+?)##"),
-            role: regex(r"\[[\w.-]+\]#"),
+            role: regex(r"(?s)\[[\w.-]+\]#(.+?)#"),
             macro_prefix: regex(
                 r"\b(?:pname|ptext|sname|stext|slink|fname|ftext|flink|ename|etext|elink|dname|dlink|tname|tlink|basetype|code|apiext|reflink|tag|attr|latexmath):",
             ),
@@ -538,7 +552,89 @@ impl Specification {
     }
 
     fn words(&self, text: &str) -> String {
-        words(&self.plain(text))
+        words(&self.plain(&self.without_block_markup(text)))
+    }
+
+    fn without_block_markup(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        for line in text.lines() {
+            let at_margin = line.trim_end();
+            if let Some(admonition) = self.markup.admonition.captures(at_margin) {
+                let label = &admonition[1];
+                out.push_str(&label[..1]);
+                out.push_str(&label[1..].to_ascii_lowercase());
+            } else if !self.markup.block_attributes.is_match(at_margin) {
+                out.push_str(line);
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    fn items(&self, page: &str) -> Vec<(String, String, String)> {
+        let Some(page) = self.pages.get(page) else {
+            return Vec::new();
+        };
+        let markup = &self.markup;
+        let lines = page.body.lines().collect::<Vec<_>>();
+        let mut items = Vec::new();
+        let mut index = 0;
+        while index < lines.len() {
+            let start = index;
+            index += 1;
+            if !markup.list_item.is_match(lines[start]) {
+                continue;
+            }
+            let mut attached = false;
+            let mut inside = None;
+            while index < lines.len() {
+                let line = lines[index].trim_end();
+                if let Some(delimiter) = inside {
+                    if line == delimiter {
+                        inside = None;
+                    }
+                } else if line.is_empty()
+                    || markup.list_item.is_match(line)
+                    || markup.block_of_the_page.is_match(line)
+                {
+                    break;
+                } else if line == "+" {
+                    attached = true;
+                } else if markup.block_delimiter.is_match(line) {
+                    if !attached {
+                        break;
+                    }
+                    inside = Some(line);
+                    attached = false;
+                } else if markup.block_attributes.is_match(line) || line.starts_with('.') {
+                    if !attached {
+                        break;
+                    }
+                } else {
+                    attached = false;
+                }
+                index += 1;
+            }
+            let text = lines[start..index].join("\n");
+            if let Some(described) = markup.described_item.captures(&text)
+                && !described[1].contains("[[VUID-")
+            {
+                items.push((described[2].to_string(), described[3].to_string(), text));
+            }
+        }
+        items
+    }
+
+    fn item(&self, page: &str, macro_name: &str, name: &str) -> Option<String> {
+        self.items(page)
+            .into_iter()
+            .find(|(item_macro, item_name, _)| item_macro == macro_name && item_name == name)
+            .map(|(_, _, text)| text)
+    }
+
+    fn goes_on_in_another_file(&self, page: &str, macro_name: &str, name: &str) -> bool {
+        self.item(page, macro_name, name)
+            .is_some_and(|text| text.lines().any(|line| line.starts_with("include::")))
     }
 
     fn visible(&self, text: &str) -> String {
@@ -615,7 +711,7 @@ impl Specification {
             }
         });
         let text = markup.unconstrained_role.replace_all(&text, "$1");
-        let text = markup.role.replace_all(&text, "");
+        let text = markup.role.replace_all(&text, "$1");
         markup.macro_prefix.replace_all(&text, "").into_owned()
     }
 
@@ -707,9 +803,72 @@ fn doc_attributes(attributes: &[Attribute]) -> (String, Vec<String>) {
     (text, aliases)
 }
 
+fn without_code_fences(markdown: &str) -> String {
+    let mut pieces = markdown.split("```");
+    let mut text = pieces.next().unwrap_or_default().to_string();
+    for piece in pieces {
+        text.push(' ');
+        text.push_str(piece.trim_start_matches(|c: char| !c.is_whitespace()));
+    }
+    text
+}
+
+const WORDS_THAT_DO_NOT_END_A_SENTENCE: &[&str] = &[
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "either",
+    "following",
+    "for",
+    "from",
+    "in",
+    "is",
+    "of",
+    "or",
+    "than",
+    "the",
+    "to",
+    "with",
+];
+
+fn ends_in_the_middle_of_a_sentence(doc: &str) -> bool {
+    let doc = doc.trim_end();
+    let last_word = doc
+        .rsplit(char::is_whitespace)
+        .next()
+        .unwrap_or_default()
+        .trim_matches(['*', '_'])
+        .to_ascii_lowercase();
+    doc.ends_with([':', ',']) || WORDS_THAT_DO_NOT_END_A_SENTENCE.contains(&last_word.as_str())
+}
+
+fn words_left_out(expected: &str, actual: &str) -> String {
+    let expected = expected.split_whitespace().collect::<Vec<_>>();
+    let kept = (1..=expected.len())
+        .take_while(|end| actual.contains(&format!(" {} ", expected[..*end].join(" "))))
+        .last()
+        .unwrap_or(0);
+    let from = kept.saturating_sub(4);
+    let to = expected.len().min(kept + 12);
+    format!(
+        "{}[{}]",
+        expected[from..kept]
+            .iter()
+            .map(|word| format!("{word} "))
+            .collect::<String>(),
+        expected[kept..to].join(" ")
+    )
+}
+
 fn generated_words(markdown: &str) -> String {
+    let markdown = &without_code_fences(markdown);
     let mut text = String::with_capacity(markdown.len());
-    let mut rest = markdown;
+    let mut rest = markdown.as_str();
     while let Some(target) = rest.find("](") {
         text.push_str(&rest[..=target]);
         let after = &rest[target + 2..];
@@ -814,6 +973,9 @@ struct Checker {
     required_parameters: usize,
     parameters_under_another_name: usize,
     undescribed_arguments: Vec<String>,
+    whole_items: usize,
+    described_in_another_file: Vec<String>,
+    ends_where_its_list_item_ends: Vec<String>,
 }
 
 struct Generated {
@@ -931,6 +1093,67 @@ impl Checker {
         false
     }
 
+    fn whole(
+        &mut self,
+        spec: &Specification,
+        item: &str,
+        page: &str,
+        (macro_name, name): (&str, &str),
+        doc: &str,
+    ) {
+        let description = format!("{item}: `{name}`");
+        let in_the_middle = ends_in_the_middle_of_a_sentence(doc);
+        if in_the_middle && ENDS_WHERE_ITS_LIST_ITEM_ENDS.contains(&description.as_str()) {
+            self.ends_where_its_list_item_ends.push(description);
+        } else if in_the_middle {
+            let end = doc.trim_end();
+            let tail = end
+                .char_indices()
+                .rev()
+                .nth(59)
+                .map_or(end, |(at, _)| &end[at..]);
+            self.fail(
+                item,
+                format!(
+                    "the description of `{name}` ends in the middle of a sentence: `…{}`",
+                    flat(tail)
+                ),
+            );
+        }
+        let Some(source) = spec.item(page, macro_name, name) else {
+            return;
+        };
+        self.whole_items += 1;
+        let expected = spec.words(&source);
+        let actual = generated_words(doc);
+        if !actual.contains(&expected) {
+            self.fail(
+                item,
+                format!(
+                    "the description of `{name}` leaves out a part of its list item on the page `{page}`: `{}`",
+                    words_left_out(&expected, &actual)
+                ),
+            );
+        }
+    }
+
+    fn undescribed(
+        &mut self,
+        spec: &Specification,
+        item: &str,
+        page: &str,
+        (macro_name, name): (&str, &str),
+    ) {
+        if !spec.describes(page, macro_name, name) {
+            return;
+        }
+        if spec.goes_on_in_another_file(page, macro_name, name) {
+            self.described_in_another_file.push(item.to_string());
+            return;
+        }
+        self.fail(item, format!("the specification describes `{name}` on the page `{page}`, but the documentation does not use it"));
+    }
+
     fn member(
         &mut self,
         spec: &Specification,
@@ -953,10 +1176,8 @@ impl Checker {
             let declaration = declaration.split(['`', '[']).next().unwrap_or_default();
             let declarator = declaration.split(" : ").next().unwrap_or_default();
             let name = declarator.rsplit(' ').next().unwrap_or_default();
-            if let Some(page) = owner_page
-                && spec.describes(page, "pname", name)
-            {
-                self.fail(&item, format!("the specification describes `{name}` on the page `{page}`, but the documentation does not use it"));
+            if let Some(page) = owner_page {
+                self.undescribed(spec, &item, page, ("pname", name));
             }
             return;
         }
@@ -979,6 +1200,7 @@ impl Checker {
             );
         }
         self.contained(spec, &item, page, doc);
+        self.whole(spec, &item, page, ("pname", &name[1]), doc);
     }
 
     fn value(
@@ -1016,9 +1238,7 @@ impl Checker {
                 .get(1)
                 .or(value_of.get(2))
                 .map_or("", |m| m.as_str());
-            if spec.describes(page, "ename", c_name) {
-                self.fail(item, format!("the specification describes `{c_name}` on the page `{page}`, but the documentation does not use it"));
-            }
+            self.undescribed(spec, item, page, ("ename", c_name));
             if !spec.table_rows(Some(page), values, c_name).is_empty() {
                 self.fail(item, format!("the specification describes `{c_name}` in a table row, but the documentation does not use it"));
             }
@@ -1034,6 +1254,7 @@ impl Checker {
         match owner_page {
             Some(page) => {
                 self.contained(spec, item, page, doc);
+                self.whole(spec, item, page, ("ename", c_name), doc);
             }
             None => self.fail(item, "is described although its type has no reference page"),
         }
@@ -1138,6 +1359,9 @@ impl Checker {
             self.described_parameters += 1;
             let Some(names) = generated.described_under_another_name.captures(parameter) else {
                 self.contained(spec, item, &page, parameter);
+                if let Some(name) = generated.code_at_start.captures(parameter) {
+                    self.whole(spec, item, &page, ("pname", &name[1]), parameter);
+                }
                 continue;
             };
             self.parameters_under_another_name += 1;
@@ -1153,6 +1377,7 @@ impl Checker {
                 self.fail(item, format!("the description that the documentation takes for the parameter `{own}` is not the one of `{other}`"));
             }
             self.contained(spec, item, &page, description);
+            self.whole(spec, item, &page, ("pname", other), description);
         }
         if arguments.is_empty() {
             return;
@@ -1236,6 +1461,32 @@ fn type_name(ty: &Type) -> String {
     }
 }
 
+const DESCRIBED_IN_GENERATED_FILES: &[&str] = &[
+    "AccessFlagBits2::SHADER_READ",
+    "AccessFlags2::SHADER_READ",
+    "PipelineStageFlagBits2::ALL_GRAPHICS",
+    "PipelineStageFlagBits2::ALL_TRANSFER",
+    "PipelineStageFlagBits2::PRE_RASTERIZATION_SHADERS",
+    "PipelineStageFlagBits2::VERTEX_INPUT",
+    "PipelineStageFlags2::ALL_GRAPHICS",
+    "PipelineStageFlags2::ALL_TRANSFER",
+    "PipelineStageFlags2::PRE_RASTERIZATION_SHADERS",
+    "PipelineStageFlags2::VERTEX_INPUT",
+];
+
+const ENDS_WHERE_ITS_LIST_ITEM_ENDS: &[&str] = &[
+    "Device::get_queue_checkpoint_data2_nv_raw: `queue`",
+    "Device::get_queue_checkpoint_data_nv_raw: `queue`",
+    "Device::get_shader_instrumentation_values_arm_raw: `instrumentation`",
+    "ExecutionGraphPipelineCreateInfoAMDX::base_pipeline_handle: `basePipelineHandle`",
+    "ExecutionGraphPipelineCreateInfoAMDX::base_pipeline_index: `basePipelineIndex`",
+    "PhysicalDeviceExtendedFlagsFeaturesKHR::extended_flags: `extendedFlags`",
+    "SetDescriptorBufferOffsetsInfoEXT::stage_flags: `stageFlags`",
+    "TimeDomainKHR::CLOCK_MONOTONIC: `VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR`",
+    "TimeDomainKHR::CLOCK_MONOTONIC_RAW: `VK_TIME_DOMAIN_CLOCK_MONOTONIC_RAW_KHR`",
+    "TimeDomainKHR::QUERY_PERFORMANCE_COUNTER: `VK_TIME_DOMAIN_QUERY_PERFORMANCE_COUNTER_KHR`",
+];
+
 #[test]
 fn generated_documentation_matches_the_specification() {
     let root = workspace_root();
@@ -1264,7 +1515,8 @@ fn generated_documentation_matches_the_specification() {
     check_files(&spec, &generated, &mut checker, &files);
 
     eprintln!(
-        "checked {} reference links, {} summaries, {} described and {} undescribed members, {} described ({} by a table row) and {} undescribed values, {} parameters ({} under another name), the parameter lists of {} functions with {} parameters that the specification describes",
+        "checked {} descriptions against the whole of their list item, {} reference links, {} summaries, {} described and {} undescribed members, {} described ({} by a table row) and {} undescribed values, {} parameters ({} under another name), the parameter lists of {} functions with {} parameters that the specification describes",
+        checker.whole_items,
         checker.reference_links,
         checker.summaries,
         checker.described_members,
@@ -1288,7 +1540,36 @@ fn generated_documentation_matches_the_specification() {
         checker.failures.len(),
         checker.failures.join("\n")
     );
+    assert_eq!(
+        checker
+            .described_in_another_file
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        DESCRIBED_IN_GENERATED_FILES
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "the list items of exactly these values go on in a file that is generated when the specification is built, so the documentation describes none of them"
+    );
+    assert_eq!(
+        checker
+            .ends_where_its_list_item_ends
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        ENDS_WHERE_ITS_LIST_ITEM_ENDS
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "exactly these descriptions end like the middle of a sentence, because their list item in the specification ends there"
+    );
     for (what, count, at_least) in [
+        (
+            "descriptions with the whole of their list item",
+            checker.whole_items,
+            9000,
+        ),
         ("reference links", checker.reference_links, 5000),
         ("summaries", checker.summaries, 2500),
         ("described members", checker.described_members, 5000),
@@ -1619,6 +1900,17 @@ fn fixture_specification() -> Specification {
   * pname:count is the number of things.
   * pname:flags is reserved for future use.
   * pname:type is the kind of the thing.
+  * pname:range is the
+    [eq]#[minimum, maximum]# range of the things.
++
+The range has the following requirements:
++
+  ** It is not empty.
++
+[NOTE]
+====
+Empty ranges are for another day.
+====
 
 .Valid Usage
 ****
@@ -1631,7 +1923,9 @@ fn fixture_specification() -> Specification {
             "Colors of a thing",
             "
   * ename:VK_COLOR_RED specifies red.
-  * ename:VK_COLOR_GREEN specifies green.",
+  * ename:VK_COLOR_GREEN specifies green.
+  * ename:VK_COLOR_ALL is equivalent to the logical OR of:
+include::{generated}/colors/VK_COLOR_ALL.adoc[]",
         ),
         (
             "vkCountThings",
@@ -1655,7 +1949,8 @@ fn fixture_specification() -> Specification {
             "Application-defined thing callback",
             "
   * pname:pUserData is the user data.
-  * pname:thing is the thing.",
+  * pname:thing is the thing.
+include::{generated}/validity/funcpointers/PFN_vkThingCallback.adoc[]",
         ),
     ];
     for (name, description, body) in pages {
@@ -1687,6 +1982,16 @@ pub struct Thing {
     pub flags: u32,
     /// `type` is the kind of the thing.
     pub ty: u32,
+    /// `range` is the \[minimum, maximum\] range of the things.
+    ///
+    /// The range has the following requirements:
+    ///
+    /// - It is not empty.
+    ///
+    ///   > **Note**
+    ///   >
+    ///   > Empty ranges are for another day.
+    pub range: [u32; 2],
     /// The C member `uint32_t padding`.
     pub padding: u32,
 }
@@ -1750,6 +2055,9 @@ impl Color {
     /// `VK_COLOR_PINK`, a value of [`VkColor`](PAGES/VkColor.html).
     #[doc(alias = "VK_COLOR_PINK")]
     pub const PINK: Self = Self(13);
+    /// `VK_COLOR_ALL`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_ALL")]
+    pub const ALL: Self = Self(14);
 }
 
 /// Application-defined thing callback.
@@ -1918,6 +2226,170 @@ fn checker_accepts_documentation_that_matches_the_specification() {
     assert!(failures.is_empty(), "{failures:#?}");
 }
 
+const FIXTURE_RANGE: &str = "    /// `range` is the \\[minimum, maximum\\] range of the things.
+    ///
+    /// The range has the following requirements:
+    ///
+    /// - It is not empty.
+    ///
+    ///   > **Note**
+    ///   >
+    ///   > Empty ranges are for another day.
+";
+
+#[test]
+fn checker_reports_a_description_that_leaves_out_a_part_of_its_list_item() {
+    let lead = "    /// `range` is the \\[minimum, maximum\\] range of the things.\n";
+    let requirements = "    ///\n    /// The range has the following requirements:\n";
+    let list = "    ///\n    /// - It is not empty.\n";
+    for (defect, doc, left_out) in [
+        (
+            "a description cut where a line of the item starts with markup",
+            "    /// `range` is the\n".to_string(),
+            "range is the [minimum maximum range of the things The range has the following requirements]",
+        ),
+        (
+            "a description without what a list continuation attaches",
+            lead.to_string(),
+            "range of the things [The range has the following requirements It is not empty Note Empty]",
+        ),
+        (
+            "a description without the attached list",
+            format!("{lead}{requirements}"),
+            "has the following requirements [It is not empty Note Empty ranges are for another day]",
+        ),
+        (
+            "a description without the attached note",
+            format!("{lead}{requirements}{list}"),
+            "It is not empty [Note Empty ranges are for another day]",
+        ),
+    ] {
+        assert_reported(
+            defect,
+            FIXTURE_RANGE,
+            &doc,
+            &format!(
+                "Thing::range: the description of `range` leaves out a part of its list item on the page `VkThing`: `{left_out}`"
+            ),
+        );
+    }
+}
+
+#[test]
+fn checker_reports_a_description_that_ends_in_the_middle_of_a_sentence() {
+    for end in [
+        "`range` is the",
+        "`range` is the \\[minimum, maximum\\] range of the things. The range has the following requirements:",
+        "`range` is the \\[minimum,",
+    ] {
+        let tail = end
+            .char_indices()
+            .rev()
+            .nth(59)
+            .map_or(end, |(at, _)| &end[at..]);
+        assert_reported(
+            "a description cut in a sentence",
+            FIXTURE_RANGE,
+            &format!("    /// {end}\n"),
+            &format!(
+                "Thing::range: the description of `range` ends in the middle of a sentence: `…{}`",
+                flat(tail)
+            ),
+        );
+    }
+    for whole in [
+        "`a` is the range.",
+        "`a` is [`VK_TRUE`](TRUE)",
+        "`a` is one of: - this - those",
+        "`a` is the corner (x,y)",
+        "`a` is `b`\\[0\\]",
+        "`a` is at least **1**",
+        "`a` lists the formats: ```c++ a = b; ```",
+    ] {
+        assert!(
+            !ends_in_the_middle_of_a_sentence(whole),
+            "`{whole}` ends a sentence"
+        );
+    }
+    for cut in [
+        "`a` is the",
+        "`a` is clamped to",
+        "`a` is **either**",
+        "`a` lists the formats:",
+        "`a` depends on `b`,",
+        "`a` is one of the following",
+    ] {
+        assert!(
+            ends_in_the_middle_of_a_sentence(cut),
+            "`{cut}` does not end a sentence"
+        );
+    }
+}
+
+#[test]
+fn checker_accepts_a_fallback_for_a_value_whose_list_item_goes_on_in_a_generated_file() {
+    let checker = fixture_checker(FIXTURE_SOURCE);
+    assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
+    assert_eq!(checker.described_in_another_file, ["Color::ALL"]);
+    assert_reported(
+        "a description that stops where the generated file starts",
+        "/// `VK_COLOR_ALL`, a value of [`VkColor`](PAGES/VkColor.html).",
+        "/// `VK_COLOR_ALL` is equivalent to the logical OR of:",
+        "Color::ALL: the description of `VK_COLOR_ALL` leaves out a part of its list item on the page `VkColor`: `the logical OR of [include generated colors VK_COLOR_ALL adoc]`",
+    );
+}
+
+#[test]
+fn the_list_items_of_the_specification_are_read_to_their_end() {
+    let specification = fixture_specification();
+    let item = |page: &str, macro_name: &str, name: &str| {
+        specification
+            .item(page, macro_name, name)
+            .unwrap_or_else(|| panic!("no item {name} on the page {page}"))
+    };
+    assert_eq!(
+        item("VkThing", "pname", "type"),
+        "  * pname:type is the kind of the thing."
+    );
+    let range = item("VkThing", "pname", "range");
+    assert!(
+        range.starts_with("  * pname:range is the\n    [eq]#[minimum, maximum]# range"),
+        "{range}"
+    );
+    assert!(
+        range.ends_with("[NOTE]\n====\nEmpty ranges are for another day.\n===="),
+        "{range}"
+    );
+    assert_eq!(
+        specification.words(&range),
+        " range is the minimum maximum range of the things The range has the following requirements It is not empty Note Empty ranges are for another day "
+    );
+    assert_eq!(
+        specification.item("VkThing", "pname", "padding"),
+        None,
+        "valid usage is not a description"
+    );
+    assert_eq!(specification.item("VkThing", "ename", "type"), None);
+    assert_eq!(
+        item("vkCountThings", "pname", "pAllocator"),
+        "  * pname:pAllocator controls host memory allocation as described in the\n    <<memory-allocation, Memory Allocation>> chapter."
+    );
+    assert!(specification.goes_on_in_another_file("VkColor", "ename", "VK_COLOR_ALL"));
+    assert!(!specification.goes_on_in_another_file("VkColor", "ename", "VK_COLOR_RED"));
+    assert_eq!(
+        item("PFN_vkThingCallback", "pname", "thing"),
+        "  * pname:thing is the thing.",
+        "the generated valid usage is a block of the page, not a part of the item"
+    );
+    assert_eq!(
+        specification.words(
+            "pname:size[i] is [eq]#pname:pSizes[i]# for all [eq]#0 {times} i\n    < [2]# and [eq]##n##s"
+        ),
+        " size i is pSizes i for all 0 i 2 and ns ",
+        "a role span keeps what is in it, brackets included"
+    );
+}
+
 #[test]
 fn checker_reports_a_member_fallback_when_the_specification_describes_the_member() {
     assert_reported(
@@ -1994,7 +2466,7 @@ fn checker_reports_a_table_row_that_the_specification_does_not_have() {
 fn color_values() -> BTreeSet<String> {
     [
         "RED", "BLUE", "BLACK", "INDIGO", "VIOLET", "TEAL", "CYAN", "MAGENTA", "YELLOW", "ORANGE",
-        "WHITE", "GREY", "PINK",
+        "WHITE", "GREY", "PINK", "ALL",
     ]
     .iter()
     .map(|color| format!("VK_COLOR_{color}"))
@@ -2178,7 +2650,7 @@ fn checker_reports_a_parameter_left_out_of_the_parameters_of_a_command() {
 fn checker_does_not_take_valid_usage_for_a_description() {
     let specification = fixture_specification();
     let thing = specification.described("VkThing", "pname");
-    assert_eq!(thing, ["count", "flags", "type"]);
+    assert_eq!(thing, ["count", "flags", "type", "range"]);
     let count_things = specification.described("vkCountThings", "pname");
     assert_eq!(
         count_things,
