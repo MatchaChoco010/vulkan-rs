@@ -530,6 +530,11 @@ fn alignments() -> impl Strategy<Value = u64> {
         1 => Just(0u64),
         5 => (1u32..=8).prop_map(|shift| 1u64 << shift),
         1 => (9u32..=17).prop_map(|shift| 1u64 << shift),
+        1 => prop_oneof![
+            (2u32..=17).prop_map(|shift| (1u64 << shift) - 1),
+            (1u32..=17).prop_map(|shift| (1u64 << shift) + 1),
+            prop::sample::select(vec![3u64, 6, 12, 48, 96, 1000, (1 << 63) + 1, u64::MAX]),
+        ],
     ]
 }
 
@@ -1100,6 +1105,16 @@ impl Harness {
             );
             self.coverage.step("allocate: larger than the memory heap");
             return self.nothing_happened_since(&before, "an allocation larger than its heap");
+        }
+        if request.alignment != 0 && !request.alignment.is_power_of_two() {
+            ensure_eq!(
+                result,
+                Err(AllocationError::OutOfMemory),
+                "an alignment that is neither 0 nor a power of two"
+            );
+            self.coverage
+                .step("allocate: alignment that is not a power of two");
+            return self.nothing_happened_since(&before, "an allocation with a bad alignment");
         }
 
         let alignment = self.effective_alignment(memory_type, request.alignment);

@@ -15,7 +15,8 @@ pub enum AllocationError {
     NoCompatibleMemoryType,
     /// The request cannot be met inside the allocator, for example because
     /// [`vk::MemoryRequirements::size`] is 0 or larger than the memory heap of the chosen
-    /// memory type (see [`Allocator::allocate`](crate::Allocator::allocate)).
+    /// memory type, or because [`vk::MemoryRequirements::alignment`] is neither 0 nor a
+    /// power of two (see [`Allocator::allocate`](crate::Allocator::allocate)).
     ///
     /// The device running out of memory is reported as [`AllocationError::Vulkan`] with
     /// the result of `vkAllocateMemory`, such as

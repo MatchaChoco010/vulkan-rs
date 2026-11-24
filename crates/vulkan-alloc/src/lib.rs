@@ -167,9 +167,10 @@
 //! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). Allocations in
 //! such memory are aligned to `nonCoherentAtomSize`, so the atom-rounded range that is
 //! flushed or invalidated never reaches into another allocation. This holds because
-//! `nonCoherentAtomSize` and the alignments of memory requirements are powers of two,
-//! which [`AllocatorCreateDesc::non_coherent_atom_size`] and
-//! [`AllocationCreateDesc::requirements`] require.
+//! `nonCoherentAtomSize` and the alignments of memory requirements are powers of two:
+//! [`AllocatorCreateDesc::non_coherent_atom_size`] requires it of the limit, and
+//! [`Allocator::allocate`] rejects any other alignment than 0, which is treated as 1
+//! (see [`AllocationCreateDesc::requirements`]).
 //!
 //! # Order of destruction
 //!

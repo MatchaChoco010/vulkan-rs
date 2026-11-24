@@ -25,11 +25,13 @@ pub struct AllocationCreateDesc<'a> {
     /// [`Allocator::allocate`](crate::Allocator::allocate) for when the heap is known).
     ///
     /// The allocation's offset is a multiple of `alignment`, and an `alignment` of 0 is
-    /// treated as 1. A caller may raise `alignment`, for example to align a device
-    /// address, but must keep it a power of two, as Vulkan reports it: the allocator
-    /// combines it with other alignments (see
+    /// treated as 1. A caller may raise `alignment` to a larger power of two, for
+    /// example to align a device address. An `alignment` that is neither 0 nor a power
+    /// of two is rejected with
+    /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory). The
+    /// allocator combines `alignment` with other alignments (see
     /// [`AllocatorCreateDesc::non_coherent_atom_size`](crate::AllocatorCreateDesc::non_coherent_atom_size))
-    /// by taking the largest.
+    /// by taking the largest, which is a multiple of each of them.
     pub requirements: vk::MemoryRequirements,
     /// The memory property flags the memory type must have and should have.
     pub location: MemoryLocation,
