@@ -11,8 +11,20 @@ use vulkan::vk;
 /// [`Allocation::memory_properties`](crate::Allocation::memory_properties) gives the flags
 /// of the type that was chosen.
 ///
-/// [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] require `HOST_VISIBLE`
-/// and `HOST_COHERENT`, so their memory is always host-coherent: mapped memory can be
+/// Which location to use depends on who accesses the memory:
+///
+/// - [`MemoryLocation::GpuOnly`]: only the device, such as images, vertex buffers and
+///   the destination of an upload.
+/// - [`MemoryLocation::CpuToGpu`]: the host writes and the device reads the memory
+///   directly, such as uniform buffers and vertex buffers written every frame.
+/// - [`MemoryLocation::CpuOnly`]: the host writes, and the device only copies from it,
+///   such as staging buffers.
+/// - [`MemoryLocation::GpuToCpu`]: the device writes and the host reads, such as
+///   readback buffers.
+///
+/// [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
+/// [`MemoryLocation::GpuToCpu`] require `HOST_VISIBLE` and `HOST_COHERENT`, so their
+/// memory is always host-coherent: mapped memory can be
 /// written and read without
 /// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) or
 /// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation), which
@@ -58,9 +70,15 @@ pub enum MemoryLocation {
     /// `DEVICE_LOCAL`. The chosen type may also be host-visible, but nothing guarantees
     /// that, and a host-visible type chosen here need not be `HOST_COHERENT`.
     GpuOnly,
-    /// Memory the host writes and the device reads, such as staging and uniform
-    /// buffers: requires and prefers `HOST_VISIBLE | HOST_COHERENT`, so the
-    /// lowest-indexed allowed type with both flags is taken. Host writes need no flush.
+    /// Memory the host writes and the device reads directly, such as uniform buffers and
+    /// vertex buffers that change every frame: requires `HOST_VISIBLE | HOST_COHERENT`
+    /// and prefers `HOST_VISIBLE | HOST_COHERENT | DEVICE_LOCAL`. So among the allowed
+    /// types with the required flags, the lowest-indexed one that is also
+    /// `DEVICE_LOCAL` is taken, or the lowest-indexed one if none is. Host-visible
+    /// device-local memory, such as the memory a discrete GPU exposes through its PCIe
+    /// BAR or the memory of an integrated GPU, is faster for the device to read. When it
+    /// is out of memory, the allocation falls back to host memory (see
+    /// [`Allocator::allocate`](crate::Allocator::allocate)). Host writes need no flush.
     CpuToGpu,
     /// Memory the device writes and the host reads back: requires
     /// `HOST_VISIBLE | HOST_COHERENT` and prefers
@@ -68,6 +86,19 @@ pub enum MemoryLocation {
     /// required flags, the lowest-indexed one that is also `HOST_CACHED` is taken, or the
     /// lowest-indexed one if none is. Host reads need no invalidate.
     GpuToCpu,
+    /// Memory the host writes and reads, and the device uses only as the source or
+    /// destination of transfers, such as staging buffers: requires and prefers
+    /// `HOST_VISIBLE | HOST_COHERENT`, so the lowest-indexed allowed type with both flags
+    /// is taken. Host writes need no flush.
+    ///
+    /// The Vulkan specification places a memory type at a lower index than every type
+    /// whose property flags are a strict superset of its own. So if the device has a type
+    /// with `HOST_VISIBLE | HOST_COHERENT` and without `DEVICE_LOCAL`, it is taken over
+    /// the device-local types that also have every flag it has, and staging buffers do
+    /// not use up a small host-visible device-local heap. A device whose only
+    /// host-visible coherent memory is device-local, such as many integrated GPUs, gives
+    /// that memory.
+    CpuOnly,
     /// Explicit flags.
     ///
     /// The chosen type is certain to be `HOST_COHERENT` only if `required` contains that
@@ -118,7 +149,7 @@ impl MemoryLocation {
     pub(crate) fn required_flags(self) -> vk::MemoryPropertyFlags {
         match self {
             Self::GpuOnly => vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            Self::CpuToGpu | Self::GpuToCpu => {
+            Self::CpuToGpu | Self::GpuToCpu | Self::CpuOnly => {
                 vk::MemoryPropertyFlags::HOST_VISIBLE.union(vk::MemoryPropertyFlags::HOST_COHERENT)
             }
             Self::Custom { required, .. } => required,
@@ -128,7 +159,10 @@ impl MemoryLocation {
     pub(crate) fn preferred_flags(self) -> vk::MemoryPropertyFlags {
         match self {
             Self::GpuOnly => vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            Self::CpuToGpu => {
+            Self::CpuToGpu => vk::MemoryPropertyFlags::HOST_VISIBLE
+                .union(vk::MemoryPropertyFlags::HOST_COHERENT)
+                .union(vk::MemoryPropertyFlags::DEVICE_LOCAL),
+            Self::CpuOnly => {
                 vk::MemoryPropertyFlags::HOST_VISIBLE.union(vk::MemoryPropertyFlags::HOST_COHERENT)
             }
             Self::GpuToCpu => vk::MemoryPropertyFlags::HOST_VISIBLE
@@ -271,6 +305,7 @@ pub(crate) mod tests {
             MemoryLocation::GpuOnly,
             MemoryLocation::CpuToGpu,
             MemoryLocation::GpuToCpu,
+            MemoryLocation::CpuOnly,
             MemoryLocation::custom(
                 vk::MemoryPropertyFlags::empty(),
                 vk::MemoryPropertyFlags::empty(),

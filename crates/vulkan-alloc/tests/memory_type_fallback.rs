@@ -149,6 +149,7 @@ fn locations() -> impl Strategy<Value = MemoryLocation> {
         2 => Just(MemoryLocation::GpuOnly),
         2 => Just(MemoryLocation::CpuToGpu),
         2 => Just(MemoryLocation::GpuToCpu),
+        2 => Just(MemoryLocation::CpuOnly),
         3 => (
             prop_oneof![2 => Just(0u8), 2 => (0..6u32).prop_map(|bit| 1u8 << bit), 1 => 0..64u8],
             0..64u8,
@@ -164,7 +165,8 @@ fn documented_flags(
 ) -> (vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) {
     match location {
         MemoryLocation::GpuOnly => (LOCAL, LOCAL),
-        MemoryLocation::CpuToGpu => (VISIBLE | COHERENT, VISIBLE | COHERENT),
+        MemoryLocation::CpuToGpu => (VISIBLE | COHERENT, VISIBLE | COHERENT | LOCAL),
+        MemoryLocation::CpuOnly => (VISIBLE | COHERENT, VISIBLE | COHERENT),
         MemoryLocation::GpuToCpu => (VISIBLE | COHERENT, VISIBLE | COHERENT | CACHED),
         MemoryLocation::Custom {
             required,
@@ -549,6 +551,29 @@ fn gpu_to_cpu_takes_coherent_memory_when_the_cached_heap_is_out_of_memory() {
         "the cached type is tried first, then the coherent type"
     );
     assert_eq!(allocator.snapshot().memory_types.len(), 1);
+    unsafe { allocator.free(allocation) }.unwrap();
+}
+
+#[test]
+fn cpu_to_gpu_takes_host_memory_when_the_host_visible_device_heap_is_out_of_memory() {
+    let fake = FakeDevice::new();
+    let mut allocator = allocator_for(
+        &fake,
+        &[
+            (LOCAL, 1 << 30),
+            (VISIBLE | COHERENT, 1 << 30),
+            (LOCAL | VISIBLE | COHERENT, 256 << 20),
+        ],
+    );
+    fake.script_allocations([OOM]);
+    let allocation =
+        allocate(&mut allocator, 256, MemoryLocation::CpuToGpu).expect("the host memory has room");
+    assert_eq!(allocation.memory_type_index(), 1);
+    assert_eq!(
+        fake.allocated_memory_types(),
+        [2, 1],
+        "the host-visible device memory is tried first, then the host memory"
+    );
     unsafe { allocator.free(allocation) }.unwrap();
 }
 

@@ -176,6 +176,7 @@ pub enum Location {
     GpuOnly,
     CpuToGpu,
     GpuToCpu,
+    CpuOnly,
     Custom { required: u8, preferred: u8 },
 }
 
@@ -193,7 +194,11 @@ impl Location {
     fn documented_flags(self) -> (vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) {
         match self {
             Location::GpuOnly => (LOCAL, LOCAL),
-            Location::CpuToGpu => (VISIBLE.union(COHERENT), VISIBLE.union(COHERENT)),
+            Location::CpuToGpu => (
+                VISIBLE.union(COHERENT),
+                VISIBLE.union(COHERENT).union(LOCAL),
+            ),
+            Location::CpuOnly => (VISIBLE.union(COHERENT), VISIBLE.union(COHERENT)),
             Location::GpuToCpu => (
                 VISIBLE.union(COHERENT),
                 VISIBLE.union(COHERENT).union(CACHED),
@@ -210,6 +215,7 @@ impl Location {
             Location::GpuOnly => MemoryLocation::GpuOnly,
             Location::CpuToGpu => MemoryLocation::CpuToGpu,
             Location::GpuToCpu => MemoryLocation::GpuToCpu,
+            Location::CpuOnly => MemoryLocation::CpuOnly,
             Location::Custom {
                 required,
                 preferred,
@@ -605,6 +611,7 @@ fn locations() -> impl Strategy<Value = Location> {
         4 => Just(Location::GpuOnly),
         6 => Just(Location::CpuToGpu),
         4 => Just(Location::GpuToCpu),
+        4 => Just(Location::CpuOnly),
         3 => (
             prop_oneof![
                 6 => Just(0u8),

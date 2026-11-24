@@ -175,8 +175,12 @@ impl Allocator {
     /// `vkAllocateMemory` for the type once more; the type is out of memory if that call
     /// returns [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] too. So `vkAllocateMemory` can
     /// be called several times in one call of this function, and the allocation can be
-    /// made in a memory type with fewer preferred flags than the first one chosen;
-    /// [`Allocation::memory_type_index`] is the type it was made in.
+    /// made in a memory type with fewer preferred flags than the first one chosen, such as
+    /// a [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) allocation in host
+    /// memory when the host-visible device-local heap is full;
+    /// [`Allocation::memory_type_index`] is the type it was made in. The
+    /// [`MemoryLocation`](crate::MemoryLocation) documentation tells which location suits
+    /// which use.
     ///
     /// In each memory type it tries, a request that is not refused (see the errors below)
     /// is placed in an existing shared block of that type that was made with the same
@@ -218,7 +222,8 @@ impl Allocator {
     ///    the memory types and heaps of the device.
     /// 2. [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
     ///    required flags, not counting the types that are left out as described above.
-    ///    For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    ///    For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    ///    [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     ///    [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu), whose required
     ///    flags are `HOST_VISIBLE | HOST_COHERENT`, the specification guarantees such a
     ///    type to buffers that are neither sparse nor protected, to linear images that

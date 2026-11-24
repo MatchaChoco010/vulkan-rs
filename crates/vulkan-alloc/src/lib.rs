@@ -17,9 +17,13 @@
 //! 2. Create a buffer or an image and query its memory requirements.
 //! 3. Describe the memory in an [`AllocationCreateDesc`], made with
 //!    [`AllocationCreateDesc::new`], and pass it to [`Allocator::allocate`]. The
-//!    [`MemoryLocation`] chooses the memory type; the memory of
-//!    [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is host-visible and
-//!    host-coherent.
+//!    [`MemoryLocation`] chooses the memory type from how the memory is used:
+//!    [`MemoryLocation::GpuOnly`] for memory only the device accesses,
+//!    [`MemoryLocation::CpuToGpu`] for memory the host writes and the device reads
+//!    directly, such as the uniform buffer below, [`MemoryLocation::CpuOnly`] for
+//!    staging buffers the device only copies from, and [`MemoryLocation::GpuToCpu`] for
+//!    memory the device writes and the host reads. The memory of the last three is
+//!    host-visible and host-coherent.
 //! 4. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`]. The
 //!    allocator does not bind anything itself.
 //! 5. Access host-visible memory through one of the mapping functions (see
