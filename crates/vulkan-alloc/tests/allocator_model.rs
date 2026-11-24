@@ -127,6 +127,30 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
     ] {
         assert!(coverage.count(event) > 0, "never reached: {event}");
     }
+    for name in ["flush_allocation_range", "invalidate_allocation_range"] {
+        for outcome in [
+            "refused: unmapped",
+            "outside the allocation",
+            "of 0 bytes",
+            "of coherent memory",
+            "fails on the device",
+            "of a part of the allocation",
+        ] {
+            let event = format!("{name} {outcome}");
+            assert!(coverage.count(&event) > 0, "never reached: {event}");
+        }
+    }
+    for name in ["flush_range", "invalidate_range"] {
+        for outcome in [
+            "",
+            " outside the allocation",
+            " of 0 bytes",
+            " of coherent memory",
+        ] {
+            let event = format!("{name} through the guard{outcome}");
+            assert!(coverage.count(&event) > 0, "never reached: {event}");
+        }
+    }
 
     let count = |prefix: &str| {
         coverage
@@ -176,6 +200,8 @@ fn mapping_operations() -> [Op; 7] {
             GuardUse {
                 flush: true,
                 invalidate: true,
+                flush_range: true,
+                invalidate_range: true,
                 range_offset: 1,
                 range_size: 7,
             },
@@ -261,6 +287,10 @@ fn every_pair_of_mapping_operations_from_every_mapping_state_follows_the_model()
         "Invalidate through the guard makes no Vulkan call for coherent memory",
         "Flush through the guard",
         "Invalidate through the guard",
+        "flush_range through the guard",
+        "invalidate_range through the guard",
+        "flush_range through the guard of coherent memory",
+        "invalidate_range through the guard of coherent memory",
     ] {
         assert!(coverage.count(event) > 0, "never reached: {event}");
     }

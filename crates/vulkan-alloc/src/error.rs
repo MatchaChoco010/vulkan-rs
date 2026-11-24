@@ -34,14 +34,30 @@ pub enum AllocationError {
     /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] from `vkAllocateMemory` is reported as
     /// [`AllocationError::OutOfMemory`] instead; from the other calls it is reported here.
     Vulkan(vk::VkResult),
-    /// The allocator does not hold the allocation, for example because it comes from
-    /// another allocator, or the operation does not apply to the allocation in its
-    /// current state, such as mapping memory that is not host-visible or unmapping an
-    /// allocation that is not mapped. Each function lists its cases under `# Errors`.
+    /// The allocation does not fit the operation. Each function lists its cases under
+    /// `# Errors`. They are of these kinds:
     ///
-    /// [`Allocator::allocate`](crate::Allocator::allocate) returns it when no identifier
-    /// is left for a new allocation, after 2<sup>64</sup> − 2 allocations in the
-    /// process.
+    /// - The allocator does not hold the allocation, for example because it comes from
+    ///   another allocator or has been freed.
+    /// - The operation does not apply to the allocation in its current state: mapping
+    ///   memory that is not host-visible or an allocation that already holds
+    ///   [`usize::MAX`] mapping references, unmapping an allocation that is not mapped
+    ///   or whose only reference is its persistent mapping, flushing or invalidating an
+    ///   allocation that is not mapped, or freeing an allocation that still has a
+    ///   mapping made with [`Allocator::map_memory`](crate::Allocator::map_memory).
+    /// - Mapping cannot give a pointer to the allocation: `vkMapMemory` returns a null
+    ///   pointer, the address of the allocation (the address of the mapped block plus
+    ///   [`Allocation::offset`](crate::Allocation::offset)) cannot be represented as a
+    ///   non-null pointer, or, for [`Allocator::map`](crate::Allocator::map), the
+    ///   allocation is larger than [`isize::MAX`] bytes.
+    /// - A range given to
+    ///   [`Allocator::flush_allocation_range`](crate::Allocator::flush_allocation_range),
+    ///   [`Allocator::invalidate_allocation_range`](crate::Allocator::invalidate_allocation_range),
+    ///   [`MappedAllocation::flush_range`](crate::MappedAllocation::flush_range) or
+    ///   [`MappedAllocation::invalidate_range`](crate::MappedAllocation::invalidate_range)
+    ///   does not lie inside the allocation.
+    /// - [`Allocator::allocate`](crate::Allocator::allocate) has no identifier left for a
+    ///   new allocation, after 2<sup>64</sup> − 2 allocations in the process.
     InvalidAllocation,
 }
 
