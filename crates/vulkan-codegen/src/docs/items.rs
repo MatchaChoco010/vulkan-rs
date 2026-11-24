@@ -1,4 +1,5 @@
 use super::asciidoc::Unsupported;
+use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Part {
@@ -58,6 +59,105 @@ struct Reader<'a> {
 pub(super) fn read(text: &str) -> Result<Vec<Part>, Unsupported> {
     let lines = text.lines().collect::<Vec<_>>();
     read_lines(&lines, Within::ListItem)
+}
+
+fn note_number(term: &str) -> Option<u32> {
+    term.chars()
+        .all(|c| c.is_ascii_digit())
+        .then(|| term.parse().ok())
+        .flatten()
+}
+
+pub(super) fn may_have_notes(text: &str) -> bool {
+    text.lines()
+        .filter_map(|line| term(line.trim()))
+        .any(|(name, _)| note_number(name).is_some())
+}
+
+pub(super) fn take_notes(parts: &mut Vec<Part>) -> Vec<(u32, Vec<Part>)> {
+    let mut notes = Vec::new();
+    for part in std::mem::take(parts) {
+        let mut part = part;
+        match &mut part {
+            Part::Terms(terms) if terms.iter().all(|(term, _)| note_number(term).is_some()) => {
+                notes.extend(
+                    terms
+                        .drain(..)
+                        .filter_map(|(term, note)| Some((note_number(&term)?, note))),
+                );
+                continue;
+            }
+            Part::Terms(terms) => {
+                for (_, described) in terms {
+                    notes.extend(take_notes(described));
+                }
+            }
+            Part::List(items) => {
+                for item in items {
+                    notes.extend(take_notes(item));
+                }
+            }
+            Part::Admonition { parts, .. } => notes.extend(take_notes(parts)),
+            Part::Paragraph(_) | Part::Math(_) | Part::Listing { .. } => {}
+        }
+        parts.push(part);
+    }
+    notes
+}
+
+fn with_marks(text: &str, mut referred: impl FnMut(u32) -> String) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('^') {
+        let after = &rest[open + 1..];
+        let digits = after
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after.len());
+        let number = after[digits..]
+            .starts_with('^')
+            .then(|| note_number(&after[..digits]))
+            .flatten();
+        match number {
+            Some(number) => {
+                out.push_str(&rest[..open]);
+                out.push_str(&referred(number));
+                rest = &after[digits + 1..];
+            }
+            None => {
+                out.push_str(&rest[..=open]);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+pub(super) fn refer_to_notes(parts: &mut [Part]) -> BTreeSet<u32> {
+    let mut marks = BTreeSet::new();
+    for part in parts {
+        match part {
+            Part::Paragraph(text) => {
+                *text = with_marks(text, |number| {
+                    marks.insert(number);
+                    format!(" (note {number})")
+                });
+            }
+            Part::List(items) => {
+                for item in items {
+                    marks.extend(refer_to_notes(item));
+                }
+            }
+            Part::Terms(terms) => {
+                for (_, described) in terms {
+                    marks.extend(refer_to_notes(described));
+                }
+            }
+            Part::Admonition { parts, .. } => marks.extend(refer_to_notes(parts)),
+            Part::Math(_) | Part::Listing { .. } => {}
+        }
+    }
+    marks
 }
 
 fn unread(what: impl Into<String>) -> Unsupported {
@@ -744,6 +844,57 @@ mod tests {
                 ]),
             ]
         );
+    }
+
+    #[test]
+    fn numbered_terms_are_notes_and_are_taken_out_of_the_item_that_they_are_nested_in() {
+        let mut item = parts(&[
+            "pname:a is a bitmask^1^ of 2^n^ values^12^, x^^ and ^3",
+            "** nested^1^",
+            "",
+            "1::",
+            "The first note.",
+            "",
+            "12:: The other note.",
+        ]);
+        assert_eq!(
+            take_notes(&mut item),
+            [
+                (1, vec![paragraph("The first note.")]),
+                (12, vec![paragraph("The other note.")]),
+            ]
+        );
+        assert_eq!(
+            item,
+            [
+                paragraph("pname:a is a bitmask^1^ of 2^n^ values^12^, x^^ and ^3"),
+                list([vec![paragraph("nested^1^")]]),
+            ]
+        );
+        assert_eq!(refer_to_notes(&mut item), BTreeSet::from([1, 12]));
+        assert_eq!(
+            item,
+            [
+                paragraph("pname:a is a bitmask (note 1) of 2^n^ values (note 12), x^^ and ^3"),
+                list([vec![paragraph("nested (note 1)")]]),
+            ]
+        );
+        let mut described = parts(&["pname:a is:", "", "1::", "A step.", "", "then:: Another."]);
+        let before = described.clone();
+        assert!(take_notes(&mut described).is_empty());
+        assert_eq!(
+            described, before,
+            "a list with a term that is no number is no list of notes"
+        );
+        for (text, notes) in [
+            ("pname:a is:\n\n1::\nThe note.", true),
+            ("pname:a is:\n\n  12:: The note.", true),
+            ("pname:a is:\n\nterm:: The note.", false),
+            ("pname:a is 1::2 and\n1: or 1::: x", false),
+            ("pname:a is:", false),
+        ] {
+            assert_eq!(may_have_notes(text), notes, "{text:?}");
+        }
     }
 
     #[test]

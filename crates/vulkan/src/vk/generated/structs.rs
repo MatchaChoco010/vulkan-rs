@@ -75895,56 +75895,128 @@ pub struct PhysicalDeviceLimits {
     /// member of the [`VkFramebufferCreateInfo`](FramebufferCreateInfo) structure must be less than
     /// or equal to this limit.
     pub max_framebuffer_layers: u32,
-    /// `framebufferColorSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferColorSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the color sample counts that are
     /// supported for all framebuffer color attachments with floating- or fixed-point formats. For
     /// color attachments with integer formats, see `framebufferIntegerColorSampleCounts`.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_color_sample_counts: SampleCountFlags,
-    /// `framebufferDepthSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferDepthSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the supported depth sample counts
     /// for all framebuffer depth/stencil attachments, when the format includes a depth component.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_depth_sample_counts: SampleCountFlags,
-    /// `framebufferStencilSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferStencilSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the supported stencil sample
     /// counts for all framebuffer depth/stencil attachments, when the format includes a stencil
     /// component.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_stencil_sample_counts: SampleCountFlags,
-    /// `framebufferNoAttachmentsSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferNoAttachmentsSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the supported sample counts for a
     /// subpass which uses no attachments.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_no_attachments_sample_counts: SampleCountFlags,
     /// `maxColorAttachments` is the maximum number of color attachments that can be used by a
     /// subpass in a render pass. The `colorAttachmentCount` member of the `VkSubpassDescription` or
     /// `VkSubpassDescription2` structure must be less than or equal to this limit.
     pub max_color_attachments: u32,
-    /// `sampledImageColorSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageColorSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and a
     /// non-integer color format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_color_sample_counts: SampleCountFlags,
-    /// `sampledImageIntegerSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageIntegerSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and an integer
     /// color format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_integer_sample_counts: SampleCountFlags,
-    /// `sampledImageDepthSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageDepthSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and a depth
     /// format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_depth_sample_counts: SampleCountFlags,
-    /// `sampledImageStencilSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageStencilSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and a stencil
     /// format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_stencil_sample_counts: SampleCountFlags,
-    /// `storageImageSampleCounts` is a bitmask<sup>1</sup> of
+    /// `storageImageSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), and the
     /// [`VK_IMAGE_USAGE_STORAGE_BIT`](ImageUsageFlagBits::STORAGE) usage flag set.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub storage_image_sample_counts: SampleCountFlags,
     /// `maxSampleMaskWords` is the maximum number of array elements of a variable decorated with
     /// the `SampleMask` built-in decoration.
@@ -76030,14 +76102,6 @@ pub struct PhysicalDeviceLimits {
     pub optimal_buffer_copy_row_pitch_alignment: DeviceSize,
     /// `nonCoherentAtomSize` is the size and alignment in bytes that bounds concurrent access to
     /// host-mapped device memory. The value must be a power of two.
-    ///
-    /// - 1
-    ///
-    ///   For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
-    ///   limits defined above represent the minimum supported sample counts for each image type.
-    ///   Individual images may support additional sample counts, which are queried using
-    ///   [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
-    ///   as described in Supported Sample Counts.
     pub non_coherent_atom_size: DeviceSize,
 }
 

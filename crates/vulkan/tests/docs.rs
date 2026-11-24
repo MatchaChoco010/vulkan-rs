@@ -243,6 +243,8 @@ struct Markup {
     nested_item: Regex,
     other_list_item: Regex,
     term: Regex,
+    note: Regex,
+    mark: Regex,
     described_item: Regex,
     block_attributes: Regex,
     block_title: Regex,
@@ -260,6 +262,8 @@ impl Markup {
                 r"^[ \t]*(?:(?:-|\u{2022}|\.{1,5}|\d+\.|[a-zA-Z]\.|[IVXivx]+\))[ \t]+\S|[^\s/].*?(?::{2,4}|;;)(?:$|[ \t]+\S))",
             ),
             term: regex(r"^[ \t]*[^\s/].*?(?::{2,4}|;;)(?:$|[ \t]+(\S.*)$)"),
+            note: regex(r"^[ \t]*(\d{1,9})::(?:$|[ \t]+(\S.*)$)"),
+            mark: regex(r"\^(\d{1,9})\^"),
             described_item: regex(
                 r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)(pname:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)pname:\w+)*|ename:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)ename:\w+)*)\b",
             ),
@@ -649,6 +653,7 @@ impl Specification {
             markup: Markup::new(),
         };
         for page in pages.values_mut() {
+            page.body = specification.with_notes_at_their_marks(&page.body);
             page.body_words = specification.words(&page.body);
         }
         specification.pages = pages;
@@ -740,6 +745,77 @@ impl Specification {
             index += 1;
         }
         index
+    }
+
+    fn with_notes_at_their_marks(&self, body: &str) -> String {
+        let markup = &self.markup;
+        let lines = body.lines().collect::<Vec<_>>();
+        let mut items = Vec::new();
+        let mut notes = BTreeMap::<u32, Vec<&str>>::new();
+        let mut index = 0;
+        while index < lines.len() {
+            let start = index;
+            index += 1;
+            if !markup.list_item.is_match(lines[start]) {
+                continue;
+            }
+            index = self.item_end(&lines, start);
+            let text_end = (start + 1..index)
+                .find(|line| markup.note.is_match(lines[*line]))
+                .unwrap_or(index);
+            let mut number = 0;
+            for line in &lines[text_end..index] {
+                let text = match markup.note.captures(line) {
+                    Some(note) => {
+                        number = note[1].parse().expect("the number of a note");
+                        note.get(2).map_or("", |text| text.as_str())
+                    }
+                    None => *line,
+                };
+                if !text.trim().is_empty() {
+                    notes.entry(number).or_default().push(text);
+                }
+            }
+            items.push((start, text_end, index));
+        }
+        if notes.is_empty() {
+            return body.to_string();
+        }
+        let mut out = Vec::<String>::new();
+        let mut copied = 0;
+        for (start, text_end, end) in items {
+            let text = &lines[start..text_end];
+            let empty_lines = text
+                .iter()
+                .rev()
+                .take_while(|line| line.trim().is_empty())
+                .count();
+            let (text, after_the_text) = text.split_at(text.len() - empty_lines);
+            out.extend(lines[copied..start].iter().map(|line| line.to_string()));
+            let mut marks = BTreeSet::<u32>::new();
+            for line in text {
+                let referred = markup.mark.replace_all(line, |mark: &Captures<'_>| {
+                    let number = mark[1].parse::<u32>().ok();
+                    match number.filter(|number| notes.contains_key(number)) {
+                        Some(number) => {
+                            marks.insert(number);
+                            format!(" (note {number})")
+                        }
+                        None => mark[0].to_string(),
+                    }
+                });
+                out.push(referred.into_owned());
+            }
+            for number in marks {
+                out.push("+".to_string());
+                out.push(format!("Note {number}"));
+                out.extend(notes[&number].iter().map(|line| line.to_string()));
+            }
+            out.extend(after_the_text.iter().map(|line| line.to_string()));
+            copied = end;
+        }
+        out.extend(lines[copied..].iter().map(|line| line.to_string()));
+        out.join("\n")
     }
 
     fn items(&self, page: &str) -> Vec<(String, Vec<String>, String)> {
@@ -2236,6 +2312,24 @@ fn fixture_specification() -> Specification {
         "include::{generated}/validity/structs/VkLimits.adoc[]",
     ]
     .join("\n");
+    let counts = [
+        "The counts:",
+        "",
+        "  * pname:colors is a bitmask^1^ of colors.",
+        "  * pname:depths is a bitmask^1^ of 2^4^ depths^2^.",
+        "  ** A nested item.",
+        "",
+        "  * pname:last is the last count.",
+        "",
+        "1::",
+        "    For all bitmasks,",
+        "    the first note applies.",
+        "",
+        "2:: The second note applies.",
+        "",
+        "The counts are described above, 2^1^ times.",
+    ]
+    .join("\n");
     let pages = [
         (
             "VkThing",
@@ -2288,6 +2382,11 @@ A thing is empty with the following properties:
             limits.as_str(),
         ),
         (
+            "VkCounts",
+            "Structure reporting the counts of things",
+            counts.as_str(),
+        ),
+        (
             "vkCountThings",
             "Count the things",
             "
@@ -2314,12 +2413,13 @@ include::{generated}/validity/funcpointers/PFN_vkThingCallback.adoc[]",
         ),
     ];
     for (name, description, body) in pages {
-        let body_words = specification.words(body);
+        let body = specification.with_notes_at_their_marks(body);
+        let body_words = specification.words(&body);
         let page = || Page {
             name: name.to_string(),
             file: FIXTURE_FILE.to_string(),
             description: description.to_string(),
-            body: body.to_string(),
+            body: body.clone(),
             body_words: body_words.clone(),
             valid_usage: OnceCell::new(),
         };
@@ -3039,6 +3139,41 @@ fn a_list_item_of_the_specification_goes_on_past_empty_lines_as_asciidoctor_read
         words("last"),
         " last is the last limit It is nested This is nested as well first For all limits the note applies second The second note applies as well It has a second paragraph third Its description follows an empty line The note has a step ",
         "nested items and lists of another kind go on past empty lines, and a term without a description takes the text after an empty line"
+    );
+}
+
+#[test]
+fn a_numbered_note_of_the_specification_belongs_to_the_items_that_carry_its_mark() {
+    let specification = fixture_specification();
+    let words = |name: &str| {
+        let item = specification
+            .item("VkCounts", "pname", name)
+            .unwrap_or_else(|| panic!("no item {name} on the page VkCounts"));
+        specification.words(&item)
+    };
+    assert_eq!(
+        words("colors"),
+        " colors is a bitmask note 1 of colors Note 1 For all bitmasks the first note applies "
+    );
+    assert_eq!(
+        words("depths"),
+        " depths is a bitmask note 1 of 2 4 depths note 2 A nested item Note 1 For all bitmasks the first note applies Note 2 The second note applies ",
+        "a superscript without a note of its number is no mark, and the notes follow the item in the order of their numbers"
+    );
+    assert_eq!(
+        words("last"),
+        " last is the last count ",
+        "the notes are no part of the item that they are nested in"
+    );
+    let body = &specification.pages["VkCounts"].body;
+    assert!(
+        body.ends_with("\n\nThe counts are described above, 2^1^ times."),
+        "a superscript outside the items is left as it is: {body}"
+    );
+    assert_eq!(
+        specification.with_notes_at_their_marks("  * pname:a is 2^1^.\n\nterm:: no note"),
+        "  * pname:a is 2^1^.\n\nterm:: no note",
+        "a page without numbered notes has no marks"
     );
 }
 
