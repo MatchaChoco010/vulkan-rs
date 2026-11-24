@@ -597,6 +597,11 @@ impl ResourceHeapPlan {
     /// Adds a run of `count` image descriptors, indexed in units of
     /// `imageDescriptorSize`.
     ///
+    /// A slot holds one image descriptor. The descriptor of an image view with a YCbCr
+    /// conversion, or of an image created with
+    /// [`vk::ImageCreateFlags::SUBSAMPLED_EXT`], can take several adjacent descriptors;
+    /// place those with [`ResourceHeapPlan::multi_descriptor_images`].
+    ///
     /// # Errors
     ///
     /// The first of these that applies:
@@ -607,10 +612,6 @@ impl ResourceHeapPlan {
     /// - [`HeapLayoutError::Overflow`] if the first index of the run, or the index of one
     ///   of its slots, does not fit in `u32`, or its end does not fit in `u64`. A run of
     ///   0 slots has a first index too: where it starts, in units of the stride.
-    ///
-    /// A slot holds one image descriptor. An image view with a YCbCr conversion and an
-    /// image created with `SUBSAMPLED_EXT` take several adjacent descriptors; place them
-    /// with [`ResourceHeapPlan::multi_descriptor_images`].
     pub fn images(&mut self, count: u32) -> Result<DescriptorSlots, HeapLayoutError> {
         self.multi_descriptor_images(count, 1)
     }
