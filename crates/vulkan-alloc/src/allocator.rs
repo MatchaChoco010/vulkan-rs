@@ -29,10 +29,11 @@ pub struct AllocatorCreateDesc<'a> {
     /// The memory properties of the physical device that [`AllocatorCreateDesc::device`]
     /// was created from. Memory types are chosen from them. A `memory_type_count` above
     /// [`vk::MAX_MEMORY_TYPES`] is treated as [`vk::MAX_MEMORY_TYPES`]. Only the heaps
-    /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) are read, both to leave
-    /// out the memory types of tile memory heaps and to limit the size of shared blocks
-    /// (see [`AllocatorCreateDesc::block_size`]): a memory type whose `heap_index` is not
-    /// below it has no heap.
+    /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) are read, to leave out
+    /// the memory types of tile memory heaps, to limit the size of shared blocks (see
+    /// [`AllocatorCreateDesc::block_size`]) and to refuse allocations larger than the heap
+    /// (see [`Allocator::allocate`]): a memory type whose `heap_index` is not below it has
+    /// no heap.
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     /// The `nonCoherentAtomSize` limit of the physical device.
     ///
@@ -53,7 +54,8 @@ pub struct AllocatorCreateDesc<'a> {
     /// the heap instead. The heap is the entry `heap_index` of the memory type in
     /// [`AllocatorCreateDesc::memory_properties`]; it is used only if `heap_index` is
     /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0.
-    /// An allocation larger than the resulting size gets a block of its own size.
+    /// An allocation larger than the resulting size gets a block of its own size, unless
+    /// it is larger than that heap: [`Allocator::allocate`] refuses such an allocation.
     pub block_size: u64,
 }
 
@@ -142,15 +144,16 @@ impl Allocator {
     /// (see [`MemoryLocation`](crate::MemoryLocation)). Only the chosen memory type is
     /// tried.
     ///
-    /// The allocation is placed in an existing shared block of that type when one has
-    /// room and was made for the same [`AllocationCreateDesc::linear`] and
-    /// [`AllocationCreateDesc::memory_allocate_flags`]. Otherwise a new block is
-    /// allocated with `vkAllocateMemory`: the smaller of
+    /// A request that is not refused (see the errors below) is placed in an existing
+    /// shared block of that type when one has room and was made for the same
+    /// [`AllocationCreateDesc::linear`] and [`AllocationCreateDesc::memory_allocate_flags`].
+    /// Otherwise a new block is allocated with `vkAllocateMemory`: the smaller of
     /// [`AllocatorCreateDesc::block_size`] and the size of the memory heap of the type,
-    /// or the allocation's size if that is larger. Dedicated allocations, exportable
-    /// allocations and allocations whose [`AllocationCreateDesc::memory_allocate_flags`]
-    /// contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] always get a new
-    /// `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
+    /// or the allocation's size if that is larger, which is never larger than a heap
+    /// whose size is known. Accepted dedicated allocations, exportable allocations and
+    /// allocations whose [`AllocationCreateDesc::memory_allocate_flags`] contain
+    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] get a new `VkDeviceMemory` of
+    /// exactly `desc.requirements.size` bytes.
     ///
     /// An existing block that the allocation may share counts as having room whenever
     /// one of its free ranges can hold the allocation at its alignment. Looking for that
@@ -169,11 +172,20 @@ impl Allocator {
     ///   are not protected and to tensors that are not protected, but not to other
     ///   resources, such as images with optimal tiling (see
     ///   [`MemoryLocation`](crate::MemoryLocation)).
-    /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0.
+    /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0, or if it is
+    ///   larger than the `size` of the memory heap of the chosen type. The heap is the
+    ///   entry `heap_index` of the type in [`AllocatorCreateDesc::memory_properties`]; it
+    ///   is checked only if `heap_index` is below `memory_heap_count` (and
+    ///   [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0, as for
+    ///   [`AllocatorCreateDesc::block_size`]. This applies to every allocation, shared,
+    ///   dedicated, exportable or zero-initialized.
     /// - [`AllocationError::Vulkan`] if `vkAllocateMemory` fails, for example with
     ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
     ///
-    /// Nothing is allocated when an error is returned.
+    /// When no memory type can be chosen, the error is
+    /// [`AllocationError::NoCompatibleMemoryType`], whatever the size. The first two
+    /// errors are returned before any Vulkan call. Nothing is allocated when an error is
+    /// returned.
     ///
     /// # Safety
     ///
@@ -193,9 +205,10 @@ impl Allocator {
     ///   `protectedMemory` feature; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
     ///   extensions for those handle types enabled and supported for the chosen memory
-    ///   type; `desc.requirements.size` must not be larger than the memory heap of the
-    ///   chosen type; and the number of `VkDeviceMemory` objects on the device must stay
-    ///   below `maxMemoryAllocationCount`.
+    ///   type; if the allocator does not check `desc.requirements.size` against the
+    ///   memory heap of the chosen type (see the errors above), the size must not be
+    ///   larger than that heap; and the number of `VkDeviceMemory` objects on the device
+    ///   must stay below `maxMemoryAllocationCount`.
     /// - For [`AllocationScheme::DedicatedBuffer`](crate::AllocationScheme::DedicatedBuffer)
     ///   and [`AllocationScheme::DedicatedImage`](crate::AllocationScheme::DedicatedImage),
     ///   the handle must be a resource of this device that is not bound to memory yet,
@@ -234,6 +247,12 @@ impl Allocator {
             desc.location.preferred_flags(),
         )
         .ok_or(AllocationError::NoCompatibleMemoryType)?;
+        if self
+            .heap_size(memory_type_index)
+            .is_some_and(|heap_size| desc.requirements.size > heap_size)
+        {
+            return Err(AllocationError::OutOfMemory);
+        }
         let requirements = self.adjusted_requirements(memory_type_index, desc.requirements)?;
         let allocation = unsafe {
             self.allocate_from_type(
@@ -656,15 +675,18 @@ impl Allocator {
             .mapped_range(allocation, self.non_coherent_atom_size)
     }
 
-    fn shared_block_size(&self, memory_type_index: u32) -> u64 {
-        let heap_size = self
-            .memory_properties
+    fn heap_size(&self, memory_type_index: u32) -> Option<u64> {
+        self.memory_properties
             .memory_types
             .get(memory_type_index as usize)
             .and_then(|memory_type| memory_heap(&self.memory_properties, memory_type.heap_index))
             .map(|heap| heap.size)
-            .filter(|&size| size != 0);
-        heap_size.map_or(self.block_size, |heap_size| self.block_size.min(heap_size))
+            .filter(|&size| size != 0)
+    }
+
+    fn shared_block_size(&self, memory_type_index: u32) -> u64 {
+        self.heap_size(memory_type_index)
+            .map_or(self.block_size, |heap_size| self.block_size.min(heap_size))
     }
 
     fn adjusted_requirements(

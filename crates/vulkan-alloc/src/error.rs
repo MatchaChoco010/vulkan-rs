@@ -14,7 +14,8 @@ pub enum AllocationError {
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu).
     NoCompatibleMemoryType,
     /// The request cannot be met inside the allocator, for example because
-    /// [`vk::MemoryRequirements::size`] is 0.
+    /// [`vk::MemoryRequirements::size`] is 0 or larger than the memory heap of the chosen
+    /// memory type (see [`Allocator::allocate`](crate::Allocator::allocate)).
     ///
     /// The device running out of memory is reported as [`AllocationError::Vulkan`] with
     /// the result of `vkAllocateMemory`, such as

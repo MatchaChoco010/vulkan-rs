@@ -19,8 +19,10 @@ pub struct AllocationCreateDesc<'a> {
     /// `vkGetBufferMemoryRequirements` or `vkGetImageMemoryRequirements`.
     ///
     /// Only memory types whose bit is set in `memory_type_bits` are considered. A `size`
-    /// of 0 is rejected with
-    /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory).
+    /// of 0, and a `size` larger than the memory heap of the chosen memory type, are
+    /// rejected with
+    /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory) (see
+    /// [`Allocator::allocate`](crate::Allocator::allocate) for when the heap is known).
     ///
     /// The allocation's offset is a multiple of `alignment`, and an `alignment` of 0 is
     /// treated as 1. A caller may raise `alignment`, for example to align a device

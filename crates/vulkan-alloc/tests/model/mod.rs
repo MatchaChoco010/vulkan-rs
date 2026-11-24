@@ -156,11 +156,17 @@ impl World {
             .is_some_and(|heap| heap.tile_memory)
     }
 
+    fn known_heap_size(&self, memory_type: u32) -> Option<u64> {
+        self.heap_of(&self.memory_types[memory_type as usize])
+            .map(|heap| heap.size)
+            .filter(|&size| size != 0)
+    }
+
     fn shared_block_size(&self, memory_type: u32) -> u64 {
         let block_size = self.block_size.max(1);
-        match self.heap_of(&self.memory_types[memory_type as usize]) {
-            Some(heap) if heap.size != 0 => block_size.min(heap.size),
-            _ => block_size,
+        match self.known_heap_size(memory_type) {
+            Some(heap_size) => block_size.min(heap_size),
+            None => block_size,
         }
     }
 }
@@ -1065,17 +1071,10 @@ impl Harness {
         };
 
         let Some(memory_type) = documented_memory_type(&self.world, request) else {
-            let errors = if request.size == 0 {
-                vec![
-                    AllocationError::NoCompatibleMemoryType,
-                    AllocationError::OutOfMemory,
-                ]
-            } else {
-                vec![AllocationError::NoCompatibleMemoryType]
-            };
-            ensure!(
-                result.as_ref().is_err_and(|error| errors.contains(error)),
-                "no memory type is allowed and suitable, but the result is {result:?}"
+            ensure_eq!(
+                result,
+                Err(AllocationError::NoCompatibleMemoryType),
+                "no memory type is allowed and suitable"
             );
             self.coverage.step("allocate: no compatible memory type");
             return self.nothing_happened_since(&before, "a refused allocation");
@@ -1088,6 +1087,19 @@ impl Harness {
             );
             self.coverage.step("allocate: 0 bytes");
             return self.nothing_happened_since(&before, "an allocation of 0 bytes");
+        }
+        if self
+            .world
+            .known_heap_size(memory_type)
+            .is_some_and(|heap_size| request.size > heap_size)
+        {
+            ensure_eq!(
+                result,
+                Err(AllocationError::OutOfMemory),
+                "an allocation larger than the memory heap of its type"
+            );
+            self.coverage.step("allocate: larger than the memory heap");
+            return self.nothing_happened_since(&before, "an allocation larger than its heap");
         }
 
         let alignment = self.effective_alignment(memory_type, request.alignment);
