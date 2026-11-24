@@ -64737,9 +64737,9 @@ impl crate::Device {
     /// Panics if `vkGetQueryPoolResults` is not loaded: the loader returned no pointer for it, for
     /// example because the version or the extension that provides it is not enabled. Panics if
     /// `data` does not start at an address aligned to 4 bytes, or to 8 bytes if `flags` contains
-    /// `VK_QUERY_RESULT_64_BIT`, as VUID-vkGetQueryPoolResults-flags-02828 and
-    /// VUID-vkGetQueryPoolResults-flags-00815 require: a slice of bytes does not guarantee it, so
-    /// borrow it from memory with that alignment. For a pool of performance queries without
+    /// `VK_QUERY_RESULT_64_BIT`, as stated by VUID-vkGetQueryPoolResults-flags-02828 and
+    /// VUID-vkGetQueryPoolResults-flags-00815: a slice of bytes does not guarantee it, so borrow it
+    /// from memory with that alignment. For a pool of performance queries without
     /// `VK_QUERY_RESULT_64_BIT`, VUID-vkGetQueryPoolResults-queryType-03229 requires the alignment
     /// of [`PerformanceCounterResultKHR`], which the wrapper does not check, since it does not know
     /// the type of the pool. Neither does it check `stride`, which
@@ -68894,13 +68894,13 @@ impl crate::Device {
     /// pointer for it, for example because the version or the extension that provides it is not
     /// enabled. Also panics if `acceleration_structures` has more elements than
     /// `accelerationStructureCount`, a `uint32_t`, can count. Panics if `data` does not start at an
-    /// address aligned to the alignment of [`DeviceSize`], as
+    /// address aligned to the alignment of [`DeviceSize`], as stated by
     /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03449,
     /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03451,
     /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06732 and
-    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06734 require: a slice of bytes
-    /// does not guarantee it, so borrow it from memory with that alignment. The wrapper does not
-    /// check `stride`, which VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03448,
+    /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06734: a slice of bytes does not
+    /// guarantee it, so borrow it from memory with that alignment. The wrapper does not check
+    /// `stride`, which VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03448,
     /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-03450,
     /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06731 and
     /// VUID-vkWriteAccelerationStructuresPropertiesKHR-queryType-06733 require to be a multiple of
@@ -68962,7 +68962,7 @@ impl crate::Device {
     /// it, for example because the version or the extension that provides it is not enabled. Also
     /// panics if `micromaps` has more elements than `micromapCount`, a `uint32_t`, can count.
     /// Panics if `data` does not start at an address aligned to the alignment of [`DeviceSize`], as
-    /// VUID-vkWriteMicromapsPropertiesEXT-queryType-10072 require: a slice of bytes does not
+    /// stated by VUID-vkWriteMicromapsPropertiesEXT-queryType-10072: a slice of bytes does not
     /// guarantee it, so borrow it from memory with that alignment. The wrapper does not check
     /// `stride`, which VUID-vkWriteMicromapsPropertiesEXT-queryType-10071 requires to be a multiple
     /// of the size of `VkDeviceSize`.

@@ -168,7 +168,7 @@ fn alignment_check(model: &Model<'_>, c: &Command, params: &[Field]) -> Alignmen
             described = described.replace("[`", "`").replace("`]", "`"),
         ),
         panics: format!(
-            "Panics if `{slice_name}` does not start at an address aligned to {described}, as {} require: a slice of bytes does not guarantee it, so borrow it from memory with that alignment. {}",
+            "Panics if `{slice_name}` does not start at an address aligned to {described}, as stated by {}: a slice of bytes does not guarantee it, so borrow it from memory with that alignment. {}",
             slice.stated_by, slice.unchecked
         ),
     }
