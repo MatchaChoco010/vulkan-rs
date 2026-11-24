@@ -141,8 +141,9 @@ impl<'a> MappedAllocation<'a> {
     /// flushes, and for a memory type with `HOST_COHERENT`, or a `size` of 0, no Vulkan
     /// call is made.
     ///
-    /// A `size` of [`vk::WHOLE_SIZE`] or [`usize::MAX`] is refused as a range outside the
-    /// allocation; [`MappedAllocation::flush`] flushes the whole allocation.
+    /// A `size` of [`usize::MAX`] (the value of [`vk::WHOLE_SIZE`] on 64-bit targets) is
+    /// refused as a range outside the allocation; [`MappedAllocation::flush`] flushes the
+    /// whole allocation.
     ///
     /// # Errors
     ///
@@ -174,8 +175,9 @@ impl<'a> MappedAllocation<'a> {
     /// [`MappedAllocation::invalidate`] invalidates, and for a memory type with
     /// `HOST_COHERENT`, or a `size` of 0, no Vulkan call is made.
     ///
-    /// A `size` of [`vk::WHOLE_SIZE`] or [`usize::MAX`] is refused as a range outside the
-    /// allocation; [`MappedAllocation::invalidate`] invalidates the whole allocation.
+    /// A `size` of [`usize::MAX`] (the value of [`vk::WHOLE_SIZE`] on 64-bit targets) is
+    /// refused as a range outside the allocation; [`MappedAllocation::invalidate`]
+    /// invalidates the whole allocation.
     ///
     /// # Errors
     ///
