@@ -15,12 +15,64 @@ fn is_pointer_value(key: &str) -> bool {
     key.starts_with("pfn") || key == "pUserData" || key == "ppData"
 }
 
-fn normalize(value: Value, key: Option<&str>, binaries: &Path) -> Value {
+const ADDRESS_QUERIES: &[&str] = &[
+    "vkGetBufferDeviceAddress",
+    "vkGetBufferDeviceAddressKHR",
+    "vkGetBufferDeviceAddressEXT",
+    "vkGetAccelerationStructureDeviceAddressKHR",
+];
+
+fn as_address(value: &Value) -> Option<u64> {
+    match value {
+        Value::Number(number) => number.as_u64(),
+        Value::String(text) => u64::from_str_radix(text.strip_prefix("0x")?, 16).ok(),
+        _ => None,
+    }
+}
+
+fn queried_address(entry: &Value) -> Option<u64> {
+    let function = entry.get("function")?;
+    let name = function.get("name")?.as_str()?;
+    let address = as_address(function.get("return")?)?;
+    (ADDRESS_QUERIES.contains(&name) && address != 0).then_some(address)
+}
+
+#[derive(Default)]
+struct Addresses {
+    queries: usize,
+    latest: Vec<(u64, usize)>,
+}
+
+impl Addresses {
+    fn query(&mut self, address: u64) {
+        self.latest.retain(|&(known, _)| known != address);
+        self.latest.push((address, self.queries));
+        self.queries += 1;
+    }
+
+    fn query_of(&self, value: u64) -> Option<usize> {
+        self.latest
+            .iter()
+            .find(|&&(known, _)| known == value)
+            .map(|&(_, query)| query)
+    }
+
+    fn remove_from(&self, bytes: &mut [u8]) {
+        for word in bytes.chunks_exact_mut(8) {
+            let value = u64::from_le_bytes((&*word).try_into().unwrap());
+            if let Some(query) = self.query_of(value) {
+                word.copy_from_slice(&(0xdead_0000_0000_0000_u64 | query as u64).to_le_bytes());
+            }
+        }
+    }
+}
+
+fn normalize(value: Value, key: Option<&str>, binaries: &Path, addresses: &Addresses) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.into_iter()
                 .map(|(key, value)| {
-                    let value = normalize(value, Some(&key), binaries);
+                    let value = normalize(value, Some(&key), binaries, addresses);
                     (key, value)
                 })
                 .collect(),
@@ -28,21 +80,25 @@ fn normalize(value: Value, key: Option<&str>, binaries: &Path) -> Value {
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
-                .map(|value| normalize(value, key, binaries))
+                .map(|value| normalize(value, key, binaries, addresses))
                 .collect(),
         ),
         Value::String(_) if key.is_some_and(is_pointer_value) => {
             Value::String("<pointer>".to_string())
         }
         Value::String(text) if text.ends_with(".bin") && binaries.join(&text).is_file() => {
-            let bytes = std::fs::read(binaries.join(&text)).expect("binary of the trace");
+            let mut bytes = std::fs::read(binaries.join(&text)).expect("binary of the trace");
+            addresses.remove_from(&mut bytes);
             Value::String(format!(
                 "<{} bytes, fnv1a {:016x}>",
                 bytes.len(),
                 fnv1a(&bytes)
             ))
         }
-        value => value,
+        value => match as_address(&value).and_then(|found| addresses.query_of(found)) {
+            Some(query) => Value::String(format!("<device address of query {query}>")),
+            None => value,
+        },
     }
 }
 
@@ -76,7 +132,7 @@ pub fn convert(capture: &Path, directory: &Path) -> Vec<String> {
     );
     let text = std::fs::read_to_string(&json)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", json.display()));
-    let mut lines = Vec::new();
+    let mut entries = Vec::new();
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let mut value: Value = serde_json::from_str(line)
             .unwrap_or_else(|e| panic!("{}: not JSON ({e}): {line}", json.display()));
@@ -92,9 +148,18 @@ pub fn convert(capture: &Path, directory: &Path) -> Vec<String> {
             continue;
         }
         object.remove("index");
-        lines.push(normalize(value, None, directory).to_string());
+        entries.push(value);
     }
-    lines
+    let mut addresses = Addresses::default();
+    entries
+        .into_iter()
+        .map(|entry| {
+            if let Some(address) = queried_address(&entry) {
+                addresses.query(address);
+            }
+            normalize(entry, None, directory, &addresses).to_string()
+        })
+        .collect()
 }
 
 pub fn calls(trace: &[String]) -> Vec<String> {
