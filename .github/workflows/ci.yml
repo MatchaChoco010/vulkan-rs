@@ -29,9 +29,16 @@ jobs:
           submodules: true
 
       # tools/generate-vulkan names the bindings after the SDK tag of the submodule
-      # commit, and the checkout above does not fetch tags.
-      - name: Fetch the Vulkan-Headers SDK tags
-        run: git -C third_party/vulkan fetch --quiet --depth=1 origin 'refs/tags/vulkan-sdk-*:refs/tags/vulkan-sdk-*'
+      # commit, and the checkout above does not fetch tags. Only the tags of that commit
+      # are fetched: every other tag would bring its own commit along.
+      - name: Fetch the Vulkan-Headers SDK tags of the submodule commit
+        run: |
+          commit=$(git -C third_party/vulkan rev-parse HEAD)
+          git -C third_party/vulkan ls-remote --tags origin 'vulkan-sdk-*' \
+            | awk -v commit="$commit" '$1 == commit { sub(/\^\{\}$/, "", $2); print $2 ":" $2 }' \
+            | sort -u \
+            | xargs --no-run-if-empty git -C third_party/vulkan fetch --quiet --depth=1 origin
+          git -C third_party/vulkan tag --points-at HEAD
 
       # libvulkan-dev: the `linked` feature links the loader. libwayland-dev and
       # libxkbcommon-dev: build dependencies of the Wayland examples (winit).
