@@ -3543,18 +3543,16 @@ impl<'a> StdVideoEncodeAV1PictureInfo<'a> {
         self.p_extension_header = core::ptr::from_ref(value);
         self
     }
-    /// Sets [`p_buffer_removal_times`](Self::p_buffer_removal_times) to the start of a slice, or to
-    /// a null pointer if the slice is empty. No member stores the length: the C API reads one
-    /// element for each operating point of the active sequence header, whose number is the
+    /// Sets [`p_buffer_removal_times`](Self::p_buffer_removal_times) to point to an array of `32`
+    /// elements, the most that the C API accesses: it accesses one element for each operating point
+    /// of the active sequence header, whose number is the
     /// [`VideoEncodeAV1SessionParametersCreateInfoKHR::std_operating_point_count`] that the video
-    /// session parameters were created with. The registry marks the member as optional, and the
-    /// specification describes what a null pointer means for it.
-    pub fn buffer_removal_times(mut self, value: &'a [u32]) -> Self {
-        self.p_buffer_removal_times = if value.is_empty() {
-            core::ptr::null()
-        } else {
-            value.as_ptr()
-        };
+    /// session parameters were created with, and a sequence header of AV1 has at most 32 operating
+    /// points. It does not access the elements after those. The registry marks the member as
+    /// optional: it is a null pointer in a structure made by `default()`, and the setter cannot
+    /// make it null again.
+    pub fn buffer_removal_times(mut self, value: &'a [u32; 32]) -> Self {
+        self.p_buffer_removal_times = value.as_ptr();
         self
     }
 }

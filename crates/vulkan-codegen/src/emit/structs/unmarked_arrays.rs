@@ -17,14 +17,6 @@ pub(super) struct UnmarkedArray {
 
 pub(super) const UNMARKED_ARRAYS: &[UnmarkedArray] = &[
     UnmarkedArray {
-        structure: "StdVideoEncodeAV1PictureInfo",
-        member: "pBufferRemovalTimes",
-        length: Length::NotInTheStructure(
-            "the C API reads one element for each operating point of the active sequence header, whose number is the [`VideoEncodeAV1SessionParametersCreateInfoKHR::std_operating_point_count`] that the video session parameters were created with",
-        ),
-        stated_by: "the description of StdVideoEncodeAV1PictureInfo in the section \"Std Picture Information\" of the chapter on AV1 encode operations",
-    },
-    UnmarkedArray {
         structure: "VkCommandBufferInheritanceViewportScissorInfoNV",
         member: "pViewportDepths",
         length: Length::InMember("viewportDepthCount"),
@@ -174,19 +166,6 @@ mod tests {
                 "Sets [`p_address_infos`](Self::p_address_infos) to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the command that writes the elements, [`get_device_fault_info_ext`](crate::Device::get_device_fault_info_ext), reads it from [`DeviceFaultCountsEXT::address_info_count`], which the caller sets to the number of elements of the slice. The registry marks the member as optional, and the specification describes what a null pointer means for it."
             ]
         );
-        let picture = generated(&model, "StdVideoEncodeAV1PictureInfo");
-        assert!(
-            squash(&picture).contains(
-                "pub fn buffer_removal_times(mut self, value: &'a [u32]) -> Self { self.p_buffer_removal_times = if value.is_empty() { core::ptr::null() } else { value.as_ptr() }; self }"
-            ),
-            "{picture}"
-        );
-        assert_eq!(
-            doc_of(&picture, "pub fn buffer_removal_times("),
-            [
-                "Sets [`p_buffer_removal_times`](Self::p_buffer_removal_times) to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API reads one element for each operating point of the active sequence header, whose number is the [`VideoEncodeAV1SessionParametersCreateInfoKHR::std_operating_point_count`] that the video session parameters were created with. The registry marks the member as optional, and the specification describes what a null pointer means for it."
-            ]
-        );
     }
 
     #[test]
@@ -236,7 +215,7 @@ mod tests {
             .expect_err("the registry has none of the listed structures");
         assert!(
             message.starts_with(
-                "the registry has no structure StdVideoEncodeAV1PictureInfo: correct the list of arrays that the registry does not mark, which takes `pBufferRemovalTimes` from "
+                "the registry has no structure VkCommandBufferInheritanceViewportScissorInfoNV: correct the list of arrays that the registry does not mark, which takes `pViewportDepths` from "
             ),
             "{message}"
         );
