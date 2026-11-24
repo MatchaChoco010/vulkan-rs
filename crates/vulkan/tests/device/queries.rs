@@ -1,4 +1,4 @@
-use crate::gpu::{Gpu, exclusive_access_to_the_loaders_device_list};
+use crate::gpu::{Gpu, exclusive_access_to_the_loaders_instance_and_device_lists};
 use vulkan::vk::{self, Handle};
 
 #[test]
@@ -54,7 +54,7 @@ fn object_names_use_handle_object_types() {
             .object_type(vk::Buffer::TYPE)
             .object_handle(buffer.as_raw_u64())
             .object_name(c"named buffer");
-        let serialized = exclusive_access_to_the_loaders_device_list();
+        let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
         let named = device.set_debug_utils_object_name_ext(&name);
         drop(serialized);
         named.unwrap();

@@ -15,10 +15,10 @@ use vulkan_alloc::{
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
-static LOADER_DEVICE_LIST: Mutex<()> = Mutex::new(());
+static LOADER_INSTANCE_AND_DEVICE_LISTS: Mutex<()> = Mutex::new(());
 
-fn exclusive_access_to_the_loaders_device_list() -> MutexGuard<'static, ()> {
-    LOADER_DEVICE_LIST
+fn exclusive_access_to_the_loaders_instance_and_device_lists() -> MutexGuard<'static, ()> {
+    LOADER_INSTANCE_AND_DEVICE_LISTS
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
 }
@@ -142,9 +142,11 @@ impl Gpu {
                     instance_info = instance_info.push_next(&mut layer_settings);
                 }
             }
+            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
             let instance = entry
                 .create_instance(&instance_info, None)
                 .map_err(|e| format!("vkCreateInstance: {e}"))?;
+            drop(serialized);
             let messenger = if validation {
                 match instance.create_debug_utils_messenger_ext(&message_collector(&messages), None)
                 {
@@ -221,7 +223,7 @@ impl Gpu {
                 .queue_priorities(&priorities)];
             let mut vulkan12 =
                 vk::PhysicalDeviceVulkan12Features::default().buffer_device_address(true);
-            let serialized = exclusive_access_to_the_loaders_device_list();
+            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
             let device = instance
                 .create_device(
                     physical_device,
@@ -287,7 +289,7 @@ impl Gpu {
 impl Drop for Gpu {
     fn drop(&mut self) {
         unsafe {
-            let serialized = exclusive_access_to_the_loaders_device_list();
+            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
             self.device.destroy_device(None);
             drop(serialized);
             if !self.messenger.is_null() {

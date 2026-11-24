@@ -5,10 +5,10 @@ use vulkan::{Device, Entry, Instance};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
-static LOADER_DEVICE_LIST: Mutex<()> = Mutex::new(());
+static LOADER_INSTANCE_AND_DEVICE_LISTS: Mutex<()> = Mutex::new(());
 
-pub fn exclusive_access_to_the_loaders_device_list() -> MutexGuard<'static, ()> {
-    LOADER_DEVICE_LIST
+pub fn exclusive_access_to_the_loaders_instance_and_device_lists() -> MutexGuard<'static, ()> {
+    LOADER_INSTANCE_AND_DEVICE_LISTS
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
 }
@@ -288,7 +288,7 @@ impl Drop for Gpu {
     fn drop(&mut self) {
         unsafe {
             let _ = self.device.device_wait_idle();
-            let serialized = exclusive_access_to_the_loaders_device_list();
+            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
             self.device.destroy_device(None);
             drop(serialized);
             if !self.messenger.is_null() {
@@ -351,9 +351,11 @@ unsafe fn create_instance(
             .application_info(&app)
             .enabled_layer_names(&enabled_layers)
             .enabled_extension_names(&enabled_extensions);
+        let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
         let instance = entry
             .create_instance(&instance_info, None)
             .map_err(|e| format!("vkCreateInstance: {e}"))?;
+        drop(serialized);
         Ok(InstanceSetup {
             instance,
             validation,
@@ -491,7 +493,7 @@ unsafe fn create_device(
             .push_next(&mut heap_features)
             .push_next(&mut untyped_features);
     }
-    let _serialized = exclusive_access_to_the_loaders_device_list();
+    let _serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
     unsafe { instance.create_device(physical_device, &device_info, None) }
         .map_err(|e| format!("vkCreateDevice: {e}"))
 }
