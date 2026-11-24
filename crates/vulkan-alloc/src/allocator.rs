@@ -43,10 +43,11 @@ pub struct AllocatorCreateDesc<'a> {
     ///
     /// It must be a power of two, as Vulkan requires of this limit. Such an allocation is
     /// aligned to the larger of this value and the alignment of its requirements, which
-    /// is a multiple of both when both are powers of two. With a value that is not a power
-    /// of two, the offset of such an allocation need not be a multiple of the alignment
-    /// its requirements ask for, nor of this value, and a flushed or invalidated range can
-    /// reach into another allocation.
+    /// [`Allocator::allocate`] accepts only as 0 (treated as 1) or a power of two, so the
+    /// larger is a multiple of both. With a value that is not a power of two, the offset
+    /// of such an allocation need not be a multiple of the alignment its requirements ask
+    /// for, nor of this value, and a flushed or invalidated range can reach into another
+    /// allocation.
     pub non_coherent_atom_size: u64,
     /// The size in bytes of each shared `VkDeviceMemory` block. 0 is treated as 1.
     ///
@@ -172,8 +173,9 @@ impl Allocator {
     ///   are not protected and to tensors that are not protected, but not to other
     ///   resources, such as images with optimal tiling (see
     ///   [`MemoryLocation`](crate::MemoryLocation)).
-    /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0, or if it is
-    ///   larger than the `size` of the memory heap of the chosen type. The heap is the
+    /// - [`AllocationError::OutOfMemory`] if `desc.requirements.size` is 0, if it is
+    ///   larger than the `size` of the memory heap of the chosen type, or if
+    ///   `desc.requirements.alignment` is neither 0 nor a power of two. The heap is the
     ///   entry `heap_index` of the type in [`AllocatorCreateDesc::memory_properties`]; it
     ///   is checked only if `heap_index` is below `memory_heap_count` (and
     ///   [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0, as for
@@ -183,9 +185,9 @@ impl Allocator {
     ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
     ///
     /// When no memory type can be chosen, the error is
-    /// [`AllocationError::NoCompatibleMemoryType`], whatever the size. The first two
-    /// errors are returned before any Vulkan call. Nothing is allocated when an error is
-    /// returned.
+    /// [`AllocationError::NoCompatibleMemoryType`], whatever the size and alignment. The
+    /// first two errors are returned before any Vulkan call. Nothing is allocated when an
+    /// error is returned.
     ///
     /// # Safety
     ///
@@ -251,6 +253,10 @@ impl Allocator {
             .heap_size(memory_type_index)
             .is_some_and(|heap_size| desc.requirements.size > heap_size)
         {
+            return Err(AllocationError::OutOfMemory);
+        }
+        let alignment = desc.requirements.alignment;
+        if alignment != 0 && !alignment.is_power_of_two() {
             return Err(AllocationError::OutOfMemory);
         }
         let requirements = self.adjusted_requirements(memory_type_index, desc.requirements)?;
