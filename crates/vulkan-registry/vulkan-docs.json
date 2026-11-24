@@ -3426,7 +3426,7 @@
     },
     {
      "name": "VK_ACCESS_2_SHADER_READ_BIT",
-     "text": "ename:VK_ACCESS_2_SHADER_READ_BIT\nis equivalent to the logical OR of:\ninclude::{generated}/sync/flagDefinitions/VK_ACCESS_2_SHADER_READ_BIT.adoc[]"
+     "text": "ename:VK_ACCESS_2_SHADER_READ_BIT\nis equivalent to the logical OR of:\n** ename:VK_ACCESS_2_SHADER_SAMPLED_READ_BIT\n** ename:VK_ACCESS_2_SHADER_STORAGE_READ_BIT\n** ename:VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR\n** ename:VK_ACCESS_2_SHADER_TILE_ATTACHMENT_READ_BIT_QCOM"
     },
     {
      "name": "VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT",
@@ -33908,7 +33908,7 @@
     },
     {
      "name": "nonCoherentAtomSize",
-     "text": "pname:nonCoherentAtomSize is the size and\nalignment in bytes that bounds concurrent access to\n<<memory-device-hostaccess, host-mapped device memory>>.\nThe value must: be a power of two."
+     "text": "pname:nonCoherentAtomSize is the size and\nalignment in bytes that bounds concurrent access to\n<<memory-device-hostaccess, host-mapped device memory>>.\nThe value must: be a power of two.\n\n1::\nFor all bitmasks of elink:VkSampleCountFlagBits, the sample count limits\ndefined above represent the minimum supported sample counts for each\nimage type.\nIndividual images may: support additional sample counts, which are\nqueried using flink:vkGetPhysicalDeviceImageFormatProperties as\ndescribed in <<features-supported-sample-counts, Supported Sample\nCounts>>."
     }
    ],
    "kind": "structs",
@@ -40119,7 +40119,7 @@
     },
     {
      "name": "videoEncodeRgbConversion",
-     "text": "pname:videoEncodeRgbConversion\nspecifies that the implementation supports <<encode-rgb-conversion,video\nencode RGB conversion>>."
+     "text": "pname:videoEncodeRgbConversion\nspecifies that the implementation supports <<encode-rgb-conversion,video\nencode RGB conversion>>.\n+\nIf the sname:VkPhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE structure is included in the pname:pNext chain of the\nslink:VkPhysicalDeviceFeatures2 structure passed to\nflink:vkGetPhysicalDeviceFeatures2, it is filled in to indicate whether each\ncorresponding feature is supported.\nIf the application wishes to use a slink:VkDevice with any features\ndescribed by sname:VkPhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE, it must: add an instance of the structure,\nwith the desired feature members set to ename:VK_TRUE, to the pname:pNext\nchain of slink:VkDeviceCreateInfo when creating the slink:VkDevice."
     }
    ],
    "kind": "structs",
@@ -43869,7 +43869,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT is equivalent to the logical\nOR of:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT.adoc[]"
+     "text": "ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT is equivalent to the logical\nOR of:\n** ename:VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT\n** ename:VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT",
@@ -43889,7 +43889,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT is equivalent to\nspecifying all supported\n<<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader\nstages>>:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT.adoc[]"
+     "text": "ename:VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT is equivalent to\nspecifying all supported\n<<pipelines-graphics-subsets-pre-rasterization,pre-rasterization shader\nstages>>:\n** ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT\n** ename:VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT\n** ename:VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT",
@@ -43933,7 +43933,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT is equivalent to specifying\nall of:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT.adoc[]"
+     "text": "ename:VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT is equivalent to specifying\nall of:\n** ename:VK_PIPELINE_STAGE_2_COPY_BIT\n** ename:VK_PIPELINE_STAGE_2_BLIT_BIT\n** ename:VK_PIPELINE_STAGE_2_RESOLVE_BIT\n** ename:VK_PIPELINE_STAGE_2_CLEAR_BIT\n** ename:VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR",
@@ -43949,7 +43949,7 @@
     },
     {
      "name": "VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT",
-     "text": "ename:VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT specifies the execution of\nall graphics pipeline stages, and is equivalent to the logical OR of:\ninclude::{generated}/sync/flagDefinitions/VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT.adoc[]"
+     "text": "ename:VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT specifies the execution of\nall graphics pipeline stages, and is equivalent to the logical OR of:\n** ename:VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT\n** ename:VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT\n** ename:VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT\n** ename:VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT\n** ename:VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT\n** ename:VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT\n** ename:VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT\n** ename:VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT\n** ename:VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT\n** ename:VK_PIPELINE_STAGE_2_TRANSFORM_FEEDBACK_BIT_EXT\n** ename:VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR\n** ename:VK_PIPELINE_STAGE_2_FRAGMENT_DENSITY_PROCESS_BIT_EXT\n** ename:VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI\n** ename:VK_PIPELINE_STAGE_2_INVOCATION_MASK_BIT_HUAWEI\n** ename:VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI"
     },
     {
      "name": "VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT",

@@ -83,7 +83,7 @@ def main() -> int:
     vk = load_vulkan_object()
     ir = build_ir(vk, args.allow_non_sdk_tag)
     IR_PATH.write_text(json.dumps(ir, indent=1, sort_keys=True) + "\n")
-    docs = build_docs(defined_spec_attributes(vk))
+    docs = build_docs(defined_spec_attributes(vk), spec_generated_files(vk))
     DOCS_PATH.write_text(json.dumps(docs, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
 
     subprocess.run(
@@ -388,10 +388,17 @@ SPEC_BARE_REFERENCE = re.compile(r"<<([\w.-]+)>>")
 SPEC_PASSTHROUGH = re.compile(r"^pass:\w*\[(.*)\]$")
 SPEC_TABLE_DELIMITER = re.compile(r"^\|={3,}\s*$")
 SPEC_BLOCK_HEADER = re.compile(r"^(?:\[.*\]|\.[^\s.].*)\s*$")
+SPEC_INCLUDE_GENERATED = re.compile(r"^include::\{generated\}/([^\[]+)\[\]\s*$")
 # The three below are the rules of Asciidoctor, which reads them at the left margin only.
 SPEC_LIST_CONTINUATION = "+"
 SPEC_BLOCK_ATTRIBUTES = re.compile(r"^\[(?:|[\w.#%{,\"'].*)\]$")
 SPEC_BLOCK_DELIMITER = re.compile(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|/{4,}|[|,:!]={3,}|`{3,})$")
+# The first line of a list that is not marked with asterisks, as Asciidoctor reads it: an
+# item marked with a hyphen or a bullet, a numbered item, or a term with its description.
+SPEC_OTHER_LIST_ITEM = re.compile(
+    r"^[ \t]*(?:(?:-|•|\.{1,5}|\d+\.|[a-zA-Z]\.|[IVXivx]+\))[ \t]+\S"
+    r"|(?!//[^/])\S.*?(?::{2,4}|;;)(?:$|[ \t]+\S))"
+)
 # Generated files and shared valid usage that follow a list item without an empty line
 # between them hold blocks of their own, not more text of the item.
 SPEC_INCLUDES_AFTER_AN_ITEM = (
@@ -407,6 +414,33 @@ def defined_spec_attributes(vk) -> set[str]:
     features = ElementTree.parse(REGISTRY / "vk.xml").getroot().findall("feature")
     versions = {f.get("name") for f in features if "vulkan" in f.get("api", "").split(",")}
     return versions | set(vk.extensions)
+
+
+def spec_generated_files(vk) -> dict[str, list[str]]:
+    """The lines of the files that a build of the specification generates from the registry
+    and includes in the text that describes a name, by their path under `{generated}`.
+
+    `sync/flagDefinitions/<flag>.adoc` lists the flags that a synchronization flag stands
+    for (`<syncequivalent>` in vk.xml), one nested list item each, in the order of the
+    registry and without the flags that the `vulkan` API does not have. This is what
+    `scripts/syncgenerator.py` of Vulkan-Docs writes for a build with every version and
+    every extension."""
+    registry = ElementTree.parse(REGISTRY / "vk.xml").getroot()
+    files = {}
+    for element, attribute, bitmask in (
+        ("syncstage", "stage", "VkPipelineStageFlagBits2"),
+        ("syncaccess", "access", "VkAccessFlagBits2"),
+    ):
+        defined = {flag.name for flag in vk.bitmasks[bitmask].flags}
+        for sync in registry.findall(f"sync/{element}"):
+            equivalent = sync.find("syncequivalent")
+            if equivalent is None:
+                continue
+            flags = equivalent.get(attribute).split(",")
+            files[f"sync/flagDefinitions/{sync.get('name')}.adoc"] = [
+                f"  ** ename:{flag}" for flag in flags if flag in defined
+            ]
+    return files
 
 
 def spec_condition_holds(directive: str, target: str, defined: set[str]) -> bool:
@@ -426,9 +460,11 @@ def spec_lines(
     tag: str | None = None,
     depth: int = 0,
     local_attributes: dict[str, str] | None = None,
+    generated: dict[str, list[str]] | None = None,
 ):
     """The lines of a specification source file that a build with `defined` keeps, with
-    tagged includes of other chapters expanded. With `tag`, only that tagged region.
+    tagged includes of other chapters expanded, and with the lines of the files in
+    `generated` in place of their includes. With `tag`, only that tagged region.
 
     Attributes that the sources set on the way (`:name: value`) are replaced where they
     are referenced; the ones from the specification's configuration are left as `{name}`
@@ -437,6 +473,8 @@ def spec_lines(
         raise RuntimeError(f"{path}: includes nest too deeply")
     if local_attributes is None:
         local_attributes = {}
+    if generated is None:
+        generated = {}
 
     def replace(reference):
         return local_attributes.get(reference.group(1), reference.group(0))
@@ -477,7 +515,12 @@ def spec_lines(
                 include.group(2),
                 depth + 1,
                 local_attributes,
+                generated,
             )
+            continue
+        generated_file = SPEC_INCLUDE_GENERATED.match(line)
+        if generated_file and generated_file.group(1) in generated:
+            yield from generated[generated_file.group(1)]
             continue
         entry = SPEC_ATTRIBUTE_ENTRY.match(line)
         if entry:
@@ -507,16 +550,21 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
     two ways, if anything.
 
     The text of an item goes on over the following lines, whatever they start with, to the
-    next first-level item, to an empty line or to the delimiter of a block. Past an empty
-    line the item goes on only with a nested item or with a list continuation (an
-    indented paragraph would go on as well, as a literal block: that is reported). A list
-    continuation (a line that is just `+`) attaches the next block to the item: a
-    paragraph, a nested list, or a delimited block with the attribute and title lines
-    above it.
+    next first-level item, to an empty line or to the delimiter of a block. Past empty
+    lines the item goes on only with a nested item, with the first item of a list of
+    another kind (which is nested in the item as well) or with a list continuation (an
+    indented paragraph would go on as well, as a literal block: that is reported); a
+    comment after the empty lines ends the item, whatever follows it. A list continuation
+    (a line that is just `+`) attaches the next block to the item: a paragraph, a nested
+    list, or a delimited block with the attribute and title lines above it. The block may
+    follow after one empty line and after lines that set attributes, but not after a
+    comment, which takes the place of the block.
 
     The lines come back without their indentation, except inside a delimited block, and
     except for a line of the text that would read as a continuation, as attributes or as a
-    delimiter without it: Asciidoctor reads those only at the left margin."""
+    delimiter without it: Asciidoctor reads those only at the left margin. The empty line
+    and the attribute lines between a list continuation and its block are left out, and so
+    is a list continuation that attaches nothing."""
     lines = [SPEC_LIST_ITEM.match(body[start]).group(2)]
     index = start + 1
     attaching = False
@@ -525,22 +573,38 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
         line = body[index].rstrip()
         stripped = line.strip()
         if spec_is_comment(line):
+            attaching = False
             index += 1
             continue
         if spec_is_first_level_item(line):
             break
         if not stripped:
             following = index
-            while following < len(body) and (not body[following].strip() or spec_is_comment(body[following])):
+            while following < len(body) and not body[following].strip():
                 following += 1
-            if attaching or following == len(body):
+            if following == len(body):
+                break
+            if spec_is_comment(body[following]):
+                if attaching:
+                    problem = problem or "a comment after a list continuation and an empty line"
                 break
             after = body[following].rstrip()
             item = SPEC_LIST_ITEM.match(after)
-            if after != SPEC_LIST_CONTINUATION and not (item and len(item.group(1)) > 1):
+            if attaching and following == index + 1 and not (item and len(item.group(1)) == 1):
+                if lines[-1] != SPEC_LIST_CONTINUATION:
+                    problem = problem or "an empty line between the attributes of a block and the block"
+                index = following
+                continue
+            nested = bool(item and len(item.group(1)) > 1) or bool(SPEC_OTHER_LIST_ITEM.match(after))
+            if after != SPEC_LIST_CONTINUATION and not nested:
                 if after[0].isspace() and not item:
                     problem = problem or "an indented paragraph after an empty line"
                 break
+            if attaching:
+                if lines[-1] != SPEC_LIST_CONTINUATION:
+                    problem = problem or "the attributes of a block that does not follow"
+                lines.pop()
+                attaching = False
             lines.append("")
             index = following
             continue
@@ -550,6 +614,9 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
                 problem = problem or "two list continuations in a row"
             lines.append(line)
             attaching = True
+            index += 1
+            continue
+        if at_margin and attaching and SPEC_ATTRIBUTE_ENTRY.match(line):
             index += 1
             continue
         if at_margin and SPEC_BLOCK_DELIMITER.match(line):
@@ -623,6 +690,11 @@ def spec_described_items(body: list[str], page: str) -> list[dict[str, str]]:
                 raise RuntimeError(
                     f"{page}: the list item of {name.group(1)} cannot be read reliably: {problem}"
                 )
+            for line in lines:
+                if line.startswith("include::"):
+                    raise RuntimeError(
+                        f"{page}: the list item of {name.group(1)} goes on in a file that is not read: {line}"
+                    )
             described.append({"name": name.group(1), "text": "\n".join(lines)})
     return described
 
@@ -687,12 +759,12 @@ def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, s
     return tables
 
 
-def build_docs(defined: set[str]):
+def build_docs(defined: set[str], generated: dict[str, list[str]]):
     pages = {}
     tables = []
     sources = sorted([*DOCS.glob("chapters/**/*.adoc"), *DOCS.glob("appendices/**/*.adoc")])
     for source in sources:
-        lines = list(spec_lines(source, defined))
+        lines = list(spec_lines(source, defined, generated=generated))
         page_blocks = []
         index = 0
         while index < len(lines):

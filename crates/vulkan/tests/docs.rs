@@ -240,8 +240,11 @@ struct Markup {
     asciidoc_block: Regex,
     unsupported_macro: Regex,
     list_item: Regex,
+    nested_item: Regex,
+    other_list_item: Regex,
     described_item: Regex,
     block_attributes: Regex,
+    block_title: Regex,
     block_delimiter: Regex,
     admonition: Regex,
     block_of_the_page: Regex,
@@ -251,10 +254,15 @@ impl Markup {
     fn new() -> Self {
         Self {
             list_item: regex(r"^[ \t]*\*[ \t]+\S"),
+            nested_item: regex(r"^[ \t]*\*{2,}[ \t]+\S"),
+            other_list_item: regex(
+                r"^[ \t]*(?:(?:-|\u{2022}|\.{1,5}|\d+\.|[a-zA-Z]\.|[IVXivx]+\))[ \t]+\S|[^\s/].*?(?::{2,4}|;;)(?:$|[ \t]+\S))",
+            ),
             described_item: regex(
                 r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)(pname:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)pname:\w+)*|ename:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)ename:\w+)*)\b",
             ),
             block_attributes: regex(r#"^\[(?:|[\w.#%{,"'].*)\]$"#),
+            block_title: regex(r"^\.\.?[^ \t.]"),
             block_delimiter: regex(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|\|={3,})$"),
             admonition: regex(r"^\[(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]$"),
             block_of_the_page: regex(
@@ -285,18 +293,71 @@ impl Markup {
 struct Sources {
     root: PathBuf,
     defined: BTreeSet<String>,
+    equivalent_flags: BTreeMap<String, Vec<String>>,
     conditional: Regex,
     end_conditional: Regex,
     tagged_include: Regex,
+    equivalent_flags_include: Regex,
     tag_marker: Regex,
     attribute_entry: Regex,
     attribute_reference: Regex,
 }
 
+const COMMENT: &str = "//";
+const ATTRIBUTE_ENTRY: &str = "//:";
+
 fn xml_attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     let start = tag.find(&format!(" {name}=\""))? + name.len() + 3;
     let end = tag[start..].find('"')?;
     Some(&tag[start..start + end])
+}
+
+fn equivalent_flags(registry: &str) -> BTreeMap<String, Vec<String>> {
+    const BITMASKS: [&str; 2] = ["VkPipelineStageFlagBits2", "VkAccessFlagBits2"];
+    let enum_tag = regex(r"<enum\s[^>]*>");
+    let mut in_the_api = BTreeSet::new();
+    for bitmask in regex(r"(?s)<enums\s[^>]*[^/>]>.*?</enums>").find_iter(registry) {
+        let bitmask = bitmask.as_str();
+        let name = xml_attribute(&bitmask[..bitmask.find('>').unwrap_or(0)], "name");
+        if name.is_some_and(|name| BITMASKS.contains(&name)) {
+            in_the_api.extend(
+                enum_tag
+                    .find_iter(bitmask)
+                    .filter_map(|flag| xml_attribute(flag.as_str(), "name")),
+            );
+        }
+    }
+    let providers = regex(r"(?s)<(?:extension|feature)\s[^>]*[^/>]>.*?</(?:extension|feature)>");
+    for provider in providers.find_iter(registry) {
+        let provider = provider.as_str();
+        let tag = &provider[..provider.find('>').unwrap_or(0)];
+        let apis = xml_attribute(tag, "supported").or_else(|| xml_attribute(tag, "api"));
+        if !apis.is_some_and(|apis| apis.split(',').any(|api| api == "vulkan")) {
+            continue;
+        }
+        for flag in enum_tag.find_iter(provider) {
+            let extends = xml_attribute(flag.as_str(), "extends");
+            if extends.is_some_and(|extends| BITMASKS.contains(&extends)) {
+                in_the_api.extend(xml_attribute(flag.as_str(), "name"));
+            }
+        }
+    }
+    let equivalent = regex(r#"<syncequivalent\s+(?:stage|access)="([^"]*)""#);
+    let synchronized = regex(
+        r#"(?s)<sync(?:stage|access)\s+name="(\w+)"(?:[^>]*[^/>])?>(.*?)</sync(?:stage|access)>"#,
+    );
+    let mut flags = BTreeMap::new();
+    for sync in synchronized.captures_iter(registry) {
+        if let Some(equivalent) = equivalent.captures(&sync[2]) {
+            let listed = equivalent[1]
+                .split(',')
+                .filter(|flag| in_the_api.contains(flag))
+                .map(str::to_string)
+                .collect();
+            flags.insert(sync[1].to_string(), listed);
+        }
+    }
+    flags
 }
 
 impl Sources {
@@ -314,9 +375,13 @@ impl Sources {
         Self {
             root: root.to_path_buf(),
             defined,
+            equivalent_flags: equivalent_flags(&registry),
             conditional: regex(r"^(ifdef|ifndef)::([^\[]*)\[(.*)\]\s*$"),
             end_conditional: regex(r"^endif::[^\[]*\[\]\s*$"),
             tagged_include: regex(r"^include::\{chapters\}/([^\[]+)\[tags?=([^\],;]+)\]\s*$"),
+            equivalent_flags_include: regex(
+                r"^include::\{generated\}/sync/flagDefinitions/(\w+)\.adoc\[\]\s*$",
+            ),
             tag_marker: regex(r"^// (tag|end)::([^\[]+)\[\]\s*$"),
             attribute_entry: regex(r"^:([\w-]+)(!?):\s*(.*)$"),
             attribute_reference: regex(r"\{([\w-]+)\}"),
@@ -380,12 +445,27 @@ impl Sources {
                 conditions.pop();
                 continue;
             }
-            if !active || line.starts_with("//") {
+            if !active || line.starts_with("////") {
+                continue;
+            }
+            if line.starts_with("//") {
+                out.push(COMMENT.to_string());
                 continue;
             }
             if let Some(include) = self.tagged_include.captures(line) {
                 let included = self.root.join("chapters").join(&include[1]);
                 self.lines(&included, Some(&include[2]), locals, out);
+                continue;
+            }
+            if let Some(include) = self.equivalent_flags_include.captures(line) {
+                let flags = self.equivalent_flags.get(&include[1]).unwrap_or_else(|| {
+                    panic!(
+                        "{}: the registry names no flags that {} is equivalent to",
+                        file.display(),
+                        &include[1]
+                    )
+                });
+                out.extend(flags.iter().map(|flag| format!("  ** ename:{flag}")));
                 continue;
             }
             if let Some(entry) = self.attribute_entry.captures(line) {
@@ -395,7 +475,7 @@ impl Sources {
                 } else {
                     locals.remove(&entry[1]);
                 }
-                out.push(String::new());
+                out.push(ATTRIBUTE_ENTRY.to_string());
                 continue;
             }
             out.push(self.with_locals(line, locals));
@@ -516,7 +596,10 @@ impl Specification {
                     .find(|line| lines[*line].trim_end() == delimiter)
                     .unwrap_or(lines.len());
                 let mut start = index;
-                while start > 0 && table_syntax.block_header.is_match(&lines[start - 1]) {
+                while start > 0
+                    && (table_syntax.block_header.is_match(&lines[start - 1])
+                        || lines[start - 1] == COMMENT)
+                {
                     start -= 1;
                 }
                 let page = blocks
@@ -612,9 +695,30 @@ impl Specification {
                     if line == delimiter {
                         inside = None;
                     }
-                } else if line.is_empty()
-                    || markup.list_item.is_match(line)
-                    || markup.block_of_the_page.is_match(line)
+                } else if line == COMMENT {
+                    attached = false;
+                } else if line.is_empty() {
+                    let after = lines[index..]
+                        .iter()
+                        .position(|line| !line.trim().is_empty())
+                        .map(|skipped| (skipped, lines[index + skipped].trim_end()));
+                    let goes_on = match after {
+                        None | Some((_, COMMENT)) => false,
+                        Some((1, after)) if attached => !markup.list_item.is_match(after),
+                        Some((_, after)) => {
+                            after == "+"
+                                || markup.nested_item.is_match(after)
+                                || markup.other_list_item.is_match(after)
+                        }
+                    };
+                    if !goes_on {
+                        break;
+                    }
+                    let (skipped, _) = after.expect("a line after the empty ones");
+                    attached = attached && skipped == 1;
+                    index += skipped;
+                    continue;
+                } else if markup.list_item.is_match(line) || markup.block_of_the_page.is_match(line)
                 {
                     break;
                 } else if line == "+" {
@@ -625,7 +729,10 @@ impl Specification {
                     }
                     inside = Some(line);
                     attached = false;
-                } else if markup.block_attributes.is_match(line) || line.starts_with('.') {
+                } else if markup.block_attributes.is_match(line)
+                    || markup.block_title.is_match(line)
+                    || line == ATTRIBUTE_ENTRY
+                {
                     if !attached {
                         break;
                     }
@@ -667,11 +774,6 @@ impl Specification {
                     .find(|(_, names, _)| names.iter().any(|n| n == name))
             })
             .map(|(_, _, text)| text.clone())
-    }
-
-    fn goes_on_in_another_file(&self, page: &str, macro_name: &str, name: &str) -> bool {
-        self.item(page, macro_name, name)
-            .is_some_and(|text| text.lines().any(|line| line.starts_with("include::")))
     }
 
     fn visible(&self, text: &str) -> String {
@@ -1061,7 +1163,6 @@ struct Checker {
     parameters_under_another_name: usize,
     undescribed_arguments: Vec<String>,
     whole_items: usize,
-    described_in_another_file: Vec<String>,
     ends_where_its_list_item_ends: Vec<String>,
     members_under_another_name: usize,
     descriptions_of_no_member: Vec<String>,
@@ -1248,10 +1349,6 @@ impl Checker {
         (macro_name, name): (&str, &str),
     ) {
         if !spec.describes(page, macro_name, name) {
-            return;
-        }
-        if spec.goes_on_in_another_file(page, macro_name, name) {
-            self.described_in_another_file.push(item.to_string());
             return;
         }
         self.fail(item, format!("the specification describes `{name}` on the page `{page}`, but the documentation does not use it"));
@@ -1660,19 +1757,6 @@ fn type_name(ty: &Type) -> String {
     }
 }
 
-const DESCRIBED_IN_GENERATED_FILES: &[&str] = &[
-    "AccessFlagBits2::SHADER_READ",
-    "AccessFlags2::SHADER_READ",
-    "PipelineStageFlagBits2::ALL_GRAPHICS",
-    "PipelineStageFlagBits2::ALL_TRANSFER",
-    "PipelineStageFlagBits2::PRE_RASTERIZATION_SHADERS",
-    "PipelineStageFlagBits2::VERTEX_INPUT",
-    "PipelineStageFlags2::ALL_GRAPHICS",
-    "PipelineStageFlags2::ALL_TRANSFER",
-    "PipelineStageFlags2::PRE_RASTERIZATION_SHADERS",
-    "PipelineStageFlags2::VERTEX_INPUT",
-];
-
 const ENDS_WHERE_ITS_LIST_ITEM_ENDS: &[&str] = &[
     "Device::get_queue_checkpoint_data2_nv_raw: `queue`",
     "Device::get_queue_checkpoint_data_nv_raw: `queue`",
@@ -1757,18 +1841,6 @@ fn generated_documentation_matches_the_specification() {
         "{} generated doc comments do not match the specification:\n{}",
         checker.failures.len(),
         checker.failures.join("\n")
-    );
-    assert_eq!(
-        checker
-            .described_in_another_file
-            .iter()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>(),
-        DESCRIBED_IN_GENERATED_FILES
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>(),
-        "the list items of exactly these values go on in a file that is generated when the specification is built, so the documentation describes none of them"
     );
     assert_eq!(
         checker
@@ -2099,6 +2171,51 @@ fn fixture_specification() -> Specification {
         titles: BTreeMap::new(),
         markup: Markup::new(),
     };
+    let limits = [
+        "  * pname:first is the first limit.",
+        COMMENT,
+        "    It is not the last.",
+        "",
+        COMMENT,
+        "  ** This is not a part of the item.",
+        "  * pname:feature specifies that things have features.",
+        "+",
+        "",
+        ATTRIBUTE_ENTRY,
+        "",
+        "If the sname:VkLimits structure is included, it is filled in.",
+        "",
+        "It is filled in only once.",
+        "  * pname:twice is followed by two empty lines.",
+        "+",
+        "",
+        "",
+        "This is not attached.",
+        "  * pname:commented has a comment where its block would be.",
+        "+",
+        COMMENT,
+        "",
+        "This is not attached either.",
+        "  * pname:last is the last limit.",
+        "  ** It is nested.",
+        "",
+        "",
+        "  ** This is nested as well.",
+        "",
+        "1::",
+        "    For all limits, the note applies.",
+        "",
+        "2:: The second note applies as well.",
+        "+",
+        "It has a second paragraph.",
+        "",
+        ".. The note has a step.",
+        "",
+        "The limits are described above.",
+        "",
+        "include::{generated}/validity/structs/VkLimits.adoc[]",
+    ]
+    .join("\n");
     let pages = [
         (
             "VkThing",
@@ -2142,7 +2259,13 @@ A thing is empty with the following properties:
   * ename:VK_COLOR_GREEN specifies green.
   * ename:VK_COLOR_GOLD and ename:VK_COLOR_SILVER specify a metal.
   * ename:VK_COLOR_ALL is equivalent to the logical OR of:
-include::{generated}/colors/VK_COLOR_ALL.adoc[]",
+  ** ename:VK_COLOR_RED
+  ** ename:VK_COLOR_GOLD",
+        ),
+        (
+            "VkLimits",
+            "Structure reporting the limits of things",
+            limits.as_str(),
         ),
         (
             "vkCountThings",
@@ -2282,7 +2405,10 @@ impl Color {
     /// `VK_COLOR_PINK`, a value of [`VkColor`](PAGES/VkColor.html).
     #[doc(alias = "VK_COLOR_PINK")]
     pub const PINK: Self = Self(13);
-    /// `VK_COLOR_ALL`, a value of [`VkColor`](PAGES/VkColor.html).
+    /// `VK_COLOR_ALL` is equivalent to the logical OR of:
+    ///
+    /// - [`VK_COLOR_RED`](Color::RED)
+    /// - [`VK_COLOR_GOLD`](Color::GOLD)
     #[doc(alias = "VK_COLOR_ALL")]
     pub const ALL: Self = Self(14);
     /// `VK_COLOR_GOLD` and [`VK_COLOR_SILVER`](Color::SILVER) specify a metal.
@@ -2682,16 +2808,106 @@ fn checker_reports_a_description_that_ends_in_the_middle_of_a_sentence() {
     }
 }
 
+const FIXTURE_ALL: &str = "    /// `VK_COLOR_ALL` is equivalent to the logical OR of:
+    ///
+    /// - [`VK_COLOR_RED`](Color::RED)
+    /// - [`VK_COLOR_GOLD`](Color::GOLD)
+";
+
 #[test]
-fn checker_accepts_a_fallback_for_a_value_whose_list_item_goes_on_in_a_generated_file() {
-    let checker = fixture_checker(FIXTURE_SOURCE);
-    assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
-    assert_eq!(checker.described_in_another_file, ["Color::ALL"]);
+fn checker_reports_a_value_without_the_flags_that_its_list_item_goes_on_with() {
     assert_reported(
-        "a description that stops where the generated file starts",
-        "/// `VK_COLOR_ALL`, a value of [`VkColor`](PAGES/VkColor.html).",
-        "/// `VK_COLOR_ALL` is equivalent to the logical OR of:",
-        "Color::ALL: the description of `VK_COLOR_ALL` leaves out a part of its list item on the page `VkColor`: `the logical OR of [include generated colors VK_COLOR_ALL adoc]`",
+        "a fallback for a value whose list item goes on with nested items",
+        FIXTURE_ALL,
+        "    /// `VK_COLOR_ALL`, a value of [`VkColor`](PAGES/VkColor.html).\n",
+        "Color::ALL: the specification describes `VK_COLOR_ALL` on the page `VkColor`, but the documentation does not use it",
+    );
+    assert_reported(
+        "a description that stops where the nested items start",
+        FIXTURE_ALL,
+        "    /// `VK_COLOR_ALL` is equivalent to the logical OR of:\n",
+        "Color::ALL: the description of `VK_COLOR_ALL` leaves out a part of its list item on the page `VkColor`: `the logical OR of [VK_COLOR_RED VK_COLOR_GOLD]`",
+    );
+    assert_reported(
+        "a description without one of the nested items",
+        FIXTURE_ALL,
+        "    /// `VK_COLOR_ALL` is equivalent to the logical OR of:\n    ///\n    /// - [`VK_COLOR_RED`](Color::RED)\n",
+        "Color::ALL: the description of `VK_COLOR_ALL` leaves out a part of its list item on the page `VkColor`: `logical OR of VK_COLOR_RED [VK_COLOR_GOLD]`",
+    );
+}
+
+#[test]
+fn an_include_of_the_flags_that_a_flag_is_equivalent_to_reads_as_the_registry_lists_them() {
+    let registry = r#"
+        <enums name="VkAccessFlagBits2" type="bitmask" bitwidth="64">
+            <enum bitpos="0" name="VK_ACCESS_2_A_BIT"/>
+            <enum bitpos="1" name="VK_ACCESS_2_B_BIT"/>
+        </enums>
+        <enums name="VkEmptyFlagBits" type="bitmask"/>
+        <enums name="VkPipelineStageFlagBits2" type="bitmask" bitwidth="64">
+            <enum bitpos="0" name="VK_PIPELINE_STAGE_2_A_BIT"/>
+        </enums>
+        <enums name="VkOtherFlagBits" type="bitmask">
+            <enum bitpos="0" name="VK_PIPELINE_STAGE_2_OTHER_BIT"/>
+        </enums>
+        <extension name="VK_KHR_reserved" number="2" supported="disabled"/>
+        <extension name="VK_KHR_c" number="3" supported="vulkan,vulkansc">
+            <require>
+                <enum bitpos="2" extends="VkAccessFlagBits2" name="VK_ACCESS_2_C_BIT_KHR"/>
+                <enum bitpos="1" extends="VkPipelineStageFlagBits2" name="VK_PIPELINE_STAGE_2_C_BIT_KHR"/>
+                <enum bitpos="5" extends="VkOtherFlagBits" name="VK_PIPELINE_STAGE_2_E_BIT_KHR"/>
+            </require>
+        </extension>
+        <extension name="VK_KHR_d" number="4" supported="vulkansc">
+            <require>
+                <enum bitpos="3" extends="VkAccessFlagBits2" name="VK_ACCESS_2_D_BIT_KHR"/>
+            </require>
+        </extension>
+        <feature api="vulkan" name="VK_VERSION_1_4" number="1.4">
+            <require>
+                <enum bitpos="4" extends="VkPipelineStageFlagBits2" name="VK_PIPELINE_STAGE_2_F_BIT"/>
+            </require>
+        </feature>
+        <sync>
+            <syncstage name="VK_PIPELINE_STAGE_2_A_BIT" alias="VK_PIPELINE_STAGE_A_BIT">
+                <syncsupport queues="VK_QUEUE_GRAPHICS_BIT"/>
+            </syncstage>
+            <syncstage name="VK_PIPELINE_STAGE_2_NONE"/>
+            <syncstage name="VK_PIPELINE_STAGE_2_ALL_BIT">
+                <syncsupport queues="VK_QUEUE_GRAPHICS_BIT"/>
+                <syncequivalent stage="VK_PIPELINE_STAGE_2_F_BIT,VK_PIPELINE_STAGE_2_C_BIT_KHR,VK_PIPELINE_STAGE_2_OTHER_BIT,VK_PIPELINE_STAGE_2_E_BIT_KHR,VK_PIPELINE_STAGE_2_A_BIT"/>
+            </syncstage>
+            <syncaccess name="VK_ACCESS_2_ALL_BIT" alias="VK_ACCESS_ALL_BIT">
+                <syncequivalent access="VK_ACCESS_2_B_BIT,VK_ACCESS_2_D_BIT_KHR,VK_ACCESS_2_C_BIT_KHR,VK_ACCESS_2_A_BIT"/>
+            </syncaccess>
+        </sync>
+    "#;
+    let flags = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        equivalent_flags(registry),
+        BTreeMap::from([
+            (
+                "VK_ACCESS_2_ALL_BIT".to_string(),
+                flags(&[
+                    "VK_ACCESS_2_B_BIT",
+                    "VK_ACCESS_2_C_BIT_KHR",
+                    "VK_ACCESS_2_A_BIT"
+                ])
+            ),
+            (
+                "VK_PIPELINE_STAGE_2_ALL_BIT".to_string(),
+                flags(&[
+                    "VK_PIPELINE_STAGE_2_F_BIT",
+                    "VK_PIPELINE_STAGE_2_C_BIT_KHR",
+                    "VK_PIPELINE_STAGE_2_A_BIT"
+                ])
+            ),
+        ])
     );
 }
 
@@ -2730,8 +2946,10 @@ fn the_list_items_of_the_specification_are_read_to_their_end() {
         item("vkCountThings", "pname", "pAllocator"),
         "  * pname:pAllocator controls host memory allocation as described in the\n    <<memory-allocation, Memory Allocation>> chapter."
     );
-    assert!(specification.goes_on_in_another_file("VkColor", "ename", "VK_COLOR_ALL"));
-    assert!(!specification.goes_on_in_another_file("VkColor", "ename", "VK_COLOR_RED"));
+    assert_eq!(
+        item("VkColor", "ename", "VK_COLOR_ALL"),
+        "  * ename:VK_COLOR_ALL is equivalent to the logical OR of:\n  ** ename:VK_COLOR_RED\n  ** ename:VK_COLOR_GOLD"
+    );
     assert_eq!(
         item("PFN_vkThingCallback", "pname", "thing"),
         "  * pname:thing is the thing.",
@@ -2766,6 +2984,42 @@ fn the_list_items_of_the_specification_are_read_to_their_end() {
             );
         }
     }
+}
+
+#[test]
+fn a_list_item_of_the_specification_goes_on_past_empty_lines_as_asciidoctor_reads_it() {
+    let specification = fixture_specification();
+    let words = |name: &str| {
+        let item = specification
+            .item("VkLimits", "pname", name)
+            .unwrap_or_else(|| panic!("no item {name} on the page VkLimits"));
+        specification.words(&item)
+    };
+    assert_eq!(
+        words("first"),
+        " first is the first limit It is not the last ",
+        "a comment after an empty line ends the item, whatever follows the comment"
+    );
+    assert_eq!(
+        words("feature"),
+        " feature specifies that things have features If the VkLimits structure is included it is filled in ",
+        "one empty line and a line that sets an attribute do not detach what a list continuation attaches"
+    );
+    assert_eq!(
+        words("twice"),
+        " twice is followed by two empty lines ",
+        "two empty lines detach what a list continuation attaches"
+    );
+    assert_eq!(
+        words("commented"),
+        " commented has a comment where its block would be ",
+        "a comment takes the place of the block that a list continuation attaches"
+    );
+    assert_eq!(
+        words("last"),
+        " last is the last limit It is nested This is nested as well 1 For all limits the note applies 2 The second note applies as well It has a second paragraph The note has a step ",
+        "nested items and lists of another kind go on past empty lines"
+    );
 }
 
 const FIXTURE_HEIGHT: &str =

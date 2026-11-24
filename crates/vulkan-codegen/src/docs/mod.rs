@@ -149,7 +149,6 @@ impl<'a> Model<'a> {
         let text = &described.item.text;
         let parts = match items::read(text) {
             Ok(parts) => parts,
-            Err(Unsupported::Include) => return None,
             Err(unsupported) => panic!(
                 "the description of {item} on the page {} cannot be read ({unsupported:?}): {text}",
                 page.name
@@ -175,6 +174,16 @@ impl<'a> Model<'a> {
                     items
                         .into_iter()
                         .map(|item| self.blocks(from, page, own, item))
+                        .collect(),
+                ),
+                Part::Terms(items) => Block::List(
+                    items
+                        .into_iter()
+                        .map(|(term, parts)| {
+                            let mut item = vec![Block::Text(self.markdown(from, page, own, &term))];
+                            item.extend(self.blocks(from, page, own, parts));
+                            item
+                        })
                         .collect(),
                 ),
                 Part::Admonition {
@@ -748,16 +757,50 @@ mod tests {
     }
 
     #[test]
-    fn an_item_that_goes_on_in_a_file_outside_the_sources_is_not_described() {
+    #[should_panic(
+        expected = "the description of width on the page VkExtent2D cannot be read (Include): pname:width is equivalent to the logical OR of:"
+    )]
+    fn an_include_that_is_left_in_a_description_aborts_generation() {
         let ir = ir();
         let docs = with_the_width_described_as(&[
             "pname:width is equivalent to the logical OR of:",
             "include::{generated}/sync/flagDefinitions/width.adoc[]",
         ]);
         let model = Model::with_docs(&ir, &docs);
+        model.described(&Cfg::default(), "VkExtent2D", "width");
+    }
+
+    #[test]
+    fn a_description_list_becomes_a_list_of_its_terms_with_what_describes_them() {
+        let ir = ir();
+        let docs = with_the_width_described_as(&[
+            "pname:width is the width.",
+            "",
+            "1::",
+            "For all widths of slink:VkExtent2D,",
+            "the note applies.",
+            "",
+            "pname:width::  Itself.",
+            "** In detail.",
+        ]);
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
         assert_eq!(
             model.described(&Cfg::default(), "VkExtent2D", "width"),
-            None
+            Some(vec![
+                text("`width` is the width."),
+                Block::List(vec![
+                    vec![
+                        text("1"),
+                        text("For all widths of [`VkExtent2D`](Extent2D),\nthe note applies."),
+                    ],
+                    vec![
+                        text("`width`"),
+                        text("Itself."),
+                        Block::list(["In detail.".to_string()]),
+                    ],
+                ]),
+            ])
         );
     }
 

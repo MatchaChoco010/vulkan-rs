@@ -4,6 +4,7 @@ use super::asciidoc::Unsupported;
 pub(super) enum Part {
     Paragraph(String),
     List(Vec<Vec<Part>>),
+    Terms(Vec<(String, Vec<Part>)>),
     Admonition {
         label: &'static str,
         title: Option<String>,
@@ -32,8 +33,15 @@ enum Within {
     Block,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Marker {
+    Stars(usize),
+    Term,
+}
+
 struct OpenList {
-    marker: usize,
+    marker: Marker,
+    terms: Vec<String>,
     items: Vec<Vec<Part>>,
 }
 
@@ -118,6 +126,13 @@ fn names_a_term(line: &str) -> bool {
     })
 }
 
+fn term(line: &str) -> Option<(&str, &str)> {
+    let at = line.find("::").filter(|at| *at > 0)?;
+    let description = &line[at + 2..];
+    (description.is_empty() || description.starts_with([' ', '\t']))
+        .then(|| (line[..at].trim_end(), description.trim_start()))
+}
+
 fn is_attribute_entry(line: &str) -> bool {
     line.strip_prefix(':')
         .and_then(|rest| rest.split_once(':'))
@@ -179,8 +194,27 @@ impl<'a> Reader<'a> {
         self.end_paragraph();
         while self.lists.len() > open {
             let list = self.lists.pop().expect("a list to close");
-            self.target().push(Part::List(list.items));
+            let part = match list.marker {
+                Marker::Stars(_) => Part::List(list.items),
+                Marker::Term => Part::Terms(list.terms.into_iter().zip(list.items).collect()),
+            };
+            self.target().push(part);
         }
+    }
+
+    fn start_item(&mut self, marker: Marker) {
+        self.end_paragraph();
+        match self.lists.iter().position(|list| list.marker == marker) {
+            Some(depth) => self.close_lists(depth + 1),
+            None => self.lists.push(OpenList {
+                marker,
+                terms: Vec::new(),
+                items: Vec::new(),
+            }),
+        }
+        let list = self.lists.last_mut().expect("the list of the item");
+        list.items.push(Vec::new());
+        self.attaching = false;
     }
 
     fn in_a_list_item(&self) -> bool {
@@ -239,18 +273,8 @@ impl<'a> Reader<'a> {
             if in_a_paragraph_of_a_block {
                 return Err(unread("a list item in a paragraph"));
             }
-            self.end_paragraph();
-            match self.lists.iter().position(|list| list.marker == marker) {
-                Some(depth) => self.close_lists(depth + 1),
-                None => self.lists.push(OpenList {
-                    marker,
-                    items: Vec::new(),
-                }),
-            }
-            let list = self.lists.last_mut().expect("the list of the item");
-            list.items.push(Vec::new());
+            self.start_item(Marker::Stars(marker));
             self.paragraph.push(rest);
-            self.attaching = false;
             return Ok(());
         }
         if !self.header.is_empty() {
@@ -270,6 +294,19 @@ impl<'a> Reader<'a> {
             && self.lists.is_empty()
             && self.paragraph.is_empty();
         let could_start_a_list = self.in_a_list_item() && !starts_the_item;
+        let in_a_description_list = self.lists.iter().any(|list| list.marker == Marker::Term);
+        if could_start_a_list
+            && (after_an_empty_line || in_a_description_list)
+            && let Some((name, description)) = term(text)
+        {
+            self.start_item(Marker::Term);
+            let list = self.lists.last_mut().expect("the list of the term");
+            list.terms.push(name.to_string());
+            if !description.is_empty() {
+                self.paragraph.push(description);
+            }
+            return Ok(());
+        }
         if could_start_a_list && (starts_another_kind_of_list(text) || names_a_term(text)) {
             return Err(unread(format!("a list that starts with `{text}`")));
         }
@@ -604,6 +641,94 @@ mod tests {
         );
     }
 
+    fn terms<const N: usize>(items: [(&str, Vec<Part>); N]) -> Part {
+        Part::Terms(
+            items
+                .into_iter()
+                .map(|(term, parts)| (term.to_string(), parts))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn a_term_after_an_empty_line_starts_a_description_list_in_the_innermost_item() {
+        assert_eq!(
+            parts(&[
+                "pname:a is the size.",
+                "",
+                "1::",
+                "For all sizes, the note",
+                "applies.",
+                "",
+                "2:: The second note.",
+                "** with a detail",
+                "the third of sname:VkThing::\tThe last note.",
+            ]),
+            [
+                paragraph("pname:a is the size."),
+                terms([
+                    ("1", vec![paragraph("For all sizes, the note\napplies.")]),
+                    (
+                        "2",
+                        vec![
+                            paragraph("The second note."),
+                            list([vec![paragraph("with a detail")]]),
+                        ]
+                    ),
+                    (
+                        "the third of sname:VkThing",
+                        vec![paragraph("The last note.")]
+                    ),
+                ]),
+            ]
+        );
+        assert_eq!(
+            parts(&[
+                "pname:a is one of:",
+                "** this",
+                "",
+                "why::",
+                "Because.",
+                "+",
+                "Really.",
+                "** or that",
+                "",
+                "+",
+                "Whichever it is, it stays.",
+            ]),
+            [
+                paragraph("pname:a is one of:"),
+                list([
+                    vec![
+                        paragraph("this"),
+                        terms([("why", vec![paragraph("Because."), paragraph("Really.")])]),
+                    ],
+                    vec![paragraph("or that")],
+                ]),
+                paragraph("Whichever it is, it stays."),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_term_names_what_is_before_two_colons_at_the_end_of_a_word() {
+        for (line, named) in [
+            ("1::", Some(("1", ""))),
+            ("1:: x", Some(("1", "x"))),
+            ("a b ::\t x:: y", Some(("a b", "x:: y"))),
+            ("sname:VkThing:: x", Some(("sname:VkThing", "x"))),
+            ("::", None),
+            (":: x", None),
+            ("1:", None),
+            ("1::x", None),
+            ("1::: x", None),
+            ("1;; x", None),
+            ("sname:VkThing::pname:a is:: x", None),
+        ] {
+            assert_eq!(term(line), named, "{line:?}");
+        }
+    }
+
     #[test]
     fn attached_blocks_are_read_with_what_is_in_them() {
         assert_eq!(
@@ -823,6 +948,22 @@ mod tests {
                 vec!["pname:a is a member", "of sname:VkThing::"],
                 "a list that starts with `of sname:VkThing::`",
             ),
+            (
+                vec!["pname:a is:", "+", "term:: attached"],
+                "a list that starts with `term:: attached`",
+            ),
+            (
+                vec!["pname:a is:", "", "term::: deeper"],
+                "a list that starts with `term::: deeper`",
+            ),
+            (
+                vec!["pname:a is:", "", "term;; other"],
+                "a list that starts with `term;; other`",
+            ),
+            (
+                vec!["pname:a is:", "", "1::", "", "A paragraph of the note."],
+                "a paragraph after an empty line",
+            ),
         ] {
             let text = lines.join("\n");
             assert_eq!(
@@ -885,7 +1026,8 @@ mod tests {
             "with tempfile.TemporaryDirectory() as directory:",
             "    source = pathlib.Path(directory) / 'page.adoc'",
             "    source.write_text(sys.stdin.read())",
-            "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}))",
+            "    generated = {'sync/flagDefinitions/VK_PAGE.adoc': ['  ** ename:VK_A', '  ** ename:VK_B']}",
+            "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}, generated=generated))",
             "items = tool.spec_described_items(body, 'VkPage')",
             "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
             "docs = {'commit': '', 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
@@ -1137,8 +1279,6 @@ mod tests {
                 "  * pname:paragraph comes before a paragraph.",
                 "",
                 "pname:paragraph is described here as well.",
-                "  * pname:generated is equivalent to the logical OR of:",
-                "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[]",
                 "  * pname:next is the next member.",
             ],
             &[
@@ -1149,14 +1289,237 @@ mod tests {
                     &["pname:validity comes before the valid usage."],
                 ),
                 ("paragraph", &["pname:paragraph comes before a paragraph."]),
+                NEXT,
+            ],
+        );
+    }
+
+    #[test]
+    fn the_dump_has_the_generated_items_in_place_of_their_include() {
+        assert_dumped(
+            &[
+                "  * pname:generated is equivalent to the logical OR of:",
+                "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[]",
+                "  * pname:next is the next member.",
+            ],
+            &[
                 (
                     "generated",
                     &[
                         "pname:generated is equivalent to the logical OR of:",
-                        "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[]",
+                        "** ename:VK_A",
+                        "** ename:VK_B",
                     ],
                 ),
                 NEXT,
+            ],
+        );
+        for include in [
+            "include::{generated}/sync/flagDefinitions/VK_OTHER.adoc[]",
+            "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[tag=x]",
+            "include::{chapters}/other.adoc[]",
+        ] {
+            let source = ["  * pname:a is equivalent to the logical OR of:", include];
+            let Some(dumped) = dumped(&source) else {
+                return;
+            };
+            let error = dumped.expect_err(include);
+            assert!(
+                error.contains(&format!(
+                    "VkPage: the list item of a goes on in a file that is not read: {include}"
+                )),
+                "{error}"
+            );
+        }
+        assert_dumped(
+            &[
+                "  * Otherwise, the flags are:",
+                "include::{generated}/sync/flagDefinitions/VK_OTHER.adoc[]",
+                "  * pname:next is the next member.",
+            ],
+            &[NEXT],
+        );
+    }
+
+    #[test]
+    fn the_dump_keeps_a_list_of_another_kind_that_follows_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:last is the last member.",
+                "",
+                "1::",
+                "    For all members, the",
+                "    note applies.",
+                "",
+                "",
+                "2:: The second note.",
+                "",
+                "Not a part of the list.",
+                "  * pname:numbered has steps:",
+                "",
+                ". the first",
+                "  .. in detail",
+                "  * pname:dashed has parts:",
+                "",
+                "  - one",
+                "  * pname:lettered has cases:",
+                "",
+                "a. the first",
+                "  * pname:counted has cases:",
+                "",
+                "    iv) the fourth",
+                "  * pname:defined has terms:",
+                "",
+                "term;; its description",
+                "  * pname:next is the next member.",
+                "",
+                "sname:VkPage::pname:next is not a term.",
+            ],
+            &[
+                (
+                    "last",
+                    &[
+                        "pname:last is the last member.",
+                        "",
+                        "1::",
+                        "For all members, the",
+                        "note applies.",
+                        "",
+                        "2:: The second note.",
+                    ],
+                ),
+                (
+                    "numbered",
+                    &[
+                        "pname:numbered has steps:",
+                        "",
+                        ". the first",
+                        ".. in detail",
+                    ],
+                ),
+                ("dashed", &["pname:dashed has parts:", "", "- one"]),
+                (
+                    "lettered",
+                    &["pname:lettered has cases:", "", "a. the first"],
+                ),
+                (
+                    "counted",
+                    &["pname:counted has cases:", "", "iv) the fourth"],
+                ),
+                (
+                    "defined",
+                    &["pname:defined has terms:", "", "term;; its description"],
+                ),
+                NEXT,
+            ],
+        );
+    }
+
+    #[test]
+    fn the_dump_ends_an_item_at_a_comment_that_follows_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:a is one of:",
+                "",
+                "// a comment",
+                "  ** not a part of the item",
+                "  * pname:b is one of:",
+                "// a comment",
+                "",
+                "  ** a part of the item",
+                "  * pname:next is the next member.",
+            ],
+            &[
+                ("a", &["pname:a is one of:"]),
+                ("b", &["pname:b is one of:", "", "** a part of the item"]),
+                NEXT,
+            ],
+        );
+    }
+
+    #[test]
+    fn the_dump_attaches_a_block_that_follows_a_list_continuation_after_one_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:feature specifies the feature.",
+                "+",
+                "",
+                ":refpage: VkPage",
+                "",
+                "If the sname:{refpage} structure is included, it is filled in.",
+                "",
+                "Not a part of the list.",
+                "  * pname:note has a note.",
+                "+",
+                "",
+                "[NOTE]",
+                "====",
+                "It is attached.",
+                "====",
+                "  * pname:twice is followed by two empty lines.",
+                "+",
+                "",
+                "",
+                "Not attached.",
+                "  * pname:nested goes on after two empty lines.",
+                "+",
+                "",
+                "",
+                "  ** all the same",
+                "  * pname:commented has a comment in the way.",
+                "+",
+                "// a comment",
+                "",
+                "Not attached either.",
+                "  * pname:skipped has a comment before its block.",
+                "+",
+                "// a comment",
+                "It is attached.",
+                "  * pname:next is the next member.",
+                "+",
+                "",
+                "  * pname:last is the last member.",
+            ],
+            &[
+                (
+                    "feature",
+                    &[
+                        "pname:feature specifies the feature.",
+                        "+",
+                        "If the sname:VkPage structure is included, it is filled in.",
+                    ],
+                ),
+                (
+                    "note",
+                    &[
+                        "pname:note has a note.",
+                        "+",
+                        "[NOTE]",
+                        "====",
+                        "It is attached.",
+                        "====",
+                    ],
+                ),
+                ("twice", &["pname:twice is followed by two empty lines."]),
+                (
+                    "nested",
+                    &[
+                        "pname:nested goes on after two empty lines.",
+                        "",
+                        "** all the same",
+                    ],
+                ),
+                ("commented", &["pname:commented has a comment in the way."]),
+                (
+                    "skipped",
+                    &[
+                        "pname:skipped has a comment before its block.",
+                        "+",
+                        "It is attached.",
+                    ],
+                ),
+                NEXT,
+                ("last", &["pname:last is the last member."]),
             ],
         );
     }

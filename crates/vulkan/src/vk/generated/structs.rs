@@ -76030,6 +76030,14 @@ pub struct PhysicalDeviceLimits {
     pub optimal_buffer_copy_row_pitch_alignment: DeviceSize,
     /// `nonCoherentAtomSize` is the size and alignment in bytes that bounds concurrent access to
     /// host-mapped device memory. The value must be a power of two.
+    ///
+    /// - 1
+    ///
+    ///   For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    ///   limits defined above represent the minimum supported sample counts for each image type.
+    ///   Individual images may support additional sample counts, which are queried using
+    ///   [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    ///   as described in Supported Sample Counts.
     pub non_coherent_atom_size: DeviceSize,
 }
 
@@ -95599,6 +95607,15 @@ pub struct PhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE<'a> {
     pub p_next: *mut c_void,
     /// `videoEncodeRgbConversion` specifies that the implementation supports video encode RGB
     /// conversion.
+    ///
+    /// If the `VkPhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE` structure is included in the
+    /// `pNext` chain of the [`VkPhysicalDeviceFeatures2`](PhysicalDeviceFeatures2) structure passed
+    /// to [`vkGetPhysicalDeviceFeatures2`](crate::Instance::get_physical_device_features2), it is
+    /// filled in to indicate whether each corresponding feature is supported. If the application
+    /// wishes to use a [`VkDevice`](Device) with any features described by
+    /// `VkPhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE`, it must add an instance of the
+    /// structure, with the desired feature members set to [`VK_TRUE`](TRUE), to the `pNext` chain
+    /// of [`VkDeviceCreateInfo`](DeviceCreateInfo) when creating the [`VkDevice`](Device).
     pub video_encode_rgb_conversion: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
