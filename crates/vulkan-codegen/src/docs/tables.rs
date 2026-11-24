@@ -170,8 +170,8 @@ fn is_block_attribute(line: &str) -> bool {
 }
 
 fn is_ordered_list_item(line: &str) -> bool {
-    let digits = line.chars().take_while(char::is_ascii_digit).count();
-    digits > 0 && line[digits..].starts_with('.')
+    line.trim_start_matches(|c: char| c.is_ascii_digit())
+        .starts_with('.')
 }
 
 fn asciidoc_lines(content: &str) -> Option<Vec<String>> {
