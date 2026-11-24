@@ -40,7 +40,12 @@ impl UncountedArray {
                 && array.ty == "void"
                 && array.len.is_none()
                 && array.optional,
-            "{command}::{parameter} is a `{}` with the length {:?}, not an optional `void*` without a length: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+            "{command}::{parameter} is {} `{}` with the length {:?}, not an optional `void*` without a length: {CORRECT_THE_LIST}, which takes this one from {stated_by}",
+            if array.optional {
+                "an optional"
+            } else {
+                "a required"
+            },
             array.full_ty,
             array.len
         );
@@ -57,7 +62,7 @@ impl UncountedArray {
         let count = pointer_setter_name(self.count);
         let array = pointer_setter_name(self.parameter);
         format!(
-            "`{count}` is the element count of `{array}`, which the command reads and writes: if `{array}` is null, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements that `{array}` has room for when the wrapper is called, and the command overwrites it with the number of elements that it wrote. Each element is {}, so the size of an element depends on the device. The wrapper passes `{array}` as it is, without checking it: unless it is null, it has to be valid for writes of that many elements.",
+            "`{count}` is the element count of `{array}`, which the command reads and writes: if `{array}` is null, the command writes the number of elements that it can return to it; otherwise it has to hold the number of elements that `{array}` has room for when the wrapper is called, and the command overwrites it with the number of elements that it wrote. Each element is {}, so the size of an element depends on the device. The wrapper passes `{array}` as it is, without checking it: unless it is null, it has to be valid for writes of as many elements as `{count}` holds when the wrapper is called.",
             self.element
         )
     }
@@ -159,19 +164,19 @@ mod tests {
             (
                 counted_values,
                 format!(
-                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `void*` with the length Some(\"pMetricBlockCount\"), not an optional `void*` without a length: {CORRECT}"
+                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a required `void*` with the length Some(\"pMetricBlockCount\"), not an optional `void*` without a length: {CORRECT}"
                 ),
             ),
             (
                 typed,
                 format!(
-                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `uint64_t*` with the length None, not an optional `void*` without a length: {CORRECT}"
+                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a required `uint64_t*` with the length None, not an optional `void*` without a length: {CORRECT}"
                 ),
             ),
             (
                 required,
                 format!(
-                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a `void*` with the length None, not an optional `void*` without a length: {CORRECT}"
+                    "vkGetShaderInstrumentationValuesARM::pMetricValues is a required `void*` with the length None, not an optional `void*` without a length: {CORRECT}"
                 ),
             ),
             (

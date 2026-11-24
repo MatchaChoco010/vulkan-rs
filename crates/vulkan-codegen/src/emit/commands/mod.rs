@@ -2088,10 +2088,15 @@ mod tests {
             }
             let signature = code.split(" {").next().expect("the signature");
             for integer in ["u32", "usize"] {
-                for (at, _) in signature.match_indices(&format!(": &mut {integer}")) {
+                let reference = format!("&mut {integer}");
+                for (at, _) in signature.match_indices(&reference) {
+                    let after = &signature[at + reference.len()..];
+                    if after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+                        continue;
+                    }
                     let argument = signature[..at]
-                        .rsplit([' ', '('])
-                        .next()
+                        .rsplit_once(':')
+                        .and_then(|(before, _)| before.rsplit([' ', '(']).next())
                         .expect("the name of the argument");
                     assert!(
                         documented.contains(&format!("`{argument}` is the element count of `")),
