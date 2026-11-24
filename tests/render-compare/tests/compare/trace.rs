@@ -15,7 +15,7 @@ fn is_pointer_value(key: &str) -> bool {
     key.starts_with("pfn") || key == "pUserData" || key == "ppData"
 }
 
-const MAX_ALIGNMENT_OFFSET: u64 = 256;
+const MAX_ALIGNMENT: u64 = 256;
 
 const ADDRESS_QUERIES: &[&str] = &[
     "vkGetBufferDeviceAddress",
@@ -62,7 +62,7 @@ impl Addresses {
     fn query_and_offset_of(&self, value: u64) -> Option<(usize, u64)> {
         self.latest
             .iter()
-            .filter(|&&(known, _)| known <= value && value - known < MAX_ALIGNMENT_OFFSET)
+            .filter(|&&(known, _)| known <= value && value - known <= MAX_ALIGNMENT)
             .max_by_key(|&&(known, _)| known)
             .map(|&(known, query)| (query, value - known))
     }
