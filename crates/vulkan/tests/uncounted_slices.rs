@@ -54,27 +54,6 @@ fn every_slice_setter_without_a_count_member_sets_null_for_an_empty_slice() {
             .vendor_infos(value)
             .p_vendor_infos
     });
-    check_setter("PipelineMultisampleStateCreateInfo::sample_mask", |value| {
-        vk::PipelineMultisampleStateCreateInfo::default()
-            .sample_mask(value)
-            .p_sample_mask
-    });
-    check_setter(
-        "StdVideoH265HrdParameters::sub_layer_hrd_parameters_nal",
-        |value| {
-            vk::StdVideoH265HrdParameters::default()
-                .sub_layer_hrd_parameters_nal(value)
-                .p_sub_layer_hrd_parameters_nal
-        },
-    );
-    check_setter(
-        "StdVideoH265HrdParameters::sub_layer_hrd_parameters_vcl",
-        |value| {
-            vk::StdVideoH265HrdParameters::default()
-                .sub_layer_hrd_parameters_vcl(value)
-                .p_sub_layer_hrd_parameters_vcl
-        },
-    );
 }
 
 type CmdSetSampleMask =

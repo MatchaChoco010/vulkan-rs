@@ -7369,34 +7369,30 @@ impl<'a> StdVideoH265HrdParameters<'a> {
         self.reserved = value;
         self
     }
-    /// Sets [`p_sub_layer_hrd_parameters_nal`](Self::p_sub_layer_hrd_parameters_nal) to the start
-    /// of a slice, or to a null pointer if the slice is empty. No member stores the length: the C
-    /// API expects `*_max_sub_layers_minus1 + 1` elements. The registry marks the member as
-    /// optional, and the specification describes what a null pointer means for it.
+    /// Sets [`p_sub_layer_hrd_parameters_nal`](Self::p_sub_layer_hrd_parameters_nal) to point to an
+    /// array of `STD_VIDEO_H265_SUBLAYERS_LIST_SIZE` elements, the most that the C API accesses: it
+    /// accesses `*_max_sub_layers_minus1 + 1` elements, and `vps_max_sub_layers_minus1` and
+    /// `sps_max_sub_layers_minus1` are at most 6. It does not access the elements after those. The
+    /// registry marks the member as optional: it is a null pointer in a structure made by
+    /// `default()`, and the setter cannot make it null again.
     pub fn sub_layer_hrd_parameters_nal(
         mut self,
-        value: &'a [StdVideoH265SubLayerHrdParameters],
+        value: &'a [StdVideoH265SubLayerHrdParameters; STD_VIDEO_H265_SUBLAYERS_LIST_SIZE],
     ) -> Self {
-        self.p_sub_layer_hrd_parameters_nal = if value.is_empty() {
-            core::ptr::null()
-        } else {
-            value.as_ptr()
-        };
+        self.p_sub_layer_hrd_parameters_nal = value.as_ptr();
         self
     }
-    /// Sets [`p_sub_layer_hrd_parameters_vcl`](Self::p_sub_layer_hrd_parameters_vcl) to the start
-    /// of a slice, or to a null pointer if the slice is empty. No member stores the length: the C
-    /// API expects `*_max_sub_layers_minus1 + 1` elements. The registry marks the member as
-    /// optional, and the specification describes what a null pointer means for it.
+    /// Sets [`p_sub_layer_hrd_parameters_vcl`](Self::p_sub_layer_hrd_parameters_vcl) to point to an
+    /// array of `STD_VIDEO_H265_SUBLAYERS_LIST_SIZE` elements, the most that the C API accesses: it
+    /// accesses `*_max_sub_layers_minus1 + 1` elements, and `vps_max_sub_layers_minus1` and
+    /// `sps_max_sub_layers_minus1` are at most 6. It does not access the elements after those. The
+    /// registry marks the member as optional: it is a null pointer in a structure made by
+    /// `default()`, and the setter cannot make it null again.
     pub fn sub_layer_hrd_parameters_vcl(
         mut self,
-        value: &'a [StdVideoH265SubLayerHrdParameters],
+        value: &'a [StdVideoH265SubLayerHrdParameters; STD_VIDEO_H265_SUBLAYERS_LIST_SIZE],
     ) -> Self {
-        self.p_sub_layer_hrd_parameters_vcl = if value.is_empty() {
-            core::ptr::null()
-        } else {
-            value.as_ptr()
-        };
+        self.p_sub_layer_hrd_parameters_vcl = value.as_ptr();
         self
     }
 }
@@ -103035,16 +103031,13 @@ impl<'a> PipelineMultisampleStateCreateInfo<'a> {
         self.min_sample_shading = value;
         self
     }
-    /// Sets [`p_sample_mask`](Self::p_sample_mask) to the start of a slice, or to a null pointer if
-    /// the slice is empty. No member stores the length: the C API expects
-    /// `(rasterizationSamples + 31) / 32` elements. The registry marks the member as optional, and
-    /// the specification describes what a null pointer means for it.
-    pub fn sample_mask(mut self, value: &'a [SampleMask]) -> Self {
-        self.p_sample_mask = if value.is_empty() {
-            core::ptr::null()
-        } else {
-            value.as_ptr()
-        };
+    /// Sets [`p_sample_mask`](Self::p_sample_mask) to point to an array of `2` elements, the most
+    /// that the C API accesses: it accesses `(rasterizationSamples + 31) / 32` elements, and
+    /// `rasterizationSamples` is at most `VK_SAMPLE_COUNT_64_BIT`. It does not access the elements
+    /// after those. The registry marks the member as optional: it is a null pointer in a structure
+    /// made by `default()`, and the setter cannot make it null again.
+    pub fn sample_mask(mut self, value: &'a [SampleMask; 2]) -> Self {
+        self.p_sample_mask = value.as_ptr();
         self
     }
     /// Sets [`alpha_to_coverage_enable`](Self::alpha_to_coverage_enable) to `VK_TRUE` or

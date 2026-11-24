@@ -141,3 +141,62 @@ fn version_data_takes_an_array_of_twice_the_uuid_size() {
     let read = unsafe { std::slice::from_raw_parts(micromap.p_version_data, 2 * vk::UUID_SIZE) };
     assert_eq!(read, version);
 }
+
+#[test]
+fn a_sample_mask_of_a_pipeline_has_a_word_for_every_sample_of_every_sample_count() {
+    let _: fn(
+        vk::PipelineMultisampleStateCreateInfo<'static>,
+        &'static [vk::SampleMask; 2],
+    ) -> vk::PipelineMultisampleStateCreateInfo<'static> =
+        vk::PipelineMultisampleStateCreateInfo::sample_mask;
+    let mask = [u32::MAX, 1];
+    let words = mask.len();
+    for (samples, name) in vk::SampleCountFlagBits::variants() {
+        let info = vk::PipelineMultisampleStateCreateInfo::default()
+            .sample_mask(&mask)
+            .rasterization_samples(*samples);
+        assert_eq!(info.p_sample_mask, mask.as_ptr());
+        let read = (info.rasterization_samples.as_raw() as usize).div_ceil(32);
+        assert!(
+            read <= words,
+            "{name}: the C API reads {read} words of the {words} that the setter borrows"
+        );
+    }
+    assert!(
+        vk::PipelineMultisampleStateCreateInfo::default()
+            .p_sample_mask
+            .is_null(),
+        "a structure whose setter was not called has no sample mask"
+    );
+}
+
+#[test]
+fn the_hrd_parameters_of_h265_have_an_element_for_every_sub_layer() {
+    type Setter = fn(
+        vk::StdVideoH265HrdParameters<'static>,
+        &'static [vk::StdVideoH265SubLayerHrdParameters; 7],
+    ) -> vk::StdVideoH265HrdParameters<'static>;
+    let _: [Setter; 2] = [
+        vk::StdVideoH265HrdParameters::sub_layer_hrd_parameters_nal,
+        vk::StdVideoH265HrdParameters::sub_layer_hrd_parameters_vcl,
+    ];
+    let parameters =
+        [vk::StdVideoH265SubLayerHrdParameters::default(); vk::STD_VIDEO_H265_SUBLAYERS_LIST_SIZE];
+    let hrd = vk::StdVideoH265HrdParameters::default()
+        .sub_layer_hrd_parameters_nal(&parameters)
+        .sub_layer_hrd_parameters_vcl(&parameters);
+    assert_eq!(hrd.p_sub_layer_hrd_parameters_nal, parameters.as_ptr());
+    assert_eq!(hrd.p_sub_layer_hrd_parameters_vcl, parameters.as_ptr());
+    let largest_max_sub_layers_minus1 = 6;
+    assert_eq!(
+        largest_max_sub_layers_minus1 + 1,
+        parameters.len(),
+        "the C API reads *_max_sub_layers_minus1 + 1 elements"
+    );
+    assert_eq!(hrd.cpb_cnt_minus1.len(), parameters.len());
+    let unset = vk::StdVideoH265HrdParameters::default();
+    assert!(
+        unset.p_sub_layer_hrd_parameters_nal.is_null()
+            && unset.p_sub_layer_hrd_parameters_vcl.is_null()
+    );
+}

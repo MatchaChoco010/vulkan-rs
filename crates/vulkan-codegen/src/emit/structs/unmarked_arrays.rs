@@ -103,11 +103,7 @@ pub(super) fn length(s: &Struct, m: &Field) -> Option<Length> {
 pub(super) fn length_that_no_member_stores(s: &Struct, m: &Field) -> Option<String> {
     match length(s, m) {
         Some(Length::NotInTheStructure(stated)) => Some(stated.to_string()),
-        Some(Length::InMember(_)) => None,
-        None => m
-            .len
-            .as_deref()
-            .map(|len| format!("the C API expects `{len}` elements")),
+        Some(Length::InMember(_)) | None => None,
     }
 }
 
