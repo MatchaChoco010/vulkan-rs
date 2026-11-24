@@ -80,6 +80,7 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         "allocate: 0 bytes",
         "allocate: no compatible memory type",
         "allocate: larger than the memory heap",
+        "allocate: alignment that is not a power of two",
         "allocate: vkAllocateMemory fails",
         "allocate: into a shared block",
         "allocate: a new shared block",
