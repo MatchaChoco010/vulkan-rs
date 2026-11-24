@@ -53,11 +53,13 @@
 //! is `index * stride`. The first slot of a run is at `first_index * stride`, so
 //! [`DescriptorSlots::index`] is the number to hand to the shader.
 //!
-//! - [`ResourceHeapPlan::buffers`], [`ResourceHeapPlan::images`],
-//!   [`ResourceHeapPlan::tensors`] and [`SamplerHeapPlan::samplers`] make runs whose
-//!   stride is the size of their descriptor type, rounded up to its alignment for
-//!   tensors, the indexing used by shaders that reach descriptors through untyped
-//!   pointers.
+//! - [`ResourceHeapPlan::buffers`], [`ResourceHeapPlan::images`] and
+//!   [`SamplerHeapPlan::samplers`] make runs whose stride is the size of their
+//!   descriptor type, the indexing used by shaders that reach descriptors through
+//!   untyped pointers.
+//! - [`ResourceHeapPlan::tensors`] makes a run whose stride is the tensor descriptor
+//!   size rounded up to the tensor descriptor alignment, for a mapping whose
+//!   `heapArrayStride` is the stride of the run.
 //! - [`ResourceHeapPlan::uniform`] makes a run whose slots can each hold an image or a
 //!   buffer descriptor, for mappings such as [`vk::DescriptorSetAndBindingMappingEXT`]
 //!   where the application chooses the stride (`heapIndexStride`).
@@ -107,10 +109,10 @@ pub enum HeapLayoutError {
     /// usually means the properties were not filled in by
     /// `vkGetPhysicalDeviceProperties2`.
     ZeroDescriptorSize,
-    /// The number of descriptors that one image takes is 0. The implementation reports at
-    /// least 1 in `combinedImageSamplerDescriptorCount` and
-    /// `subsampledImageDescriptorCount`; 0 usually means the format properties were not
-    /// queried.
+    /// The number of descriptors that one image takes is 0, so its slots would hold
+    /// nothing. The specification makes `combinedImageSamplerDescriptorCount` at least 1,
+    /// so for an image with a YCbCr conversion 0 usually means the format properties were
+    /// not queried.
     ZeroDescriptorCount,
     /// The reserved range of a [`DescriptorHeapLayout`] does not lie inside the heap:
     /// `reserved_offset + reserved_size` is larger than `size`.
@@ -462,7 +464,7 @@ fn lcm(a: u64, b: u64) -> Option<u64> {
     (a / gcd(a, b)).checked_mul(b)
 }
 
-/// Plans the layout of a resource heap, which holds buffer and image descriptors.
+/// Plans the layout of a resource heap, which holds buffer, image and tensor descriptors.
 ///
 /// Each run starts at the first multiple of its stride at or after the end of the
 /// previous run, so runs never overlap but gaps can appear between runs of different
@@ -620,11 +622,20 @@ impl ResourceHeapPlan {
     /// descriptors, as the descriptor of an image view with a YCbCr conversion or of a
     /// subsampled image takes.
     ///
-    /// `descriptors_per_image` is
-    /// [`vk::SamplerYcbcrConversionImageFormatProperties`]`::combined_image_sampler_descriptor_count`
-    /// or [`vk::SubsampledImageFormatPropertiesEXT`]`::subsampled_image_descriptor_count`
-    /// of the format of the image; for a run that holds images of several formats, pass
-    /// the largest, or `maxCombinedImageSamplerDescriptorCount`. The stride and the
+    /// `descriptors_per_image` is the number of descriptors one image of the run takes:
+    ///
+    /// - for an image view with a YCbCr conversion,
+    ///   [`vk::SamplerYcbcrConversionImageFormatProperties`]`::combined_image_sampler_descriptor_count`
+    ///   of its format, or `maxCombinedImageSamplerDescriptorCount` of
+    ///   [`vk::PhysicalDeviceMaintenance6Properties`], the most descriptors any such
+    ///   image takes. An image with an Android external format needs a slot of
+    ///   `maxCombinedImageSamplerDescriptorCount` descriptors whatever its format.
+    /// - for an image created with [`vk::ImageCreateFlags::SUBSAMPLED_EXT`],
+    ///   [`vk::SubsampledImageFormatPropertiesEXT`]`::subsampled_image_descriptor_count`
+    ///   of its format.
+    ///
+    /// A run that holds images of several kinds or formats needs the largest of their
+    /// counts. The stride and the
     /// `descriptor_size` of the run are `descriptors_per_image * imageDescriptorSize`,
     /// the size `vkWriteResourceDescriptorsEXT` needs for such a descriptor; pass the
     /// stride as the `heapArrayStride` of the mapping. With `descriptors_per_image` 1 this
@@ -691,8 +702,8 @@ impl ResourceHeapPlan {
     /// Adds a run of `count` tensor descriptors.
     ///
     /// The stride is `tensorDescriptorSize` rounded up to a multiple of
-    /// `tensorDescriptorAlignment`, the size a shader gives a tensor in a descriptor
-    /// heap; pass it as the `heapArrayStride` of the mapping. The `descriptor_size` of
+    /// `tensorDescriptorAlignment`, so that every slot is aligned as a tensor descriptor
+    /// must be; pass it as the `heapArrayStride` of the mapping. The `descriptor_size` of
     /// the run is `tensorDescriptorSize`.
     ///
     /// # Errors
@@ -852,8 +863,8 @@ impl SamplerHeapPlan {
     /// `samplerDescriptorSize`.
     ///
     /// A slot holds one sampler descriptor written by `vkWriteSamplerDescriptorsEXT`,
-    /// which cannot write a sampler with a YCbCr conversion or a subsampled sampler;
-    /// those are embedded samplers and take no slots.
+    /// which cannot write a sampler with a YCbCr conversion; such a sampler is an
+    /// embedded sampler and takes no slots.
     ///
     /// # Errors
     ///
