@@ -1486,6 +1486,10 @@ fn check_member(ir: &Registry, s: &Struct, m: &Field, generated: &str) {
                 "{name}: the registry gives another length than the table, which takes it from {source}: {:?} instead of `{len}`",
                 m.len
             );
+            assert!(
+                generated.contains(&format!("self.{field} = value.as_ptr();")),
+                "the setter of {name} does not take a reference to an array: {generated}"
+            );
         }
         Length::NotInTheStructure => {
             let unmarked = format!(
@@ -1750,7 +1754,7 @@ fn a_pointer_whose_length_the_registry_changes_fails_the_check() {
             "StdVideoH265HrdParameters",
             "pSubLayerHrdParametersNal",
             None,
-            "StdVideoH265HrdParameters::pSubLayerHrdParametersNal: the registry gives another length than the table, which takes it from the Vulkan specification",
+            "StdVideoH265HrdParameters::pSubLayerHrdParametersNal: the registry gives the length None, not `*_max_sub_layers_minus1 + 1`: correct the list of arrays whose length is computed from values that their setter cannot see",
         ),
         (
             "StdVideoH265VideoParameterSet",

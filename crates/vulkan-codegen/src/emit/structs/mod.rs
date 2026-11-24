@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod absent_arrays;
 mod bit_fields;
+mod bounded_arrays;
 mod defaults;
 mod nullable_arrays;
 mod read_only_members;
@@ -11,6 +12,7 @@ mod unions;
 mod unmarked_arrays;
 
 pub(crate) use bit_fields::{Slot, slots};
+pub(crate) use bounded_arrays::assert_listed_bounded_arrays_exist;
 pub(crate) use nullable_arrays::assert_listed_nullable_arrays_exist;
 pub(crate) use read_only_members::assert_listed_read_only_members_exist;
 pub(crate) use unmarked_arrays::assert_listed_structures_exist;

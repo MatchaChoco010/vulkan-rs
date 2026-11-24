@@ -1,3 +1,4 @@
+use super::bounded_arrays::bounded_array;
 use super::nullable_arrays::may_be_null;
 use super::read_only_members::{PointsTo, read_only};
 use super::unmarked_arrays::{self, Length, length_that_no_member_stores};
@@ -421,6 +422,27 @@ fn pointer_setter(
             format!("self.{field} = value;"),
             None,
         )
+    } else if let Some(bounded) = bounded_array(model.ir, s, m) {
+        let null = if m.optional {
+            " The registry marks the member as optional: it is a null pointer in a structure made by `default()`, and the setter cannot make it null again."
+        } else {
+            ""
+        };
+        (
+            Doc::new().text(format!(
+                "Sets {} to point to an array of `{}` elements, the most that the C API accesses: it accesses `{}` elements, and {}. It does not access the elements after those.{null}",
+                field_link(&m.name),
+                bounded.largest,
+                bounded.len,
+                bounded.because
+            )),
+            borrow.reference(
+                "'a",
+                &format!("[{pointee}; {}]", bounded.largest_len(model)),
+            ),
+            format!("self.{field} = value.{as_ptr}();"),
+            Some(PointsTo::Array),
+        )
     } else if let Some(length) = length_that_no_member_stores(s, m) {
         let null = if m.optional {
             "The registry marks the member as optional, and the specification describes what a null pointer means for it."
@@ -440,6 +462,13 @@ fn pointer_setter(
             Some(PointsTo::Array),
         )
     } else {
+        assert!(
+            m.len.is_none(),
+            "{}::{}: the length `{}` is neither a member, a constant nor a listed expression: find the largest value that the specification allows for it and add the member to the list of arrays whose length is computed from values that their setter cannot see",
+            s.name,
+            m.name,
+            m.len.as_deref().unwrap_or_default()
+        );
         (
             sets(m, " to point to `value`"),
             borrow.reference("'a", &pointee),
@@ -587,54 +616,33 @@ mod tests {
     use vulkan_registry::Registry;
 
     #[test]
-    fn slices_without_a_count_member_set_null_when_empty_and_counted_slices_do_not() {
-        let mut ir = registry();
-        ir.structs.push(structure(
-            "VkMasksInfo",
-            vec![
-                field("samples", "uint32_t"),
-                optional(counted(
-                    "pSampleMask",
-                    "const uint32_t*",
-                    "(samples + 31) / 32",
-                )),
-                counted("pVersionData", "const uint8_t*", "2*VK_UUID_SIZE"),
-                field("wordCount", "uint32_t"),
-                counted("pWords", "const uint32_t*", "wordCount"),
-            ],
-        ));
-        let model = Model::new(&ir);
-        let out = definition(&model, &ir.structs[0]);
-        let squashed = squash(&out);
-        for (setter, element, member) in [
-            ("sample_mask", "u32", "p_sample_mask"),
-            ("version_data", "u8", "p_version_data"),
+    fn an_array_whose_length_is_not_in_the_structure_says_whether_it_may_be_left_out() {
+        let model = Model::new(Registry::get());
+        let optional = registry_struct("VkDeviceFaultInfoEXT");
+        let mut required = optional.clone();
+        for m in required
+            .members
+            .iter_mut()
+            .filter(|m| m.name == "pAddressInfos")
+        {
+            m.optional = false;
+        }
+        for (s, expected) in [
+            (
+                optional,
+                "The registry marks the member as optional, and the specification describes what a null pointer means for it.",
+            ),
+            (
+                &required,
+                "The member is not optional: the C API needs the elements.",
+            ),
         ] {
+            let documented = doc_of(&definition(&model, s), "pub fn address_infos(");
             assert!(
-                squashed.contains(&format!(
-                    "pub fn {setter}(mut self, value: &'a [{element}]) -> Self {{ self.{member} = if value.is_empty() {{ core::ptr::null() }} else {{ value.as_ptr() }}; self }}"
-                )),
-                "{setter}: {squashed}"
+                documented.len() == 1 && documented[0].ends_with(&format!(". {expected}")),
+                "{documented:?}"
             );
         }
-        assert!(
-            squashed.contains(
-                "pub fn words(mut self, value: &'a [u32]) -> Self { self.word_count = len_as_count(value.len(), \"VkMasksInfo::pWords\", \"wordCount\"); self.p_words = value.as_ptr(); self }"
-            ),
-            "{squashed}"
-        );
-        assert_eq!(
-            doc_of(&out, "pub fn sample_mask("),
-            [
-                "Sets [`p_sample_mask`](Self::p_sample_mask) to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API expects `(samples + 31) / 32` elements. The registry marks the member as optional, and the specification describes what a null pointer means for it."
-            ]
-        );
-        assert_eq!(
-            doc_of(&out, "pub fn version_data("),
-            [
-                "Sets [`p_version_data`](Self::p_version_data) to the start of a slice, or to a null pointer if the slice is empty. No member stores the length: the C API expects `2*VK_UUID_SIZE` elements. The member is not optional: the C API needs the elements."
-            ]
-        );
     }
 
     fn registry_struct(name: &str) -> &'static Struct {
@@ -882,11 +890,8 @@ mod tests {
             uncounted,
             [
                 "StdVideoEncodeAV1PictureInfo::pBufferRemovalTimes",
-                "StdVideoH265HrdParameters::pSubLayerHrdParametersNal",
-                "StdVideoH265HrdParameters::pSubLayerHrdParametersVcl",
                 "VkDeviceFaultInfoEXT::pAddressInfos",
                 "VkDeviceFaultInfoEXT::pVendorInfos",
-                "VkPipelineMultisampleStateCreateInfo::pSampleMask",
             ]
             .into_iter()
             .map(String::from)
@@ -927,8 +932,6 @@ mod tests {
                     "(VK_UUID_SIZE + 2) * VK_MAX_NAME_SIZE / 4 - 1",
                 ),
                 counted("pFour", "const uint16_t*", "4"),
-                field("samples", "uint32_t"),
-                counted("pMask", "const uint32_t*", "(samples + 31) / 32"),
             ],
         ));
         let model = Model::new(&ir);
@@ -959,12 +962,6 @@ mod tests {
                 "{setter}: {squashed}"
             );
         }
-        assert!(
-            squashed.contains(
-                "pub fn mask(mut self, value: &'a [u32]) -> Self { self.p_mask = if value.is_empty() {"
-            ),
-            "a length that depends on a member stays a slice: {squashed}"
-        );
         assert_eq!(
             doc_of(&out, "pub fn version_data("),
             [
