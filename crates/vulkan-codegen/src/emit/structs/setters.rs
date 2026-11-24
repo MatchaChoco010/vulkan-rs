@@ -1,4 +1,4 @@
-use super::read_only_members::read_only;
+use super::read_only_members::{PointsTo, read_only};
 use super::unmarked_arrays::{self, Length, length_that_no_member_stores};
 use super::{MethodNames, field_link, member_origin};
 use crate::docs::{Block, Doc};
@@ -346,7 +346,7 @@ fn pointer_setter(
             s.name, m.name
         );
     }
-    let (doc, value_ty, assignments) = if let Some(count) = count {
+    let (doc, value_ty, assignments, borrowed) = if let Some(count) = count {
         let (element, cast, of, element_types) = match length.map(|(_, length)| length) {
             Some(VoidArrayLength::Bytes) => ("u8", ".cast()", "bytes", Vec::new()),
             Some(VoidArrayLength::Values(typed)) => {
@@ -364,6 +364,7 @@ fn pointer_setter(
                 counted.assert_same_length_as_the_others(count, m),
                 counted.set_count(model, count, m)
             ),
+            Some(PointsTo::Array),
         )
     } else if m.len.as_deref() == Some(SPIRV_WORD_COUNT) {
         assert!(
@@ -380,12 +381,14 @@ fn pointer_setter(
             format!(
                 "self.code_size = core::mem::size_of_val(value); self.{field} = value.as_ptr();"
             ),
+            None,
         )
     } else if m.null_terminated && ty.base == "char" && borrow == Borrow::Shared {
         (
             sets(m, " to a NUL-terminated string"),
             "&'a CStr".to_string(),
             format!("self.{field} = value.as_ptr();"),
+            None,
         )
     } else if let Some(array_len) = constant_len(model, s, m) {
         assert!(
@@ -403,12 +406,14 @@ fn pointer_setter(
             )),
             borrow.reference("'a", &format!("[{pointee}; {array_len}]")),
             format!("self.{field} = value.{as_ptr}();"),
+            Some(PointsTo::Array),
         )
     } else if is_opaque(&ty.base) {
         (
             sets(m, ""),
             model.member_ty(m, "'a"),
             format!("self.{field} = value;"),
+            None,
         )
     } else if let Some(length) = length_that_no_member_stores(s, m) {
         let null = if m.optional {
@@ -426,6 +431,7 @@ fn pointer_setter(
                 "self.{field} = if value.is_empty() {{ {} }} else {{ value.{as_ptr}() }};",
                 null_ptr(ty.outer_const())
             ),
+            Some(PointsTo::Array),
         )
     } else {
         (
@@ -435,8 +441,17 @@ fn pointer_setter(
                 "self.{field} = {}(value){cast_mut};",
                 borrow.ptr_from_reference()
             ),
+            Some(PointsTo::OneValue),
         )
     };
+    assert!(
+        read_only.is_none_or(|listed| Some(listed.points_to) == borrowed),
+        "{}::{}: the list of members that the implementation only reads says that the member points to {}, and the setter borrows {}",
+        s.name,
+        m.name,
+        read_only.map_or("", |listed| listed.points_to.what()),
+        borrowed.map_or("neither", PointsTo::what)
+    );
     let alignment = crate::model::aligned_input(s, m).map_or("", |input| input.requirement);
     let read_only = read_only.map_or_else(String::new, |listed| listed.note("setter"));
     Setter {

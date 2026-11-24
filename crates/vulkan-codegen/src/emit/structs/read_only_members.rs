@@ -63,6 +63,15 @@ pub(super) const READ_ONLY_MEMBERS: &[ReadOnlyMember] = &[
 const CORRECT_THE_LIST: &str =
     "correct the list of members that the C API declares writable and only reads";
 
+impl PointsTo {
+    pub(super) fn what(self) -> &'static str {
+        match self {
+            PointsTo::Array => "an array",
+            PointsTo::OneValue => "one value",
+        }
+    }
+}
+
 impl ReadOnlyMember {
     fn assert_matches(&self, s: &Struct) {
         let Self {
@@ -211,6 +220,16 @@ mod tests {
         let mut written_found = 0;
         let mut read_found = 0;
         for s in &Registry::get().structs {
+            for m in &s.members {
+                let ty = CType::of(m);
+                assert!(
+                    ty.depth() < 2 || !ty.pointers.contains(&false),
+                    "{}::{} is a `{}`, a pointer to pointers with a writable level, which this test does not classify",
+                    s.name,
+                    m.name,
+                    m.full_ty
+                );
+            }
             for m in s
                 .members
                 .iter()
@@ -239,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn the_scan_for_writable_pointers_skips_what_no_setter_borrows() {
+    fn the_scan_looks_only_at_writable_pointers_that_a_setter_borrows() {
         let member = |name: &str, full_ty: &str, ty: &str, len: Option<&str>| Field {
             name: name.to_string(),
             ty: ty.to_string(),
@@ -480,6 +499,37 @@ mod tests {
                 "VkClusterAccelerationStructureOpInputNV::pMoveObjects is a `void*` with the length None, not a writable pointer to one value of a type that a reference can borrow: "
             ),
             "{message}"
+        );
+    }
+
+    #[test]
+    fn a_listed_member_that_its_setter_or_constructor_borrows_otherwise_stops_the_generator() {
+        let model = Model::new(Registry::get());
+        let binary_data = Registry::get()
+            .structs
+            .iter()
+            .find(|s| s.name == "VkPipelineBinaryDataKHR")
+            .expect("the listed structure");
+        let mut string = binary_data.clone();
+        let m = string
+            .members
+            .iter_mut()
+            .find(|m| m.name == "pData")
+            .expect("the listed member");
+        m.ty = "char".to_string();
+        m.full_ty = "char*".to_string();
+        m.len = Some("null-terminated".to_string());
+        m.null_terminated = true;
+        assert_eq!(
+            catch_quietly(|| super::super::definition(&model, &string)),
+            Err("VkPipelineBinaryDataKHR::pData: the list of members that the implementation only reads says that the member points to an array, and the setter borrows neither".to_string())
+        );
+        let mut union = binary_data.clone();
+        union.union = true;
+        union.members.retain(|m| m.name == "pData");
+        assert_eq!(
+            catch_quietly(|| super::super::unions::definition(&model, &union)),
+            Err("VkPipelineBinaryDataKHR::pData: the list of members that the implementation only reads names the member, and the constructor of a union borrows only one value that is not a string".to_string())
         );
     }
 }

@@ -1,4 +1,4 @@
-use super::read_only_members::read_only;
+use super::read_only_members::{PointsTo, read_only};
 use super::{
     MARKER_DOC, MethodNames, field_link, marker_field, member_doc, member_origin,
     thread_safety_impls, type_doc,
@@ -88,8 +88,8 @@ fn constructor(model: &Model<'_>, s: &Struct, m: &Field, names: &mut MethodNames
     let borrows_one_value = is_pointer && !borrows_a_string && !is_opaque(&ty.base);
     let read_only = read_only(s, m);
     assert!(
-        read_only.is_none() || borrows_one_value,
-        "{}::{}: a member that the implementation only reads, which the constructor does not borrow",
+        read_only.is_none_or(|listed| listed.points_to == PointsTo::OneValue && borrows_one_value),
+        "{}::{}: the list of members that the implementation only reads names the member, and the constructor of a union borrows only one value that is not a string",
         s.name,
         m.name
     );
