@@ -143,7 +143,7 @@ pub fn required_features(ir: &Registry) -> Vec<String> {
     Model::new(ir).features()
 }
 
-pub fn assert_unmarked_arrays_exist(ir: &Registry) {
+pub fn assert_listed_members_exist(ir: &Registry) {
     emit::structs::assert_listed_structures_exist(ir);
     emit::structs::assert_listed_read_only_arrays_exist(ir);
 }

@@ -135,6 +135,7 @@ mod tests {
     fn every_writable_array_of_the_registry_is_known_as_written_or_read() {
         assert_listed_read_only_arrays_exist(Registry::get());
         let mut unknown = Vec::new();
+        let mut written_found = 0;
         for s in &Registry::get().structs {
             for m in &s.members {
                 let ty = CType::of(m);
@@ -144,11 +145,17 @@ mod tests {
                 let read = is_read_only(s, m);
                 let written = WRITTEN_BY_THE_IMPLEMENTATION.contains(&(&s.name, &m.name));
                 assert!(!(read && written), "{}::{} is listed twice", s.name, m.name);
+                written_found += usize::from(written);
                 if !read && !written {
                     unknown.push(format!("{}::{}", s.name, m.name));
                 }
             }
         }
+        assert_eq!(
+            written_found,
+            WRITTEN_BY_THE_IMPLEMENTATION.len(),
+            "a member listed as written by the implementation is not a writable array of the registry"
+        );
         assert!(
             unknown.is_empty(),
             "these arrays are writable in C: find in the specification whether the implementation writes them or only reads them: {unknown:?}"

@@ -25,6 +25,11 @@ fn arrays_that_the_implementation_only_reads_are_borrowed_from_read_only_memory(
     static RATES: [vk::ImageCompressionFixedRateFlagsEXT; 1] =
         [vk::ImageCompressionFixedRateFlagsEXT::_2BPC];
     static COUNTERS: [u32; 2] = [7, 9];
+    static ENGINES: [vk::PhysicalDeviceDataGraphProcessingEngineARM; 1] =
+        [vk::PhysicalDeviceDataGraphProcessingEngineARM {
+            ty: vk::PhysicalDeviceDataGraphProcessingEngineTypeARM::DEFAULT,
+            is_foreign: vk::FALSE,
+        }];
     let data = vk::PipelineBinaryDataKHR::default().data(&BINARY);
     assert_eq!(
         (data.data_size, data.p_data.cast_const()),
@@ -37,6 +42,10 @@ fn arrays_that_the_implementation_only_reads_are_borrowed_from_read_only_memory(
         vk::RenderPassPerformanceCountersByRegionBeginInfoARM::default().counter_indices(&COUNTERS);
     assert_eq!(counters.counter_index_count, 2);
     assert_eq!(counters.p_counter_indices.cast_const(), COUNTERS.as_ptr());
+    let engines =
+        vk::DataGraphProcessingEngineCreateInfoARM::default().processing_engines(&ENGINES);
+    assert_eq!(engines.processing_engine_count, 1);
+    assert_eq!(engines.p_processing_engines.cast_const(), ENGINES.as_ptr());
 }
 
 #[test]

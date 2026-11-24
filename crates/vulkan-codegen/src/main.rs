@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use vulkan_codegen::{
-    GENERATED_SRC, GENERATED_TESTS, GeneratedFile, assert_unmarked_arrays_exist, generate,
+    GENERATED_SRC, GENERATED_TESTS, GeneratedFile, assert_listed_members_exist, generate,
     required_features,
 };
 use vulkan_registry::{Docs, Registry};
@@ -18,7 +18,7 @@ fn main() {
     };
 
     let ir = Registry::get();
-    assert_unmarked_arrays_exist(ir);
+    assert_listed_members_exist(ir);
     assert_manifest_declares_features(&root, ir);
 
     vulkan_codegen::assert_aligned_memory_exists(ir);
