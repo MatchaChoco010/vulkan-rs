@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use vulkan_codegen::{
-    GENERATED_SRC, GENERATED_TESTS, assert_aligned_memory_exists, assert_unmarked_arrays_exist,
+    GENERATED_SRC, GENERATED_TESTS, assert_aligned_memory_exists, assert_listed_members_exist,
     generate, required_features,
 };
 use vulkan_registry::{Docs, Registry};
@@ -199,7 +199,7 @@ fn the_binary_asks_for_exactly_one_workspace_root() {
 #[test]
 #[should_panic(expected = "the registry has no structure ")]
 fn a_registry_without_the_listed_structures_fails_the_check_of_the_unmarked_arrays() {
-    assert_unmarked_arrays_exist(&Registry::default());
+    assert_listed_members_exist(&Registry::default());
 }
 
 #[test]
