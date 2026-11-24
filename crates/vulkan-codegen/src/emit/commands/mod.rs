@@ -1,7 +1,10 @@
 mod dispatch_tables;
 mod inputs;
 mod shape;
+mod uncounted_arrays;
 mod wrapper;
+
+pub(crate) use uncounted_arrays::assert_listed_uncounted_arrays_exist;
 
 use super::func_pointers::parameter_items;
 use super::{arrow, assert_distinct_names, header, parameter_names, w};
@@ -2060,7 +2063,7 @@ mod tests {
                 documented
                     .matches(", which the command reads and writes: ")
                     .count(),
-                arrays_of_count.len(),
+                arrays_of_count.len() + usize::from(uncounted_arrays::uncounted_array(c).is_some()),
                 "{}: {documented}",
                 c.name
             );
