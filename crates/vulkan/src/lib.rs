@@ -148,7 +148,9 @@
 //! Nothing is destroyed on drop: [`Entry`], [`Instance`] and [`Device`] only hold a handle
 //! and a shared function pointer table, and are cheap to clone, `Send` and `Sync`. Destroy
 //! objects with their `destroy_*` commands, for example [`Instance::destroy_instance`] and
-//! [`Device::destroy_device`].
+//! [`Device::destroy_device`]. Vulkan-Loader releases before 1.4.345 need more care with
+//! threads than the specification asks for when devices are created and destroyed:
+//! [`Device::load`] describes it.
 //!
 //! # Registry metadata
 //!
