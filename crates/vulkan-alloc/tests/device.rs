@@ -335,10 +335,10 @@ fn mapped_allocations_hold_data_and_share_a_block() {
         let second = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
         let requirements = gpu.device.get_buffer_memory_requirements(first);
         let a = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
+            .allocate(desc(requirements, MemoryLocation::CpuOnly))
             .unwrap();
         let b = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
+            .allocate(desc(requirements, MemoryLocation::CpuOnly))
             .unwrap();
         assert_eq!(a.memory(), b.memory());
         assert_ne!(a.offset(), b.offset());
@@ -555,7 +555,7 @@ fn free_all_releases_memory_that_still_has_live_allocations() {
         let allocation = allocator
             .allocate(desc(
                 gpu.device.get_buffer_memory_requirements(buffer),
-                MemoryLocation::CpuToGpu,
+                MemoryLocation::CpuOnly,
             ))
             .unwrap();
         gpu.device
@@ -585,10 +585,10 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
         let second = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
         let requirements = gpu.device.get_buffer_memory_requirements(first);
         let a = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
+            .allocate(desc(requirements, MemoryLocation::CpuOnly))
             .unwrap();
         let b = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
+            .allocate(desc(requirements, MemoryLocation::CpuOnly))
             .unwrap();
         gpu.device
             .bind_buffer_memory(first, a.memory(), a.offset())
@@ -633,7 +633,7 @@ fn unmapping_a_persistent_mapping_is_an_error() {
         let allocation = allocator
             .allocate(desc(
                 gpu.device.get_buffer_memory_requirements(buffer),
-                MemoryLocation::CpuToGpu,
+                MemoryLocation::CpuOnly,
             ))
             .unwrap();
         let pointer = allocator.map_persistent(&allocation).unwrap();
