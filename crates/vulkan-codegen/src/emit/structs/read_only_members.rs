@@ -310,7 +310,7 @@ mod tests {
             (
                 "PipelineBinaryDataKHR",
                 "pub fn data(mut self, value: &'a [u8]) -> Self {",
-                "self.p_data = value.as_ptr().cast_mut().cast(); self }",
+                "self.p_data = ptr_or_null(value).cast_mut().cast(); self }",
             ),
             (
                 "ImageCompressionControlEXT",
@@ -320,12 +320,12 @@ mod tests {
             (
                 "DataGraphProcessingEngineCreateInfoARM",
                 "pub fn processing_engines(mut self, value: &'a [PhysicalDeviceDataGraphProcessingEngineARM]) -> Self {",
-                "self.p_processing_engines = value.as_ptr().cast_mut(); self }",
+                "self.p_processing_engines = ptr_or_null(value).cast_mut(); self }",
             ),
             (
                 "RenderPassPerformanceCountersByRegionBeginInfoARM",
                 "pub fn counter_indices(mut self, value: &'a [u32]) -> Self {",
-                "self.p_counter_indices = value.as_ptr().cast_mut(); self }",
+                "self.p_counter_indices = ptr_or_null(value).cast_mut(); self }",
             ),
         ] {
             let implementation = format!("impl<'a> {structure}<'a> {{");

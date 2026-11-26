@@ -1378,10 +1378,14 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     /// Sets [`p_mi_col_starts`](Self::p_mi_col_starts) to the start of a slice of elements and
     /// [`tile_cols`](Self::tile_cols) to its length.
     ///
+    /// An empty slice sets [`p_mi_col_starts`](Self::p_mi_col_starts) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileCols` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileCols` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can
+    /// count.
     pub fn mi_col_starts(mut self, value: &'a [u16]) -> Self {
         if !self.p_width_in_sbs_minus1.is_null() {
             assert_eq!(
@@ -1391,16 +1395,20 @@ impl<'a> StdVideoAV1TileInfo<'a> {
             );
         }
         self.tile_cols = len_as_count(value.len(), "StdVideoAV1TileInfo::pMiColStarts", "TileCols");
-        self.p_mi_col_starts = value.as_ptr();
+        self.p_mi_col_starts = ptr_or_null(value);
         self
     }
     /// Sets [`p_mi_row_starts`](Self::p_mi_row_starts) to the start of a slice of elements and
     /// [`tile_rows`](Self::tile_rows) to its length.
     ///
+    /// An empty slice sets [`p_mi_row_starts`](Self::p_mi_row_starts) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileRows` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileRows` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can
+    /// count.
     pub fn mi_row_starts(mut self, value: &'a [u16]) -> Self {
         if !self.p_height_in_sbs_minus1.is_null() {
             assert_eq!(
@@ -1410,7 +1418,7 @@ impl<'a> StdVideoAV1TileInfo<'a> {
             );
         }
         self.tile_rows = len_as_count(value.len(), "StdVideoAV1TileInfo::pMiRowStarts", "TileRows");
-        self.p_mi_row_starts = value.as_ptr();
+        self.p_mi_row_starts = ptr_or_null(value);
         self
     }
     /// Sets [`p_width_in_sbs_minus1`](Self::p_width_in_sbs_minus1) to the start of a slice of
@@ -1426,8 +1434,10 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileCols` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileCols` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can
+    /// count.
     pub fn width_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
         if value.is_empty() {
             if !self.p_width_in_sbs_minus1.is_null() && self.p_mi_col_starts.is_null() {
@@ -1464,8 +1474,10 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileRows` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileRows` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can
+    /// count.
     pub fn height_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
         if value.is_empty() {
             if !self.p_height_in_sbs_minus1.is_null() && self.p_mi_row_starts.is_null() {
@@ -4519,6 +4531,9 @@ impl<'a> StdVideoEncodeH264ReferenceListsInfo<'a> {
     /// slice of elements and [`ref_list0_mod_op_count`](Self::ref_list0_mod_op_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_ref_list0_mod_operations`](Self::p_ref_list0_mod_operations) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `refList0ModOpCount`, a `uint8_t`, can count.
@@ -4531,12 +4546,15 @@ impl<'a> StdVideoEncodeH264ReferenceListsInfo<'a> {
             "StdVideoEncodeH264ReferenceListsInfo::pRefList0ModOperations",
             "refList0ModOpCount",
         );
-        self.p_ref_list0_mod_operations = value.as_ptr();
+        self.p_ref_list0_mod_operations = ptr_or_null(value);
         self
     }
     /// Sets [`p_ref_list1_mod_operations`](Self::p_ref_list1_mod_operations) to the start of a
     /// slice of elements and [`ref_list1_mod_op_count`](Self::ref_list1_mod_op_count) to its
     /// length.
+    ///
+    /// An empty slice sets [`p_ref_list1_mod_operations`](Self::p_ref_list1_mod_operations) to a
+    /// null pointer.
     ///
     /// # Panics
     ///
@@ -4550,12 +4568,15 @@ impl<'a> StdVideoEncodeH264ReferenceListsInfo<'a> {
             "StdVideoEncodeH264ReferenceListsInfo::pRefList1ModOperations",
             "refList1ModOpCount",
         );
-        self.p_ref_list1_mod_operations = value.as_ptr();
+        self.p_ref_list1_mod_operations = ptr_or_null(value);
         self
     }
     /// Sets [`p_ref_pic_marking_operations`](Self::p_ref_pic_marking_operations) to the start of a
     /// slice of elements and [`ref_pic_marking_op_count`](Self::ref_pic_marking_op_count) to its
     /// length.
+    ///
+    /// An empty slice sets [`p_ref_pic_marking_operations`](Self::p_ref_pic_marking_operations) to
+    /// a null pointer.
     ///
     /// # Panics
     ///
@@ -4569,7 +4590,7 @@ impl<'a> StdVideoEncodeH264ReferenceListsInfo<'a> {
             "StdVideoEncodeH264ReferenceListsInfo::pRefPicMarkingOperations",
             "refPicMarkingOpCount",
         );
-        self.p_ref_pic_marking_operations = value.as_ptr();
+        self.p_ref_pic_marking_operations = ptr_or_null(value);
         self
     }
 }
@@ -6579,6 +6600,9 @@ impl<'a> StdVideoH264SequenceParameterSet<'a> {
     /// [`num_ref_frames_in_pic_order_cnt_cycle`](Self::num_ref_frames_in_pic_order_cnt_cycle) to
     /// its length.
     ///
+    /// An empty slice sets [`p_offset_for_ref_frame`](Self::p_offset_for_ref_frame) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `num_ref_frames_in_pic_order_cnt_cycle`, a
@@ -6589,7 +6613,7 @@ impl<'a> StdVideoH264SequenceParameterSet<'a> {
             "StdVideoH264SequenceParameterSet::pOffsetForRefFrame",
             "num_ref_frames_in_pic_order_cnt_cycle",
         );
-        self.p_offset_for_ref_frame = value.as_ptr();
+        self.p_offset_for_ref_frame = ptr_or_null(value);
         self
     }
     /// Sets [`p_scaling_lists`](Self::p_scaling_lists) to point to `value`.
@@ -8679,6 +8703,9 @@ impl<'a> StdVideoH265SequenceParameterSet<'a> {
     /// elements and [`num_short_term_ref_pic_sets`](Self::num_short_term_ref_pic_sets) to its
     /// length.
     ///
+    /// An empty slice sets [`p_short_term_ref_pic_set`](Self::p_short_term_ref_pic_set) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `num_short_term_ref_pic_sets`, a `uint8_t`, can
@@ -8689,7 +8716,7 @@ impl<'a> StdVideoH265SequenceParameterSet<'a> {
             "StdVideoH265SequenceParameterSet::pShortTermRefPicSet",
             "num_short_term_ref_pic_sets",
         );
-        self.p_short_term_ref_pic_set = value.as_ptr();
+        self.p_short_term_ref_pic_set = ptr_or_null(value);
         self
     }
     /// Sets [`p_long_term_ref_pics_sps`](Self::p_long_term_ref_pics_sps) to point to `value`.
@@ -10465,9 +10492,10 @@ impl<'a> AccelerationStructureBuildGeometryInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `geometryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `geometryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `geometryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `geometryCount`, a
+    /// `uint32_t`, can count.
     pub fn geometries(mut self, value: &'a [AccelerationStructureGeometryKHR<'a>]) -> Self {
         if value.is_empty() {
             if !self.p_geometries.is_null() && self.pp_geometries.is_null() {
@@ -10504,9 +10532,10 @@ impl<'a> AccelerationStructureBuildGeometryInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `geometryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `geometryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `geometryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `geometryCount`, a
+    /// `uint32_t`, can count.
     pub fn geometries_ptrs(
         mut self,
         value: &'a [&'a AccelerationStructureGeometryKHR<'a>],
@@ -11692,9 +11721,10 @@ impl<'a> AccelerationStructureGeometryMicromapDataKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageKHR]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -11732,9 +11762,10 @@ impl<'a> AccelerationStructureGeometryMicromapDataKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageKHR]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -12164,6 +12195,8 @@ impl<'a> AccelerationStructureInfoNV<'a> {
     /// Sets [`p_geometries`](Self::p_geometries) to the start of a slice of elements and
     /// [`geometry_count`](Self::geometry_count) to its length.
     ///
+    /// An empty slice sets [`p_geometries`](Self::p_geometries) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `geometryCount`, a `uint32_t`, can count.
@@ -12173,7 +12206,7 @@ impl<'a> AccelerationStructureInfoNV<'a> {
             "VkAccelerationStructureInfoNV::pGeometries",
             "geometryCount",
         );
-        self.p_geometries = value.as_ptr();
+        self.p_geometries = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -12935,9 +12968,10 @@ impl<'a> AccelerationStructureTrianglesDisplacementMicromapNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -12975,9 +13009,10 @@ impl<'a> AccelerationStructureTrianglesDisplacementMicromapNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -13126,9 +13161,10 @@ impl<'a> AccelerationStructureTrianglesOpacityMicromapEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -13166,9 +13202,10 @@ impl<'a> AccelerationStructureTrianglesOpacityMicromapEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -15087,6 +15124,9 @@ impl<'a> AttachmentSampleCountInfoAMD<'a> {
     /// slice of elements and [`color_attachment_count`](Self::color_attachment_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_color_attachment_samples`](Self::p_color_attachment_samples) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorAttachmentCount`, a `uint32_t`, can count.
@@ -15096,7 +15136,7 @@ impl<'a> AttachmentSampleCountInfoAMD<'a> {
             "VkAttachmentSampleCountInfoAMD::pColorAttachmentSamples",
             "colorAttachmentCount",
         );
-        self.p_color_attachment_samples = value.as_ptr();
+        self.p_color_attachment_samples = ptr_or_null(value);
         self
     }
     /// Sets [`depth_stencil_attachment_samples`](Self::depth_stencil_attachment_samples).
@@ -15381,6 +15421,8 @@ impl<'a> BindAccelerationStructureMemoryInfoNV<'a> {
     /// Sets [`p_device_indices`](Self::p_device_indices) to the start of a slice of elements and
     /// [`device_index_count`](Self::device_index_count) to its length.
     ///
+    /// An empty slice sets [`p_device_indices`](Self::p_device_indices) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `deviceIndexCount`, a `uint32_t`, can count.
@@ -15390,7 +15432,7 @@ impl<'a> BindAccelerationStructureMemoryInfoNV<'a> {
             "VkBindAccelerationStructureMemoryInfoNV::pDeviceIndices",
             "deviceIndexCount",
         );
-        self.p_device_indices = value.as_ptr();
+        self.p_device_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -15458,6 +15500,8 @@ impl<'a> BindBufferMemoryDeviceGroupInfo<'a> {
     /// Sets [`p_device_indices`](Self::p_device_indices) to the start of a slice of elements and
     /// [`device_index_count`](Self::device_index_count) to its length.
     ///
+    /// An empty slice sets [`p_device_indices`](Self::p_device_indices) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `deviceIndexCount`, a `uint32_t`, can count.
@@ -15467,7 +15511,7 @@ impl<'a> BindBufferMemoryDeviceGroupInfo<'a> {
             "VkBindBufferMemoryDeviceGroupInfo::pDeviceIndices",
             "deviceIndexCount",
         );
-        self.p_device_indices = value.as_ptr();
+        self.p_device_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -15821,6 +15865,8 @@ impl<'a> BindDescriptorSetsInfo<'a> {
     /// Sets [`p_descriptor_sets`](Self::p_descriptor_sets) to the start of a slice of elements and
     /// [`descriptor_set_count`](Self::descriptor_set_count) to its length.
     ///
+    /// An empty slice sets [`p_descriptor_sets`](Self::p_descriptor_sets) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `descriptorSetCount`, a `uint32_t`, can count.
@@ -15830,7 +15876,7 @@ impl<'a> BindDescriptorSetsInfo<'a> {
             "VkBindDescriptorSetsInfo::pDescriptorSets",
             "descriptorSetCount",
         );
-        self.p_descriptor_sets = value.as_ptr();
+        self.p_descriptor_sets = ptr_or_null(value);
         self
     }
     /// Sets [`dynamic_offset_count`](Self::dynamic_offset_count).
@@ -16018,6 +16064,8 @@ impl<'a> BindImageMemoryDeviceGroupInfo<'a> {
     /// Sets [`p_device_indices`](Self::p_device_indices) to the start of a slice of elements and
     /// [`device_index_count`](Self::device_index_count) to its length.
     ///
+    /// An empty slice sets [`p_device_indices`](Self::p_device_indices) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `deviceIndexCount`, a `uint32_t`, can count.
@@ -16027,7 +16075,7 @@ impl<'a> BindImageMemoryDeviceGroupInfo<'a> {
             "VkBindImageMemoryDeviceGroupInfo::pDeviceIndices",
             "deviceIndexCount",
         );
-        self.p_device_indices = value.as_ptr();
+        self.p_device_indices = ptr_or_null(value);
         self
     }
     /// Sets [`split_instance_bind_region_count`](Self::split_instance_bind_region_count).
@@ -16039,6 +16087,9 @@ impl<'a> BindImageMemoryDeviceGroupInfo<'a> {
     /// a slice of elements and
     /// [`split_instance_bind_region_count`](Self::split_instance_bind_region_count) to its length.
     ///
+    /// An empty slice sets [`p_split_instance_bind_regions`](Self::p_split_instance_bind_regions)
+    /// to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `splitInstanceBindRegionCount`, a `uint32_t`, can
@@ -16049,7 +16100,7 @@ impl<'a> BindImageMemoryDeviceGroupInfo<'a> {
             "VkBindImageMemoryDeviceGroupInfo::pSplitInstanceBindRegions",
             "splitInstanceBindRegionCount",
         );
-        self.p_split_instance_bind_regions = value.as_ptr();
+        self.p_split_instance_bind_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -16663,6 +16714,8 @@ impl<'a> BindSparseInfo<'a> {
     /// Sets [`p_wait_semaphores`](Self::p_wait_semaphores) to the start of a slice of elements and
     /// [`wait_semaphore_count`](Self::wait_semaphore_count) to its length.
     ///
+    /// An empty slice sets [`p_wait_semaphores`](Self::p_wait_semaphores) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `waitSemaphoreCount`, a `uint32_t`, can count.
@@ -16672,7 +16725,7 @@ impl<'a> BindSparseInfo<'a> {
             "VkBindSparseInfo::pWaitSemaphores",
             "waitSemaphoreCount",
         );
-        self.p_wait_semaphores = value.as_ptr();
+        self.p_wait_semaphores = ptr_or_null(value);
         self
     }
     /// Sets [`buffer_bind_count`](Self::buffer_bind_count).
@@ -16683,6 +16736,8 @@ impl<'a> BindSparseInfo<'a> {
     /// Sets [`p_buffer_binds`](Self::p_buffer_binds) to the start of a slice of elements and
     /// [`buffer_bind_count`](Self::buffer_bind_count) to its length.
     ///
+    /// An empty slice sets [`p_buffer_binds`](Self::p_buffer_binds) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `bufferBindCount`, a `uint32_t`, can count.
@@ -16692,7 +16747,7 @@ impl<'a> BindSparseInfo<'a> {
             "VkBindSparseInfo::pBufferBinds",
             "bufferBindCount",
         );
-        self.p_buffer_binds = value.as_ptr();
+        self.p_buffer_binds = ptr_or_null(value);
         self
     }
     /// Sets [`image_opaque_bind_count`](Self::image_opaque_bind_count).
@@ -16703,6 +16758,8 @@ impl<'a> BindSparseInfo<'a> {
     /// Sets [`p_image_opaque_binds`](Self::p_image_opaque_binds) to the start of a slice of
     /// elements and [`image_opaque_bind_count`](Self::image_opaque_bind_count) to its length.
     ///
+    /// An empty slice sets [`p_image_opaque_binds`](Self::p_image_opaque_binds) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `imageOpaqueBindCount`, a `uint32_t`, can count.
@@ -16712,7 +16769,7 @@ impl<'a> BindSparseInfo<'a> {
             "VkBindSparseInfo::pImageOpaqueBinds",
             "imageOpaqueBindCount",
         );
-        self.p_image_opaque_binds = value.as_ptr();
+        self.p_image_opaque_binds = ptr_or_null(value);
         self
     }
     /// Sets [`image_bind_count`](Self::image_bind_count).
@@ -16723,6 +16780,8 @@ impl<'a> BindSparseInfo<'a> {
     /// Sets [`p_image_binds`](Self::p_image_binds) to the start of a slice of elements and
     /// [`image_bind_count`](Self::image_bind_count) to its length.
     ///
+    /// An empty slice sets [`p_image_binds`](Self::p_image_binds) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `imageBindCount`, a `uint32_t`, can count.
@@ -16732,7 +16791,7 @@ impl<'a> BindSparseInfo<'a> {
             "VkBindSparseInfo::pImageBinds",
             "imageBindCount",
         );
-        self.p_image_binds = value.as_ptr();
+        self.p_image_binds = ptr_or_null(value);
         self
     }
     /// Sets [`signal_semaphore_count`](Self::signal_semaphore_count).
@@ -16743,6 +16802,8 @@ impl<'a> BindSparseInfo<'a> {
     /// Sets [`p_signal_semaphores`](Self::p_signal_semaphores) to the start of a slice of elements
     /// and [`signal_semaphore_count`](Self::signal_semaphore_count) to its length.
     ///
+    /// An empty slice sets [`p_signal_semaphores`](Self::p_signal_semaphores) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `signalSemaphoreCount`, a `uint32_t`, can count.
@@ -16752,7 +16813,7 @@ impl<'a> BindSparseInfo<'a> {
             "VkBindSparseInfo::pSignalSemaphores",
             "signalSemaphoreCount",
         );
-        self.p_signal_semaphores = value.as_ptr();
+        self.p_signal_semaphores = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -17313,12 +17374,14 @@ impl<'a> BlitImageInfo2<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
     pub fn regions(mut self, value: &'a [ImageBlit2<'a>]) -> Self {
         self.region_count = len_as_count(value.len(), "VkBlitImageInfo2::pRegions", "regionCount");
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Sets [`filter`](Self::filter).
@@ -18146,6 +18209,9 @@ impl<'a> BufferCreateInfo<'a> {
     /// Sets [`p_queue_family_indices`](Self::p_queue_family_indices) to the start of a slice of
     /// elements and [`queue_family_index_count`](Self::queue_family_index_count) to its length.
     ///
+    /// An empty slice sets [`p_queue_family_indices`](Self::p_queue_family_indices) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueFamilyIndexCount`, a `uint32_t`, can count.
@@ -18155,7 +18221,7 @@ impl<'a> BufferCreateInfo<'a> {
             "VkBufferCreateInfo::pQueueFamilyIndices",
             "queueFamilyIndexCount",
         );
-        self.p_queue_family_indices = value.as_ptr();
+        self.p_queue_family_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -21036,6 +21102,8 @@ impl<'a> CoarseSampleOrderCustomNV<'a> {
     /// Sets [`p_sample_locations`](Self::p_sample_locations) to the start of a slice of elements
     /// and [`sample_location_count`](Self::sample_location_count) to its length.
     ///
+    /// An empty slice sets [`p_sample_locations`](Self::p_sample_locations) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `sampleLocationCount`, a `uint32_t`, can count.
@@ -21045,7 +21113,7 @@ impl<'a> CoarseSampleOrderCustomNV<'a> {
             "VkCoarseSampleOrderCustomNV::pSampleLocations",
             "sampleLocationCount",
         );
-        self.p_sample_locations = value.as_ptr();
+        self.p_sample_locations = ptr_or_null(value);
         self
     }
 }
@@ -21744,6 +21812,9 @@ impl<'a> CommandBufferInheritanceRenderingInfo<'a> {
     /// slice of elements and [`color_attachment_count`](Self::color_attachment_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_color_attachment_formats`](Self::p_color_attachment_formats) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorAttachmentCount`, a `uint32_t`, can count.
@@ -21753,7 +21824,7 @@ impl<'a> CommandBufferInheritanceRenderingInfo<'a> {
             "VkCommandBufferInheritanceRenderingInfo::pColorAttachmentFormats",
             "colorAttachmentCount",
         );
-        self.p_color_attachment_formats = value.as_ptr();
+        self.p_color_attachment_formats = ptr_or_null(value);
         self
     }
     /// Sets [`depth_attachment_format`](Self::depth_attachment_format).
@@ -21851,6 +21922,8 @@ impl<'a> CommandBufferInheritanceViewportScissorInfoNV<'a> {
     /// Sets [`p_viewport_depths`](Self::p_viewport_depths) to the start of a slice of elements and
     /// [`viewport_depth_count`](Self::viewport_depth_count) to its length.
     ///
+    /// An empty slice sets [`p_viewport_depths`](Self::p_viewport_depths) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `viewportDepthCount`, a `uint32_t`, can count.
@@ -21860,7 +21933,7 @@ impl<'a> CommandBufferInheritanceViewportScissorInfoNV<'a> {
             "VkCommandBufferInheritanceViewportScissorInfoNV::pViewportDepths",
             "viewportDepthCount",
         );
-        self.p_viewport_depths = value.as_ptr();
+        self.p_viewport_depths = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -23480,12 +23553,14 @@ impl<'a> CopyBufferInfo2<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
     pub fn regions(mut self, value: &'a [BufferCopy2<'a>]) -> Self {
         self.region_count = len_as_count(value.len(), "VkCopyBufferInfo2::pRegions", "regionCount");
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -23579,6 +23654,8 @@ impl<'a> CopyBufferToImageInfo2<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -23588,7 +23665,7 @@ impl<'a> CopyBufferToImageInfo2<'a> {
             "VkCopyBufferToImageInfo2::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -23863,6 +23940,8 @@ impl<'a> CopyDeviceMemoryImageInfoKHR<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -23872,7 +23951,7 @@ impl<'a> CopyDeviceMemoryImageInfoKHR<'a> {
             "VkCopyDeviceMemoryImageInfoKHR::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -23938,6 +24017,8 @@ impl<'a> CopyDeviceMemoryInfoKHR<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -23947,7 +24028,7 @@ impl<'a> CopyDeviceMemoryInfoKHR<'a> {
             "VkCopyDeviceMemoryInfoKHR::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -24045,12 +24126,14 @@ impl<'a> CopyImageInfo2<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
     pub fn regions(mut self, value: &'a [ImageCopy2<'a>]) -> Self {
         self.region_count = len_as_count(value.len(), "VkCopyImageInfo2::pRegions", "regionCount");
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -24144,6 +24227,8 @@ impl<'a> CopyImageToBufferInfo2<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -24153,7 +24238,7 @@ impl<'a> CopyImageToBufferInfo2<'a> {
             "VkCopyImageToBufferInfo2::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -24264,6 +24349,8 @@ impl<'a> CopyImageToImageInfo<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -24273,7 +24360,7 @@ impl<'a> CopyImageToImageInfo<'a> {
             "VkCopyImageToImageInfo::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -24368,6 +24455,8 @@ impl<'a> CopyImageToMemoryInfo<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -24377,7 +24466,7 @@ impl<'a> CopyImageToMemoryInfo<'a> {
             "VkCopyImageToMemoryInfo::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -24780,6 +24869,8 @@ impl<'a> CopyMemoryToImageIndirectInfoKHR<'a> {
     /// Sets [`p_image_subresources`](Self::p_image_subresources) to the start of a slice of
     /// elements and [`copy_count`](Self::copy_count) to its length.
     ///
+    /// An empty slice sets [`p_image_subresources`](Self::p_image_subresources) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `copyCount`, a `uint32_t`, can count.
@@ -24789,7 +24880,7 @@ impl<'a> CopyMemoryToImageIndirectInfoKHR<'a> {
             "VkCopyMemoryToImageIndirectInfoKHR::pImageSubresources",
             "copyCount",
         );
-        self.p_image_subresources = value.as_ptr();
+        self.p_image_subresources = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -24880,6 +24971,8 @@ impl<'a> CopyMemoryToImageInfo<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -24889,7 +24982,7 @@ impl<'a> CopyMemoryToImageInfo<'a> {
             "VkCopyMemoryToImageInfo::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -25194,13 +25287,15 @@ impl<'a> CopyTensorInfoARM<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
     pub fn regions(mut self, value: &'a [TensorCopyARM<'a>]) -> Self {
         self.region_count =
             len_as_count(value.len(), "VkCopyTensorInfoARM::pRegions", "regionCount");
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -25472,9 +25567,11 @@ impl<'a> CuModuleCreateInfoNVX<'a> {
     }
     /// Sets [`p_data`](Self::p_data) to the start of a slice of bytes and
     /// [`data_size`](Self::data_size) to its length.
+    ///
+    /// An empty slice sets [`p_data`](Self::p_data) to a null pointer.
     pub fn data(mut self, value: &'a [u8]) -> Self {
         self.data_size = value.len() as _;
-        self.p_data = value.as_ptr().cast();
+        self.p_data = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -25827,9 +25924,11 @@ impl<'a> CudaModuleCreateInfoNV<'a> {
     }
     /// Sets [`p_data`](Self::p_data) to the start of a slice of bytes and
     /// [`data_size`](Self::data_size) to its length.
+    ///
+    /// An empty slice sets [`p_data`](Self::p_data) to a null pointer.
     pub fn data(mut self, value: &'a [u8]) -> Self {
         self.data_size = value.len() as _;
-        self.p_data = value.as_ptr().cast();
+        self.p_data = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -25917,6 +26016,9 @@ impl<'a> CustomResolveCreateInfoEXT<'a> {
     /// slice of elements and [`color_attachment_count`](Self::color_attachment_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_color_attachment_formats`](Self::p_color_attachment_formats) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorAttachmentCount`, a `uint32_t`, can count.
@@ -25926,7 +26028,7 @@ impl<'a> CustomResolveCreateInfoEXT<'a> {
             "VkCustomResolveCreateInfoEXT::pColorAttachmentFormats",
             "colorAttachmentCount",
         );
-        self.p_color_attachment_formats = value.as_ptr();
+        self.p_color_attachment_formats = ptr_or_null(value);
         self
     }
     /// Sets [`depth_attachment_format`](Self::depth_attachment_format).
@@ -26701,6 +26803,8 @@ impl<'a> DataGraphPipelineIdentifierCreateInfoARM<'a> {
     /// Sets [`p_identifier`](Self::p_identifier) to the start of a slice of elements and
     /// [`identifier_size`](Self::identifier_size) to its length.
     ///
+    /// An empty slice sets [`p_identifier`](Self::p_identifier) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `identifierSize`, a `uint32_t`, can count.
@@ -26710,7 +26814,7 @@ impl<'a> DataGraphPipelineIdentifierCreateInfoARM<'a> {
             "VkDataGraphPipelineIdentifierCreateInfoARM::pIdentifier",
             "identifierSize",
         );
-        self.p_identifier = value.as_ptr();
+        self.p_identifier = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -27901,6 +28005,8 @@ impl<'a> DataGraphPipelineSingleNodeCreateInfoARM<'a> {
     /// Sets [`p_connections`](Self::p_connections) to the start of a slice of elements and
     /// [`connection_count`](Self::connection_count) to its length.
     ///
+    /// An empty slice sets [`p_connections`](Self::p_connections) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `connectionCount`, a `uint32_t`, can count.
@@ -27913,7 +28019,7 @@ impl<'a> DataGraphPipelineSingleNodeCreateInfoARM<'a> {
             "VkDataGraphPipelineSingleNodeCreateInfoARM::pConnections",
             "connectionCount",
         );
-        self.p_connections = value.as_ptr();
+        self.p_connections = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -27987,6 +28093,8 @@ impl<'a> DataGraphProcessingEngineCreateInfoARM<'a> {
     /// Sets [`p_processing_engines`](Self::p_processing_engines) to the start of a slice of
     /// elements and [`processing_engine_count`](Self::processing_engine_count) to its length.
     ///
+    /// An empty slice sets [`p_processing_engines`](Self::p_processing_engines) to a null pointer.
+    ///
     /// The C declaration of the member is a pointer to writable memory, but the implementation only
     /// reads the elements, so the setter borrows them shared.
     ///
@@ -28002,7 +28110,7 @@ impl<'a> DataGraphProcessingEngineCreateInfoARM<'a> {
             "VkDataGraphProcessingEngineCreateInfoARM::pProcessingEngines",
             "processingEngineCount",
         );
-        self.p_processing_engines = value.as_ptr().cast_mut();
+        self.p_processing_engines = ptr_or_null(value).cast_mut();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -28283,9 +28391,11 @@ impl<'a> DebugMarkerObjectTagInfoEXT<'a> {
     }
     /// Sets [`p_tag`](Self::p_tag) to the start of a slice of bytes and
     /// [`tag_size`](Self::tag_size) to its length.
+    ///
+    /// An empty slice sets [`p_tag`](Self::p_tag) to a null pointer.
     pub fn tag(mut self, value: &'a [u8]) -> Self {
         self.tag_size = value.len() as _;
-        self.p_tag = value.as_ptr().cast();
+        self.p_tag = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -28618,6 +28728,8 @@ impl<'a> DebugUtilsMessengerCallbackDataEXT<'a> {
     /// Sets [`p_objects`](Self::p_objects) to the start of a slice of elements and
     /// [`object_count`](Self::object_count) to its length.
     ///
+    /// An empty slice sets [`p_objects`](Self::p_objects) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `objectCount`, a `uint32_t`, can count.
@@ -28627,7 +28739,7 @@ impl<'a> DebugUtilsMessengerCallbackDataEXT<'a> {
             "VkDebugUtilsMessengerCallbackDataEXT::pObjects",
             "objectCount",
         );
-        self.p_objects = value.as_ptr();
+        self.p_objects = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -28891,9 +29003,11 @@ impl<'a> DebugUtilsObjectTagInfoEXT<'a> {
     }
     /// Sets [`p_tag`](Self::p_tag) to the start of a slice of bytes and
     /// [`tag_size`](Self::tag_size) to its length.
+    ///
+    /// An empty slice sets [`p_tag`](Self::p_tag) to a null pointer.
     pub fn tag(mut self, value: &'a [u8]) -> Self {
         self.tag_size = value.len() as _;
-        self.p_tag = value.as_ptr().cast();
+        self.p_tag = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -28970,6 +29084,8 @@ impl<'a> DecompressMemoryInfoEXT<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -28979,7 +29095,7 @@ impl<'a> DecompressMemoryInfoEXT<'a> {
             "VkDecompressMemoryInfoEXT::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -29374,6 +29490,8 @@ impl<'a> DependencyInfo<'a> {
     /// Sets [`p_memory_barriers`](Self::p_memory_barriers) to the start of a slice of elements and
     /// [`memory_barrier_count`](Self::memory_barrier_count) to its length.
     ///
+    /// An empty slice sets [`p_memory_barriers`](Self::p_memory_barriers) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `memoryBarrierCount`, a `uint32_t`, can count.
@@ -29383,7 +29501,7 @@ impl<'a> DependencyInfo<'a> {
             "VkDependencyInfo::pMemoryBarriers",
             "memoryBarrierCount",
         );
-        self.p_memory_barriers = value.as_ptr();
+        self.p_memory_barriers = ptr_or_null(value);
         self
     }
     /// Sets [`buffer_memory_barrier_count`](Self::buffer_memory_barrier_count).
@@ -29395,6 +29513,9 @@ impl<'a> DependencyInfo<'a> {
     /// elements and [`buffer_memory_barrier_count`](Self::buffer_memory_barrier_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_buffer_memory_barriers`](Self::p_buffer_memory_barriers) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `bufferMemoryBarrierCount`, a `uint32_t`, can
@@ -29405,7 +29526,7 @@ impl<'a> DependencyInfo<'a> {
             "VkDependencyInfo::pBufferMemoryBarriers",
             "bufferMemoryBarrierCount",
         );
-        self.p_buffer_memory_barriers = value.as_ptr();
+        self.p_buffer_memory_barriers = ptr_or_null(value);
         self
     }
     /// Sets [`image_memory_barrier_count`](Self::image_memory_barrier_count).
@@ -29415,6 +29536,9 @@ impl<'a> DependencyInfo<'a> {
     }
     /// Sets [`p_image_memory_barriers`](Self::p_image_memory_barriers) to the start of a slice of
     /// elements and [`image_memory_barrier_count`](Self::image_memory_barrier_count) to its length.
+    ///
+    /// An empty slice sets [`p_image_memory_barriers`](Self::p_image_memory_barriers) to a null
+    /// pointer.
     ///
     /// # Panics
     ///
@@ -29426,7 +29550,7 @@ impl<'a> DependencyInfo<'a> {
             "VkDependencyInfo::pImageMemoryBarriers",
             "imageMemoryBarrierCount",
         );
-        self.p_image_memory_barriers = value.as_ptr();
+        self.p_image_memory_barriers = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -31087,6 +31211,8 @@ impl<'a> DescriptorPoolCreateInfo<'a> {
     /// Sets [`p_pool_sizes`](Self::p_pool_sizes) to the start of a slice of elements and
     /// [`pool_size_count`](Self::pool_size_count) to its length.
     ///
+    /// An empty slice sets [`p_pool_sizes`](Self::p_pool_sizes) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `poolSizeCount`, a `uint32_t`, can count.
@@ -31096,7 +31222,7 @@ impl<'a> DescriptorPoolCreateInfo<'a> {
             "VkDescriptorPoolCreateInfo::pPoolSizes",
             "poolSizeCount",
         );
-        self.p_pool_sizes = value.as_ptr();
+        self.p_pool_sizes = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -31277,6 +31403,8 @@ impl<'a> DescriptorSetAllocateInfo<'a> {
     /// Sets [`p_set_layouts`](Self::p_set_layouts) to the start of a slice of elements and
     /// [`descriptor_set_count`](Self::descriptor_set_count) to its length.
     ///
+    /// An empty slice sets [`p_set_layouts`](Self::p_set_layouts) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `descriptorSetCount`, a `uint32_t`, can count.
@@ -31286,7 +31414,7 @@ impl<'a> DescriptorSetAllocateInfo<'a> {
             "VkDescriptorSetAllocateInfo::pSetLayouts",
             "descriptorSetCount",
         );
-        self.p_set_layouts = value.as_ptr();
+        self.p_set_layouts = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -31644,6 +31772,8 @@ impl<'a> DescriptorSetLayoutBindingFlagsCreateInfo<'a> {
     /// Sets [`p_binding_flags`](Self::p_binding_flags) to the start of a slice of elements and
     /// [`binding_count`](Self::binding_count) to its length.
     ///
+    /// An empty slice sets [`p_binding_flags`](Self::p_binding_flags) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `bindingCount`, a `uint32_t`, can count.
@@ -31653,7 +31783,7 @@ impl<'a> DescriptorSetLayoutBindingFlagsCreateInfo<'a> {
             "VkDescriptorSetLayoutBindingFlagsCreateInfo::pBindingFlags",
             "bindingCount",
         );
-        self.p_binding_flags = value.as_ptr();
+        self.p_binding_flags = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -31736,6 +31866,8 @@ impl<'a> DescriptorSetLayoutCreateInfo<'a> {
     /// Sets [`p_bindings`](Self::p_bindings) to the start of a slice of elements and
     /// [`binding_count`](Self::binding_count) to its length.
     ///
+    /// An empty slice sets [`p_bindings`](Self::p_bindings) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `bindingCount`, a `uint32_t`, can count.
@@ -31745,7 +31877,7 @@ impl<'a> DescriptorSetLayoutCreateInfo<'a> {
             "VkDescriptorSetLayoutCreateInfo::pBindings",
             "bindingCount",
         );
-        self.p_bindings = value.as_ptr();
+        self.p_bindings = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -31941,6 +32073,8 @@ impl<'a> DescriptorSetVariableDescriptorCountAllocateInfo<'a> {
     /// Sets [`p_descriptor_counts`](Self::p_descriptor_counts) to the start of a slice of elements
     /// and [`descriptor_set_count`](Self::descriptor_set_count) to its length.
     ///
+    /// An empty slice sets [`p_descriptor_counts`](Self::p_descriptor_counts) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `descriptorSetCount`, a `uint32_t`, can count.
@@ -31950,7 +32084,7 @@ impl<'a> DescriptorSetVariableDescriptorCountAllocateInfo<'a> {
             "VkDescriptorSetVariableDescriptorCountAllocateInfo::pDescriptorCounts",
             "descriptorSetCount",
         );
-        self.p_descriptor_counts = value.as_ptr();
+        self.p_descriptor_counts = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -32139,6 +32273,9 @@ impl<'a> DescriptorUpdateTemplateCreateInfo<'a> {
     /// slice of elements and [`descriptor_update_entry_count`](Self::descriptor_update_entry_count)
     /// to its length.
     ///
+    /// An empty slice sets [`p_descriptor_update_entries`](Self::p_descriptor_update_entries) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `descriptorUpdateEntryCount`, a `uint32_t`, can
@@ -32149,7 +32286,7 @@ impl<'a> DescriptorUpdateTemplateCreateInfo<'a> {
             "VkDescriptorUpdateTemplateCreateInfo::pDescriptorUpdateEntries",
             "descriptorUpdateEntryCount",
         );
-        self.p_descriptor_update_entries = value.as_ptr();
+        self.p_descriptor_update_entries = ptr_or_null(value);
         self
     }
     /// Sets [`template_type`](Self::template_type).
@@ -32569,6 +32706,8 @@ impl<'a> DeviceCreateInfo<'a> {
     /// Sets [`p_queue_create_infos`](Self::p_queue_create_infos) to the start of a slice of
     /// elements and [`queue_create_info_count`](Self::queue_create_info_count) to its length.
     ///
+    /// An empty slice sets [`p_queue_create_infos`](Self::p_queue_create_infos) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueCreateInfoCount`, a `uint32_t`, can count.
@@ -32578,7 +32717,7 @@ impl<'a> DeviceCreateInfo<'a> {
             "VkDeviceCreateInfo::pQueueCreateInfos",
             "queueCreateInfoCount",
         );
-        self.p_queue_create_infos = value.as_ptr();
+        self.p_queue_create_infos = ptr_or_null(value);
         self
     }
     /// Sets [`enabled_layer_count`](Self::enabled_layer_count).
@@ -32625,6 +32764,9 @@ impl<'a> DeviceCreateInfo<'a> {
     /// slice of pointers to NUL-terminated strings and
     /// [`enabled_extension_count`](Self::enabled_extension_count) to its length.
     ///
+    /// An empty slice sets [`pp_enabled_extension_names`](Self::pp_enabled_extension_names) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `enabledExtensionCount`, a `uint32_t`, can count.
@@ -32634,7 +32776,7 @@ impl<'a> DeviceCreateInfo<'a> {
             "VkDeviceCreateInfo::ppEnabledExtensionNames",
             "enabledExtensionCount",
         );
-        self.pp_enabled_extension_names = value.as_ptr().cast();
+        self.pp_enabled_extension_names = ptr_or_null(value).cast();
         self
     }
     /// Sets [`p_enabled_features`](Self::p_enabled_features) to point to `value`.
@@ -33155,11 +33297,7 @@ impl<'a> DeviceFaultInfoEXT<'a> {
     /// elements of the slice. The registry marks the member as optional, and the specification
     /// describes what a null pointer means for it.
     pub fn address_infos(mut self, value: &'a mut [DeviceFaultAddressInfoKHR]) -> Self {
-        self.p_address_infos = if value.is_empty() {
-            core::ptr::null_mut()
-        } else {
-            value.as_mut_ptr()
-        };
+        self.p_address_infos = mut_ptr_or_null(value);
         self
     }
     /// Sets [`p_vendor_infos`](Self::p_vendor_infos) to the start of a slice, or to a null pointer
@@ -33169,11 +33307,7 @@ impl<'a> DeviceFaultInfoEXT<'a> {
     /// of the slice. The registry marks the member as optional, and the specification describes
     /// what a null pointer means for it.
     pub fn vendor_infos(mut self, value: &'a mut [DeviceFaultVendorInfoKHR]) -> Self {
-        self.p_vendor_infos = if value.is_empty() {
-            core::ptr::null_mut()
-        } else {
-            value.as_mut_ptr()
-        };
+        self.p_vendor_infos = mut_ptr_or_null(value);
         self
     }
     /// Sets [`p_vendor_binary_data`](Self::p_vendor_binary_data).
@@ -33774,6 +33908,8 @@ impl<'a> DeviceGroupDeviceCreateInfo<'a> {
     /// Sets [`p_physical_devices`](Self::p_physical_devices) to the start of a slice of elements
     /// and [`physical_device_count`](Self::physical_device_count) to its length.
     ///
+    /// An empty slice sets [`p_physical_devices`](Self::p_physical_devices) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `physicalDeviceCount`, a `uint32_t`, can count.
@@ -33783,7 +33919,7 @@ impl<'a> DeviceGroupDeviceCreateInfo<'a> {
             "VkDeviceGroupDeviceCreateInfo::pPhysicalDevices",
             "physicalDeviceCount",
         );
-        self.p_physical_devices = value.as_ptr();
+        self.p_physical_devices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -33930,6 +34066,8 @@ impl<'a> DeviceGroupPresentInfoKHR<'a> {
     /// Sets [`p_device_masks`](Self::p_device_masks) to the start of a slice of elements and
     /// [`swapchain_count`](Self::swapchain_count) to its length.
     ///
+    /// An empty slice sets [`p_device_masks`](Self::p_device_masks) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `swapchainCount`, a `uint32_t`, can count.
@@ -33939,7 +34077,7 @@ impl<'a> DeviceGroupPresentInfoKHR<'a> {
             "VkDeviceGroupPresentInfoKHR::pDeviceMasks",
             "swapchainCount",
         );
-        self.p_device_masks = value.as_ptr();
+        self.p_device_masks = ptr_or_null(value);
         self
     }
     /// Sets [`mode`](Self::mode).
@@ -34021,6 +34159,9 @@ impl<'a> DeviceGroupRenderPassBeginInfo<'a> {
     /// Sets [`p_device_render_areas`](Self::p_device_render_areas) to the start of a slice of
     /// elements and [`device_render_area_count`](Self::device_render_area_count) to its length.
     ///
+    /// An empty slice sets [`p_device_render_areas`](Self::p_device_render_areas) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `deviceRenderAreaCount`, a `uint32_t`, can count.
@@ -34030,7 +34171,7 @@ impl<'a> DeviceGroupRenderPassBeginInfo<'a> {
             "VkDeviceGroupRenderPassBeginInfo::pDeviceRenderAreas",
             "deviceRenderAreaCount",
         );
-        self.p_device_render_areas = value.as_ptr();
+        self.p_device_render_areas = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -34124,6 +34265,10 @@ impl<'a> DeviceGroupSubmitInfo<'a> {
     /// of a slice of elements and [`wait_semaphore_count`](Self::wait_semaphore_count) to its
     /// length.
     ///
+    /// An empty slice sets
+    /// [`p_wait_semaphore_device_indices`](Self::p_wait_semaphore_device_indices) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `waitSemaphoreCount`, a `uint32_t`, can count.
@@ -34133,7 +34278,7 @@ impl<'a> DeviceGroupSubmitInfo<'a> {
             "VkDeviceGroupSubmitInfo::pWaitSemaphoreDeviceIndices",
             "waitSemaphoreCount",
         );
-        self.p_wait_semaphore_device_indices = value.as_ptr();
+        self.p_wait_semaphore_device_indices = ptr_or_null(value);
         self
     }
     /// Sets [`command_buffer_count`](Self::command_buffer_count).
@@ -34144,6 +34289,9 @@ impl<'a> DeviceGroupSubmitInfo<'a> {
     /// Sets [`p_command_buffer_device_masks`](Self::p_command_buffer_device_masks) to the start of
     /// a slice of elements and [`command_buffer_count`](Self::command_buffer_count) to its length.
     ///
+    /// An empty slice sets [`p_command_buffer_device_masks`](Self::p_command_buffer_device_masks)
+    /// to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `commandBufferCount`, a `uint32_t`, can count.
@@ -34153,7 +34301,7 @@ impl<'a> DeviceGroupSubmitInfo<'a> {
             "VkDeviceGroupSubmitInfo::pCommandBufferDeviceMasks",
             "commandBufferCount",
         );
-        self.p_command_buffer_device_masks = value.as_ptr();
+        self.p_command_buffer_device_masks = ptr_or_null(value);
         self
     }
     /// Sets [`signal_semaphore_count`](Self::signal_semaphore_count).
@@ -34165,6 +34313,10 @@ impl<'a> DeviceGroupSubmitInfo<'a> {
     /// start of a slice of elements and [`signal_semaphore_count`](Self::signal_semaphore_count) to
     /// its length.
     ///
+    /// An empty slice sets
+    /// [`p_signal_semaphore_device_indices`](Self::p_signal_semaphore_device_indices) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `signalSemaphoreCount`, a `uint32_t`, can count.
@@ -34174,7 +34326,7 @@ impl<'a> DeviceGroupSubmitInfo<'a> {
             "VkDeviceGroupSubmitInfo::pSignalSemaphoreDeviceIndices",
             "signalSemaphoreCount",
         );
-        self.p_signal_semaphore_device_indices = value.as_ptr();
+        self.p_signal_semaphore_device_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -35212,6 +35364,8 @@ impl<'a> DeviceQueueCreateInfo<'a> {
     /// Sets [`p_queue_priorities`](Self::p_queue_priorities) to the start of a slice of elements
     /// and [`queue_count`](Self::queue_count) to its length.
     ///
+    /// An empty slice sets [`p_queue_priorities`](Self::p_queue_priorities) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueCount`, a `uint32_t`, can count.
@@ -35221,7 +35375,7 @@ impl<'a> DeviceQueueCreateInfo<'a> {
             "VkDeviceQueueCreateInfo::pQueuePriorities",
             "queueCount",
         );
-        self.p_queue_priorities = value.as_ptr();
+        self.p_queue_priorities = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -35629,6 +35783,8 @@ impl<'a> DirectDriverLoadingListLUNARG<'a> {
     /// Sets [`p_drivers`](Self::p_drivers) to the start of a slice of elements and
     /// [`driver_count`](Self::driver_count) to its length.
     ///
+    /// An empty slice sets [`p_drivers`](Self::p_drivers) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `driverCount`, a `uint32_t`, can count.
@@ -35638,7 +35794,7 @@ impl<'a> DirectDriverLoadingListLUNARG<'a> {
             "VkDirectDriverLoadingListLUNARG::pDrivers",
             "driverCount",
         );
-        self.p_drivers = value.as_ptr();
+        self.p_drivers = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -41641,6 +41797,8 @@ impl<'a> FrameBoundaryTensorsARM<'a> {
     /// Sets [`p_tensors`](Self::p_tensors) to the start of a slice of elements and
     /// [`tensor_count`](Self::tensor_count) to its length.
     ///
+    /// An empty slice sets [`p_tensors`](Self::p_tensors) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `tensorCount`, a `uint32_t`, can count.
@@ -41650,7 +41808,7 @@ impl<'a> FrameBoundaryTensorsARM<'a> {
             "VkFrameBoundaryTensorsARM::pTensors",
             "tensorCount",
         );
-        self.p_tensors = value.as_ptr();
+        self.p_tensors = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -41764,6 +41922,8 @@ impl<'a> FramebufferAttachmentImageInfo<'a> {
     /// Sets [`p_view_formats`](Self::p_view_formats) to the start of a slice of elements and
     /// [`view_format_count`](Self::view_format_count) to its length.
     ///
+    /// An empty slice sets [`p_view_formats`](Self::p_view_formats) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `viewFormatCount`, a `uint32_t`, can count.
@@ -41773,7 +41933,7 @@ impl<'a> FramebufferAttachmentImageInfo<'a> {
             "VkFramebufferAttachmentImageInfo::pViewFormats",
             "viewFormatCount",
         );
-        self.p_view_formats = value.as_ptr();
+        self.p_view_formats = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -41850,6 +42010,9 @@ impl<'a> FramebufferAttachmentsCreateInfo<'a> {
     /// elements and [`attachment_image_info_count`](Self::attachment_image_info_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_attachment_image_infos`](Self::p_attachment_image_infos) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `attachmentImageInfoCount`, a `uint32_t`, can
@@ -41863,7 +42026,7 @@ impl<'a> FramebufferAttachmentsCreateInfo<'a> {
             "VkFramebufferAttachmentsCreateInfo::pAttachmentImageInfos",
             "attachmentImageInfoCount",
         );
-        self.p_attachment_image_infos = value.as_ptr();
+        self.p_attachment_image_infos = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -41972,6 +42135,8 @@ impl<'a> FramebufferCreateInfo<'a> {
     /// Sets [`p_attachments`](Self::p_attachments) to the start of a slice of elements and
     /// [`attachment_count`](Self::attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_attachments`](Self::p_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `attachmentCount`, a `uint32_t`, can count.
@@ -41981,7 +42146,7 @@ impl<'a> FramebufferCreateInfo<'a> {
             "VkFramebufferCreateInfo::pAttachments",
             "attachmentCount",
         );
-        self.p_attachments = value.as_ptr();
+        self.p_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`width`](Self::width).
@@ -42351,6 +42516,8 @@ impl<'a> GeneratedCommandsInfoNV<'a> {
     /// Sets [`p_streams`](Self::p_streams) to the start of a slice of elements and
     /// [`stream_count`](Self::stream_count) to its length.
     ///
+    /// An empty slice sets [`p_streams`](Self::p_streams) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `streamCount`, a `uint32_t`, can count.
@@ -42360,7 +42527,7 @@ impl<'a> GeneratedCommandsInfoNV<'a> {
             "VkGeneratedCommandsInfoNV::pStreams",
             "streamCount",
         );
-        self.p_streams = value.as_ptr();
+        self.p_streams = ptr_or_null(value);
         self
     }
     /// Sets [`sequences_count`](Self::sequences_count).
@@ -42699,6 +42866,8 @@ impl<'a> GeneratedCommandsShaderInfoEXT<'a> {
     /// Sets [`p_shaders`](Self::p_shaders) to the start of a slice of elements and
     /// [`shader_count`](Self::shader_count) to its length.
     ///
+    /// An empty slice sets [`p_shaders`](Self::p_shaders) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `shaderCount`, a `uint32_t`, can count.
@@ -42708,7 +42877,7 @@ impl<'a> GeneratedCommandsShaderInfoEXT<'a> {
             "VkGeneratedCommandsShaderInfoEXT::pShaders",
             "shaderCount",
         );
-        self.p_shaders = value.as_ptr();
+        self.p_shaders = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -43583,6 +43752,8 @@ impl<'a> GpaSampleBeginInfoAMD<'a> {
     /// Sets [`p_perf_counters`](Self::p_perf_counters) to the start of a slice of elements and
     /// [`perf_counter_count`](Self::perf_counter_count) to its length.
     ///
+    /// An empty slice sets [`p_perf_counters`](Self::p_perf_counters) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `perfCounterCount`, a `uint32_t`, can count.
@@ -43592,7 +43763,7 @@ impl<'a> GpaSampleBeginInfoAMD<'a> {
             "VkGpaSampleBeginInfoAMD::pPerfCounters",
             "perfCounterCount",
         );
-        self.p_perf_counters = value.as_ptr();
+        self.p_perf_counters = ptr_or_null(value);
         self
     }
     /// Sets [`streaming_perf_trace_sample_interval`](Self::streaming_perf_trace_sample_interval).
@@ -44132,6 +44303,8 @@ impl<'a> GraphicsPipelineShaderGroupsCreateInfoNV<'a> {
     /// Sets [`p_groups`](Self::p_groups) to the start of a slice of elements and
     /// [`group_count`](Self::group_count) to its length.
     ///
+    /// An empty slice sets [`p_groups`](Self::p_groups) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `groupCount`, a `uint32_t`, can count.
@@ -44141,7 +44314,7 @@ impl<'a> GraphicsPipelineShaderGroupsCreateInfoNV<'a> {
             "VkGraphicsPipelineShaderGroupsCreateInfoNV::pGroups",
             "groupCount",
         );
-        self.p_groups = value.as_ptr();
+        self.p_groups = ptr_or_null(value);
         self
     }
     /// Sets [`pipeline_count`](Self::pipeline_count).
@@ -44152,6 +44325,8 @@ impl<'a> GraphicsPipelineShaderGroupsCreateInfoNV<'a> {
     /// Sets [`p_pipelines`](Self::p_pipelines) to the start of a slice of elements and
     /// [`pipeline_count`](Self::pipeline_count) to its length.
     ///
+    /// An empty slice sets [`p_pipelines`](Self::p_pipelines) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `pipelineCount`, a `uint32_t`, can count.
@@ -44161,7 +44336,7 @@ impl<'a> GraphicsPipelineShaderGroupsCreateInfoNV<'a> {
             "VkGraphicsPipelineShaderGroupsCreateInfoNV::pPipelines",
             "pipelineCount",
         );
-        self.p_pipelines = value.as_ptr();
+        self.p_pipelines = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -44239,6 +44414,8 @@ impl<'a> GraphicsShaderGroupCreateInfoNV<'a> {
     /// Sets [`p_stages`](Self::p_stages) to the start of a slice of elements and
     /// [`stage_count`](Self::stage_count) to its length.
     ///
+    /// An empty slice sets [`p_stages`](Self::p_stages) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stageCount`, a `uint32_t`, can count.
@@ -44248,7 +44425,7 @@ impl<'a> GraphicsShaderGroupCreateInfoNV<'a> {
             "VkGraphicsShaderGroupCreateInfoNV::pStages",
             "stageCount",
         );
-        self.p_stages = value.as_ptr();
+        self.p_stages = ptr_or_null(value);
         self
     }
     /// Sets [`p_vertex_input_state`](Self::p_vertex_input_state) to point to `value`.
@@ -44445,9 +44622,11 @@ impl<'a> HdrVividDynamicMetadataHUAWEI<'a> {
     }
     /// Sets [`p_dynamic_metadata`](Self::p_dynamic_metadata) to the start of a slice of bytes and
     /// [`dynamic_metadata_size`](Self::dynamic_metadata_size) to its length.
+    ///
+    /// An empty slice sets [`p_dynamic_metadata`](Self::p_dynamic_metadata) to a null pointer.
     pub fn dynamic_metadata(mut self, value: &'a [u8]) -> Self {
         self.dynamic_metadata_size = value.len() as _;
-        self.p_dynamic_metadata = value.as_ptr().cast();
+        self.p_dynamic_metadata = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -44556,9 +44735,11 @@ impl Default for HostAddressRangeConstEXT<'_> {
 impl<'a> HostAddressRangeConstEXT<'a> {
     /// Sets [`address`](Self::address) to the start of a slice of bytes and [`size`](Self::size) to
     /// its length.
+    ///
+    /// An empty slice sets [`address`](Self::address) to a null pointer.
     pub fn address(mut self, value: &'a [u8]) -> Self {
         self.size = value.len() as _;
-        self.address = value.as_ptr().cast();
+        self.address = ptr_or_null(value).cast();
         self
     }
     /// Sets [`size`](Self::size).
@@ -44602,9 +44783,11 @@ impl Default for HostAddressRangeEXT<'_> {
 impl<'a> HostAddressRangeEXT<'a> {
     /// Sets [`address`](Self::address) to the start of a slice of bytes and [`size`](Self::size) to
     /// its length.
+    ///
+    /// An empty slice sets [`address`](Self::address) to a null pointer.
     pub fn address(mut self, value: &'a mut [u8]) -> Self {
         self.size = value.len() as _;
-        self.address = value.as_mut_ptr().cast();
+        self.address = mut_ptr_or_null(value).cast();
         self
     }
     /// Sets [`size`](Self::size).
@@ -45363,6 +45546,8 @@ impl<'a> ImageConstraintsInfoFUCHSIA<'a> {
     /// Sets [`p_format_constraints`](Self::p_format_constraints) to the start of a slice of
     /// elements and [`format_constraints_count`](Self::format_constraints_count) to its length.
     ///
+    /// An empty slice sets [`p_format_constraints`](Self::p_format_constraints) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `formatConstraintsCount`, a `uint32_t`, can
@@ -45376,7 +45561,7 @@ impl<'a> ImageConstraintsInfoFUCHSIA<'a> {
             "VkImageConstraintsInfoFUCHSIA::pFormatConstraints",
             "formatConstraintsCount",
         );
-        self.p_format_constraints = value.as_ptr();
+        self.p_format_constraints = ptr_or_null(value);
         self
     }
     /// Sets [`buffer_collection_constraints`](Self::buffer_collection_constraints).
@@ -45780,6 +45965,9 @@ impl<'a> ImageCreateInfo<'a> {
     /// Sets [`p_queue_family_indices`](Self::p_queue_family_indices) to the start of a slice of
     /// elements and [`queue_family_index_count`](Self::queue_family_index_count) to its length.
     ///
+    /// An empty slice sets [`p_queue_family_indices`](Self::p_queue_family_indices) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueFamilyIndexCount`, a `uint32_t`, can count.
@@ -45789,7 +45977,7 @@ impl<'a> ImageCreateInfo<'a> {
             "VkImageCreateInfo::pQueueFamilyIndices",
             "queueFamilyIndexCount",
         );
-        self.p_queue_family_indices = value.as_ptr();
+        self.p_queue_family_indices = ptr_or_null(value);
         self
     }
     /// Sets [`initial_layout`](Self::initial_layout).
@@ -45938,6 +46126,8 @@ impl<'a> ImageDrmFormatModifierExplicitCreateInfoEXT<'a> {
     /// Sets [`p_plane_layouts`](Self::p_plane_layouts) to the start of a slice of elements and
     /// [`drm_format_modifier_plane_count`](Self::drm_format_modifier_plane_count) to its length.
     ///
+    /// An empty slice sets [`p_plane_layouts`](Self::p_plane_layouts) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `drmFormatModifierPlaneCount`, a `uint32_t`, can
@@ -45948,7 +46138,7 @@ impl<'a> ImageDrmFormatModifierExplicitCreateInfoEXT<'a> {
             "VkImageDrmFormatModifierExplicitCreateInfoEXT::pPlaneLayouts",
             "drmFormatModifierPlaneCount",
         );
-        self.p_plane_layouts = value.as_ptr();
+        self.p_plane_layouts = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -46016,6 +46206,9 @@ impl<'a> ImageDrmFormatModifierListCreateInfoEXT<'a> {
     /// Sets [`p_drm_format_modifiers`](Self::p_drm_format_modifiers) to the start of a slice of
     /// elements and [`drm_format_modifier_count`](Self::drm_format_modifier_count) to its length.
     ///
+    /// An empty slice sets [`p_drm_format_modifiers`](Self::p_drm_format_modifiers) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `drmFormatModifierCount`, a `uint32_t`, can
@@ -46026,7 +46219,7 @@ impl<'a> ImageDrmFormatModifierListCreateInfoEXT<'a> {
             "VkImageDrmFormatModifierListCreateInfoEXT::pDrmFormatModifiers",
             "drmFormatModifierCount",
         );
-        self.p_drm_format_modifiers = value.as_ptr();
+        self.p_drm_format_modifiers = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -46190,6 +46383,8 @@ impl<'a> ImageFormatConstraintsInfoFUCHSIA<'a> {
     /// Sets [`p_color_spaces`](Self::p_color_spaces) to the start of a slice of elements and
     /// [`color_space_count`](Self::color_space_count) to its length.
     ///
+    /// An empty slice sets [`p_color_spaces`](Self::p_color_spaces) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorSpaceCount`, a `uint32_t`, can count.
@@ -46199,7 +46394,7 @@ impl<'a> ImageFormatConstraintsInfoFUCHSIA<'a> {
             "VkImageFormatConstraintsInfoFUCHSIA::pColorSpaces",
             "colorSpaceCount",
         );
-        self.p_color_spaces = value.as_ptr();
+        self.p_color_spaces = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -46271,6 +46466,8 @@ impl<'a> ImageFormatListCreateInfo<'a> {
     /// Sets [`p_view_formats`](Self::p_view_formats) to the start of a slice of elements and
     /// [`view_format_count`](Self::view_format_count) to its length.
     ///
+    /// An empty slice sets [`p_view_formats`](Self::p_view_formats) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `viewFormatCount`, a `uint32_t`, can count.
@@ -46280,7 +46477,7 @@ impl<'a> ImageFormatListCreateInfo<'a> {
             "VkImageFormatListCreateInfo::pViewFormats",
             "viewFormatCount",
         );
-        self.p_view_formats = value.as_ptr();
+        self.p_view_formats = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -50068,6 +50265,8 @@ impl<'a> IndirectCommandsLayoutCreateInfoEXT<'a> {
     /// Sets [`p_tokens`](Self::p_tokens) to the start of a slice of elements and
     /// [`token_count`](Self::token_count) to its length.
     ///
+    /// An empty slice sets [`p_tokens`](Self::p_tokens) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `tokenCount`, a `uint32_t`, can count.
@@ -50077,7 +50276,7 @@ impl<'a> IndirectCommandsLayoutCreateInfoEXT<'a> {
             "VkIndirectCommandsLayoutCreateInfoEXT::pTokens",
             "tokenCount",
         );
-        self.p_tokens = value.as_ptr();
+        self.p_tokens = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -50169,6 +50368,8 @@ impl<'a> IndirectCommandsLayoutCreateInfoNV<'a> {
     /// Sets [`p_tokens`](Self::p_tokens) to the start of a slice of elements and
     /// [`token_count`](Self::token_count) to its length.
     ///
+    /// An empty slice sets [`p_tokens`](Self::p_tokens) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `tokenCount`, a `uint32_t`, can count.
@@ -50178,7 +50379,7 @@ impl<'a> IndirectCommandsLayoutCreateInfoNV<'a> {
             "VkIndirectCommandsLayoutCreateInfoNV::pTokens",
             "tokenCount",
         );
-        self.p_tokens = value.as_ptr();
+        self.p_tokens = ptr_or_null(value);
         self
     }
     /// Sets [`stream_count`](Self::stream_count).
@@ -50189,6 +50390,8 @@ impl<'a> IndirectCommandsLayoutCreateInfoNV<'a> {
     /// Sets [`p_stream_strides`](Self::p_stream_strides) to the start of a slice of elements and
     /// [`stream_count`](Self::stream_count) to its length.
     ///
+    /// An empty slice sets [`p_stream_strides`](Self::p_stream_strides) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `streamCount`, a `uint32_t`, can count.
@@ -50198,7 +50401,7 @@ impl<'a> IndirectCommandsLayoutCreateInfoNV<'a> {
             "VkIndirectCommandsLayoutCreateInfoNV::pStreamStrides",
             "streamCount",
         );
-        self.p_stream_strides = value.as_ptr();
+        self.p_stream_strides = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -50500,11 +50703,14 @@ impl<'a> IndirectCommandsLayoutTokenNV<'a> {
     /// Sets [`p_index_types`](Self::p_index_types) to the start of a slice of elements and
     /// [`index_type_count`](Self::index_type_count) to its length.
     ///
+    /// An empty slice sets [`p_index_types`](Self::p_index_types) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `indexTypeCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `indexTypeCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `indexTypeCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `indexTypeCount`, a
+    /// `uint32_t`, can count.
     pub fn index_types(mut self, value: &'a [IndexType]) -> Self {
         if !self.p_index_type_values.is_null() {
             assert_eq!(
@@ -50518,17 +50724,20 @@ impl<'a> IndirectCommandsLayoutTokenNV<'a> {
             "VkIndirectCommandsLayoutTokenNV::pIndexTypes",
             "indexTypeCount",
         );
-        self.p_index_types = value.as_ptr();
+        self.p_index_types = ptr_or_null(value);
         self
     }
     /// Sets [`p_index_type_values`](Self::p_index_type_values) to the start of a slice of elements
     /// and [`index_type_count`](Self::index_type_count) to its length.
     ///
+    /// An empty slice sets [`p_index_type_values`](Self::p_index_type_values) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `indexTypeCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `indexTypeCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `indexTypeCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `indexTypeCount`, a
+    /// `uint32_t`, can count.
     pub fn index_type_values(mut self, value: &'a [u32]) -> Self {
         if !self.p_index_types.is_null() {
             assert_eq!(
@@ -50542,7 +50751,7 @@ impl<'a> IndirectCommandsLayoutTokenNV<'a> {
             "VkIndirectCommandsLayoutTokenNV::pIndexTypeValues",
             "indexTypeCount",
         );
-        self.p_index_type_values = value.as_ptr();
+        self.p_index_type_values = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -51002,11 +51211,14 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
     /// Sets [`p_initial_shaders`](Self::p_initial_shaders) to the start of a slice of elements and
     /// [`shader_count`](Self::shader_count) to its length.
     ///
+    /// An empty slice sets [`p_initial_shaders`](Self::p_initial_shaders) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `shaderCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `shaderCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `shaderCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `shaderCount`, a
+    /// `uint32_t`, can count.
     pub fn initial_shaders(mut self, value: &'a [ShaderEXT]) -> Self {
         if !self.p_set_layout_infos.is_null() {
             assert_eq!(
@@ -51020,7 +51232,7 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
             "VkIndirectExecutionSetShaderInfoEXT::pInitialShaders",
             "shaderCount",
         );
-        self.p_initial_shaders = value.as_ptr();
+        self.p_initial_shaders = ptr_or_null(value);
         self
     }
     /// Sets [`p_set_layout_infos`](Self::p_set_layout_infos) to the start of a slice of elements
@@ -51036,9 +51248,10 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `shaderCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `shaderCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `shaderCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `shaderCount`, a
+    /// `uint32_t`, can count.
     pub fn set_layout_infos(
         mut self,
         value: &'a [IndirectExecutionSetShaderLayoutInfoEXT<'a>],
@@ -51078,6 +51291,9 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
     /// Sets [`p_push_constant_ranges`](Self::p_push_constant_ranges) to the start of a slice of
     /// elements and [`push_constant_range_count`](Self::push_constant_range_count) to its length.
     ///
+    /// An empty slice sets [`p_push_constant_ranges`](Self::p_push_constant_ranges) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `pushConstantRangeCount`, a `uint32_t`, can
@@ -51088,7 +51304,7 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
             "VkIndirectExecutionSetShaderInfoEXT::pPushConstantRanges",
             "pushConstantRangeCount",
         );
-        self.p_push_constant_ranges = value.as_ptr();
+        self.p_push_constant_ranges = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -51157,6 +51373,8 @@ impl<'a> IndirectExecutionSetShaderLayoutInfoEXT<'a> {
     /// Sets [`p_set_layouts`](Self::p_set_layouts) to the start of a slice of elements and
     /// [`set_layout_count`](Self::set_layout_count) to its length.
     ///
+    /// An empty slice sets [`p_set_layouts`](Self::p_set_layouts) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `setLayoutCount`, a `uint32_t`, can count.
@@ -51166,7 +51384,7 @@ impl<'a> IndirectExecutionSetShaderLayoutInfoEXT<'a> {
             "VkIndirectExecutionSetShaderLayoutInfoEXT::pSetLayouts",
             "setLayoutCount",
         );
-        self.p_set_layouts = value.as_ptr();
+        self.p_set_layouts = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -51371,6 +51589,9 @@ impl<'a> InstanceCreateInfo<'a> {
     /// pointers to NUL-terminated strings and [`enabled_layer_count`](Self::enabled_layer_count) to
     /// its length.
     ///
+    /// An empty slice sets [`pp_enabled_layer_names`](Self::pp_enabled_layer_names) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `enabledLayerCount`, a `uint32_t`, can count.
@@ -51380,7 +51601,7 @@ impl<'a> InstanceCreateInfo<'a> {
             "VkInstanceCreateInfo::ppEnabledLayerNames",
             "enabledLayerCount",
         );
-        self.pp_enabled_layer_names = value.as_ptr().cast();
+        self.pp_enabled_layer_names = ptr_or_null(value).cast();
         self
     }
     /// Sets [`enabled_extension_count`](Self::enabled_extension_count).
@@ -51392,6 +51613,9 @@ impl<'a> InstanceCreateInfo<'a> {
     /// slice of pointers to NUL-terminated strings and
     /// [`enabled_extension_count`](Self::enabled_extension_count) to its length.
     ///
+    /// An empty slice sets [`pp_enabled_extension_names`](Self::pp_enabled_extension_names) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `enabledExtensionCount`, a `uint32_t`, can count.
@@ -51401,7 +51625,7 @@ impl<'a> InstanceCreateInfo<'a> {
             "VkInstanceCreateInfo::ppEnabledExtensionNames",
             "enabledExtensionCount",
         );
-        self.pp_enabled_extension_names = value.as_ptr().cast();
+        self.pp_enabled_extension_names = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -52045,6 +52269,8 @@ impl<'a> LayerSettingEXT<'a> {
     /// Sets [`p_values`](Self::p_values) to the start of a slice of values and
     /// [`value_count`](Self::value_count) to its length.
     ///
+    /// An empty slice sets [`p_values`](Self::p_values) to a null pointer.
+    ///
     /// `T` has to be the type of the values that [`ty`](Self::ty) names, because the C API reads
     /// `valueCount` values of that type from the array:
     ///
@@ -52065,7 +52291,7 @@ impl<'a> LayerSettingEXT<'a> {
     /// Panics if the slice has more elements than `valueCount`, a `uint32_t`, can count.
     pub fn values<T: LayerSettingValue>(mut self, value: &'a [T]) -> Self {
         self.value_count = len_as_count(value.len(), "VkLayerSettingEXT::pValues", "valueCount");
-        self.p_values = value.as_ptr().cast();
+        self.p_values = ptr_or_null(value).cast();
         self
     }
 }
@@ -52120,6 +52346,8 @@ impl<'a> LayerSettingsCreateInfoEXT<'a> {
     /// Sets [`p_settings`](Self::p_settings) to the start of a slice of elements and
     /// [`setting_count`](Self::setting_count) to its length.
     ///
+    /// An empty slice sets [`p_settings`](Self::p_settings) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `settingCount`, a `uint32_t`, can count.
@@ -52129,7 +52357,7 @@ impl<'a> LayerSettingsCreateInfoEXT<'a> {
             "VkLayerSettingsCreateInfoEXT::pSettings",
             "settingCount",
         );
-        self.p_settings = value.as_ptr();
+        self.p_settings = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -54073,6 +54301,9 @@ impl<'a> MemoryRangeBarriersInfoKHR<'a> {
     /// Sets [`p_memory_range_barriers`](Self::p_memory_range_barriers) to the start of a slice of
     /// elements and [`memory_range_barrier_count`](Self::memory_range_barrier_count) to its length.
     ///
+    /// An empty slice sets [`p_memory_range_barriers`](Self::p_memory_range_barriers) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `memoryRangeBarrierCount`, a `uint32_t`, can
@@ -54083,7 +54314,7 @@ impl<'a> MemoryRangeBarriersInfoKHR<'a> {
             "VkMemoryRangeBarriersInfoKHR::pMemoryRangeBarriers",
             "memoryRangeBarrierCount",
         );
-        self.p_memory_range_barriers = value.as_ptr();
+        self.p_memory_range_barriers = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -54740,9 +54971,10 @@ impl<'a> MicromapBuildInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -54780,9 +55012,10 @@ impl<'a> MicromapBuildInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -55568,6 +55801,9 @@ impl<'a> MultiviewPerViewRenderAreasRenderPassBeginInfoQCOM<'a> {
     /// Sets [`p_per_view_render_areas`](Self::p_per_view_render_areas) to the start of a slice of
     /// elements and [`per_view_render_area_count`](Self::per_view_render_area_count) to its length.
     ///
+    /// An empty slice sets [`p_per_view_render_areas`](Self::p_per_view_render_areas) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `perViewRenderAreaCount`, a `uint32_t`, can
@@ -55578,7 +55814,7 @@ impl<'a> MultiviewPerViewRenderAreasRenderPassBeginInfoQCOM<'a> {
             "VkMultiviewPerViewRenderAreasRenderPassBeginInfoQCOM::pPerViewRenderAreas",
             "perViewRenderAreaCount",
         );
-        self.p_per_view_render_areas = value.as_ptr();
+        self.p_per_view_render_areas = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -55653,6 +55889,10 @@ impl<'a> MutableDescriptorTypeCreateInfoEXT<'a> {
     /// [`mutable_descriptor_type_list_count`](Self::mutable_descriptor_type_list_count) to its
     /// length.
     ///
+    /// An empty slice sets
+    /// [`p_mutable_descriptor_type_lists`](Self::p_mutable_descriptor_type_lists) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `mutableDescriptorTypeListCount`, a `uint32_t`,
@@ -55666,7 +55906,7 @@ impl<'a> MutableDescriptorTypeCreateInfoEXT<'a> {
             "VkMutableDescriptorTypeCreateInfoEXT::pMutableDescriptorTypeLists",
             "mutableDescriptorTypeListCount",
         );
-        self.p_mutable_descriptor_type_lists = value.as_ptr();
+        self.p_mutable_descriptor_type_lists = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -56292,6 +56532,8 @@ impl<'a> OpticalFlowExecuteInfoNV<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
@@ -56301,7 +56543,7 @@ impl<'a> OpticalFlowExecuteInfoNV<'a> {
             "VkOpticalFlowExecuteInfoNV::pRegions",
             "regionCount",
         );
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -57147,6 +57389,8 @@ impl<'a> PastPresentationTimingEXT<'a> {
     /// Sets [`p_present_stages`](Self::p_present_stages) to the start of a slice of elements and
     /// [`present_stage_count`](Self::present_stage_count) to its length.
     ///
+    /// An empty slice sets [`p_present_stages`](Self::p_present_stages) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `presentStageCount`, a `uint32_t`, can count.
@@ -57156,7 +57400,7 @@ impl<'a> PastPresentationTimingEXT<'a> {
             "VkPastPresentationTimingEXT::pPresentStages",
             "presentStageCount",
         );
-        self.p_present_stages = value.as_mut_ptr();
+        self.p_present_stages = mut_ptr_or_null(value);
         self
     }
     /// Sets [`time_domain`](Self::time_domain).
@@ -73442,6 +73686,9 @@ impl<'a> PhysicalDeviceImageDrmFormatModifierInfoEXT<'a> {
     /// Sets [`p_queue_family_indices`](Self::p_queue_family_indices) to the start of a slice of
     /// elements and [`queue_family_index_count`](Self::queue_family_index_count) to its length.
     ///
+    /// An empty slice sets [`p_queue_family_indices`](Self::p_queue_family_indices) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueFamilyIndexCount`, a `uint32_t`, can count.
@@ -73451,7 +73698,7 @@ impl<'a> PhysicalDeviceImageDrmFormatModifierInfoEXT<'a> {
             "VkPhysicalDeviceImageDrmFormatModifierInfoEXT::pQueueFamilyIndices",
             "queueFamilyIndexCount",
         );
-        self.p_queue_family_indices = value.as_ptr();
+        self.p_queue_family_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -100036,11 +100283,13 @@ impl<'a> PipelineBinaryDataKHR<'a> {
     /// Sets [`p_data`](Self::p_data) to the start of a slice of bytes and
     /// [`data_size`](Self::data_size) to its length.
     ///
+    /// An empty slice sets [`p_data`](Self::p_data) to a null pointer.
+    ///
     /// The C declaration of the member is a pointer to writable memory, but the implementation only
     /// reads the elements, so the setter borrows them shared.
     pub fn data(mut self, value: &'a [u8]) -> Self {
         self.data_size = value.len() as _;
-        self.p_data = value.as_ptr().cast_mut().cast();
+        self.p_data = ptr_or_null(value).cast_mut().cast();
         self
     }
 }
@@ -100187,6 +100436,8 @@ impl<'a> PipelineBinaryInfoKHR<'a> {
     /// Sets [`p_pipeline_binaries`](Self::p_pipeline_binaries) to the start of a slice of elements
     /// and [`binary_count`](Self::binary_count) to its length.
     ///
+    /// An empty slice sets [`p_pipeline_binaries`](Self::p_pipeline_binaries) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `binaryCount`, a `uint32_t`, can count.
@@ -100196,7 +100447,7 @@ impl<'a> PipelineBinaryInfoKHR<'a> {
             "VkPipelineBinaryInfoKHR::pPipelineBinaries",
             "binaryCount",
         );
-        self.p_pipeline_binaries = value.as_ptr();
+        self.p_pipeline_binaries = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -100332,11 +100583,15 @@ impl<'a> PipelineBinaryKeysAndDataKHR<'a> {
     /// Sets [`p_pipeline_binary_keys`](Self::p_pipeline_binary_keys) to the start of a slice of
     /// elements and [`binary_count`](Self::binary_count) to its length.
     ///
+    /// An empty slice sets [`p_pipeline_binary_keys`](Self::p_pipeline_binary_keys) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `binaryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `binaryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `binaryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `binaryCount`, a
+    /// `uint32_t`, can count.
     pub fn pipeline_binary_keys(mut self, value: &'a [PipelineBinaryKeyKHR<'a>]) -> Self {
         if !self.p_pipeline_binary_data.is_null() {
             assert_eq!(
@@ -100350,17 +100605,21 @@ impl<'a> PipelineBinaryKeysAndDataKHR<'a> {
             "VkPipelineBinaryKeysAndDataKHR::pPipelineBinaryKeys",
             "binaryCount",
         );
-        self.p_pipeline_binary_keys = value.as_ptr();
+        self.p_pipeline_binary_keys = ptr_or_null(value);
         self
     }
     /// Sets [`p_pipeline_binary_data`](Self::p_pipeline_binary_data) to the start of a slice of
     /// elements and [`binary_count`](Self::binary_count) to its length.
     ///
+    /// An empty slice sets [`p_pipeline_binary_data`](Self::p_pipeline_binary_data) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `binaryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `binaryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `binaryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `binaryCount`, a
+    /// `uint32_t`, can count.
     pub fn pipeline_binary_data(mut self, value: &'a [PipelineBinaryDataKHR<'a>]) -> Self {
         if !self.p_pipeline_binary_keys.is_null() {
             assert_eq!(
@@ -100374,7 +100633,7 @@ impl<'a> PipelineBinaryKeysAndDataKHR<'a> {
             "VkPipelineBinaryKeysAndDataKHR::pPipelineBinaryData",
             "binaryCount",
         );
-        self.p_pipeline_binary_data = value.as_ptr();
+        self.p_pipeline_binary_data = ptr_or_null(value);
         self
     }
 }
@@ -100436,9 +100695,11 @@ impl<'a> PipelineCacheCreateInfo<'a> {
     }
     /// Sets [`p_initial_data`](Self::p_initial_data) to the start of a slice of bytes and
     /// [`initial_data_size`](Self::initial_data_size) to its length.
+    ///
+    /// An empty slice sets [`p_initial_data`](Self::p_initial_data) to a null pointer.
     pub fn initial_data(mut self, value: &'a [u8]) -> Self {
         self.initial_data_size = value.len() as _;
-        self.p_initial_data = value.as_ptr().cast();
+        self.p_initial_data = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -100956,6 +101217,9 @@ impl<'a> PipelineColorWriteCreateInfoEXT<'a> {
     /// Sets [`p_color_write_enables`](Self::p_color_write_enables) to the start of a slice of
     /// elements and [`attachment_count`](Self::attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_color_write_enables`](Self::p_color_write_enables) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `attachmentCount`, a `uint32_t`, can count.
@@ -100965,7 +101229,7 @@ impl<'a> PipelineColorWriteCreateInfoEXT<'a> {
             "VkPipelineColorWriteCreateInfoEXT::pColorWriteEnables",
             "attachmentCount",
         );
-        self.p_color_write_enables = value.as_ptr();
+        self.p_color_write_enables = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -101550,6 +101814,10 @@ impl<'a> PipelineCreationFeedbackCreateInfo<'a> {
     /// [`pipeline_stage_creation_feedback_count`](Self::pipeline_stage_creation_feedback_count) to
     /// its length.
     ///
+    /// An empty slice sets
+    /// [`p_pipeline_stage_creation_feedbacks`](Self::p_pipeline_stage_creation_feedbacks) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `pipelineStageCreationFeedbackCount`, a
@@ -101563,7 +101831,7 @@ impl<'a> PipelineCreationFeedbackCreateInfo<'a> {
             "VkPipelineCreationFeedbackCreateInfo::pPipelineStageCreationFeedbacks",
             "pipelineStageCreationFeedbackCount",
         );
-        self.p_pipeline_stage_creation_feedbacks = value.as_mut_ptr();
+        self.p_pipeline_stage_creation_feedbacks = mut_ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -101790,6 +102058,8 @@ impl<'a> PipelineDiscardRectangleStateCreateInfoEXT<'a> {
     /// Sets [`p_discard_rectangles`](Self::p_discard_rectangles) to the start of a slice of
     /// elements and [`discard_rectangle_count`](Self::discard_rectangle_count) to its length.
     ///
+    /// An empty slice sets [`p_discard_rectangles`](Self::p_discard_rectangles) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `discardRectangleCount`, a `uint32_t`, can count.
@@ -101799,7 +102069,7 @@ impl<'a> PipelineDiscardRectangleStateCreateInfoEXT<'a> {
             "VkPipelineDiscardRectangleStateCreateInfoEXT::pDiscardRectangles",
             "discardRectangleCount",
         );
-        self.p_discard_rectangles = value.as_ptr();
+        self.p_discard_rectangles = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -101875,6 +102145,8 @@ impl<'a> PipelineDynamicStateCreateInfo<'a> {
     /// Sets [`p_dynamic_states`](Self::p_dynamic_states) to the start of a slice of elements and
     /// [`dynamic_state_count`](Self::dynamic_state_count) to its length.
     ///
+    /// An empty slice sets [`p_dynamic_states`](Self::p_dynamic_states) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `dynamicStateCount`, a `uint32_t`, can count.
@@ -101884,7 +102156,7 @@ impl<'a> PipelineDynamicStateCreateInfo<'a> {
             "VkPipelineDynamicStateCreateInfo::pDynamicStates",
             "dynamicStateCount",
         );
-        self.p_dynamic_states = value.as_ptr();
+        self.p_dynamic_states = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -102899,6 +103171,8 @@ impl<'a> PipelineLayoutCreateInfo<'a> {
     /// Sets [`p_set_layouts`](Self::p_set_layouts) to the start of a slice of elements and
     /// [`set_layout_count`](Self::set_layout_count) to its length.
     ///
+    /// An empty slice sets [`p_set_layouts`](Self::p_set_layouts) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `setLayoutCount`, a `uint32_t`, can count.
@@ -102908,7 +103182,7 @@ impl<'a> PipelineLayoutCreateInfo<'a> {
             "VkPipelineLayoutCreateInfo::pSetLayouts",
             "setLayoutCount",
         );
-        self.p_set_layouts = value.as_ptr();
+        self.p_set_layouts = ptr_or_null(value);
         self
     }
     /// Sets [`push_constant_range_count`](Self::push_constant_range_count).
@@ -102918,6 +103192,9 @@ impl<'a> PipelineLayoutCreateInfo<'a> {
     }
     /// Sets [`p_push_constant_ranges`](Self::p_push_constant_ranges) to the start of a slice of
     /// elements and [`push_constant_range_count`](Self::push_constant_range_count) to its length.
+    ///
+    /// An empty slice sets [`p_push_constant_ranges`](Self::p_push_constant_ranges) to a null
+    /// pointer.
     ///
     /// # Panics
     ///
@@ -102929,7 +103206,7 @@ impl<'a> PipelineLayoutCreateInfo<'a> {
             "VkPipelineLayoutCreateInfo::pPushConstantRanges",
             "pushConstantRangeCount",
         );
-        self.p_push_constant_ranges = value.as_ptr();
+        self.p_push_constant_ranges = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -102998,6 +103275,8 @@ impl<'a> PipelineLibraryCreateInfoKHR<'a> {
     /// Sets [`p_libraries`](Self::p_libraries) to the start of a slice of elements and
     /// [`library_count`](Self::library_count) to its length.
     ///
+    /// An empty slice sets [`p_libraries`](Self::p_libraries) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `libraryCount`, a `uint32_t`, can count.
@@ -103007,7 +103286,7 @@ impl<'a> PipelineLibraryCreateInfoKHR<'a> {
             "VkPipelineLibraryCreateInfoKHR::pLibraries",
             "libraryCount",
         );
-        self.p_libraries = value.as_ptr();
+        self.p_libraries = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -103861,6 +104140,9 @@ impl<'a> PipelineRenderingCreateInfo<'a> {
     /// slice of elements and [`color_attachment_count`](Self::color_attachment_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_color_attachment_formats`](Self::p_color_attachment_formats) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorAttachmentCount`, a `uint32_t`, can count.
@@ -103870,7 +104152,7 @@ impl<'a> PipelineRenderingCreateInfo<'a> {
             "VkPipelineRenderingCreateInfo::pColorAttachmentFormats",
             "colorAttachmentCount",
         );
-        self.p_color_attachment_formats = value.as_ptr();
+        self.p_color_attachment_formats = ptr_or_null(value);
         self
     }
     /// Sets [`depth_attachment_format`](Self::depth_attachment_format).
@@ -104285,6 +104567,8 @@ impl<'a> PipelineShaderStageModuleIdentifierCreateInfoEXT<'a> {
     /// Sets [`p_identifier`](Self::p_identifier) to the start of a slice of elements and
     /// [`identifier_size`](Self::identifier_size) to its length.
     ///
+    /// An empty slice sets [`p_identifier`](Self::p_identifier) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `identifierSize`, a `uint32_t`, can count.
@@ -104294,7 +104578,7 @@ impl<'a> PipelineShaderStageModuleIdentifierCreateInfoEXT<'a> {
             "VkPipelineShaderStageModuleIdentifierCreateInfoEXT::pIdentifier",
             "identifierSize",
         );
-        self.p_identifier = value.as_ptr();
+        self.p_identifier = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -104651,6 +104935,9 @@ impl<'a> PipelineVertexInputDivisorStateCreateInfo<'a> {
     /// of elements and [`vertex_binding_divisor_count`](Self::vertex_binding_divisor_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_vertex_binding_divisors`](Self::p_vertex_binding_divisors) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `vertexBindingDivisorCount`, a `uint32_t`, can
@@ -104664,7 +104951,7 @@ impl<'a> PipelineVertexInputDivisorStateCreateInfo<'a> {
             "VkPipelineVertexInputDivisorStateCreateInfo::pVertexBindingDivisors",
             "vertexBindingDivisorCount",
         );
-        self.p_vertex_binding_divisors = value.as_ptr();
+        self.p_vertex_binding_divisors = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -104761,6 +105048,9 @@ impl<'a> PipelineVertexInputStateCreateInfo<'a> {
     /// a slice of elements and
     /// [`vertex_binding_description_count`](Self::vertex_binding_description_count) to its length.
     ///
+    /// An empty slice sets [`p_vertex_binding_descriptions`](Self::p_vertex_binding_descriptions)
+    /// to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `vertexBindingDescriptionCount`, a `uint32_t`,
@@ -104774,7 +105064,7 @@ impl<'a> PipelineVertexInputStateCreateInfo<'a> {
             "VkPipelineVertexInputStateCreateInfo::pVertexBindingDescriptions",
             "vertexBindingDescriptionCount",
         );
-        self.p_vertex_binding_descriptions = value.as_ptr();
+        self.p_vertex_binding_descriptions = ptr_or_null(value);
         self
     }
     /// Sets [`vertex_attribute_description_count`](Self::vertex_attribute_description_count).
@@ -104786,6 +105076,10 @@ impl<'a> PipelineVertexInputStateCreateInfo<'a> {
     /// of a slice of elements and
     /// [`vertex_attribute_description_count`](Self::vertex_attribute_description_count) to its
     /// length.
+    ///
+    /// An empty slice sets
+    /// [`p_vertex_attribute_descriptions`](Self::p_vertex_attribute_descriptions) to a null
+    /// pointer.
     ///
     /// # Panics
     ///
@@ -104800,7 +105094,7 @@ impl<'a> PipelineVertexInputStateCreateInfo<'a> {
             "VkPipelineVertexInputStateCreateInfo::pVertexAttributeDescriptions",
             "vertexAttributeDescriptionCount",
         );
-        self.p_vertex_attribute_descriptions = value.as_ptr();
+        self.p_vertex_attribute_descriptions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -104881,6 +105175,9 @@ impl<'a> PipelineViewportCoarseSampleOrderStateCreateInfoNV<'a> {
     /// Sets [`p_custom_sample_orders`](Self::p_custom_sample_orders) to the start of a slice of
     /// elements and [`custom_sample_order_count`](Self::custom_sample_order_count) to its length.
     ///
+    /// An empty slice sets [`p_custom_sample_orders`](Self::p_custom_sample_orders) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `customSampleOrderCount`, a `uint32_t`, can
@@ -104891,7 +105188,7 @@ impl<'a> PipelineViewportCoarseSampleOrderStateCreateInfoNV<'a> {
             "VkPipelineViewportCoarseSampleOrderStateCreateInfoNV::pCustomSampleOrders",
             "customSampleOrderCount",
         );
-        self.p_custom_sample_orders = value.as_ptr();
+        self.p_custom_sample_orders = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -105090,6 +105387,8 @@ impl<'a> PipelineViewportExclusiveScissorStateCreateInfoNV<'a> {
     /// Sets [`p_exclusive_scissors`](Self::p_exclusive_scissors) to the start of a slice of
     /// elements and [`exclusive_scissor_count`](Self::exclusive_scissor_count) to its length.
     ///
+    /// An empty slice sets [`p_exclusive_scissors`](Self::p_exclusive_scissors) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `exclusiveScissorCount`, a `uint32_t`, can count.
@@ -105099,7 +105398,7 @@ impl<'a> PipelineViewportExclusiveScissorStateCreateInfoNV<'a> {
             "VkPipelineViewportExclusiveScissorStateCreateInfoNV::pExclusiveScissors",
             "exclusiveScissorCount",
         );
-        self.p_exclusive_scissors = value.as_ptr();
+        self.p_exclusive_scissors = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -105181,6 +105480,9 @@ impl<'a> PipelineViewportShadingRateImageStateCreateInfoNV<'a> {
     /// Sets [`p_shading_rate_palettes`](Self::p_shading_rate_palettes) to the start of a slice of
     /// elements and [`viewport_count`](Self::viewport_count) to its length.
     ///
+    /// An empty slice sets [`p_shading_rate_palettes`](Self::p_shading_rate_palettes) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `viewportCount`, a `uint32_t`, can count.
@@ -105190,7 +105492,7 @@ impl<'a> PipelineViewportShadingRateImageStateCreateInfoNV<'a> {
             "VkPipelineViewportShadingRateImageStateCreateInfoNV::pShadingRatePalettes",
             "viewportCount",
         );
-        self.p_shading_rate_palettes = value.as_ptr();
+        self.p_shading_rate_palettes = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -105405,6 +105707,8 @@ impl<'a> PipelineViewportSwizzleStateCreateInfoNV<'a> {
     /// Sets [`p_viewport_swizzles`](Self::p_viewport_swizzles) to the start of a slice of elements
     /// and [`viewport_count`](Self::viewport_count) to its length.
     ///
+    /// An empty slice sets [`p_viewport_swizzles`](Self::p_viewport_swizzles) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `viewportCount`, a `uint32_t`, can count.
@@ -105414,7 +105718,7 @@ impl<'a> PipelineViewportSwizzleStateCreateInfoNV<'a> {
             "VkPipelineViewportSwizzleStateCreateInfoNV::pViewportSwizzles",
             "viewportCount",
         );
-        self.p_viewport_swizzles = value.as_ptr();
+        self.p_viewport_swizzles = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -105886,11 +106190,14 @@ impl<'a> PresentInfoKHR<'a> {
     /// Sets [`p_swapchains`](Self::p_swapchains) to the start of a slice of elements and
     /// [`swapchain_count`](Self::swapchain_count) to its length.
     ///
+    /// An empty slice sets [`p_swapchains`](Self::p_swapchains) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `swapchainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `swapchainCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `swapchainCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `swapchainCount`, a
+    /// `uint32_t`, can count.
     pub fn swapchains(mut self, value: &'a [SwapchainKHR]) -> Self {
         if !self.p_image_indices.is_null() || !self.p_results.is_null() {
             assert_eq!(
@@ -105904,17 +106211,20 @@ impl<'a> PresentInfoKHR<'a> {
             "VkPresentInfoKHR::pSwapchains",
             "swapchainCount",
         );
-        self.p_swapchains = value.as_ptr();
+        self.p_swapchains = ptr_or_null(value);
         self
     }
     /// Sets [`p_image_indices`](Self::p_image_indices) to the start of a slice of elements and
     /// [`swapchain_count`](Self::swapchain_count) to its length.
     ///
+    /// An empty slice sets [`p_image_indices`](Self::p_image_indices) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `swapchainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `swapchainCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `swapchainCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `swapchainCount`, a
+    /// `uint32_t`, can count.
     pub fn image_indices(mut self, value: &'a [u32]) -> Self {
         if !self.p_swapchains.is_null() || !self.p_results.is_null() {
             assert_eq!(
@@ -105928,7 +106238,7 @@ impl<'a> PresentInfoKHR<'a> {
             "VkPresentInfoKHR::pImageIndices",
             "swapchainCount",
         );
-        self.p_image_indices = value.as_ptr();
+        self.p_image_indices = ptr_or_null(value);
         self
     }
     /// Sets [`p_results`](Self::p_results) to the start of a slice of elements and
@@ -105943,9 +106253,10 @@ impl<'a> PresentInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `swapchainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `swapchainCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `swapchainCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `swapchainCount`, a
+    /// `uint32_t`, can count.
     pub fn results(mut self, value: &'a mut [VkResult]) -> Self {
         if value.is_empty() {
             if !self.p_results.is_null()
@@ -106990,12 +107301,14 @@ impl<'a> PushConstantsInfo<'a> {
     /// Sets [`p_values`](Self::p_values) to the start of a slice of bytes and [`size`](Self::size)
     /// to its length.
     ///
+    /// An empty slice sets [`p_values`](Self::p_values) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `size`, a `uint32_t`, can count.
     pub fn values(mut self, value: &'a [u8]) -> Self {
         self.size = len_as_count(value.len(), "VkPushConstantsInfo::pValues", "size");
-        self.p_values = value.as_ptr().cast();
+        self.p_values = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -107157,6 +107470,8 @@ impl<'a> PushDescriptorSetInfo<'a> {
     /// Sets [`p_descriptor_writes`](Self::p_descriptor_writes) to the start of a slice of elements
     /// and [`descriptor_write_count`](Self::descriptor_write_count) to its length.
     ///
+    /// An empty slice sets [`p_descriptor_writes`](Self::p_descriptor_writes) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `descriptorWriteCount`, a `uint32_t`, can count.
@@ -107166,7 +107481,7 @@ impl<'a> PushDescriptorSetInfo<'a> {
             "VkPushDescriptorSetInfo::pDescriptorWrites",
             "descriptorWriteCount",
         );
-        self.p_descriptor_writes = value.as_ptr();
+        self.p_descriptor_writes = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -107483,6 +107798,8 @@ impl<'a> QueryPoolPerformanceCreateInfoKHR<'a> {
     /// Sets [`p_counter_indices`](Self::p_counter_indices) to the start of a slice of elements and
     /// [`counter_index_count`](Self::counter_index_count) to its length.
     ///
+    /// An empty slice sets [`p_counter_indices`](Self::p_counter_indices) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `counterIndexCount`, a `uint32_t`, can count.
@@ -107492,7 +107809,7 @@ impl<'a> QueryPoolPerformanceCreateInfoKHR<'a> {
             "VkQueryPoolPerformanceCreateInfoKHR::pCounterIndices",
             "counterIndexCount",
         );
-        self.p_counter_indices = value.as_ptr();
+        self.p_counter_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -108165,6 +108482,8 @@ impl<'a> QueueFamilyDataGraphTOSAPropertiesARM<'a> {
     /// Sets [`p_profiles`](Self::p_profiles) to the start of a slice of elements and
     /// [`profile_count`](Self::profile_count) to its length.
     ///
+    /// An empty slice sets [`p_profiles`](Self::p_profiles) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `profileCount`, a `uint32_t`, can count.
@@ -108174,7 +108493,7 @@ impl<'a> QueueFamilyDataGraphTOSAPropertiesARM<'a> {
             "VkQueueFamilyDataGraphTOSAPropertiesARM::pProfiles",
             "profileCount",
         );
-        self.p_profiles = value.as_ptr();
+        self.p_profiles = ptr_or_null(value);
         self
     }
     /// Sets [`extension_count`](Self::extension_count).
@@ -108185,6 +108504,8 @@ impl<'a> QueueFamilyDataGraphTOSAPropertiesARM<'a> {
     /// Sets [`p_extensions`](Self::p_extensions) to the start of a slice of elements and
     /// [`extension_count`](Self::extension_count) to its length.
     ///
+    /// An empty slice sets [`p_extensions`](Self::p_extensions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `extensionCount`, a `uint32_t`, can count.
@@ -108194,7 +108515,7 @@ impl<'a> QueueFamilyDataGraphTOSAPropertiesARM<'a> {
             "VkQueueFamilyDataGraphTOSAPropertiesARM::pExtensions",
             "extensionCount",
         );
-        self.p_extensions = value.as_ptr();
+        self.p_extensions = ptr_or_null(value);
         self
     }
     /// Sets [`level`](Self::level).
@@ -108846,6 +109167,8 @@ impl<'a> RayTracingPipelineCreateInfoKHR<'a> {
     /// Sets [`p_stages`](Self::p_stages) to the start of a slice of elements and
     /// [`stage_count`](Self::stage_count) to its length.
     ///
+    /// An empty slice sets [`p_stages`](Self::p_stages) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stageCount`, a `uint32_t`, can count.
@@ -108855,7 +109178,7 @@ impl<'a> RayTracingPipelineCreateInfoKHR<'a> {
             "VkRayTracingPipelineCreateInfoKHR::pStages",
             "stageCount",
         );
-        self.p_stages = value.as_ptr();
+        self.p_stages = ptr_or_null(value);
         self
     }
     /// Sets [`group_count`](Self::group_count).
@@ -108866,6 +109189,8 @@ impl<'a> RayTracingPipelineCreateInfoKHR<'a> {
     /// Sets [`p_groups`](Self::p_groups) to the start of a slice of elements and
     /// [`group_count`](Self::group_count) to its length.
     ///
+    /// An empty slice sets [`p_groups`](Self::p_groups) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `groupCount`, a `uint32_t`, can count.
@@ -108875,7 +109200,7 @@ impl<'a> RayTracingPipelineCreateInfoKHR<'a> {
             "VkRayTracingPipelineCreateInfoKHR::pGroups",
             "groupCount",
         );
-        self.p_groups = value.as_ptr();
+        self.p_groups = ptr_or_null(value);
         self
     }
     /// Sets [`max_pipeline_ray_recursion_depth`](Self::max_pipeline_ray_recursion_depth).
@@ -109016,6 +109341,8 @@ impl<'a> RayTracingPipelineCreateInfoNV<'a> {
     /// Sets [`p_stages`](Self::p_stages) to the start of a slice of elements and
     /// [`stage_count`](Self::stage_count) to its length.
     ///
+    /// An empty slice sets [`p_stages`](Self::p_stages) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stageCount`, a `uint32_t`, can count.
@@ -109025,7 +109352,7 @@ impl<'a> RayTracingPipelineCreateInfoNV<'a> {
             "VkRayTracingPipelineCreateInfoNV::pStages",
             "stageCount",
         );
-        self.p_stages = value.as_ptr();
+        self.p_stages = ptr_or_null(value);
         self
     }
     /// Sets [`group_count`](Self::group_count).
@@ -109036,6 +109363,8 @@ impl<'a> RayTracingPipelineCreateInfoNV<'a> {
     /// Sets [`p_groups`](Self::p_groups) to the start of a slice of elements and
     /// [`group_count`](Self::group_count) to its length.
     ///
+    /// An empty slice sets [`p_groups`](Self::p_groups) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `groupCount`, a `uint32_t`, can count.
@@ -109045,7 +109374,7 @@ impl<'a> RayTracingPipelineCreateInfoNV<'a> {
             "VkRayTracingPipelineCreateInfoNV::pGroups",
             "groupCount",
         );
-        self.p_groups = value.as_ptr();
+        self.p_groups = ptr_or_null(value);
         self
     }
     /// Sets [`max_recursion_depth`](Self::max_recursion_depth).
@@ -109609,6 +109938,8 @@ impl<'a> ReleaseSwapchainImagesInfoKHR<'a> {
     /// Sets [`p_image_indices`](Self::p_image_indices) to the start of a slice of elements and
     /// [`image_index_count`](Self::image_index_count) to its length.
     ///
+    /// An empty slice sets [`p_image_indices`](Self::p_image_indices) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `imageIndexCount`, a `uint32_t`, can count.
@@ -109618,7 +109949,7 @@ impl<'a> ReleaseSwapchainImagesInfoKHR<'a> {
             "VkReleaseSwapchainImagesInfoKHR::pImageIndices",
             "imageIndexCount",
         );
-        self.p_image_indices = value.as_ptr();
+        self.p_image_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -109691,6 +110022,8 @@ impl<'a> RenderPassAttachmentBeginInfo<'a> {
     /// Sets [`p_attachments`](Self::p_attachments) to the start of a slice of elements and
     /// [`attachment_count`](Self::attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_attachments`](Self::p_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `attachmentCount`, a `uint32_t`, can count.
@@ -109700,7 +110033,7 @@ impl<'a> RenderPassAttachmentBeginInfo<'a> {
             "VkRenderPassAttachmentBeginInfo::pAttachments",
             "attachmentCount",
         );
-        self.p_attachments = value.as_ptr();
+        self.p_attachments = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -109801,6 +110134,8 @@ impl<'a> RenderPassBeginInfo<'a> {
     /// Sets [`p_clear_values`](Self::p_clear_values) to the start of a slice of elements and
     /// [`clear_value_count`](Self::clear_value_count) to its length.
     ///
+    /// An empty slice sets [`p_clear_values`](Self::p_clear_values) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `clearValueCount`, a `uint32_t`, can count.
@@ -109810,7 +110145,7 @@ impl<'a> RenderPassBeginInfo<'a> {
             "VkRenderPassBeginInfo::pClearValues",
             "clearValueCount",
         );
-        self.p_clear_values = value.as_ptr();
+        self.p_clear_values = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -109900,6 +110235,8 @@ impl<'a> RenderPassCreateInfo<'a> {
     /// Sets [`p_attachments`](Self::p_attachments) to the start of a slice of elements and
     /// [`attachment_count`](Self::attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_attachments`](Self::p_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `attachmentCount`, a `uint32_t`, can count.
@@ -109909,7 +110246,7 @@ impl<'a> RenderPassCreateInfo<'a> {
             "VkRenderPassCreateInfo::pAttachments",
             "attachmentCount",
         );
-        self.p_attachments = value.as_ptr();
+        self.p_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`subpass_count`](Self::subpass_count).
@@ -109920,6 +110257,8 @@ impl<'a> RenderPassCreateInfo<'a> {
     /// Sets [`p_subpasses`](Self::p_subpasses) to the start of a slice of elements and
     /// [`subpass_count`](Self::subpass_count) to its length.
     ///
+    /// An empty slice sets [`p_subpasses`](Self::p_subpasses) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `subpassCount`, a `uint32_t`, can count.
@@ -109929,7 +110268,7 @@ impl<'a> RenderPassCreateInfo<'a> {
             "VkRenderPassCreateInfo::pSubpasses",
             "subpassCount",
         );
-        self.p_subpasses = value.as_ptr();
+        self.p_subpasses = ptr_or_null(value);
         self
     }
     /// Sets [`dependency_count`](Self::dependency_count).
@@ -109940,6 +110279,8 @@ impl<'a> RenderPassCreateInfo<'a> {
     /// Sets [`p_dependencies`](Self::p_dependencies) to the start of a slice of elements and
     /// [`dependency_count`](Self::dependency_count) to its length.
     ///
+    /// An empty slice sets [`p_dependencies`](Self::p_dependencies) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `dependencyCount`, a `uint32_t`, can count.
@@ -109949,7 +110290,7 @@ impl<'a> RenderPassCreateInfo<'a> {
             "VkRenderPassCreateInfo::pDependencies",
             "dependencyCount",
         );
-        self.p_dependencies = value.as_ptr();
+        self.p_dependencies = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -110046,6 +110387,8 @@ impl<'a> RenderPassCreateInfo2<'a> {
     /// Sets [`p_attachments`](Self::p_attachments) to the start of a slice of elements and
     /// [`attachment_count`](Self::attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_attachments`](Self::p_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `attachmentCount`, a `uint32_t`, can count.
@@ -110055,7 +110398,7 @@ impl<'a> RenderPassCreateInfo2<'a> {
             "VkRenderPassCreateInfo2::pAttachments",
             "attachmentCount",
         );
-        self.p_attachments = value.as_ptr();
+        self.p_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`subpass_count`](Self::subpass_count).
@@ -110066,6 +110409,8 @@ impl<'a> RenderPassCreateInfo2<'a> {
     /// Sets [`p_subpasses`](Self::p_subpasses) to the start of a slice of elements and
     /// [`subpass_count`](Self::subpass_count) to its length.
     ///
+    /// An empty slice sets [`p_subpasses`](Self::p_subpasses) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `subpassCount`, a `uint32_t`, can count.
@@ -110075,7 +110420,7 @@ impl<'a> RenderPassCreateInfo2<'a> {
             "VkRenderPassCreateInfo2::pSubpasses",
             "subpassCount",
         );
-        self.p_subpasses = value.as_ptr();
+        self.p_subpasses = ptr_or_null(value);
         self
     }
     /// Sets [`dependency_count`](Self::dependency_count).
@@ -110086,6 +110431,8 @@ impl<'a> RenderPassCreateInfo2<'a> {
     /// Sets [`p_dependencies`](Self::p_dependencies) to the start of a slice of elements and
     /// [`dependency_count`](Self::dependency_count) to its length.
     ///
+    /// An empty slice sets [`p_dependencies`](Self::p_dependencies) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `dependencyCount`, a `uint32_t`, can count.
@@ -110095,7 +110442,7 @@ impl<'a> RenderPassCreateInfo2<'a> {
             "VkRenderPassCreateInfo2::pDependencies",
             "dependencyCount",
         );
-        self.p_dependencies = value.as_ptr();
+        self.p_dependencies = ptr_or_null(value);
         self
     }
     /// Sets [`correlated_view_mask_count`](Self::correlated_view_mask_count).
@@ -110105,6 +110452,9 @@ impl<'a> RenderPassCreateInfo2<'a> {
     }
     /// Sets [`p_correlated_view_masks`](Self::p_correlated_view_masks) to the start of a slice of
     /// elements and [`correlated_view_mask_count`](Self::correlated_view_mask_count) to its length.
+    ///
+    /// An empty slice sets [`p_correlated_view_masks`](Self::p_correlated_view_masks) to a null
+    /// pointer.
     ///
     /// # Panics
     ///
@@ -110116,7 +110466,7 @@ impl<'a> RenderPassCreateInfo2<'a> {
             "VkRenderPassCreateInfo2::pCorrelatedViewMasks",
             "correlatedViewMaskCount",
         );
-        self.p_correlated_view_masks = value.as_ptr();
+        self.p_correlated_view_masks = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -110406,6 +110756,9 @@ impl<'a> RenderPassFragmentDensityMapOffsetEndInfoEXT<'a> {
     /// slice of elements and [`fragment_density_offset_count`](Self::fragment_density_offset_count)
     /// to its length.
     ///
+    /// An empty slice sets [`p_fragment_density_offsets`](Self::p_fragment_density_offsets) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `fragmentDensityOffsetCount`, a `uint32_t`, can
@@ -110416,7 +110769,7 @@ impl<'a> RenderPassFragmentDensityMapOffsetEndInfoEXT<'a> {
             "VkRenderPassFragmentDensityMapOffsetEndInfoEXT::pFragmentDensityOffsets",
             "fragmentDensityOffsetCount",
         );
-        self.p_fragment_density_offsets = value.as_ptr();
+        self.p_fragment_density_offsets = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -110494,6 +110847,8 @@ impl<'a> RenderPassInputAttachmentAspectCreateInfo<'a> {
     /// Sets [`p_aspect_references`](Self::p_aspect_references) to the start of a slice of elements
     /// and [`aspect_reference_count`](Self::aspect_reference_count) to its length.
     ///
+    /// An empty slice sets [`p_aspect_references`](Self::p_aspect_references) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `aspectReferenceCount`, a `uint32_t`, can count.
@@ -110503,7 +110858,7 @@ impl<'a> RenderPassInputAttachmentAspectCreateInfo<'a> {
             "VkRenderPassInputAttachmentAspectCreateInfo::pAspectReferences",
             "aspectReferenceCount",
         );
-        self.p_aspect_references = value.as_ptr();
+        self.p_aspect_references = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -110596,6 +110951,8 @@ impl<'a> RenderPassMultiviewCreateInfo<'a> {
     /// Sets [`p_view_masks`](Self::p_view_masks) to the start of a slice of elements and
     /// [`subpass_count`](Self::subpass_count) to its length.
     ///
+    /// An empty slice sets [`p_view_masks`](Self::p_view_masks) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `subpassCount`, a `uint32_t`, can count.
@@ -110605,7 +110962,7 @@ impl<'a> RenderPassMultiviewCreateInfo<'a> {
             "VkRenderPassMultiviewCreateInfo::pViewMasks",
             "subpassCount",
         );
-        self.p_view_masks = value.as_ptr();
+        self.p_view_masks = ptr_or_null(value);
         self
     }
     /// Sets [`dependency_count`](Self::dependency_count).
@@ -110616,6 +110973,8 @@ impl<'a> RenderPassMultiviewCreateInfo<'a> {
     /// Sets [`p_view_offsets`](Self::p_view_offsets) to the start of a slice of elements and
     /// [`dependency_count`](Self::dependency_count) to its length.
     ///
+    /// An empty slice sets [`p_view_offsets`](Self::p_view_offsets) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `dependencyCount`, a `uint32_t`, can count.
@@ -110625,7 +110984,7 @@ impl<'a> RenderPassMultiviewCreateInfo<'a> {
             "VkRenderPassMultiviewCreateInfo::pViewOffsets",
             "dependencyCount",
         );
-        self.p_view_offsets = value.as_ptr();
+        self.p_view_offsets = ptr_or_null(value);
         self
     }
     /// Sets [`correlation_mask_count`](Self::correlation_mask_count).
@@ -110636,6 +110995,8 @@ impl<'a> RenderPassMultiviewCreateInfo<'a> {
     /// Sets [`p_correlation_masks`](Self::p_correlation_masks) to the start of a slice of elements
     /// and [`correlation_mask_count`](Self::correlation_mask_count) to its length.
     ///
+    /// An empty slice sets [`p_correlation_masks`](Self::p_correlation_masks) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `correlationMaskCount`, a `uint32_t`, can count.
@@ -110645,7 +111006,7 @@ impl<'a> RenderPassMultiviewCreateInfo<'a> {
             "VkRenderPassMultiviewCreateInfo::pCorrelationMasks",
             "correlationMaskCount",
         );
-        self.p_correlation_masks = value.as_ptr();
+        self.p_correlation_masks = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -110732,6 +111093,8 @@ impl<'a> RenderPassPerformanceCountersByRegionBeginInfoARM<'a> {
     /// Sets [`p_counter_addresses`](Self::p_counter_addresses) to the start of a slice of elements
     /// and [`counter_address_count`](Self::counter_address_count) to its length.
     ///
+    /// An empty slice sets [`p_counter_addresses`](Self::p_counter_addresses) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `counterAddressCount`, a `uint32_t`, can count.
@@ -110741,7 +111104,7 @@ impl<'a> RenderPassPerformanceCountersByRegionBeginInfoARM<'a> {
             "VkRenderPassPerformanceCountersByRegionBeginInfoARM::pCounterAddresses",
             "counterAddressCount",
         );
-        self.p_counter_addresses = value.as_ptr();
+        self.p_counter_addresses = ptr_or_null(value);
         self
     }
     /// Sets [`serialize_regions`](Self::serialize_regions) to `VK_TRUE` or `VK_FALSE`.
@@ -110757,6 +111120,8 @@ impl<'a> RenderPassPerformanceCountersByRegionBeginInfoARM<'a> {
     /// Sets [`p_counter_indices`](Self::p_counter_indices) to the start of a slice of elements and
     /// [`counter_index_count`](Self::counter_index_count) to its length.
     ///
+    /// An empty slice sets [`p_counter_indices`](Self::p_counter_indices) to a null pointer.
+    ///
     /// The C declaration of the member is a pointer to writable memory, but the implementation only
     /// reads the elements, so the setter borrows them shared.
     ///
@@ -110769,7 +111134,7 @@ impl<'a> RenderPassPerformanceCountersByRegionBeginInfoARM<'a> {
             "VkRenderPassPerformanceCountersByRegionBeginInfoARM::pCounterIndices",
             "counterIndexCount",
         );
-        self.p_counter_indices = value.as_ptr().cast_mut();
+        self.p_counter_indices = ptr_or_null(value).cast_mut();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -110870,6 +111235,10 @@ impl<'a> RenderPassSampleLocationsBeginInfoEXT<'a> {
     /// [`attachment_initial_sample_locations_count`](Self::attachment_initial_sample_locations_count)
     /// to its length.
     ///
+    /// An empty slice sets
+    /// [`p_attachment_initial_sample_locations`](Self::p_attachment_initial_sample_locations) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `attachmentInitialSampleLocationsCount`, a
@@ -110883,7 +111252,7 @@ impl<'a> RenderPassSampleLocationsBeginInfoEXT<'a> {
             "VkRenderPassSampleLocationsBeginInfoEXT::pAttachmentInitialSampleLocations",
             "attachmentInitialSampleLocationsCount",
         );
-        self.p_attachment_initial_sample_locations = value.as_ptr();
+        self.p_attachment_initial_sample_locations = ptr_or_null(value);
         self
     }
     /// Sets [`post_subpass_sample_locations_count`](Self::post_subpass_sample_locations_count).
@@ -110895,6 +111264,10 @@ impl<'a> RenderPassSampleLocationsBeginInfoEXT<'a> {
     /// of a slice of elements and
     /// [`post_subpass_sample_locations_count`](Self::post_subpass_sample_locations_count) to its
     /// length.
+    ///
+    /// An empty slice sets
+    /// [`p_post_subpass_sample_locations`](Self::p_post_subpass_sample_locations) to a null
+    /// pointer.
     ///
     /// # Panics
     ///
@@ -110909,7 +111282,7 @@ impl<'a> RenderPassSampleLocationsBeginInfoEXT<'a> {
             "VkRenderPassSampleLocationsBeginInfoEXT::pPostSubpassSampleLocations",
             "postSubpassSampleLocationsCount",
         );
-        self.p_post_subpass_sample_locations = value.as_ptr();
+        self.p_post_subpass_sample_locations = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -110980,6 +111353,8 @@ impl<'a> RenderPassStripeBeginInfoARM<'a> {
     /// Sets [`p_stripe_infos`](Self::p_stripe_infos) to the start of a slice of elements and
     /// [`stripe_info_count`](Self::stripe_info_count) to its length.
     ///
+    /// An empty slice sets [`p_stripe_infos`](Self::p_stripe_infos) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stripeInfoCount`, a `uint32_t`, can count.
@@ -110989,7 +111364,7 @@ impl<'a> RenderPassStripeBeginInfoARM<'a> {
             "VkRenderPassStripeBeginInfoARM::pStripeInfos",
             "stripeInfoCount",
         );
-        self.p_stripe_infos = value.as_ptr();
+        self.p_stripe_infos = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -111117,6 +111492,9 @@ impl<'a> RenderPassStripeSubmitInfoARM<'a> {
     /// elements and [`stripe_semaphore_info_count`](Self::stripe_semaphore_info_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_stripe_semaphore_infos`](Self::p_stripe_semaphore_infos) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stripeSemaphoreInfoCount`, a `uint32_t`, can
@@ -111127,7 +111505,7 @@ impl<'a> RenderPassStripeSubmitInfoARM<'a> {
             "VkRenderPassStripeSubmitInfoARM::pStripeSemaphoreInfos",
             "stripeSemaphoreInfoCount",
         );
-        self.p_stripe_semaphore_infos = value.as_ptr();
+        self.p_stripe_semaphore_infos = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -111462,6 +111840,9 @@ impl<'a> RenderingAreaInfo<'a> {
     /// slice of elements and [`color_attachment_count`](Self::color_attachment_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_color_attachment_formats`](Self::p_color_attachment_formats) to a
+    /// null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorAttachmentCount`, a `uint32_t`, can count.
@@ -111471,7 +111852,7 @@ impl<'a> RenderingAreaInfo<'a> {
             "VkRenderingAreaInfo::pColorAttachmentFormats",
             "colorAttachmentCount",
         );
-        self.p_color_attachment_formats = value.as_ptr();
+        self.p_color_attachment_formats = ptr_or_null(value);
         self
     }
     /// Sets [`depth_attachment_format`](Self::depth_attachment_format).
@@ -112070,6 +112451,8 @@ impl<'a> RenderingInfo<'a> {
     /// Sets [`p_color_attachments`](Self::p_color_attachments) to the start of a slice of elements
     /// and [`color_attachment_count`](Self::color_attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_color_attachments`](Self::p_color_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `colorAttachmentCount`, a `uint32_t`, can count.
@@ -112079,7 +112462,7 @@ impl<'a> RenderingInfo<'a> {
             "VkRenderingInfo::pColorAttachments",
             "colorAttachmentCount",
         );
-        self.p_color_attachments = value.as_ptr();
+        self.p_color_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`p_depth_attachment`](Self::p_depth_attachment) to point to `value`.
@@ -112311,13 +112694,15 @@ impl<'a> ResolveImageInfo2<'a> {
     /// Sets [`p_regions`](Self::p_regions) to the start of a slice of elements and
     /// [`region_count`](Self::region_count) to its length.
     ///
+    /// An empty slice sets [`p_regions`](Self::p_regions) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `regionCount`, a `uint32_t`, can count.
     pub fn regions(mut self, value: &'a [ImageResolve2<'a>]) -> Self {
         self.region_count =
             len_as_count(value.len(), "VkResolveImageInfo2::pRegions", "regionCount");
-        self.p_regions = value.as_ptr();
+        self.p_regions = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -112807,6 +113192,8 @@ impl<'a> SampleLocationsInfoEXT<'a> {
     /// Sets [`p_sample_locations`](Self::p_sample_locations) to the start of a slice of elements
     /// and [`sample_locations_count`](Self::sample_locations_count) to its length.
     ///
+    /// An empty slice sets [`p_sample_locations`](Self::p_sample_locations) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `sampleLocationsCount`, a `uint32_t`, can count.
@@ -112816,7 +113203,7 @@ impl<'a> SampleLocationsInfoEXT<'a> {
             "VkSampleLocationsInfoEXT::pSampleLocations",
             "sampleLocationsCount",
         );
-        self.p_sample_locations = value.as_ptr();
+        self.p_sample_locations = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -114673,11 +115060,14 @@ impl<'a> SemaphoreWaitInfo<'a> {
     /// Sets [`p_semaphores`](Self::p_semaphores) to the start of a slice of elements and
     /// [`semaphore_count`](Self::semaphore_count) to its length.
     ///
+    /// An empty slice sets [`p_semaphores`](Self::p_semaphores) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `semaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `semaphoreCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `semaphoreCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `semaphoreCount`, a
+    /// `uint32_t`, can count.
     pub fn semaphores(mut self, value: &'a [Semaphore]) -> Self {
         if !self.p_values.is_null() {
             assert_eq!(
@@ -114691,17 +115081,20 @@ impl<'a> SemaphoreWaitInfo<'a> {
             "VkSemaphoreWaitInfo::pSemaphores",
             "semaphoreCount",
         );
-        self.p_semaphores = value.as_ptr();
+        self.p_semaphores = ptr_or_null(value);
         self
     }
     /// Sets [`p_values`](Self::p_values) to the start of a slice of elements and
     /// [`semaphore_count`](Self::semaphore_count) to its length.
     ///
+    /// An empty slice sets [`p_values`](Self::p_values) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `semaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `semaphoreCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `semaphoreCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `semaphoreCount`, a
+    /// `uint32_t`, can count.
     pub fn values(mut self, value: &'a [u64]) -> Self {
         if !self.p_semaphores.is_null() {
             assert_eq!(
@@ -114715,7 +115108,7 @@ impl<'a> SemaphoreWaitInfo<'a> {
             "VkSemaphoreWaitInfo::pValues",
             "semaphoreCount",
         );
-        self.p_values = value.as_ptr();
+        self.p_values = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -114818,10 +115211,14 @@ impl<'a> SetDescriptorBufferOffsetsInfoEXT<'a> {
     /// Sets [`p_buffer_indices`](Self::p_buffer_indices) to the start of a slice of elements and
     /// [`set_count`](Self::set_count) to its length.
     ///
+    /// An empty slice sets [`p_buffer_indices`](Self::p_buffer_indices) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `setCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `setCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `setCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `setCount`, a `uint32_t`,
+    /// can count.
     pub fn buffer_indices(mut self, value: &'a [u32]) -> Self {
         if !self.p_offsets.is_null() {
             assert_eq!(
@@ -114835,16 +115232,20 @@ impl<'a> SetDescriptorBufferOffsetsInfoEXT<'a> {
             "VkSetDescriptorBufferOffsetsInfoEXT::pBufferIndices",
             "setCount",
         );
-        self.p_buffer_indices = value.as_ptr();
+        self.p_buffer_indices = ptr_or_null(value);
         self
     }
     /// Sets [`p_offsets`](Self::p_offsets) to the start of a slice of elements and
     /// [`set_count`](Self::set_count) to its length.
     ///
+    /// An empty slice sets [`p_offsets`](Self::p_offsets) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `setCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `setCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `setCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `setCount`, a `uint32_t`,
+    /// can count.
     pub fn offsets(mut self, value: &'a [DeviceSize]) -> Self {
         if !self.p_buffer_indices.is_null() {
             assert_eq!(
@@ -114858,7 +115259,7 @@ impl<'a> SetDescriptorBufferOffsetsInfoEXT<'a> {
             "VkSetDescriptorBufferOffsetsInfoEXT::pOffsets",
             "setCount",
         );
-        self.p_offsets = value.as_ptr();
+        self.p_offsets = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -115149,12 +115550,14 @@ impl<'a> ShaderCreateInfoEXT<'a> {
     /// Sets [`p_code`](Self::p_code) to the start of a slice of bytes and
     /// [`code_size`](Self::code_size) to its length.
     ///
+    /// An empty slice sets [`p_code`](Self::p_code) to a null pointer.
+    ///
     /// The C API requires the bytes to start at an address that is a multiple of 16 for binary
     /// shader code and a multiple of 4 for SPIR-V. A `&[u8]` guarantees neither, so the caller has
     /// to borrow the bytes from memory with that alignment.
     pub fn code(mut self, value: &'a [u8]) -> Self {
         self.code_size = value.len() as _;
-        self.p_code = value.as_ptr().cast();
+        self.p_code = ptr_or_null(value).cast();
         self
     }
     /// Sets [`p_name`](Self::p_name) to a NUL-terminated string.
@@ -115302,6 +115705,8 @@ impl<'a> ShaderDescriptorSetAndBindingMappingInfoEXT<'a> {
     /// Sets [`p_mappings`](Self::p_mappings) to the start of a slice of elements and
     /// [`mapping_count`](Self::mapping_count) to its length.
     ///
+    /// An empty slice sets [`p_mappings`](Self::p_mappings) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `mappingCount`, a `uint32_t`, can count.
@@ -115311,7 +115716,7 @@ impl<'a> ShaderDescriptorSetAndBindingMappingInfoEXT<'a> {
             "VkShaderDescriptorSetAndBindingMappingInfoEXT::pMappings",
             "mappingCount",
         );
-        self.p_mappings = value.as_ptr();
+        self.p_mappings = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -115581,9 +115986,11 @@ impl<'a> ShaderModuleCreateInfo<'a> {
     }
     /// Sets [`p_code`](Self::p_code) to the start of a slice of SPIR-V words and
     /// [`code_size`](Self::code_size) to its size in bytes.
+    ///
+    /// An empty slice sets [`p_code`](Self::p_code) to a null pointer.
     pub fn code(mut self, value: &'a [u32]) -> Self {
         self.code_size = core::mem::size_of_val(value);
-        self.p_code = value.as_ptr();
+        self.p_code = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -115926,6 +116333,9 @@ impl<'a> ShadingRatePaletteNV<'a> {
     /// of a slice of elements and
     /// [`shading_rate_palette_entry_count`](Self::shading_rate_palette_entry_count) to its length.
     ///
+    /// An empty slice sets [`p_shading_rate_palette_entries`](Self::p_shading_rate_palette_entries)
+    /// to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `shadingRatePaletteEntryCount`, a `uint32_t`, can
@@ -115936,7 +116346,7 @@ impl<'a> ShadingRatePaletteNV<'a> {
             "VkShadingRatePaletteNV::pShadingRatePaletteEntries",
             "shadingRatePaletteEntryCount",
         );
-        self.p_shading_rate_palette_entries = value.as_ptr();
+        self.p_shading_rate_palette_entries = ptr_or_null(value);
         self
     }
 }
@@ -116124,6 +116534,8 @@ impl<'a> SparseBufferMemoryBindInfo<'a> {
     /// Sets [`p_binds`](Self::p_binds) to the start of a slice of elements and
     /// [`bind_count`](Self::bind_count) to its length.
     ///
+    /// An empty slice sets [`p_binds`](Self::p_binds) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `bindCount`, a `uint32_t`, can count.
@@ -116133,7 +116545,7 @@ impl<'a> SparseBufferMemoryBindInfo<'a> {
             "VkSparseBufferMemoryBindInfo::pBinds",
             "bindCount",
         );
-        self.p_binds = value.as_ptr();
+        self.p_binds = ptr_or_null(value);
         self
     }
 }
@@ -116375,6 +116787,8 @@ impl<'a> SparseImageMemoryBindInfo<'a> {
     /// Sets [`p_binds`](Self::p_binds) to the start of a slice of elements and
     /// [`bind_count`](Self::bind_count) to its length.
     ///
+    /// An empty slice sets [`p_binds`](Self::p_binds) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `bindCount`, a `uint32_t`, can count.
@@ -116384,7 +116798,7 @@ impl<'a> SparseImageMemoryBindInfo<'a> {
             "VkSparseImageMemoryBindInfo::pBinds",
             "bindCount",
         );
-        self.p_binds = value.as_ptr();
+        self.p_binds = ptr_or_null(value);
         self
     }
 }
@@ -116575,6 +116989,8 @@ impl<'a> SparseImageOpaqueMemoryBindInfo<'a> {
     /// Sets [`p_binds`](Self::p_binds) to the start of a slice of elements and
     /// [`bind_count`](Self::bind_count) to its length.
     ///
+    /// An empty slice sets [`p_binds`](Self::p_binds) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `bindCount`, a `uint32_t`, can count.
@@ -116584,7 +117000,7 @@ impl<'a> SparseImageOpaqueMemoryBindInfo<'a> {
             "VkSparseImageOpaqueMemoryBindInfo::pBinds",
             "bindCount",
         );
-        self.p_binds = value.as_ptr();
+        self.p_binds = ptr_or_null(value);
         self
     }
 }
@@ -116701,6 +117117,8 @@ impl<'a> SpecializationInfo<'a> {
     /// Sets [`p_map_entries`](Self::p_map_entries) to the start of a slice of elements and
     /// [`map_entry_count`](Self::map_entry_count) to its length.
     ///
+    /// An empty slice sets [`p_map_entries`](Self::p_map_entries) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `mapEntryCount`, a `uint32_t`, can count.
@@ -116710,7 +117128,7 @@ impl<'a> SpecializationInfo<'a> {
             "VkSpecializationInfo::pMapEntries",
             "mapEntryCount",
         );
-        self.p_map_entries = value.as_ptr();
+        self.p_map_entries = ptr_or_null(value);
         self
     }
     /// Sets [`data_size`](Self::data_size).
@@ -116720,9 +117138,11 @@ impl<'a> SpecializationInfo<'a> {
     }
     /// Sets [`p_data`](Self::p_data) to the start of a slice of bytes and
     /// [`data_size`](Self::data_size) to its length.
+    ///
+    /// An empty slice sets [`p_data`](Self::p_data) to a null pointer.
     pub fn data(mut self, value: &'a [u8]) -> Self {
         self.data_size = value.len() as _;
-        self.p_data = value.as_ptr().cast();
+        self.p_data = ptr_or_null(value).cast();
         self
     }
 }
@@ -117139,11 +117559,14 @@ impl<'a> SubmitInfo<'a> {
     /// Sets [`p_wait_semaphores`](Self::p_wait_semaphores) to the start of a slice of elements and
     /// [`wait_semaphore_count`](Self::wait_semaphore_count) to its length.
     ///
+    /// An empty slice sets [`p_wait_semaphores`](Self::p_wait_semaphores) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `waitSemaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `waitSemaphoreCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `waitSemaphoreCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than
+    /// `waitSemaphoreCount`, a `uint32_t`, can count.
     pub fn wait_semaphores(mut self, value: &'a [Semaphore]) -> Self {
         if !self.p_wait_dst_stage_mask.is_null() {
             assert_eq!(
@@ -117157,17 +117580,21 @@ impl<'a> SubmitInfo<'a> {
             "VkSubmitInfo::pWaitSemaphores",
             "waitSemaphoreCount",
         );
-        self.p_wait_semaphores = value.as_ptr();
+        self.p_wait_semaphores = ptr_or_null(value);
         self
     }
     /// Sets [`p_wait_dst_stage_mask`](Self::p_wait_dst_stage_mask) to the start of a slice of
     /// elements and [`wait_semaphore_count`](Self::wait_semaphore_count) to its length.
     ///
+    /// An empty slice sets [`p_wait_dst_stage_mask`](Self::p_wait_dst_stage_mask) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `waitSemaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `waitSemaphoreCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `waitSemaphoreCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than
+    /// `waitSemaphoreCount`, a `uint32_t`, can count.
     pub fn wait_dst_stage_mask(mut self, value: &'a [PipelineStageFlags]) -> Self {
         if !self.p_wait_semaphores.is_null() {
             assert_eq!(
@@ -117181,7 +117608,7 @@ impl<'a> SubmitInfo<'a> {
             "VkSubmitInfo::pWaitDstStageMask",
             "waitSemaphoreCount",
         );
-        self.p_wait_dst_stage_mask = value.as_ptr();
+        self.p_wait_dst_stage_mask = ptr_or_null(value);
         self
     }
     /// Sets [`command_buffer_count`](Self::command_buffer_count).
@@ -117192,6 +117619,8 @@ impl<'a> SubmitInfo<'a> {
     /// Sets [`p_command_buffers`](Self::p_command_buffers) to the start of a slice of elements and
     /// [`command_buffer_count`](Self::command_buffer_count) to its length.
     ///
+    /// An empty slice sets [`p_command_buffers`](Self::p_command_buffers) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `commandBufferCount`, a `uint32_t`, can count.
@@ -117201,7 +117630,7 @@ impl<'a> SubmitInfo<'a> {
             "VkSubmitInfo::pCommandBuffers",
             "commandBufferCount",
         );
-        self.p_command_buffers = value.as_ptr();
+        self.p_command_buffers = ptr_or_null(value);
         self
     }
     /// Sets [`signal_semaphore_count`](Self::signal_semaphore_count).
@@ -117212,6 +117641,8 @@ impl<'a> SubmitInfo<'a> {
     /// Sets [`p_signal_semaphores`](Self::p_signal_semaphores) to the start of a slice of elements
     /// and [`signal_semaphore_count`](Self::signal_semaphore_count) to its length.
     ///
+    /// An empty slice sets [`p_signal_semaphores`](Self::p_signal_semaphores) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `signalSemaphoreCount`, a `uint32_t`, can count.
@@ -117221,7 +117652,7 @@ impl<'a> SubmitInfo<'a> {
             "VkSubmitInfo::pSignalSemaphores",
             "signalSemaphoreCount",
         );
-        self.p_signal_semaphores = value.as_ptr();
+        self.p_signal_semaphores = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -117312,6 +117743,9 @@ impl<'a> SubmitInfo2<'a> {
     /// Sets [`p_wait_semaphore_infos`](Self::p_wait_semaphore_infos) to the start of a slice of
     /// elements and [`wait_semaphore_info_count`](Self::wait_semaphore_info_count) to its length.
     ///
+    /// An empty slice sets [`p_wait_semaphore_infos`](Self::p_wait_semaphore_infos) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `waitSemaphoreInfoCount`, a `uint32_t`, can
@@ -117322,7 +117756,7 @@ impl<'a> SubmitInfo2<'a> {
             "VkSubmitInfo2::pWaitSemaphoreInfos",
             "waitSemaphoreInfoCount",
         );
-        self.p_wait_semaphore_infos = value.as_ptr();
+        self.p_wait_semaphore_infos = ptr_or_null(value);
         self
     }
     /// Sets [`command_buffer_info_count`](Self::command_buffer_info_count).
@@ -117332,6 +117766,9 @@ impl<'a> SubmitInfo2<'a> {
     }
     /// Sets [`p_command_buffer_infos`](Self::p_command_buffer_infos) to the start of a slice of
     /// elements and [`command_buffer_info_count`](Self::command_buffer_info_count) to its length.
+    ///
+    /// An empty slice sets [`p_command_buffer_infos`](Self::p_command_buffer_infos) to a null
+    /// pointer.
     ///
     /// # Panics
     ///
@@ -117343,7 +117780,7 @@ impl<'a> SubmitInfo2<'a> {
             "VkSubmitInfo2::pCommandBufferInfos",
             "commandBufferInfoCount",
         );
-        self.p_command_buffer_infos = value.as_ptr();
+        self.p_command_buffer_infos = ptr_or_null(value);
         self
     }
     /// Sets [`signal_semaphore_info_count`](Self::signal_semaphore_info_count).
@@ -117355,6 +117792,9 @@ impl<'a> SubmitInfo2<'a> {
     /// elements and [`signal_semaphore_info_count`](Self::signal_semaphore_info_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_signal_semaphore_infos`](Self::p_signal_semaphore_infos) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `signalSemaphoreInfoCount`, a `uint32_t`, can
@@ -117365,7 +117805,7 @@ impl<'a> SubmitInfo2<'a> {
             "VkSubmitInfo2::pSignalSemaphoreInfos",
             "signalSemaphoreInfoCount",
         );
-        self.p_signal_semaphore_infos = value.as_ptr();
+        self.p_signal_semaphore_infos = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -117753,6 +118193,8 @@ impl<'a> SubpassDescription<'a> {
     /// Sets [`p_input_attachments`](Self::p_input_attachments) to the start of a slice of elements
     /// and [`input_attachment_count`](Self::input_attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_input_attachments`](Self::p_input_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `inputAttachmentCount`, a `uint32_t`, can count.
@@ -117762,7 +118204,7 @@ impl<'a> SubpassDescription<'a> {
             "VkSubpassDescription::pInputAttachments",
             "inputAttachmentCount",
         );
-        self.p_input_attachments = value.as_ptr();
+        self.p_input_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`color_attachment_count`](Self::color_attachment_count).
@@ -117773,11 +118215,14 @@ impl<'a> SubpassDescription<'a> {
     /// Sets [`p_color_attachments`](Self::p_color_attachments) to the start of a slice of elements
     /// and [`color_attachment_count`](Self::color_attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_color_attachments`](Self::p_color_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn color_attachments(mut self, value: &'a [AttachmentReference]) -> Self {
         if !self.p_resolve_attachments.is_null() {
             assert_eq!(
@@ -117791,7 +118236,7 @@ impl<'a> SubpassDescription<'a> {
             "VkSubpassDescription::pColorAttachments",
             "colorAttachmentCount",
         );
-        self.p_color_attachments = value.as_ptr();
+        self.p_color_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`p_resolve_attachments`](Self::p_resolve_attachments) to the start of a slice of
@@ -117807,9 +118252,10 @@ impl<'a> SubpassDescription<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn resolve_attachments(mut self, value: &'a [AttachmentReference]) -> Self {
         if value.is_empty() {
             if !self.p_resolve_attachments.is_null() && self.p_color_attachments.is_null() {
@@ -117846,6 +118292,9 @@ impl<'a> SubpassDescription<'a> {
     /// Sets [`p_preserve_attachments`](Self::p_preserve_attachments) to the start of a slice of
     /// elements and [`preserve_attachment_count`](Self::preserve_attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_preserve_attachments`](Self::p_preserve_attachments) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `preserveAttachmentCount`, a `uint32_t`, can
@@ -117856,7 +118305,7 @@ impl<'a> SubpassDescription<'a> {
             "VkSubpassDescription::pPreserveAttachments",
             "preserveAttachmentCount",
         );
-        self.p_preserve_attachments = value.as_ptr();
+        self.p_preserve_attachments = ptr_or_null(value);
         self
     }
 }
@@ -117961,6 +118410,8 @@ impl<'a> SubpassDescription2<'a> {
     /// Sets [`p_input_attachments`](Self::p_input_attachments) to the start of a slice of elements
     /// and [`input_attachment_count`](Self::input_attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_input_attachments`](Self::p_input_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `inputAttachmentCount`, a `uint32_t`, can count.
@@ -117970,7 +118421,7 @@ impl<'a> SubpassDescription2<'a> {
             "VkSubpassDescription2::pInputAttachments",
             "inputAttachmentCount",
         );
-        self.p_input_attachments = value.as_ptr();
+        self.p_input_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`color_attachment_count`](Self::color_attachment_count).
@@ -117981,11 +118432,14 @@ impl<'a> SubpassDescription2<'a> {
     /// Sets [`p_color_attachments`](Self::p_color_attachments) to the start of a slice of elements
     /// and [`color_attachment_count`](Self::color_attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_color_attachments`](Self::p_color_attachments) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn color_attachments(mut self, value: &'a [AttachmentReference2<'a>]) -> Self {
         if !self.p_resolve_attachments.is_null() {
             assert_eq!(
@@ -117999,7 +118453,7 @@ impl<'a> SubpassDescription2<'a> {
             "VkSubpassDescription2::pColorAttachments",
             "colorAttachmentCount",
         );
-        self.p_color_attachments = value.as_ptr();
+        self.p_color_attachments = ptr_or_null(value);
         self
     }
     /// Sets [`p_resolve_attachments`](Self::p_resolve_attachments) to the start of a slice of
@@ -118015,9 +118469,10 @@ impl<'a> SubpassDescription2<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn resolve_attachments(mut self, value: &'a [AttachmentReference2<'a>]) -> Self {
         if value.is_empty() {
             if !self.p_resolve_attachments.is_null() && self.p_color_attachments.is_null() {
@@ -118054,6 +118509,9 @@ impl<'a> SubpassDescription2<'a> {
     /// Sets [`p_preserve_attachments`](Self::p_preserve_attachments) to the start of a slice of
     /// elements and [`preserve_attachment_count`](Self::preserve_attachment_count) to its length.
     ///
+    /// An empty slice sets [`p_preserve_attachments`](Self::p_preserve_attachments) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `preserveAttachmentCount`, a `uint32_t`, can
@@ -118064,7 +118522,7 @@ impl<'a> SubpassDescription2<'a> {
             "VkSubpassDescription2::pPreserveAttachments",
             "preserveAttachmentCount",
         );
-        self.p_preserve_attachments = value.as_ptr();
+        self.p_preserve_attachments = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -120236,6 +120694,9 @@ impl<'a> SwapchainCreateInfoKHR<'a> {
     /// Sets [`p_queue_family_indices`](Self::p_queue_family_indices) to the start of a slice of
     /// elements and [`queue_family_index_count`](Self::queue_family_index_count) to its length.
     ///
+    /// An empty slice sets [`p_queue_family_indices`](Self::p_queue_family_indices) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueFamilyIndexCount`, a `uint32_t`, can count.
@@ -120245,7 +120706,7 @@ impl<'a> SwapchainCreateInfoKHR<'a> {
             "VkSwapchainCreateInfoKHR::pQueueFamilyIndices",
             "queueFamilyIndexCount",
         );
-        self.p_queue_family_indices = value.as_ptr();
+        self.p_queue_family_indices = ptr_or_null(value);
         self
     }
     /// Sets [`pre_transform`](Self::pre_transform).
@@ -120588,6 +121049,8 @@ impl<'a> SwapchainPresentFenceInfoKHR<'a> {
     /// Sets [`p_fences`](Self::p_fences) to the start of a slice of elements and
     /// [`swapchain_count`](Self::swapchain_count) to its length.
     ///
+    /// An empty slice sets [`p_fences`](Self::p_fences) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `swapchainCount`, a `uint32_t`, can count.
@@ -120597,7 +121060,7 @@ impl<'a> SwapchainPresentFenceInfoKHR<'a> {
             "VkSwapchainPresentFenceInfoKHR::pFences",
             "swapchainCount",
         );
-        self.p_fences = value.as_ptr();
+        self.p_fences = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -120669,6 +121132,8 @@ impl<'a> SwapchainPresentModeInfoKHR<'a> {
     /// Sets [`p_present_modes`](Self::p_present_modes) to the start of a slice of elements and
     /// [`swapchain_count`](Self::swapchain_count) to its length.
     ///
+    /// An empty slice sets [`p_present_modes`](Self::p_present_modes) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `swapchainCount`, a `uint32_t`, can count.
@@ -120678,7 +121143,7 @@ impl<'a> SwapchainPresentModeInfoKHR<'a> {
             "VkSwapchainPresentModeInfoKHR::pPresentModes",
             "swapchainCount",
         );
-        self.p_present_modes = value.as_ptr();
+        self.p_present_modes = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -120751,6 +121216,8 @@ impl<'a> SwapchainPresentModesCreateInfoKHR<'a> {
     /// Sets [`p_present_modes`](Self::p_present_modes) to the start of a slice of elements and
     /// [`present_mode_count`](Self::present_mode_count) to its length.
     ///
+    /// An empty slice sets [`p_present_modes`](Self::p_present_modes) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `presentModeCount`, a `uint32_t`, can count.
@@ -120760,7 +121227,7 @@ impl<'a> SwapchainPresentModesCreateInfoKHR<'a> {
             "VkSwapchainPresentModesCreateInfoKHR::pPresentModes",
             "presentModeCount",
         );
-        self.p_present_modes = value.as_ptr();
+        self.p_present_modes = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -120931,8 +121398,9 @@ impl<'a> SwapchainTimeDomainPropertiesEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `timeDomainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `timeDomainCount`, a
+    /// Panics if another array that shares `timeDomainCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `timeDomainCount`, a
     /// `uint32_t`, can count.
     pub fn time_domains(mut self, value: &'a mut [TimeDomainKHR]) -> Self {
         if value.is_empty() {
@@ -120970,8 +121438,9 @@ impl<'a> SwapchainTimeDomainPropertiesEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `timeDomainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `timeDomainCount`, a
+    /// Panics if another array that shares `timeDomainCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `timeDomainCount`, a
     /// `uint32_t`, can count.
     pub fn time_domain_ids(mut self, value: &'a mut [u64]) -> Self {
         if value.is_empty() {
@@ -121264,9 +121733,10 @@ impl<'a> TensorCopyARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn src_offset(mut self, value: &'a [u64]) -> Self {
         if value.is_empty() {
             if !self.p_src_offset.is_null()
@@ -121303,9 +121773,10 @@ impl<'a> TensorCopyARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn dst_offset(mut self, value: &'a [u64]) -> Self {
         if value.is_empty() {
             if !self.p_dst_offset.is_null()
@@ -121341,9 +121812,10 @@ impl<'a> TensorCopyARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn extent(mut self, value: &'a [u64]) -> Self {
         if value.is_empty() {
             if !self.p_extent.is_null()
@@ -121457,6 +121929,9 @@ impl<'a> TensorCreateInfoARM<'a> {
     /// Sets [`p_queue_family_indices`](Self::p_queue_family_indices) to the start of a slice of
     /// elements and [`queue_family_index_count`](Self::queue_family_index_count) to its length.
     ///
+    /// An empty slice sets [`p_queue_family_indices`](Self::p_queue_family_indices) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `queueFamilyIndexCount`, a `uint32_t`, can count.
@@ -121466,7 +121941,7 @@ impl<'a> TensorCreateInfoARM<'a> {
             "VkTensorCreateInfoARM::pQueueFamilyIndices",
             "queueFamilyIndexCount",
         );
-        self.p_queue_family_indices = value.as_ptr();
+        self.p_queue_family_indices = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -121536,6 +122011,9 @@ impl<'a> TensorDependencyInfoARM<'a> {
     /// elements and [`tensor_memory_barrier_count`](Self::tensor_memory_barrier_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_tensor_memory_barriers`](Self::p_tensor_memory_barriers) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `tensorMemoryBarrierCount`, a `uint32_t`, can
@@ -121546,7 +122024,7 @@ impl<'a> TensorDependencyInfoARM<'a> {
             "VkTensorDependencyInfoARM::pTensorMemoryBarriers",
             "tensorMemoryBarrierCount",
         );
-        self.p_tensor_memory_barriers = value.as_ptr();
+        self.p_tensor_memory_barriers = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -121642,11 +122120,14 @@ impl<'a> TensorDescriptionARM<'a> {
     /// Sets [`p_dimensions`](Self::p_dimensions) to the start of a slice of elements and
     /// [`dimension_count`](Self::dimension_count) to its length.
     ///
+    /// An empty slice sets [`p_dimensions`](Self::p_dimensions) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn dimensions(mut self, value: &'a [i64]) -> Self {
         if !self.p_strides.is_null() {
             assert_eq!(
@@ -121660,7 +122141,7 @@ impl<'a> TensorDescriptionARM<'a> {
             "VkTensorDescriptionARM::pDimensions",
             "dimensionCount",
         );
-        self.p_dimensions = value.as_ptr();
+        self.p_dimensions = ptr_or_null(value);
         self
     }
     /// Sets [`p_strides`](Self::p_strides) to the start of a slice of elements and
@@ -121675,9 +122156,10 @@ impl<'a> TensorDescriptionARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn strides(mut self, value: &'a [i64]) -> Self {
         if value.is_empty() {
             if !self.p_strides.is_null() && self.p_dimensions.is_null() {
@@ -123221,9 +123703,11 @@ impl<'a> ValidationCacheCreateInfoEXT<'a> {
     }
     /// Sets [`p_initial_data`](Self::p_initial_data) to the start of a slice of bytes and
     /// [`initial_data_size`](Self::initial_data_size) to its length.
+    ///
+    /// An empty slice sets [`p_initial_data`](Self::p_initial_data) to a null pointer.
     pub fn initial_data(mut self, value: &'a [u8]) -> Self {
         self.initial_data_size = value.len() as _;
-        self.p_initial_data = value.as_ptr().cast();
+        self.p_initial_data = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -123308,6 +123792,9 @@ impl<'a> ValidationFeaturesEXT<'a> {
     /// a slice of elements and
     /// [`enabled_validation_feature_count`](Self::enabled_validation_feature_count) to its length.
     ///
+    /// An empty slice sets [`p_enabled_validation_features`](Self::p_enabled_validation_features)
+    /// to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `enabledValidationFeatureCount`, a `uint32_t`,
@@ -123318,7 +123805,7 @@ impl<'a> ValidationFeaturesEXT<'a> {
             "VkValidationFeaturesEXT::pEnabledValidationFeatures",
             "enabledValidationFeatureCount",
         );
-        self.p_enabled_validation_features = value.as_ptr();
+        self.p_enabled_validation_features = ptr_or_null(value);
         self
     }
     /// Sets [`disabled_validation_feature_count`](Self::disabled_validation_feature_count).
@@ -123330,6 +123817,9 @@ impl<'a> ValidationFeaturesEXT<'a> {
     /// of a slice of elements and
     /// [`disabled_validation_feature_count`](Self::disabled_validation_feature_count) to its
     /// length.
+    ///
+    /// An empty slice sets [`p_disabled_validation_features`](Self::p_disabled_validation_features)
+    /// to a null pointer.
     ///
     /// # Panics
     ///
@@ -123344,7 +123834,7 @@ impl<'a> ValidationFeaturesEXT<'a> {
             "VkValidationFeaturesEXT::pDisabledValidationFeatures",
             "disabledValidationFeatureCount",
         );
-        self.p_disabled_validation_features = value.as_ptr();
+        self.p_disabled_validation_features = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -123415,6 +123905,9 @@ impl<'a> ValidationFlagsEXT<'a> {
     /// slice of elements and
     /// [`disabled_validation_check_count`](Self::disabled_validation_check_count) to its length.
     ///
+    /// An empty slice sets [`p_disabled_validation_checks`](Self::p_disabled_validation_checks) to
+    /// a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `disabledValidationCheckCount`, a `uint32_t`, can
@@ -123425,7 +123918,7 @@ impl<'a> ValidationFlagsEXT<'a> {
             "VkValidationFlagsEXT::pDisabledValidationChecks",
             "disabledValidationCheckCount",
         );
-        self.p_disabled_validation_checks = value.as_ptr();
+        self.p_disabled_validation_checks = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -123924,6 +124417,8 @@ impl<'a> VideoBeginCodingInfoKHR<'a> {
     /// Sets [`p_reference_slots`](Self::p_reference_slots) to the start of a slice of elements and
     /// [`reference_slot_count`](Self::reference_slot_count) to its length.
     ///
+    /// An empty slice sets [`p_reference_slots`](Self::p_reference_slots) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `referenceSlotCount`, a `uint32_t`, can count.
@@ -123933,7 +124428,7 @@ impl<'a> VideoBeginCodingInfoKHR<'a> {
             "VkVideoBeginCodingInfoKHR::pReferenceSlots",
             "referenceSlotCount",
         );
-        self.p_reference_slots = value.as_ptr();
+        self.p_reference_slots = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -124406,10 +124901,14 @@ impl<'a> VideoDecodeAV1PictureInfoKHR<'a> {
     /// Sets [`p_tile_offsets`](Self::p_tile_offsets) to the start of a slice of elements and
     /// [`tile_count`](Self::tile_count) to its length.
     ///
+    /// An empty slice sets [`p_tile_offsets`](Self::p_tile_offsets) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `tileCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `tileCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `tileCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `tileCount`, a `uint32_t`,
+    /// can count.
     pub fn tile_offsets(mut self, value: &'a [u32]) -> Self {
         if !self.p_tile_sizes.is_null() {
             assert_eq!(
@@ -124423,16 +124922,20 @@ impl<'a> VideoDecodeAV1PictureInfoKHR<'a> {
             "VkVideoDecodeAV1PictureInfoKHR::pTileOffsets",
             "tileCount",
         );
-        self.p_tile_offsets = value.as_ptr();
+        self.p_tile_offsets = ptr_or_null(value);
         self
     }
     /// Sets [`p_tile_sizes`](Self::p_tile_sizes) to the start of a slice of elements and
     /// [`tile_count`](Self::tile_count) to its length.
     ///
+    /// An empty slice sets [`p_tile_sizes`](Self::p_tile_sizes) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `tileCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `tileCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `tileCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `tileCount`, a `uint32_t`,
+    /// can count.
     pub fn tile_sizes(mut self, value: &'a [u32]) -> Self {
         if !self.p_tile_offsets.is_null() {
             assert_eq!(
@@ -124446,7 +124949,7 @@ impl<'a> VideoDecodeAV1PictureInfoKHR<'a> {
             "VkVideoDecodeAV1PictureInfoKHR::pTileSizes",
             "tileCount",
         );
-        self.p_tile_sizes = value.as_ptr();
+        self.p_tile_sizes = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -124920,6 +125423,8 @@ impl<'a> VideoDecodeH264PictureInfoKHR<'a> {
     /// Sets [`p_slice_offsets`](Self::p_slice_offsets) to the start of a slice of elements and
     /// [`slice_count`](Self::slice_count) to its length.
     ///
+    /// An empty slice sets [`p_slice_offsets`](Self::p_slice_offsets) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `sliceCount`, a `uint32_t`, can count.
@@ -124929,7 +125434,7 @@ impl<'a> VideoDecodeH264PictureInfoKHR<'a> {
             "VkVideoDecodeH264PictureInfoKHR::pSliceOffsets",
             "sliceCount",
         );
-        self.p_slice_offsets = value.as_ptr();
+        self.p_slice_offsets = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -125077,6 +125582,8 @@ impl<'a> VideoDecodeH264SessionParametersAddInfoKHR<'a> {
     /// Sets [`p_std_sp_ss`](Self::p_std_sp_ss) to the start of a slice of elements and
     /// [`std_sps_count`](Self::std_sps_count) to its length.
     ///
+    /// An empty slice sets [`p_std_sp_ss`](Self::p_std_sp_ss) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stdSPSCount`, a `uint32_t`, can count.
@@ -125086,7 +125593,7 @@ impl<'a> VideoDecodeH264SessionParametersAddInfoKHR<'a> {
             "VkVideoDecodeH264SessionParametersAddInfoKHR::pStdSPSs",
             "stdSPSCount",
         );
-        self.p_std_sp_ss = value.as_ptr();
+        self.p_std_sp_ss = ptr_or_null(value);
         self
     }
     /// Sets [`std_pps_count`](Self::std_pps_count).
@@ -125097,6 +125604,8 @@ impl<'a> VideoDecodeH264SessionParametersAddInfoKHR<'a> {
     /// Sets [`p_std_pp_ss`](Self::p_std_pp_ss) to the start of a slice of elements and
     /// [`std_pps_count`](Self::std_pps_count) to its length.
     ///
+    /// An empty slice sets [`p_std_pp_ss`](Self::p_std_pp_ss) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stdPPSCount`, a `uint32_t`, can count.
@@ -125106,7 +125615,7 @@ impl<'a> VideoDecodeH264SessionParametersAddInfoKHR<'a> {
             "VkVideoDecodeH264SessionParametersAddInfoKHR::pStdPPSs",
             "stdPPSCount",
         );
-        self.p_std_pp_ss = value.as_ptr();
+        self.p_std_pp_ss = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -125469,6 +125978,9 @@ impl<'a> VideoDecodeH265PictureInfoKHR<'a> {
     /// Sets [`p_slice_segment_offsets`](Self::p_slice_segment_offsets) to the start of a slice of
     /// elements and [`slice_segment_count`](Self::slice_segment_count) to its length.
     ///
+    /// An empty slice sets [`p_slice_segment_offsets`](Self::p_slice_segment_offsets) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `sliceSegmentCount`, a `uint32_t`, can count.
@@ -125478,7 +125990,7 @@ impl<'a> VideoDecodeH265PictureInfoKHR<'a> {
             "VkVideoDecodeH265PictureInfoKHR::pSliceSegmentOffsets",
             "sliceSegmentCount",
         );
-        self.p_slice_segment_offsets = value.as_ptr();
+        self.p_slice_segment_offsets = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -125621,6 +126133,8 @@ impl<'a> VideoDecodeH265SessionParametersAddInfoKHR<'a> {
     /// Sets [`p_std_vp_ss`](Self::p_std_vp_ss) to the start of a slice of elements and
     /// [`std_vps_count`](Self::std_vps_count) to its length.
     ///
+    /// An empty slice sets [`p_std_vp_ss`](Self::p_std_vp_ss) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stdVPSCount`, a `uint32_t`, can count.
@@ -125630,7 +126144,7 @@ impl<'a> VideoDecodeH265SessionParametersAddInfoKHR<'a> {
             "VkVideoDecodeH265SessionParametersAddInfoKHR::pStdVPSs",
             "stdVPSCount",
         );
-        self.p_std_vp_ss = value.as_ptr();
+        self.p_std_vp_ss = ptr_or_null(value);
         self
     }
     /// Sets [`std_sps_count`](Self::std_sps_count).
@@ -125641,6 +126155,8 @@ impl<'a> VideoDecodeH265SessionParametersAddInfoKHR<'a> {
     /// Sets [`p_std_sp_ss`](Self::p_std_sp_ss) to the start of a slice of elements and
     /// [`std_sps_count`](Self::std_sps_count) to its length.
     ///
+    /// An empty slice sets [`p_std_sp_ss`](Self::p_std_sp_ss) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stdSPSCount`, a `uint32_t`, can count.
@@ -125650,7 +126166,7 @@ impl<'a> VideoDecodeH265SessionParametersAddInfoKHR<'a> {
             "VkVideoDecodeH265SessionParametersAddInfoKHR::pStdSPSs",
             "stdSPSCount",
         );
-        self.p_std_sp_ss = value.as_ptr();
+        self.p_std_sp_ss = ptr_or_null(value);
         self
     }
     /// Sets [`std_pps_count`](Self::std_pps_count).
@@ -125661,6 +126177,8 @@ impl<'a> VideoDecodeH265SessionParametersAddInfoKHR<'a> {
     /// Sets [`p_std_pp_ss`](Self::p_std_pp_ss) to the start of a slice of elements and
     /// [`std_pps_count`](Self::std_pps_count) to its length.
     ///
+    /// An empty slice sets [`p_std_pp_ss`](Self::p_std_pp_ss) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `stdPPSCount`, a `uint32_t`, can count.
@@ -125670,7 +126188,7 @@ impl<'a> VideoDecodeH265SessionParametersAddInfoKHR<'a> {
             "VkVideoDecodeH265SessionParametersAddInfoKHR::pStdPPSs",
             "stdPPSCount",
         );
-        self.p_std_pp_ss = value.as_ptr();
+        self.p_std_pp_ss = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -128336,6 +128854,8 @@ impl<'a> VideoEncodeH264PictureInfoKHR<'a> {
     /// Sets [`p_nalu_slice_entries`](Self::p_nalu_slice_entries) to the start of a slice of
     /// elements and [`nalu_slice_entry_count`](Self::nalu_slice_entry_count) to its length.
     ///
+    /// An empty slice sets [`p_nalu_slice_entries`](Self::p_nalu_slice_entries) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `naluSliceEntryCount`, a `uint32_t`, can count.
@@ -128345,7 +128865,7 @@ impl<'a> VideoEncodeH264PictureInfoKHR<'a> {
             "VkVideoEncodeH264PictureInfoKHR::pNaluSliceEntries",
             "naluSliceEntryCount",
         );
-        self.p_nalu_slice_entries = value.as_ptr();
+        self.p_nalu_slice_entries = ptr_or_null(value);
         self
     }
     /// Sets [`p_std_picture_info`](Self::p_std_picture_info) to point to `value`.
@@ -129911,6 +130431,9 @@ impl<'a> VideoEncodeH265PictureInfoKHR<'a> {
     /// slice of elements and
     /// [`nalu_slice_segment_entry_count`](Self::nalu_slice_segment_entry_count) to its length.
     ///
+    /// An empty slice sets [`p_nalu_slice_segment_entries`](Self::p_nalu_slice_segment_entries) to
+    /// a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `naluSliceSegmentEntryCount`, a `uint32_t`, can
@@ -129924,7 +130447,7 @@ impl<'a> VideoEncodeH265PictureInfoKHR<'a> {
             "VkVideoEncodeH265PictureInfoKHR::pNaluSliceSegmentEntries",
             "naluSliceSegmentEntryCount",
         );
-        self.p_nalu_slice_segment_entries = value.as_ptr();
+        self.p_nalu_slice_segment_entries = ptr_or_null(value);
         self
     }
     /// Sets [`p_std_picture_info`](Self::p_std_picture_info) to point to `value`.
@@ -131808,6 +132331,8 @@ impl<'a> VideoEncodeRateControlInfoKHR<'a> {
     /// Sets [`p_layers`](Self::p_layers) to the start of a slice of elements and
     /// [`layer_count`](Self::layer_count) to its length.
     ///
+    /// An empty slice sets [`p_layers`](Self::p_layers) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `layerCount`, a `uint32_t`, can count.
@@ -131817,7 +132342,7 @@ impl<'a> VideoEncodeRateControlInfoKHR<'a> {
             "VkVideoEncodeRateControlInfoKHR::pLayers",
             "layerCount",
         );
-        self.p_layers = value.as_ptr();
+        self.p_layers = ptr_or_null(value);
         self
     }
     /// Sets [`virtual_buffer_size_in_ms`](Self::virtual_buffer_size_in_ms).
@@ -133055,6 +133580,8 @@ impl<'a> VideoProfileListInfoKHR<'a> {
     /// Sets [`p_profiles`](Self::p_profiles) to the start of a slice of elements and
     /// [`profile_count`](Self::profile_count) to its length.
     ///
+    /// An empty slice sets [`p_profiles`](Self::p_profiles) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `profileCount`, a `uint32_t`, can count.
@@ -133064,7 +133591,7 @@ impl<'a> VideoProfileListInfoKHR<'a> {
             "VkVideoProfileListInfoKHR::pProfiles",
             "profileCount",
         );
-        self.p_profiles = value.as_ptr();
+        self.p_profiles = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -133865,11 +134392,14 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
     /// Sets [`p_acquire_syncs`](Self::p_acquire_syncs) to the start of a slice of elements and
     /// [`acquire_count`](Self::acquire_count) to its length.
     ///
+    /// An empty slice sets [`p_acquire_syncs`](Self::p_acquire_syncs) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_acquire_keys.is_null() || !self.p_acquire_timeouts.is_null() {
             assert_eq!(
@@ -133883,17 +134413,20 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoKHR::pAcquireSyncs",
             "acquireCount",
         );
-        self.p_acquire_syncs = value.as_ptr();
+        self.p_acquire_syncs = ptr_or_null(value);
         self
     }
     /// Sets [`p_acquire_keys`](Self::p_acquire_keys) to the start of a slice of elements and
     /// [`acquire_count`](Self::acquire_count) to its length.
     ///
+    /// An empty slice sets [`p_acquire_keys`](Self::p_acquire_keys) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_timeouts.is_null() {
             assert_eq!(
@@ -133907,17 +134440,20 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoKHR::pAcquireKeys",
             "acquireCount",
         );
-        self.p_acquire_keys = value.as_ptr();
+        self.p_acquire_keys = ptr_or_null(value);
         self
     }
     /// Sets [`p_acquire_timeouts`](Self::p_acquire_timeouts) to the start of a slice of elements
     /// and [`acquire_count`](Self::acquire_count) to its length.
     ///
+    /// An empty slice sets [`p_acquire_timeouts`](Self::p_acquire_timeouts) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_timeouts(mut self, value: &'a [u32]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_keys.is_null() {
             assert_eq!(
@@ -133931,7 +134467,7 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoKHR::pAcquireTimeouts",
             "acquireCount",
         );
-        self.p_acquire_timeouts = value.as_ptr();
+        self.p_acquire_timeouts = ptr_or_null(value);
         self
     }
     /// Sets [`release_count`](Self::release_count).
@@ -133942,11 +134478,14 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
     /// Sets [`p_release_syncs`](Self::p_release_syncs) to the start of a slice of elements and
     /// [`release_count`](Self::release_count) to its length.
     ///
+    /// An empty slice sets [`p_release_syncs`](Self::p_release_syncs) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_release_keys.is_null() {
             assert_eq!(
@@ -133960,17 +134499,20 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoKHR::pReleaseSyncs",
             "releaseCount",
         );
-        self.p_release_syncs = value.as_ptr();
+        self.p_release_syncs = ptr_or_null(value);
         self
     }
     /// Sets [`p_release_keys`](Self::p_release_keys) to the start of a slice of elements and
     /// [`release_count`](Self::release_count) to its length.
     ///
+    /// An empty slice sets [`p_release_keys`](Self::p_release_keys) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_release_syncs.is_null() {
             assert_eq!(
@@ -133984,7 +134526,7 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoKHR::pReleaseKeys",
             "releaseCount",
         );
-        self.p_release_keys = value.as_ptr();
+        self.p_release_keys = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -134081,11 +134623,14 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
     /// Sets [`p_acquire_syncs`](Self::p_acquire_syncs) to the start of a slice of elements and
     /// [`acquire_count`](Self::acquire_count) to its length.
     ///
+    /// An empty slice sets [`p_acquire_syncs`](Self::p_acquire_syncs) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_acquire_keys.is_null() || !self.p_acquire_timeout_milliseconds.is_null() {
             assert_eq!(
@@ -134099,17 +134644,20 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoNV::pAcquireSyncs",
             "acquireCount",
         );
-        self.p_acquire_syncs = value.as_ptr();
+        self.p_acquire_syncs = ptr_or_null(value);
         self
     }
     /// Sets [`p_acquire_keys`](Self::p_acquire_keys) to the start of a slice of elements and
     /// [`acquire_count`](Self::acquire_count) to its length.
     ///
+    /// An empty slice sets [`p_acquire_keys`](Self::p_acquire_keys) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_timeout_milliseconds.is_null() {
             assert_eq!(
@@ -134123,17 +134671,21 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoNV::pAcquireKeys",
             "acquireCount",
         );
-        self.p_acquire_keys = value.as_ptr();
+        self.p_acquire_keys = ptr_or_null(value);
         self
     }
     /// Sets [`p_acquire_timeout_milliseconds`](Self::p_acquire_timeout_milliseconds) to the start
     /// of a slice of elements and [`acquire_count`](Self::acquire_count) to its length.
     ///
+    /// An empty slice sets [`p_acquire_timeout_milliseconds`](Self::p_acquire_timeout_milliseconds)
+    /// to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_timeout_milliseconds(mut self, value: &'a [u32]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_keys.is_null() {
             assert_eq!(
@@ -134147,7 +134699,7 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoNV::pAcquireTimeoutMilliseconds",
             "acquireCount",
         );
-        self.p_acquire_timeout_milliseconds = value.as_ptr();
+        self.p_acquire_timeout_milliseconds = ptr_or_null(value);
         self
     }
     /// Sets [`release_count`](Self::release_count).
@@ -134158,11 +134710,14 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
     /// Sets [`p_release_syncs`](Self::p_release_syncs) to the start of a slice of elements and
     /// [`release_count`](Self::release_count) to its length.
     ///
+    /// An empty slice sets [`p_release_syncs`](Self::p_release_syncs) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_release_keys.is_null() {
             assert_eq!(
@@ -134176,17 +134731,20 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoNV::pReleaseSyncs",
             "releaseCount",
         );
-        self.p_release_syncs = value.as_ptr();
+        self.p_release_syncs = ptr_or_null(value);
         self
     }
     /// Sets [`p_release_keys`](Self::p_release_keys) to the start of a slice of elements and
     /// [`release_count`](Self::release_count) to its length.
     ///
+    /// An empty slice sets [`p_release_keys`](Self::p_release_keys) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_release_syncs.is_null() {
             assert_eq!(
@@ -134200,7 +134758,7 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
             "VkWin32KeyedMutexAcquireReleaseInfoNV::pReleaseKeys",
             "releaseCount",
         );
-        self.p_release_keys = value.as_ptr();
+        self.p_release_keys = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -134413,10 +134971,13 @@ impl<'a> WriteDescriptorSet<'a> {
     /// Sets [`p_image_info`](Self::p_image_info) to the start of a slice of elements and
     /// [`descriptor_count`](Self::descriptor_count) to its length.
     ///
+    /// An empty slice sets [`p_image_info`](Self::p_image_info) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `descriptorCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `descriptorCount`, a
+    /// Panics if another array that shares `descriptorCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `descriptorCount`, a
     /// `uint32_t`, can count.
     pub fn image_info(mut self, value: &'a [DescriptorImageInfo]) -> Self {
         if !self.p_buffer_info.is_null() || !self.p_texel_buffer_view.is_null() {
@@ -134431,16 +134992,19 @@ impl<'a> WriteDescriptorSet<'a> {
             "VkWriteDescriptorSet::pImageInfo",
             "descriptorCount",
         );
-        self.p_image_info = value.as_ptr();
+        self.p_image_info = ptr_or_null(value);
         self
     }
     /// Sets [`p_buffer_info`](Self::p_buffer_info) to the start of a slice of elements and
     /// [`descriptor_count`](Self::descriptor_count) to its length.
     ///
+    /// An empty slice sets [`p_buffer_info`](Self::p_buffer_info) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `descriptorCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `descriptorCount`, a
+    /// Panics if another array that shares `descriptorCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `descriptorCount`, a
     /// `uint32_t`, can count.
     pub fn buffer_info(mut self, value: &'a [DescriptorBufferInfo]) -> Self {
         if !self.p_image_info.is_null() || !self.p_texel_buffer_view.is_null() {
@@ -134455,16 +135019,19 @@ impl<'a> WriteDescriptorSet<'a> {
             "VkWriteDescriptorSet::pBufferInfo",
             "descriptorCount",
         );
-        self.p_buffer_info = value.as_ptr();
+        self.p_buffer_info = ptr_or_null(value);
         self
     }
     /// Sets [`p_texel_buffer_view`](Self::p_texel_buffer_view) to the start of a slice of elements
     /// and [`descriptor_count`](Self::descriptor_count) to its length.
     ///
+    /// An empty slice sets [`p_texel_buffer_view`](Self::p_texel_buffer_view) to a null pointer.
+    ///
     /// # Panics
     ///
-    /// Panics if another array that shares `descriptorCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `descriptorCount`, a
+    /// Panics if another array that shares `descriptorCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `descriptorCount`, a
     /// `uint32_t`, can count.
     pub fn texel_buffer_view(mut self, value: &'a [BufferView]) -> Self {
         if !self.p_image_info.is_null() || !self.p_buffer_info.is_null() {
@@ -134479,7 +135046,7 @@ impl<'a> WriteDescriptorSet<'a> {
             "VkWriteDescriptorSet::pTexelBufferView",
             "descriptorCount",
         );
-        self.p_texel_buffer_view = value.as_ptr();
+        self.p_texel_buffer_view = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -134550,6 +135117,9 @@ impl<'a> WriteDescriptorSetAccelerationStructureKHR<'a> {
     /// of elements and [`acceleration_structure_count`](Self::acceleration_structure_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_acceleration_structures`](Self::p_acceleration_structures) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `accelerationStructureCount`, a `uint32_t`, can
@@ -134560,7 +135130,7 @@ impl<'a> WriteDescriptorSetAccelerationStructureKHR<'a> {
             "VkWriteDescriptorSetAccelerationStructureKHR::pAccelerationStructures",
             "accelerationStructureCount",
         );
-        self.p_acceleration_structures = value.as_ptr();
+        self.p_acceleration_structures = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -134632,6 +135202,9 @@ impl<'a> WriteDescriptorSetAccelerationStructureNV<'a> {
     /// of elements and [`acceleration_structure_count`](Self::acceleration_structure_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_acceleration_structures`](Self::p_acceleration_structures) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `accelerationStructureCount`, a `uint32_t`, can
@@ -134642,7 +135215,7 @@ impl<'a> WriteDescriptorSetAccelerationStructureNV<'a> {
             "VkWriteDescriptorSetAccelerationStructureNV::pAccelerationStructures",
             "accelerationStructureCount",
         );
-        self.p_acceleration_structures = value.as_ptr();
+        self.p_acceleration_structures = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -134712,6 +135285,8 @@ impl<'a> WriteDescriptorSetInlineUniformBlock<'a> {
     /// Sets [`p_data`](Self::p_data) to the start of a slice of bytes and
     /// [`data_size`](Self::data_size) to its length.
     ///
+    /// An empty slice sets [`p_data`](Self::p_data) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `dataSize`, a `uint32_t`, can count.
@@ -134721,7 +135296,7 @@ impl<'a> WriteDescriptorSetInlineUniformBlock<'a> {
             "VkWriteDescriptorSetInlineUniformBlock::pData",
             "dataSize",
         );
-        self.p_data = value.as_ptr().cast();
+        self.p_data = ptr_or_null(value).cast();
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -134797,6 +135372,9 @@ impl<'a> WriteDescriptorSetPartitionedAccelerationStructureNV<'a> {
     /// of elements and [`acceleration_structure_count`](Self::acceleration_structure_count) to its
     /// length.
     ///
+    /// An empty slice sets [`p_acceleration_structures`](Self::p_acceleration_structures) to a null
+    /// pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `accelerationStructureCount`, a `uint32_t`, can
@@ -134807,7 +135385,7 @@ impl<'a> WriteDescriptorSetPartitionedAccelerationStructureNV<'a> {
             "VkWriteDescriptorSetPartitionedAccelerationStructureNV::pAccelerationStructures",
             "accelerationStructureCount",
         );
-        self.p_acceleration_structures = value.as_ptr();
+        self.p_acceleration_structures = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.
@@ -134876,6 +135454,8 @@ impl<'a> WriteDescriptorSetTensorARM<'a> {
     /// Sets [`p_tensor_views`](Self::p_tensor_views) to the start of a slice of elements and
     /// [`tensor_view_count`](Self::tensor_view_count) to its length.
     ///
+    /// An empty slice sets [`p_tensor_views`](Self::p_tensor_views) to a null pointer.
+    ///
     /// # Panics
     ///
     /// Panics if the slice has more elements than `tensorViewCount`, a `uint32_t`, can count.
@@ -134885,7 +135465,7 @@ impl<'a> WriteDescriptorSetTensorARM<'a> {
             "VkWriteDescriptorSetTensorARM::pTensorViews",
             "tensorViewCount",
         );
-        self.p_tensor_views = value.as_ptr();
+        self.p_tensor_views = ptr_or_null(value);
         self
     }
     /// Puts `next` at the head of the `pNext` chain of this structure.

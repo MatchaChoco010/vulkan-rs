@@ -56,7 +56,10 @@
 //! Structs that can hold pointers carry a lifetime `'a`, and their setters take references
 //! and slices with that lifetime, so the struct cannot outlive the data it points to. A
 //! setter for an array also sets the member that holds its length; when several arrays
-//! share one length member, the setters panic if the lengths differ. For an array whose
+//! share one length member, a setter panics if its slice differs in length from another
+//! of those arrays that is set to a slice with elements. An empty slice sets the pointer
+//! to null, never to the address of the empty slice, so an array that was set with an
+//! empty slice is not compared with the arrays that are set after it. For an array whose
 //! pointer the registry marks as optional, an empty slice stands for an absent array: the
 //! pointer is set to null, the length member is left as it is, and the slice is not
 //! compared with the arrays that share the member. Only when the pointer was not null

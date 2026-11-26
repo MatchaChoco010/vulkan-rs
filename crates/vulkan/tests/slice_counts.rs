@@ -11,7 +11,11 @@ fn a_slice_setter_stores_every_length_that_its_u8_count_holds() {
             len,
             "the count is the length of the slice"
         );
-        assert_eq!(sps.p_offset_for_ref_frame, offsets.as_ptr());
+        if len == 0 {
+            assert!(sps.p_offset_for_ref_frame.is_null());
+        } else {
+            assert_eq!(sps.p_offset_for_ref_frame, offsets.as_ptr());
+        }
     }
 }
 

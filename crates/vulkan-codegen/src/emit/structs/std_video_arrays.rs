@@ -1,3 +1,4 @@
+use super::nullable_arrays::may_be_null;
 use super::{definition, unmarked_arrays};
 use crate::emit::{constants, squash};
 use crate::model::{CType, Model};
@@ -1474,7 +1475,12 @@ fn check_member(ir: &Registry, s: &Struct, m: &Field, generated: &str) {
                 "self.{} = len_as_count(value.len(), \"{name}\", \"{count}\");",
                 field_name(count)
             );
-            let sets_the_pointer = format!("self.{field} = value.as_ptr();");
+            let pointer = if may_be_null(s, m) {
+                "value.as_ptr()"
+            } else {
+                "ptr_or_null(value)"
+            };
+            let sets_the_pointer = format!("self.{field} = {pointer};");
             assert!(
                 generated.contains(&sets_the_count) && generated.contains(&sets_the_pointer),
                 "the setter of {name} does not take a slice whose length it stores in `{count}`: {generated}"

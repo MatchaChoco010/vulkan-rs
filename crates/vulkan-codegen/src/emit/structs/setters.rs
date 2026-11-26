@@ -57,7 +57,7 @@ impl<'s> CountedArrays<'s> {
         let mut panics = Vec::new();
         if self.shares_its_count(count, m) {
             panics.push(format!(
-                "Panics if another array that shares `{}` is already set and the slice has a different length.",
+                "Panics if another array that shares `{}` is set to a slice that is not empty and the slice has a different length. An array that was set with an empty slice has a null pointer and is not compared.",
                 count.name
             ));
         }
@@ -103,17 +103,38 @@ impl<'s> CountedArrays<'s> {
         )
     }
 
-    fn absent_when_empty(&self, m: &Field, ty: &CType, setter: Setter) -> Setter {
-        let Some(count) = count_member(self.s, m) else {
+    fn null_when_empty(&self, m: &Field, ty: &CType, mut setter: Setter) -> Setter {
+        let Some(slice) = setter.slice.take() else {
             return setter;
         };
-        let count_field = field_name(&count.name);
-        let sets_the_count = setter
-            .assignments
-            .contains(&format!("self.{count_field} = "));
-        if !sets_the_count || !may_be_null(self.s, m) {
-            return setter;
+        let absent = count_member(self.s, m).filter(|_| may_be_null(self.s, m));
+        let pointer = match absent {
+            Some(_) => slice.of_elements(),
+            None => slice.or_null(),
+        };
+        setter.assignments = format!(
+            "{} self.{} = {pointer};",
+            setter.assignments,
+            field_name(&m.name)
+        );
+        if let Some(count) = absent {
+            return self.absent_when_empty(count, m, ty, setter);
         }
+        setter.doc = std::mem::take(&mut setter.doc).text_after_the_first_block(format!(
+            "An empty slice sets {} to a null pointer.",
+            field_link(&m.name)
+        ));
+        setter
+    }
+
+    fn absent_when_empty(
+        &self,
+        count: &Field,
+        m: &Field,
+        ty: &CType,
+        mut setter: Setter,
+    ) -> Setter {
+        let count_field = field_name(&count.name);
         let allowed_by = if m.optional {
             "registry"
         } else {
@@ -136,7 +157,6 @@ impl<'s> CountedArrays<'s> {
                 " and the pointers of the other arrays that share the count are null",
             )
         };
-        let mut setter = setter;
         setter.doc = std::mem::take(&mut setter.doc).text_after_the_first_block(format!(
             "An empty slice stands for an array that is absent, which the {allowed_by} allows for this member: it sets {pointer} to a null pointer and leaves {} as it is{compared}. The exception is an empty slice that takes an array away: if {pointer} is not null when the setter is called{others_are_null}, the count is set to 0, whatever stored it.",
             field_link(&count.name),
@@ -214,6 +234,26 @@ struct Setter {
     generics: String,
     value_ty: String,
     assignments: String,
+    slice: Option<SlicePointer>,
+}
+
+struct SlicePointer {
+    borrow: Borrow,
+    casts: String,
+}
+
+impl SlicePointer {
+    fn of_elements(&self) -> String {
+        format!("value.{}(){}", self.borrow.slice_as_ptr(), self.casts)
+    }
+
+    fn or_null(&self) -> String {
+        let or_null = match self.borrow {
+            Borrow::Shared => "ptr_or_null",
+            Borrow::Exclusive => "mut_ptr_or_null",
+        };
+        format!("{or_null}(value){}", self.casts)
+    }
 }
 
 impl Setter {
@@ -224,7 +264,12 @@ impl Setter {
             generics,
             value_ty,
             assignments,
+            slice,
         } = self;
+        assert!(
+            slice.is_none(),
+            "{name}: the pointer to the slice is not stored yet"
+        );
         format!(
             "{}pub fn {name}{generics}(mut self, value: {value_ty}) -> Self {{ {assignments} self }}\n",
             doc.render()
@@ -256,12 +301,13 @@ pub(super) fn member_methods(
             generics: String::new(),
             value_ty: "bool".to_string(),
             assignments: format!("self.{field} = value as Bool32;"),
+            slice: None,
         },
         1 => pointer_setter(model, s, m, &ty, counted, names),
         _ => pointer_array_setter(model, s, m, &ty, counted, names)
             .unwrap_or_else(|| value_setter(model, m, names)),
     };
-    counted.absent_when_empty(m, &ty, setter).render()
+    counted.null_when_empty(m, &ty, setter).render()
 }
 
 fn value_setter(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Setter {
@@ -272,6 +318,7 @@ fn value_setter(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Se
         generics: String::new(),
         value_ty: model.member_ty(m, "'a"),
         assignments: format!("self.{field} = value;"),
+        slice: None,
     }
 }
 
@@ -338,10 +385,11 @@ fn pointer_setter(
     let field = field_name(&m.name);
     let read_only = read_only(s, m);
     let borrow = Borrow::of_pointer(ty.outer_const() || read_only.is_some());
-    let (as_ptr, cast_mut) = if read_only.is_some() {
-        ("as_ptr().cast_mut", ".cast_mut()")
+    let as_ptr = borrow.slice_as_ptr();
+    let cast_mut = if read_only.is_some() {
+        ".cast_mut()"
     } else {
-        (borrow.slice_as_ptr(), "")
+        ""
     };
     let pointee = model.base_ty(&ty.base, "'a");
     let mut generics = String::new();
@@ -353,6 +401,7 @@ fn pointer_setter(
             s.name, m.name
         );
     }
+    let mut slice = None;
     let (doc, value_ty, assignments, borrowed) = if let Some(count) = count {
         let (element, cast, of, element_types) = match length.map(|(_, length)| length) {
             Some(VoidArrayLength::Bytes) => ("u8", ".cast()", "bytes", Vec::new()),
@@ -363,11 +412,15 @@ fn pointer_setter(
             }
             None => (pointee.as_str(), "", "elements", Vec::new()),
         };
+        slice = Some(SlicePointer {
+            borrow,
+            casts: format!("{cast_mut}{cast}"),
+        });
         (
             counted.slice_doc(model, count, m, of, element_types),
             borrow.reference("'a", &format!("[{element}]")),
             format!(
-                "{}{} self.{field} = value.{as_ptr}(){cast};",
+                "{}{}",
                 counted.assert_same_length_as_the_others(count, m),
                 counted.set_count(model, count, m)
             ),
@@ -379,15 +432,17 @@ fn pointer_setter(
             "{}: unexpected pCode",
             s.name
         );
+        slice = Some(SlicePointer {
+            borrow,
+            casts: String::new(),
+        });
         (
             Doc::new().text(format!(
                 "Sets {} to the start of a slice of SPIR-V words and [`code_size`](Self::code_size) to its size in bytes.",
                 field_link(&m.name)
             )),
             "&'a [u32]".to_string(),
-            format!(
-                "self.code_size = core::mem::size_of_val(value); self.{field} = value.as_ptr();"
-            ),
+            "self.code_size = core::mem::size_of_val(value);".to_string(),
             None,
         )
     } else if m.null_terminated && ty.base == "char" && borrow == Borrow::Shared {
@@ -412,7 +467,7 @@ fn pointer_setter(
                 m.len.as_deref().unwrap_or_default()
             )),
             borrow.reference("'a", &format!("[{pointee}; {array_len}]")),
-            format!("self.{field} = value.{as_ptr}();"),
+            format!("self.{field} = value.{as_ptr}(){cast_mut};"),
             Some(PointsTo::Array),
         )
     } else if is_opaque(&ty.base) {
@@ -440,7 +495,7 @@ fn pointer_setter(
                 "'a",
                 &format!("[{pointee}; {}]", bounded.largest_len(model)),
             ),
-            format!("self.{field} = value.{as_ptr}();"),
+            format!("self.{field} = value.{as_ptr}(){cast_mut};"),
             Some(PointsTo::Array),
         )
     } else if let Some(length) = length_that_no_member_stores(s, m) {
@@ -456,8 +511,12 @@ fn pointer_setter(
             )),
             borrow.reference("'a", &format!("[{pointee}]")),
             format!(
-                "self.{field} = if value.is_empty() {{ {} }} else {{ value.{as_ptr}() }};",
-                null_ptr(ty.outer_const())
+                "self.{field} = {};",
+                SlicePointer {
+                    borrow,
+                    casts: cast_mut.to_string(),
+                }
+                .or_null()
             ),
             Some(PointsTo::Array),
         )
@@ -497,6 +556,7 @@ fn pointer_setter(
         generics,
         value_ty,
         assignments,
+        slice,
     }
 }
 
@@ -579,11 +639,14 @@ fn pointer_array_setter(
         generics: String::new(),
         value_ty: format!("&'a [{element}]"),
         assignments: format!(
-            "{}{} self.{} = value.as_ptr().cast();",
+            "{}{}",
             counted.assert_same_length_as_the_others(count, m),
-            counted.set_count(model, count, m),
-            field_name(&m.name)
+            counted.set_count(model, count, m)
         ),
+        slice: Some(SlicePointer {
+            borrow: Borrow::Shared,
+            casts: ".cast()".to_string(),
+        }),
     })
 }
 
@@ -609,6 +672,7 @@ pub(super) fn push_next(p_next: &Field) -> String {
 #[cfg(test)]
 mod tests {
     use super::super::definition;
+    use super::super::empty_slices::{Empty, slice_setters};
     use super::*;
     use crate::emit::{doc_of, squash};
     use crate::test_support::{counted, field, optional, registry, structure};
@@ -659,7 +723,7 @@ mod tests {
         let out = definition(&model, registry_struct("VkLayerSettingEXT"));
         assert!(
             squash(&out).contains(
-                "pub fn values<T: LayerSettingValue>(mut self, value: &'a [T]) -> Self { self.value_count = len_as_count(value.len(), \"VkLayerSettingEXT::pValues\", \"valueCount\"); self.p_values = value.as_ptr().cast(); self }"
+                "pub fn values<T: LayerSettingValue>(mut self, value: &'a [T]) -> Self { self.value_count = len_as_count(value.len(), \"VkLayerSettingEXT::pValues\", \"valueCount\"); self.p_values = ptr_or_null(value).cast(); self }"
             ),
             "{out}"
         );
@@ -667,6 +731,7 @@ mod tests {
             doc_of(&out, "pub fn values<T: LayerSettingValue>("),
             [
                 "Sets [`p_values`](Self::p_values) to the start of a slice of values and [`value_count`](Self::value_count) to its length.",
+                "An empty slice sets [`p_values`](Self::p_values) to a null pointer.",
                 "`T` has to be the type of the values that [`ty`](Self::ty) names, because the C API reads `valueCount` values of that type from the array:",
                 "- [`LayerSettingTypeEXT::BOOL32`] stands for [`Bool32`] - [`LayerSettingTypeEXT::INT32`] stands for `i32` - [`LayerSettingTypeEXT::INT64`] stands for `i64` - [`LayerSettingTypeEXT::UINT32`] stands for `u32` - [`LayerSettingTypeEXT::UINT64`] stands for `u64` - [`LayerSettingTypeEXT::FLOAT32`] stands for `f32` - [`LayerSettingTypeEXT::FLOAT64`] stands for `f64` - [`LayerSettingTypeEXT::STRING`] stands for [`CStrPtr`], or `*const c_char`, a pointer to a NUL-terminated string",
                 "[`LayerSettingValue`] is implemented for these types and for no other.",
@@ -793,14 +858,15 @@ mod tests {
         let out = definition(&model, &ir.structs[0]);
         assert!(
             squash(&out).contains(
-                "pub fn data(mut self, value: &'a [u8]) -> Self { self.data_size = value.len() as _; self.p_data = value.as_ptr().cast(); self }"
+                "pub fn data(mut self, value: &'a [u8]) -> Self { self.data_size = value.len() as _; self.p_data = ptr_or_null(value).cast(); self }"
             ),
             "{out}"
         );
         assert_eq!(
             doc_of(&out, "pub fn data("),
             [
-                "Sets [`p_data`](Self::p_data) to the start of a slice of bytes and [`data_size`](Self::data_size) to its length."
+                "Sets [`p_data`](Self::p_data) to the start of a slice of bytes and [`data_size`](Self::data_size) to its length.",
+                "An empty slice sets [`p_data`](Self::p_data) to a null pointer.",
             ]
         );
     }
@@ -863,6 +929,7 @@ mod tests {
         let mut uncounted = BTreeSet::new();
         for s in &model.ir.structs {
             let out = squash(&definition(&model, s));
+            let setters = slice_setters(&out);
             for m in &s.members {
                 let ty = CType::of(m);
                 let is_uncounted_slice = ty.depth() == 1
@@ -874,8 +941,9 @@ mod tests {
                     && !is_opaque(&ty.base)
                     && constant_len(&model, s, m).is_none();
                 let field = field_name(&m.name);
-                let sets_null_when_empty =
-                    out.contains(&format!("self.{field} = if value.is_empty() {{"));
+                let sets_null_when_empty = setters.iter().any(|setter| {
+                    setter.field == field && setter.empty == Empty::Null && !setter.stores_a_length
+                });
                 assert_eq!(
                     sets_null_when_empty, is_uncounted_slice,
                     "{}::{}: {out}",

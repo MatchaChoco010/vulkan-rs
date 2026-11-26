@@ -184,16 +184,28 @@ fn a_slice_that_is_not_empty_sets_the_pointer_and_the_count_of_an_optional_array
 }
 
 #[test]
-fn arrays_that_are_not_optional_keep_setting_their_count_for_an_empty_slice() {
+fn an_empty_slice_of_an_array_that_is_not_optional_sets_null_and_a_count_of_zero() {
     let queues = [vk::DeviceQueueCreateInfo::default(); 2];
-    let info = vk::DeviceCreateInfo::default()
-        .queue_create_infos(&queues)
-        .queue_create_infos(&[]);
+    let info = vk::DeviceCreateInfo::default().queue_create_infos(&queues);
+    assert_eq!(info.queue_create_info_count, 2);
+    assert_eq!(info.p_queue_create_infos, queues.as_ptr());
+    let info = info.queue_create_infos(&[]);
     assert_eq!(info.queue_create_info_count, 0);
     assert!(
-        !info.p_queue_create_infos.is_null(),
-        "the registry does not allow NULL for pQueueCreateInfos, and with a count of 0 it is not read"
+        info.p_queue_create_infos.is_null(),
+        "with a count of 0 the pointer is not read, and a null pointer does not look like an array"
     );
+    let info = info.queue_create_infos(&queues[..0]);
+    assert!(info.p_queue_create_infos.is_null());
+
+    let info = vk::DeviceCreateInfo::default()
+        .queue_create_info_count(3)
+        .queue_create_infos(&[]);
+    assert_eq!(
+        info.queue_create_info_count, 0,
+        "the array is not optional: an empty slice stands for zero elements, not for an array that is absent"
+    );
+    assert!(info.p_queue_create_infos.is_null());
 
     let colors = [vk::AttachmentReference::default(); 2];
     let resolves = [vk::AttachmentReference::default(); 2];
@@ -206,6 +218,56 @@ fn arrays_that_are_not_optional_keep_setting_their_count_for_an_empty_slice() {
     assert!(
         mismatch.is_err(),
         "an empty array of color attachments, which are not optional, does not match two resolve attachments"
+    );
+    let semaphores = [vk::Semaphore::null(); 2];
+    let mismatch = catch_unwind(|| {
+        vk::SubmitInfo::default()
+            .wait_semaphores(&semaphores)
+            .wait_dst_stage_mask(&[])
+            .wait_semaphore_count
+    });
+    assert!(
+        mismatch.is_err(),
+        "no stage masks do not match two semaphores"
+    );
+    let submit = vk::SubmitInfo::default()
+        .wait_semaphores(&[])
+        .wait_dst_stage_mask(&[]);
+    assert_eq!(submit.wait_semaphore_count, 0);
+    assert!(submit.p_wait_semaphores.is_null() && submit.p_wait_dst_stage_mask.is_null());
+}
+
+#[test]
+fn an_array_that_was_set_with_an_empty_slice_is_not_compared_with_the_next_one() {
+    let masks = [vk::PipelineStageFlags::empty(); 2];
+    let submit = vk::SubmitInfo::default()
+        .wait_semaphores(&[])
+        .wait_dst_stage_mask(&masks);
+    assert_eq!(submit.wait_semaphore_count, 2);
+    assert!(
+        submit.p_wait_semaphores.is_null(),
+        "the semaphores look as if they were never set"
+    );
+    assert_eq!(submit.p_wait_dst_stage_mask, masks.as_ptr());
+
+    let submit = vk::SubmitInfo::default()
+        .wait_semaphores(&[])
+        .wait_semaphore_count(3)
+        .wait_dst_stage_mask(&masks);
+    assert_eq!(
+        submit.wait_semaphore_count, 2,
+        "nor is the slice compared with a count that the count setter stored"
+    );
+
+    let other_order = catch_unwind(|| {
+        vk::SubmitInfo::default()
+            .wait_dst_stage_mask(&masks)
+            .wait_semaphores(&[])
+            .wait_semaphore_count
+    });
+    assert!(
+        other_order.is_err(),
+        "an empty slice is compared with the arrays that hold elements"
     );
 }
 
@@ -289,4 +351,21 @@ fn an_empty_slice_is_null_where_the_specification_gives_null_a_meaning() {
         device.pp_enabled_layer_names.is_null(),
         "ppEnabledLayerNames has to be NULL"
     );
+}
+
+#[test]
+fn a_pipeline_layout_without_push_constant_ranges_stores_null() {
+    let layout = vk::PipelineLayoutCreateInfo::default().push_constant_ranges(&[]);
+    assert_eq!(layout.push_constant_range_count, 0);
+    assert!(
+        layout.p_push_constant_ranges.is_null(),
+        "VUID-VkDataGraphPipelineCreateInfoARM-layout-09767 asks for a layout created with pPushConstantRanges equal to NULL"
+    );
+    let ranges = [vk::PushConstantRange::default(); 2];
+    let layout = layout.push_constant_ranges(&ranges);
+    assert_eq!(layout.push_constant_range_count, 2);
+    assert_eq!(layout.p_push_constant_ranges, ranges.as_ptr());
+    let layout = layout.push_constant_ranges(&ranges[2..]);
+    assert_eq!(layout.push_constant_range_count, 0);
+    assert!(layout.p_push_constant_ranges.is_null());
 }

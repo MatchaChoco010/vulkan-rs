@@ -444,6 +444,7 @@ fn setters_name_the_members_they_set() {
         doc_of(&out, "pub fn priorities("),
         [
             "Sets [`p_priorities`](Self::p_priorities) to the start of a slice of elements and [`queue_count`](Self::queue_count) to its length.",
+            "An empty slice sets [`p_priorities`](Self::p_priorities) to a null pointer.",
             "# Panics",
             "Panics if the slice has more elements than `queueCount`, a `uint32_t`, can count."
         ]
