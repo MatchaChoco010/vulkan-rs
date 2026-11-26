@@ -447,6 +447,7 @@ SPEC_REFPAGE_ATTRIBUTE = re.compile(r"(\w+)='((?:[^'\\]|\\.)*)'")
 SPEC_LIST_ITEM = re.compile(r"^\s*(\*+)\s+(\S.*)$")
 SPEC_ANCHOR = re.compile(r"\[\[[^\]]*\]\]\s*")
 SPEC_DESCRIBED_NAME = re.compile(r"^(?:pname|ename):(\w+)\b")
+SPEC_DESCRIBED_VALUE = re.compile(r"^ename:(\w+)\b")
 SPEC_ATTRIBUTE_ENTRY = re.compile(r"^:([\w-]+)(!?):\s*(.*)$")
 SPEC_ATTRIBUTE_REFERENCE = re.compile(r"\{([\w-]+)\}")
 SPEC_ANCHOR_LINE = re.compile(r"^\[\[([\w.-]+)\]\]\s*$")
@@ -791,10 +792,14 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
     return lines, index, problem
 
 
-def spec_described_items(body: list[str], page: str) -> list[dict[str, str]]:
-    """The first-level list items of a reference page block that start with `pname:x` or
-    `ename:x`, in the order of the block, each with everything that belongs to it: nested
+def spec_described_items(
+    body: list[str], where: str, described_name: re.Pattern = SPEC_DESCRIBED_NAME
+) -> list[dict[str, str]]:
+    """The first-level list items of `body` (the lines of a reference page block, or lines
+    outside the blocks) that start with a name that `described_name` matches, `pname:x` or
+    `ename:x`, in the order of the lines, each with everything that belongs to it: nested
     items and the blocks that list continuations attach stay part of the item's text.
+    `where` names the lines in an error.
 
     An item is dumped under the first name that it starts with. One name can have several
     items, and an item can start with several names (`pname:x and pname:y are ...`): the
@@ -816,19 +821,62 @@ def spec_described_items(body: list[str], page: str) -> list[dict[str, str]]:
         if not lines:
             continue
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
-        name = SPEC_DESCRIBED_NAME.match(lines[0])
+        name = described_name.match(lines[0])
         if name:
             if problem:
                 raise RuntimeError(
-                    f"{page}: the list item of {name.group(1)} cannot be read reliably: {problem}"
+                    f"{where}: the list item of {name.group(1)} cannot be read reliably: {problem}"
                 )
             for line in lines:
                 if line.startswith("include::"):
                     raise RuntimeError(
-                        f"{page}: the list item of {name.group(1)} goes on in a file that is not read: {line}"
+                        f"{where}: the list item of {name.group(1)} goes on in a file that is not read: {line}"
                     )
             described.append({"name": name.group(1), "text": "\n".join(lines)})
     return described
+
+
+def spec_page_blocks(lines: list[str]) -> list[tuple[int, int, dict[str, str]]]:
+    """The reference page blocks of a file: the index of the line that opens each one
+    (`[open,refpage=...]`), the index of the delimiter that closes it, and its attributes."""
+    blocks = []
+    index = 0
+    while index < len(lines):
+        refpage = SPEC_REFPAGE.match(lines[index])
+        if not refpage or index + 1 >= len(lines) or lines[index + 1].strip() != "--":
+            index += 1
+            continue
+        attributes = {
+            key: value.replace("\\'", "'")
+            for key, value in SPEC_REFPAGE_ATTRIBUTE.findall(refpage.group(1))
+        }
+        end = index + 2
+        while end < len(lines) and lines[end].strip() != "--":
+            end += 1
+        blocks.append((index, end, attributes))
+        index = end + 1
+    return blocks
+
+
+def spec_items_outside_pages(
+    file: str, lines: list[str], blocks: list[tuple[int, int, dict[str, str]]]
+) -> list[dict[str, str]]:
+    """The first-level list items outside every reference page block that start with
+    `ename:x`, in the order of the file and read as the items of a block are, each with
+    the source file.
+
+    The specification describes some values in a list after the block of their type, or
+    in a list of its running text. Most items out here only mention a value, in a list of
+    the values that something applies to: the generator tells the two apart, and takes an
+    item only for a value that the block of its type does not describe."""
+    items = []
+    start = 0
+    for first, last, _ in [*blocks, (len(lines), len(lines), {})]:
+        where = f"{file}, outside the reference pages"
+        for item in spec_described_items(lines[start:first], where, SPEC_DESCRIBED_VALUE):
+            items.append({"file": file, **item})
+        start = last + 1
+    return items
 
 
 def spec_attributes(defined: set[str]) -> dict[str, str]:
@@ -952,28 +1000,18 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
     specification is published as many pages."""
     pages = {}
     tables = []
+    items_outside_pages = []
     defined_anchors = {}
     published = set()
     sources = sorted([*DOCS.glob("chapters/**/*.adoc"), *DOCS.glob("appendices/**/*.adoc")])
     for source in sources:
+        file = str(source.relative_to(DOCS))
         lines = list(spec_lines(source, defined, generated=generated))
-        defined_anchors[str(source.relative_to(DOCS))] = spec_defined_anchors(lines)
+        defined_anchors[file] = spec_defined_anchors(lines)
         if spec_is_page(source.name, source.read_text()):
-            published.add(str(source.relative_to(DOCS)))
-        page_blocks = []
-        index = 0
-        while index < len(lines):
-            refpage = SPEC_REFPAGE.match(lines[index])
-            if not refpage or index + 1 >= len(lines) or lines[index + 1].strip() != "--":
-                index += 1
-                continue
-            attributes = {
-                key: value.replace("\\'", "'")
-                for key, value in SPEC_REFPAGE_ATTRIBUTE.findall(refpage.group(1))
-            }
-            end = index + 2
-            while end < len(lines) and lines[end].strip() != "--":
-                end += 1
+            published.add(file)
+        blocks = spec_page_blocks(lines)
+        for index, end, attributes in blocks:
             name = attributes["refpage"]
             if name in pages:
                 raise RuntimeError(f"{source}: a second reference page for {name}")
@@ -982,12 +1020,12 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
                 "kind": attributes.get("type", ""),
                 "desc": attributes.get("desc", "").strip(),
                 "aliases": attributes.get("alias", "").split(),
-                "file": str(source.relative_to(DOCS)),
+                "file": file,
                 "items": spec_described_items(lines[index + 2 : end], name),
             }
-            page_blocks.append((index, end, name))
-            index = end + 1
-        tables.extend(spec_tables(str(source.relative_to(DOCS)), lines, page_blocks))
+        page_blocks = [(index, end, attributes["refpage"]) for index, end, attributes in blocks]
+        tables.extend(spec_tables(file, lines, page_blocks))
+        items_outside_pages.extend(spec_items_outside_pages(file, lines, blocks))
     if not pages:
         raise RuntimeError("third_party/vulkan-docs has no reference page blocks")
     all_titles = spec_anchor_titles(sources)
@@ -997,6 +1035,8 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
             referenced.update(SPEC_BARE_REFERENCE.findall(text))
     for table in tables:
         referenced.update(SPEC_BARE_REFERENCE.findall(table["text"]))
+    for item in items_outside_pages:
+        referenced.update(SPEC_BARE_REFERENCE.findall(item["text"]))
     return {
         "commit": git(["-C", str(DOCS), "rev-parse", "--short=12", "HEAD"]),
         "anchors": spec_anchor_pages(linked_anchors, defined_anchors, published),
@@ -1004,6 +1044,7 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
         "titles": {name: all_titles[name] for name in sorted(referenced) if name in all_titles},
         "pages": [pages[name] for name in sorted(pages)],
         "tables": tables,
+        "items_outside_pages": items_outside_pages,
     }
 
 

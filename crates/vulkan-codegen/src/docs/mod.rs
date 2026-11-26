@@ -605,6 +605,7 @@ mod tests {
                     ],
                 ),
             ],
+            items_outside_pages: Vec::new(),
         }
     }
 

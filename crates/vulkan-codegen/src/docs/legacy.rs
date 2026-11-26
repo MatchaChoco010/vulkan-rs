@@ -1190,7 +1190,7 @@ mod tests {
             "text = lambda lines: ''.join(line + chr(10) for line in lines)",
             "pages = {file for file, lines in files.items() if tool.spec_is_page(name(file), text(lines))}",
             "anchors = tool.spec_anchor_pages(set(sys.argv[2:]), defined, pages)",
-            "docs = {'commit': '', 'anchors': anchors, 'attributes': {}, 'titles': {}, 'pages': [], 'tables': []}",
+            "docs = {'commit': '', 'anchors': anchors, 'attributes': {}, 'titles': {}, 'pages': [], 'tables': [], 'items_outside_pages': []}",
             "print(json.dumps(docs))",
         ];
         let json = match run_with_the_tool(&script, linked, &sources.join("\n"))? {
