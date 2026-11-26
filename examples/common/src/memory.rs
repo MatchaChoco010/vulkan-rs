@@ -91,8 +91,8 @@ pub unsafe fn buffer_device_address(gpu: &Gpu, buffer: vk::Buffer) -> vk::Device
 /// Copies `bytes` to the start of a host-visible buffer. An error when they are more
 /// than the buffer holds; its allocation may be larger, but the device sees only the
 /// buffer. The copy is flushed, which does nothing for host-coherent memory, such as
-/// that of `CpuToGpu` and `GpuToCpu`, and makes it visible to the device in memory that
-/// is not (host-visible memory of a `GpuOnly` or `Custom` location).
+/// that of `CpuToGpu`, `CpuOnly` and `GpuToCpu`, and makes it visible to the device in
+/// memory that is not (host-visible memory of a `GpuOnly` or `Custom` location).
 pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<()> {
     check_fits(bytes.len(), buffer.size)?;
     gpu.with_allocator(|allocator| unsafe {
@@ -109,8 +109,8 @@ pub unsafe fn write_buffer(gpu: &Gpu, buffer: &Buffer, bytes: &[u8]) -> Result<(
 /// The contents of a host-visible buffer that the device has written. The writes must
 /// have been made visible to the host, with a barrier to `HOST` and a wait. The mapping
 /// is invalidated before the read, which does nothing for host-coherent memory, such as
-/// that of `CpuToGpu` and `GpuToCpu`, and is needed for memory that is not (host-visible
-/// memory of a `GpuOnly` or `Custom` location).
+/// that of `CpuToGpu`, `CpuOnly` and `GpuToCpu`, and is needed for memory that is not
+/// (host-visible memory of a `GpuOnly` or `Custom` location).
 pub unsafe fn read_buffer(gpu: &Gpu, buffer: &Buffer) -> Result<Vec<u8>> {
     gpu.with_allocator(|allocator| unsafe {
         let mut mapped = allocator.map(&buffer.allocation)?;
@@ -173,7 +173,7 @@ pub unsafe fn upload_aligned_buffer(
             "staging buffer",
             size,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            MemoryLocation::CpuToGpu,
+            MemoryLocation::CpuOnly,
         )?;
         write_buffer(gpu, &staging, data)?;
         let buffer = create_aligned_buffer(

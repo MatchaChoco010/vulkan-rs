@@ -178,6 +178,7 @@ fn location() -> impl Strategy<Value = MemoryLocation> {
         Just(MemoryLocation::GpuOnly),
         Just(MemoryLocation::CpuToGpu),
         Just(MemoryLocation::GpuToCpu),
+        Just(MemoryLocation::CpuOnly),
         (any::<u8>(), any::<u8>()).prop_map(|(required, preferred)| MemoryLocation::custom(
             property_flags(required & 0b1111),
             property_flags(preferred)
@@ -230,6 +231,7 @@ fn every_kind_of_allocation_reports_its_memory_type_flags_and_whether_it_has_its
             MemoryLocation::GpuOnly,
             MemoryLocation::CpuToGpu,
             MemoryLocation::GpuToCpu,
+            MemoryLocation::CpuOnly,
             MemoryLocation::custom(VISIBLE, VISIBLE | CACHED),
         ] {
             for size in [256, BLOCK_SIZE, 2 * BLOCK_SIZE] {

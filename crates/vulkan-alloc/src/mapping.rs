@@ -89,7 +89,8 @@ impl<'a> MappedAllocation<'a> {
 
     /// Flushes the host writes to the allocation, as [`Allocator::flush_allocation`]
     /// does. Only memory types without `HOST_COHERENT` need it. Memory of
-    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu) always has `HOST_COHERENT`;
     /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
@@ -113,7 +114,8 @@ impl<'a> MappedAllocation<'a> {
     /// Invalidates the host's view of the allocation, as
     /// [`Allocator::invalidate_allocation`] does, so that device writes made available
     /// to the host become visible. Only memory types without `HOST_COHERENT` need it.
-    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu) always has `HOST_COHERENT`;
     /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require

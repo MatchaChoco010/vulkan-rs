@@ -156,13 +156,16 @@ impl Allocator {
     ///
     /// The memory type is chosen among those allowed by
     /// `desc.requirements.memory_type_bits` that have every flag
-    /// [`AllocationCreateDesc::location`] requires: the lowest-indexed one that also has
-    /// every preferred flag, or else the one with the most preferred flags (the lowest
-    /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
-    /// are left out unless the required or preferred flags of the location include one
-    /// of these two flags, and memory types with `PROTECTED` are left out unless those
-    /// flags include `PROTECTED`; memory types of a tile memory heap are always left out
-    /// (see [`MemoryLocation`](crate::MemoryLocation)).
+    /// [`AllocationCreateDesc::location`] requires: the one that lacks the fewest of its
+    /// preferred flags and has the fewest of the flags it avoids, both counted together
+    /// (the lowest index on a tie), which is the lowest-indexed one with every preferred
+    /// flag and no avoided flag when there is one. Only `DEVICE_LOCAL` is ever avoided,
+    /// by [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly). Memory types with
+    /// `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` are left out unless the required or
+    /// preferred flags of the location include one of these two flags, and memory types
+    /// with `PROTECTED` are left out unless those flags include `PROTECTED`; memory
+    /// types of a tile memory heap are always left out (see
+    /// [`MemoryLocation`](crate::MemoryLocation)).
     ///
     /// If the chosen memory type is out of memory for the request, it is left out too, and
     /// the next memory type is chosen in the same way among the rest, until one has the
@@ -175,8 +178,14 @@ impl Allocator {
     /// `vkAllocateMemory` for the type once more; the type is out of memory if that call
     /// returns [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] too. So `vkAllocateMemory` can
     /// be called several times in one call of this function, and the allocation can be
-    /// made in a memory type with fewer preferred flags than the first one chosen;
-    /// [`Allocation::memory_type_index`] is the type it was made in.
+    /// made in a memory type that ranks lower than the first one chosen, such as a
+    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) allocation in host
+    /// memory when the host-visible device-local heap is full, or a
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) allocation in
+    /// device-local memory when host memory is full;
+    /// [`Allocation::memory_type_index`] is the type it was made in. The
+    /// [`MemoryLocation`](crate::MemoryLocation) documentation tells which location suits
+    /// which use.
     ///
     /// In each memory type it tries, a request that is not refused (see the errors below)
     /// is placed in an existing shared block of that type that was made with the same
@@ -218,7 +227,8 @@ impl Allocator {
     ///    the memory types and heaps of the device.
     /// 2. [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
     ///    required flags, not counting the types that are left out as described above.
-    ///    For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    ///    For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    ///    [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     ///    [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu), whose required
     ///    flags are `HOST_VISIBLE | HOST_COHERENT`, the specification guarantees such a
     ///    type to buffers that are neither sparse nor protected, to linear images that
@@ -329,6 +339,7 @@ impl Allocator {
                 memory_type_bits,
                 desc.location.required_flags(),
                 desc.location.preferred_flags(),
+                desc.location.avoided_flags(),
             )
             .ok_or(if memory_type_bits == desc.requirements.memory_type_bits {
                 AllocationError::NoCompatibleMemoryType
@@ -581,7 +592,8 @@ impl Allocator {
 
     /// Flushes the host writes to a mapped allocation with `vkFlushMappedMemoryRanges`, so
     /// that the device can see them. Only memory types without `HOST_COHERENT` need it.
-    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu) always has `HOST_COHERENT`;
     /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
@@ -651,7 +663,8 @@ impl Allocator {
     /// Invalidates the host's view of a mapped allocation with
     /// `vkInvalidateMappedMemoryRanges`, so that the host can see device writes that were
     /// made available to the host. Only memory types without `HOST_COHERENT` need it.
-    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu) always has `HOST_COHERENT`;
     /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require

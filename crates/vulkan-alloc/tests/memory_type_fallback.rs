@@ -149,6 +149,7 @@ fn locations() -> impl Strategy<Value = MemoryLocation> {
         2 => Just(MemoryLocation::GpuOnly),
         2 => Just(MemoryLocation::CpuToGpu),
         2 => Just(MemoryLocation::GpuToCpu),
+        2 => Just(MemoryLocation::CpuOnly),
         3 => (
             prop_oneof![2 => Just(0u8), 2 => (0..6u32).prop_map(|bit| 1u8 << bit), 1 => 0..64u8],
             0..64u8,
@@ -159,17 +160,17 @@ fn locations() -> impl Strategy<Value = MemoryLocation> {
     ]
 }
 
-fn documented_flags(
-    location: MemoryLocation,
-) -> (vk::MemoryPropertyFlags, vk::MemoryPropertyFlags) {
+fn documented_flags(location: MemoryLocation) -> [vk::MemoryPropertyFlags; 3] {
+    let none = vk::MemoryPropertyFlags::empty();
     match location {
-        MemoryLocation::GpuOnly => (LOCAL, LOCAL),
-        MemoryLocation::CpuToGpu => (VISIBLE | COHERENT, VISIBLE | COHERENT),
-        MemoryLocation::GpuToCpu => (VISIBLE | COHERENT, VISIBLE | COHERENT | CACHED),
+        MemoryLocation::GpuOnly => [LOCAL, LOCAL, none],
+        MemoryLocation::CpuToGpu => [VISIBLE | COHERENT, VISIBLE | COHERENT | LOCAL, none],
+        MemoryLocation::CpuOnly => [VISIBLE | COHERENT, VISIBLE | COHERENT, LOCAL],
+        MemoryLocation::GpuToCpu => [VISIBLE | COHERENT, VISIBLE | COHERENT | CACHED, none],
         MemoryLocation::Custom {
             required,
             preferred,
-        } => (required, preferred),
+        } => [required, preferred, none],
     }
 }
 
@@ -242,7 +243,7 @@ fn documented_outcome(
     mut earlier_blocks: Vec<Option<EarlierBlock>>,
     allocate_memory_results: &[vk::VkResult],
 ) -> Expected {
-    let (required, preferred) = documented_flags(location);
+    let [required, preferred, avoided] = documented_flags(location);
     let named = required | preferred;
     let mut candidates = (0..device.types.len())
         .filter(|&index| memory_type_bits >> index & 1 == 1)
@@ -253,10 +254,12 @@ fn documented_outcome(
     let mut results = allocate_memory_results.iter().copied();
     let mut allocated_memory_types = Vec::new();
     let mut freed_empty_blocks = Vec::new();
-    let preferred_count =
-        |index: usize| (device.types[index].0.as_raw() & preferred.as_raw()).count_ones();
+    let shortfall = |index: usize| {
+        let flags = device.types[index].0.as_raw();
+        (preferred.as_raw() & !flags).count_ones() + (avoided.as_raw() & flags).count_ones()
+    };
     loop {
-        let Some(most) = candidates.iter().copied().map(preferred_count).max() else {
+        let Some(least) = candidates.iter().copied().map(shortfall).min() else {
             let result = Err(if any_candidate {
                 AllocationError::OutOfMemory
             } else {
@@ -272,13 +275,7 @@ fn documented_outcome(
         let chosen = candidates
             .iter()
             .copied()
-            .find(|&index| device.types[index].0.contains(preferred))
-            .or_else(|| {
-                candidates
-                    .iter()
-                    .copied()
-                    .find(|&index| preferred_count(index) == most)
-            })
+            .find(|&index| shortfall(index) == least)
             .unwrap();
         candidates.retain(|&index| index != chosen);
         if device
@@ -549,6 +546,52 @@ fn gpu_to_cpu_takes_coherent_memory_when_the_cached_heap_is_out_of_memory() {
         "the cached type is tried first, then the coherent type"
     );
     assert_eq!(allocator.snapshot().memory_types.len(), 1);
+    unsafe { allocator.free(allocation) }.unwrap();
+}
+
+#[test]
+fn cpu_to_gpu_takes_host_memory_when_the_host_visible_device_heap_is_out_of_memory() {
+    let fake = FakeDevice::new();
+    let mut allocator = allocator_for(
+        &fake,
+        &[
+            (LOCAL, 1 << 30),
+            (VISIBLE | COHERENT, 1 << 30),
+            (LOCAL | VISIBLE | COHERENT, 256 << 20),
+        ],
+    );
+    fake.script_allocations([OOM]);
+    let allocation =
+        allocate(&mut allocator, 256, MemoryLocation::CpuToGpu).expect("the host memory has room");
+    assert_eq!(allocation.memory_type_index(), 1);
+    assert_eq!(
+        fake.allocated_memory_types(),
+        [2, 1],
+        "the host-visible device memory is tried first, then the host memory"
+    );
+    unsafe { allocator.free(allocation) }.unwrap();
+}
+
+#[test]
+fn cpu_only_takes_device_local_memory_when_the_host_heap_is_out_of_memory() {
+    let fake = FakeDevice::new();
+    let mut allocator = allocator_for(
+        &fake,
+        &[
+            (LOCAL, 1 << 30),
+            (LOCAL | VISIBLE | COHERENT, 256 << 20),
+            (VISIBLE | COHERENT, 1 << 30),
+        ],
+    );
+    fake.script_allocations([OOM]);
+    let allocation = allocate(&mut allocator, 256, MemoryLocation::CpuOnly)
+        .expect("the host-visible device memory has room");
+    assert_eq!(allocation.memory_type_index(), 1);
+    assert_eq!(
+        fake.allocated_memory_types(),
+        [2, 1],
+        "the host memory is tried first, then the host-visible device memory"
+    );
     unsafe { allocator.free(allocation) }.unwrap();
 }
 

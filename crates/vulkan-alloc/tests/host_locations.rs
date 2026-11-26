@@ -24,6 +24,12 @@ const KINDS: [vk::MemoryPropertyFlags; 8] = [
     LOCAL.union(VISIBLE).union(COHERENT).union(CACHED),
 ];
 
+const HOST_LOCATIONS: [MemoryLocation; 3] = [
+    MemoryLocation::CpuToGpu,
+    MemoryLocation::CpuOnly,
+    MemoryLocation::GpuToCpu,
+];
+
 fn memory_properties(types: &[vk::MemoryPropertyFlags]) -> vk::PhysicalDeviceMemoryProperties {
     let mut properties = vk::PhysicalDeviceMemoryProperties {
         memory_type_count: types.len() as u32,
@@ -46,11 +52,20 @@ fn documented_choice(
         .filter(|&index| memory_type_bits & (1 << index) != 0)
         .filter(|&index| types[index].contains(VISIBLE | COHERENT))
         .collect::<Vec<_>>();
-    let chosen = match location {
-        MemoryLocation::GpuToCpu => coherent
+    let first_with = |flag: vk::MemoryPropertyFlags| {
+        coherent
             .iter()
             .copied()
-            .find(|&index| types[index].contains(CACHED))
+            .find(|&index| types[index].contains(flag))
+            .or(coherent.first().copied())
+    };
+    let chosen = match location {
+        MemoryLocation::GpuToCpu => first_with(CACHED),
+        MemoryLocation::CpuToGpu => first_with(LOCAL),
+        MemoryLocation::CpuOnly => coherent
+            .iter()
+            .copied()
+            .find(|&index| !types[index].contains(LOCAL))
             .or(coherent.first().copied()),
         _ => coherent.first().copied(),
     };
@@ -107,7 +122,8 @@ fn check_host_location(
             assert_eq!(
                 index, expected,
                 "{context}: chose type {index} instead of the lowest-indexed allowed coherent \
-                 type, cached first for GpuToCpu"
+                 type, cached first for GpuToCpu, device-local first for CpuToGpu and \
+                 device-local last for CpuOnly"
             );
         }
         (Err(error), None) => assert_eq!(
@@ -134,6 +150,7 @@ fn gpu_to_cpu_takes_coherent_memory_over_an_earlier_cached_type_that_is_not_cohe
     );
     check_host_location(&types, 0b11, MemoryLocation::GpuToCpu);
     check_host_location(&types, 0b11, MemoryLocation::CpuToGpu);
+    check_host_location(&types, 0b11, MemoryLocation::CpuOnly);
 }
 
 #[test]
@@ -145,17 +162,67 @@ fn gpu_to_cpu_takes_coherent_cached_memory_over_an_earlier_cached_type_that_is_n
     );
     check_host_location(&types, 0b11, MemoryLocation::GpuToCpu);
     check_host_location(&types, 0b11, MemoryLocation::CpuToGpu);
+    check_host_location(&types, 0b11, MemoryLocation::CpuOnly);
 }
 
 #[test]
 fn host_locations_fail_when_no_allowed_type_is_coherent() {
     let types = [VISIBLE | CACHED, VISIBLE | COHERENT];
-    for location in [MemoryLocation::CpuToGpu, MemoryLocation::GpuToCpu] {
+    for location in HOST_LOCATIONS {
         assert_eq!(
             allocated_type(&types, 0b01, location),
             Err(AllocationError::NoCompatibleMemoryType),
             "{location:?} with only a non-coherent type allowed"
         );
+    }
+}
+
+#[test]
+fn each_location_takes_its_memory_on_a_discrete_gpu_with_host_visible_device_memory() {
+    let types = [
+        LOCAL,
+        VISIBLE | COHERENT,
+        VISIBLE | COHERENT | CACHED,
+        LOCAL | VISIBLE | COHERENT,
+    ];
+    let chosen = |location| allocated_type(&types, 0b1111, location).map(|(index, _)| index);
+    assert_eq!(chosen(MemoryLocation::GpuOnly), Ok(0), "device memory");
+    assert_eq!(
+        chosen(MemoryLocation::CpuToGpu),
+        Ok(3),
+        "host-visible device memory, which the device reads fast"
+    );
+    assert_eq!(
+        chosen(MemoryLocation::CpuOnly),
+        Ok(1),
+        "host memory, which does not use up the small host-visible device heap"
+    );
+    assert_eq!(
+        chosen(MemoryLocation::GpuToCpu),
+        Ok(2),
+        "cached host memory, which the host reads fast"
+    );
+    for location in HOST_LOCATIONS {
+        check_host_location(&types, 0b1111, location);
+    }
+}
+
+#[test]
+fn cpu_only_takes_host_memory_that_comes_after_a_device_local_type() {
+    let types = [LOCAL | VISIBLE | COHERENT, VISIBLE | COHERENT | CACHED];
+    assert_eq!(
+        allocated_type(&types, 0b11, MemoryLocation::CpuOnly),
+        Ok((1, VISIBLE | COHERENT | CACHED)),
+        "the types are not in a subset relation, so the specification lets the \
+         device-local type come first, and CpuOnly still takes host memory"
+    );
+    assert_eq!(
+        allocated_type(&types, 0b01, MemoryLocation::CpuOnly),
+        Ok((0, LOCAL | VISIBLE | COHERENT)),
+        "device-local memory when no other coherent type is allowed"
+    );
+    for location in HOST_LOCATIONS {
+        check_host_location(&types, 0b11, location);
     }
 }
 
@@ -184,7 +251,7 @@ proptest! {
         types in prop::collection::vec(prop::sample::select(KINDS.to_vec()), 1..=6),
         memory_type_bits in any::<u32>(),
     ) {
-        for location in [MemoryLocation::CpuToGpu, MemoryLocation::GpuToCpu] {
+        for location in HOST_LOCATIONS {
             check_host_location(&types, memory_type_bits, location);
         }
     }

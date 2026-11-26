@@ -17,9 +17,13 @@
 //! 2. Create a buffer or an image and query its memory requirements.
 //! 3. Describe the memory in an [`AllocationCreateDesc`], made with
 //!    [`AllocationCreateDesc::new`], and pass it to [`Allocator::allocate`]. The
-//!    [`MemoryLocation`] chooses the memory type; the memory of
-//!    [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is host-visible and
-//!    host-coherent.
+//!    [`MemoryLocation`] chooses the memory type from how the memory is used:
+//!    [`MemoryLocation::GpuOnly`] for memory only the device accesses,
+//!    [`MemoryLocation::CpuToGpu`] for memory the host writes and the device reads
+//!    directly, such as the uniform buffer below, [`MemoryLocation::CpuOnly`] for
+//!    staging buffers the device only copies from, and [`MemoryLocation::GpuToCpu`] for
+//!    memory the device writes and the host reads. The memory of the last three is
+//!    host-visible and host-coherent.
 //! 4. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`]. The
 //!    allocator does not bind anything itself.
 //! 5. Access host-visible memory through one of the mapping functions (see
@@ -92,10 +96,10 @@
 //! a memory type is out of memory, the allocator picks the next one among the remaining
 //! types by the same rule and tries it, and returns [`AllocationError::OutOfMemory`] only
 //! when every memory type the allocation may use is out of memory. So an allocation can
-//! end up in a memory type with fewer of the preferred flags of its [`MemoryLocation`]
-//! than the first one picked. A
-//! description the allocator does not accept, such as one of size 0, is refused with
-//! [`AllocationError::InvalidAllocationCreateDesc`] before anything else is checked.
+//! end up in a memory type that its [`MemoryLocation`] ranks lower than the first one
+//! picked. A description the allocator does not accept, such as one of size 0, is
+//! refused with [`AllocationError::InvalidAllocationCreateDesc`] before anything else is
+//! checked.
 //! Allocations that differ in [`AllocationCreateDesc::memory_allocate_flags`] never
 //! share a block, and allocations that differ in [`AllocationCreateDesc::linear`] are
 //! never in a block at the same time. Dedicated
@@ -177,14 +181,21 @@
 //! heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` has an instance on every physical
 //! device, and Vulkan does not allow memory with more than one instance to be mapped.
 //! Such allocations can be made and bound to resources, but must not be passed to any
-//! of the mapping functions. The allocator does not check this.
+//! of the mapping functions. The allocator does not check this. The device-local heaps
+//! of such a device usually have that flag. [`MemoryLocation::CpuToGpu`] prefers
+//! device-local memory, and the other host locations can give it too, for example when
+//! the memory they rank higher is out of memory (see [`Allocator::allocate`]). For an
+//! allocation that will be mapped on such a device, allow in
+//! [`vk::MemoryRequirements::memory_type_bits`](vulkan::vk::MemoryRequirements::memory_type_bits)
+//! only the memory types of heaps without `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`.
 //!
-//! Memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is always
-//! `HOST_COHERENT`, so mapped writes and reads need neither a flush nor an invalidate
-//! (see [`MemoryLocation`]). [`MemoryLocation::GpuOnly`] and a
-//! [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
-//! host-visible memory without it. Such memory needs [`Allocator::flush_allocation`]
-//! after host writes and [`Allocator::invalidate_allocation`] before host reads (or
+//! Memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
+//! [`MemoryLocation::GpuToCpu`] is always `HOST_COHERENT`, so mapped writes and reads
+//! need neither a flush nor an invalidate (see [`MemoryLocation`]).
+//! [`MemoryLocation::GpuOnly`] and a [`MemoryLocation::Custom`] location that does not
+//! require `HOST_COHERENT` can give host-visible memory without it. Such memory needs
+//! [`Allocator::flush_allocation`] after host writes and
+//! [`Allocator::invalidate_allocation`] before host reads (or
 //! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). These functions do
 //! nothing for `HOST_COHERENT` memory, so the memory type need not be checked: call the
 //! flush after every host write and the invalidate before every host read.

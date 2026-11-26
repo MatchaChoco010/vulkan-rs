@@ -236,8 +236,9 @@ impl Allocation {
     /// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) and
     /// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation); both
     /// do nothing for memory with it, so they can be called without checking.
-    /// `HOST_COHERENT` is always set for allocations made with [`MemoryLocation::CpuToGpu`]
-    /// and [`MemoryLocation::GpuToCpu`]; [`MemoryLocation::GpuOnly`] and a
+    /// `HOST_COHERENT` is always set for allocations made with [`MemoryLocation::CpuToGpu`],
+    /// [`MemoryLocation::CpuOnly`] and [`MemoryLocation::GpuToCpu`];
+    /// [`MemoryLocation::GpuOnly`] and a
     /// [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
     /// host-visible memory without it.
     pub fn memory_properties(&self) -> vk::MemoryPropertyFlags {
