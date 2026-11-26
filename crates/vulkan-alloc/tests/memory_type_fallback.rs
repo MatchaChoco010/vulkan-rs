@@ -473,6 +473,11 @@ proptest! {
         match result {
             Ok(allocation) => {
                 prop_assert!(allocation.size() >= size, "{}", context);
+                prop_assert_eq!(
+                    allocation.memory_properties(),
+                    device.types[allocation.memory_type_index() as usize].0,
+                    "{}: the flags of the memory type the allocation was made in", context
+                );
                 unsafe { allocator.free(allocation) }.unwrap();
             }
             Err(_) => prop_assert_eq!(
