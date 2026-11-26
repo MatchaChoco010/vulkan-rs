@@ -10,7 +10,7 @@ use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
 use vulkan::{Device, Entry, Instance, vk};
 use vulkan_alloc::{
     Allocation, AllocationCreateDesc, AllocationError, AllocationScheme, Allocator,
-    AllocatorCreateDesc, MemoryLocation,
+    AllocatorCreateDesc, AllocatorSnapshot, MemoryLocation,
 };
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
@@ -30,6 +30,7 @@ struct Gpu {
     physical_device: vk::PhysicalDevice,
     device: Device,
     external_memory_fd: bool,
+    destroyed: bool,
 }
 
 unsafe extern "system" fn collect_message(
@@ -167,6 +168,7 @@ impl Gpu {
                     physical_device,
                     device,
                     external_memory_fd,
+                    destroyed: false,
                 }),
                 Err(reason) => {
                     if !messenger.is_null() {
@@ -286,19 +288,28 @@ impl Gpu {
     }
 }
 
+impl Gpu {
+    fn destroy(&mut self) -> Vec<String> {
+        if !self.destroyed {
+            self.destroyed = true;
+            unsafe {
+                let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
+                self.device.destroy_device(None);
+                drop(serialized);
+                if !self.messenger.is_null() {
+                    self.instance
+                        .destroy_debug_utils_messenger_ext(self.messenger, None);
+                }
+                self.instance.destroy_instance(None);
+            }
+        }
+        self.take_validation_messages()
+    }
+}
+
 impl Drop for Gpu {
     fn drop(&mut self) {
-        unsafe {
-            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
-            self.device.destroy_device(None);
-            drop(serialized);
-            if !self.messenger.is_null() {
-                self.instance
-                    .destroy_debug_utils_messenger_ext(self.messenger, None);
-            }
-            self.instance.destroy_instance(None);
-        }
-        let messages = self.take_validation_messages();
+        let messages = self.destroy();
         if !messages.is_empty() && !std::thread::panicking() {
             panic!(
                 "validation messages while destroying the device:\n{}",
@@ -495,7 +506,7 @@ impl log::Log for CapturedLog {
 
 #[test]
 fn dropping_with_live_allocations_reports_them_and_frees_their_memory() {
-    let Some(gpu) = Gpu::new() else { return };
+    let Some(mut gpu) = Gpu::new() else { return };
     log::set_logger(&CapturedLog).expect("no other logger in this test binary");
     log::set_max_level(log::LevelFilter::Error);
 
@@ -534,6 +545,13 @@ fn dropping_with_live_allocations_reports_them_and_frees_their_memory() {
     );
     assert!(records.contains("\"script texture\""), "{records}");
     gpu.assert_no_validation_messages();
+    let messages = gpu.destroy();
+    assert!(
+        messages.is_empty(),
+        "dropping the allocator must have freed the memory of the live allocation, so that no \
+         VkDeviceMemory is left when the device is destroyed:\n{}",
+        messages.join("\n")
+    );
 }
 
 #[test]
@@ -935,16 +953,7 @@ impl<'g> Sequence<'g> {
                     .map_err(|e| format!("freeing what is left: {e:?}"))?;
             }
             ensure!(self.allocator.is_empty(), "the allocator is not empty");
-            let snapshot = self.allocator.snapshot();
-            ensure!(
-                snapshot
-                    .memory_types
-                    .iter()
-                    .all(|memory_type| memory_type.blocks.len() <= 1),
-                "after every allocation was freed, the allocator holds more than one empty block \
-                 of a memory type: {:?}",
-                snapshot.stats
-            );
+            check_empty_blocks(&self.allocator.snapshot())?;
             self.check_messages()
         }
     }
@@ -1402,19 +1411,7 @@ impl<'g> Sequence<'g> {
             "{holding} blocks hold allocations, and the live allocations are in {} memory objects",
             memories.len()
         );
-        for memory_type in &snapshot.memory_types {
-            let empty = memory_type
-                .blocks
-                .iter()
-                .filter(|block| block.allocated_region_count == 0)
-                .count();
-            ensure!(
-                empty <= 1,
-                "memory type {} holds {empty} empty blocks",
-                memory_type.memory_type_index
-            );
-        }
-        Ok(())
+        check_empty_blocks(&snapshot)
     }
 
     unsafe fn check_contents(&mut self) -> Result<(), String> {
@@ -1458,6 +1455,32 @@ impl<'g> Sequence<'g> {
         );
         Ok(())
     }
+}
+
+fn check_empty_blocks(snapshot: &AllocatorSnapshot) -> Result<(), String> {
+    for memory_type in &snapshot.memory_types {
+        let mut flags_of_empty_blocks = Vec::new();
+        for block in &memory_type.blocks {
+            if block.allocated_region_count > 0 {
+                continue;
+            }
+            ensure!(
+                !block.dedicated,
+                "{:?} of memory type {} is kept empty, although it is the memory of a dedicated \
+                 allocation",
+                block.memory,
+                memory_type.memory_type_index
+            );
+            ensure!(
+                !flags_of_empty_blocks.contains(&block.memory_allocate_flags),
+                "memory type {} holds more than one empty block with the flags {:?}",
+                memory_type.memory_type_index,
+                block.memory_allocate_flags
+            );
+            flags_of_empty_blocks.push(block.memory_allocate_flags);
+        }
+    }
+    Ok(())
 }
 
 #[test]
