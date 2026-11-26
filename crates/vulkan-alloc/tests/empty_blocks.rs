@@ -375,7 +375,7 @@ impl Model {
             return Ok(());
         }
         let index = host_visible[pick % host_visible.len()];
-        unsafe { allocator.map_persistent(&self.live[index].allocation) }
+        unsafe { allocator.map_persistent(&mut self.live[index].allocation) }
             .map_err(|error| fail(format!("map_persistent: {error:?}")))?;
         self.live[index].persistent = true;
         self.note("map_persistent");
@@ -659,9 +659,9 @@ proptest! {
                 device_address,
                 memory: Memory::Shared,
             };
-            let allocation = unsafe { allocator.allocate(request.description(0)) }.unwrap();
+            let mut allocation = unsafe { allocator.allocate(request.description(0)) }.unwrap();
             if mapped && memory_type != DEVICE_LOCAL {
-                unsafe { allocator.map_persistent(&allocation) }.unwrap();
+                unsafe { allocator.map_persistent(&mut allocation) }.unwrap();
             }
             unsafe { allocator.free(allocation) }.unwrap();
             prop_assert_eq!(

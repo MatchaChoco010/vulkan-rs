@@ -26,7 +26,8 @@
 //!    host-visible and host-coherent.
 //! 4. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`]. The
 //!    allocator does not bind anything itself.
-//! 5. Access host-visible memory through one of the mapping functions (see
+//! 5. Access host-visible memory through the allocation, made with
+//!    [`AllocationCreateDesc::mapped`], or through one of the mapping functions (see
 //!    [Mapping](#mapping)).
 //! 6. When the device no longer uses the resource, destroy it and pass the allocation to
 //!    [`Allocator::free`].
@@ -56,8 +57,9 @@
 //!                 .usage(vk::BufferUsageFlags::UNIFORM_BUFFER),
 //!             None,
 //!         )?;
-//!         let allocation = allocator.allocate(AllocationCreateDesc {
+//!         let mut allocation = allocator.allocate(AllocationCreateDesc {
 //!             name: Some("uniforms"),
+//!             mapped: true,
 //!             ..AllocationCreateDesc::new(
 //!                 device.get_buffer_memory_requirements(buffer),
 //!                 MemoryLocation::CpuToGpu,
@@ -66,13 +68,13 @@
 //!         })?;
 //!         device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
 //!
-//!         {
-//!             let mut mapped = allocator.map(&allocation)?;
-//!             mapped
-//!                 .byte_range_mut(0, data.len())
-//!                 .ok_or("the allocation is smaller than the data")?
-//!                 .copy_from_slice(data);
-//!         }
+//!         allocation
+//!             .mapped_slice_mut()
+//!             .ok_or("CpuToGpu memory is mapped")?
+//!             .get_mut(..data.len())
+//!             .ok_or("the allocation is smaller than the data")?
+//!             .copy_from_slice(data);
+//!         allocator.flush_allocation(&allocation)?;
 //!
 //!         device.destroy_buffer(buffer, None);
 //!         allocator.free(allocation)?;
@@ -163,25 +165,41 @@
 //!
 //! # Mapping
 //!
-//! There are three ways to map an allocation of host-visible memory:
+//! Memory that the host writes or reads, such as uniform, staging and readback buffers,
+//! usually stays mapped from its allocation to its free. Set
+//! [`AllocationCreateDesc::mapped`] to `true`, and [`Allocator::allocate`] maps the
+//! allocation before it returns it. [`Allocation::mapped_slice_mut`] and
+//! [`Allocation::mapped_slice`] then give its bytes, and [`Allocation::mapped_ptr`] a
+//! pointer to them, without borrowing the allocator, so several allocations can be
+//! accessed at once. Flush after host writes and invalidate before host reads as
+//! described below. [`Allocator::free`] releases the mapping. The memory of
+//! [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
+//! [`MemoryLocation::GpuToCpu`] is always host-visible, so it is always mapped; for other
+//! locations, memory that is not host-visible is returned unmapped.
 //!
+//! The other ways to map an allocation of host-visible memory:
+//!
+//! - [`Allocator::map_persistent`] maps an allocation that was made without
+//!   [`AllocationCreateDesc::mapped`] until it is freed, and leaves it in the same state
+//!   as if it had been made with it.
 //! - [`Allocator::map`] returns a [`MappedAllocation`] guard that unmaps when dropped.
-//!   The guard borrows the allocator mutably, so it suits short accesses.
-//! - [`Allocator::map_persistent`] maps the allocation until it is freed and returns a
-//!   pointer that borrows nothing, for memory that stays mapped for its whole life.
-//!   [`Allocator::free`] releases this mapping.
+//!   The guard borrows the allocator mutably, so it suits short accesses to memory that
+//!   does not stay mapped, one allocation at a time.
 //! - [`Allocator::map_memory`] returns a raw pointer; each successful call is paired with
-//!   one [`Allocator::unmap_memory`].
+//!   one [`Allocator::unmap_memory`]. It suits mappings whose lifetime the caller
+//!   manages itself, without a borrow of the allocator.
 //!
-//! All three map the whole `VkDeviceMemory` block once and count mapping references per
-//! allocation; the block is unmapped when the last reference in it is released. Do not
-//! call `vkMapMemory` or `vkUnmapMemory` on [`Allocation::memory`] yourself.
+//! All of them map the whole `VkDeviceMemory` block once and count mapping references
+//! per allocation; the block is unmapped when the last reference in it is released. A
+//! persistent mapping and the others can be used together. Do not call `vkMapMemory` or
+//! `vkUnmapMemory` on [`Allocation::memory`] yourself.
 //!
 //! On a logical device that represents more than one physical device, memory from a
 //! heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` has an instance on every physical
 //! device, and Vulkan does not allow memory with more than one instance to be mapped.
-//! Such allocations can be made and bound to resources, but must not be passed to any
-//! of the mapping functions. The allocator does not check this. The device-local heaps
+//! Such allocations can be made and bound to resources, but must not be made with
+//! [`AllocationCreateDesc::mapped`] nor passed to any of the mapping functions. The
+//! allocator does not check this. The device-local heaps
 //! of such a device usually have that flag. [`MemoryLocation::CpuToGpu`] prefers
 //! device-local memory, and the other host locations can give it too, for example when
 //! the memory they rank higher is out of memory (see [`Allocator::allocate`]). For an
@@ -259,8 +277,9 @@
 //!
 //! [`Allocator`] is [`Send`] but not [`Sync`]. Allocating, freeing and mapping take
 //! `&mut self`; to share one allocator between threads, put it in a
-//! [`Mutex`](std::sync::Mutex). [`Allocation`] holds only plain data and is [`Send`] and
-//! [`Sync`].
+//! [`Mutex`](std::sync::Mutex). [`Allocation`] is [`Send`] and [`Sync`]: besides plain
+//! data it holds only the pointer of [`Allocation::mapped_ptr`], which means the same on
+//! every thread and gives access to the bytes only through `unsafe` code.
 //!
 //! # Descriptor heaps
 //!

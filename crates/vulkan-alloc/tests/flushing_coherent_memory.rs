@@ -131,18 +131,17 @@ fn run(case: &Case, coherent: bool) -> Outcome {
             .iter()
             .map(|&size| allocate(size))
             .collect::<Vec<_>>();
-        let held = allocate(case.target);
+        let mut held = allocate(case.target);
         neighbours.extend(case.after.iter().map(|&size| allocate(size)));
         let foreign = other.allocate(desc(case.target, 1, 0)).unwrap();
         for neighbour in &neighbours {
             allocator.map_memory(neighbour).unwrap();
         }
-        let target = if case.state == State::FromAnotherAllocator {
+        let target_identity = identity(if case.state == State::FromAnotherAllocator {
             &foreign
         } else {
             &held
-        };
-        let target_identity = identity(target);
+        });
         let neighbour_identities = neighbours.iter().map(identity).collect::<Vec<_>>();
         match case.state {
             State::Unmapped | State::FromAnotherAllocator => {}
@@ -150,12 +149,17 @@ fn run(case: &Case, coherent: bool) -> Outcome {
                 allocator.map_memory(&held).unwrap();
             }
             State::MappedPersistently => {
-                allocator.map_persistent(&held).unwrap();
+                allocator.map_persistent(&mut held).unwrap();
             }
             State::FreedByFreeAll => {
                 allocator.free_all();
             }
         }
+        let target = if case.state == State::FromAnotherAllocator {
+            &foreign
+        } else {
+            &held
+        };
         let synchronized_before = fake.synchronized().len();
         let result = match case.route {
             Route::Allocator => match case.kind {

@@ -251,6 +251,7 @@ pub struct Request {
     pub export: bool,
     pub scheme: Scheme,
     pub named: bool,
+    pub mapped: bool,
 }
 
 impl Request {
@@ -270,6 +271,7 @@ impl Request {
             export: false,
             scheme: Scheme::Managed,
             named: false,
+            mapped: false,
         }
     }
 
@@ -420,7 +422,7 @@ pub enum HandleUse {
     MapMemory,
     Guard,
     MapPersistent,
-    PersistentPtr,
+    MappedPtr,
     UnmapMemory,
     Flush,
     Invalidate,
@@ -433,7 +435,7 @@ pub const HANDLE_USES: [HandleUse; 10] = [
     HandleUse::MapMemory,
     HandleUse::Guard,
     HandleUse::MapPersistent,
-    HandleUse::PersistentPtr,
+    HandleUse::MappedPtr,
     HandleUse::UnmapMemory,
     HandleUse::Flush,
     HandleUse::Invalidate,
@@ -666,6 +668,7 @@ pub fn requests(world: &World) -> impl Strategy<Value = Request> + use<> {
         prop::bool::weighted(0.05),
         scheme,
         prop::bool::weighted(0.3),
+        prop::bool::weighted(0.35),
     )
         .prop_map(
             |(
@@ -680,6 +683,7 @@ pub fn requests(world: &World) -> impl Strategy<Value = Request> + use<> {
                 export,
                 scheme,
                 named,
+                mapped,
             )| Request {
                 size,
                 alignment,
@@ -692,6 +696,7 @@ pub fn requests(world: &World) -> impl Strategy<Value = Request> + use<> {
                 export,
                 scheme,
                 named,
+                mapped,
             },
         )
 }
@@ -1396,6 +1401,7 @@ impl Coverage {
 struct Live {
     allocation: Allocation,
     twin: Option<Allocation>,
+    twin_persistent: Option<NonNull<u8>>,
     requested_size: u64,
     alignment: u64,
     name: Option<String>,
@@ -1463,7 +1469,7 @@ pub struct Harness {
     twin_fake: FakeDevice,
     world: World,
     live: Vec<Live>,
-    stale: Vec<Allocation>,
+    stale: Vec<(Allocation, Option<NonNull<u8>>)>,
     blocks: BTreeMap<u64, Block>,
     allocation_fails: VecDeque<vk::VkResult>,
     map_fault: Option<MapFault>,
@@ -1484,6 +1490,8 @@ const MAP_FAILURES: [vk::VkResult; 3] = [
     vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY,
     vk::VkResult::ERROR_OUT_OF_HOST_MEMORY,
 ];
+const MEMORY_OF_AN_UNDONE_ALLOCATION: u64 = u64::MAX;
+
 const SYNCHRONIZATION_FAILURES: [vk::VkResult; 2] = [
     vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY,
     vk::VkResult::ERROR_OUT_OF_HOST_MEMORY,
@@ -1989,6 +1997,28 @@ impl Harness {
             });
         }
 
+        let chosen = holding.or(empty);
+        let maps = request.mapped && self.flags_of(memory_type).contains(VISIBLE);
+        let map_expectation = if !maps {
+            None
+        } else if chosen.is_some_and(|memory| self.mapping_references_in(memory) > 0) {
+            Some(MapExpectation::SharesTheMapping)
+        } else {
+            Some(self.fault_of_the_next_map())
+        };
+        if let Some(expectation @ (MapExpectation::Fails(_) | MapExpectation::ReturnsNull)) =
+            map_expectation
+        {
+            return self.check_undone_allocation(
+                request,
+                resource,
+                (memory_type, chosen),
+                (expectation, result),
+                &before,
+                (allocate_calls, &freed, &consumed),
+            );
+        }
+
         let calls = self.fake.calls();
         ensure_eq!(
             (calls.allocate, calls.free),
@@ -1999,7 +2029,7 @@ impl Harness {
             "vkAllocateMemory and vkFreeMemory calls of an allocation that falls back past \
              {left_out:?} and frees the empty blocks {freed:?}"
         );
-        let allocation = if let Some(chosen) = holding.or(empty) {
+        let allocation = if let Some(chosen) = chosen {
             let allocation =
                 result.map_err(|error| format!("a shared block has room, but: {error:?}"))?;
             let memory = allocation.memory().0;
@@ -2043,7 +2073,7 @@ impl Harness {
                 Some(&MemoryObject {
                     size: block_size,
                     memory_type_index: memory_type,
-                    mapped: false,
+                    mapped: maps,
                 }),
                 "the new memory object"
             );
@@ -2090,6 +2120,25 @@ impl Harness {
             allocation
         };
 
+        let calls = self.fake.calls();
+        ensure_eq!(
+            (
+                calls.map - before.calls.map,
+                calls.unmap - before.calls.unmap
+            ),
+            (
+                usize::from(map_expectation == Some(MapExpectation::MapsTheBlock)),
+                0
+            ),
+            "vkMapMemory and vkUnmapMemory calls of an allocation made with mapped {} in memory \
+             that is {}host-visible, expecting {map_expectation:?}",
+            request.mapped,
+            if self.flags_of(memory_type).contains(VISIBLE) {
+                ""
+            } else {
+                "not "
+            }
+        );
         ensure_eq!(
             allocation.memory_type_index(),
             memory_type,
@@ -2172,6 +2221,50 @@ impl Harness {
             "allocation id {allocation_id} was used before"
         );
 
+        let persistent = allocation.mapped_ptr();
+        if maps {
+            let base = self
+                .fake
+                .base_address(allocation.memory())
+                .ok_or("the device has not mapped the memory of an allocation made with mapped")?;
+            ensure_eq!(
+                persistent.map(|pointer| pointer.as_ptr() as usize),
+                Some(base + offset as usize),
+                "mapped_ptr() of an allocation made with mapped in host-visible memory"
+            );
+            ensure_eq!(
+                unsafe { allocation.mapped_slice() }.map(<[u8]>::len),
+                Some(size as usize),
+                "the length of mapped_slice() of an allocation made with mapped"
+            );
+            self.coverage.note(match map_expectation {
+                Some(MapExpectation::SharesTheMapping) => {
+                    "allocate: mapped at once in a block that is mapped"
+                }
+                _ => "allocate: mapped at once",
+            });
+        } else {
+            ensure_eq!(
+                persistent,
+                None,
+                "mapped_ptr() of an allocation made with mapped {} in memory that is {}host-visible",
+                request.mapped,
+                if self.flags_of(memory_type).contains(VISIBLE) {
+                    ""
+                } else {
+                    "not "
+                }
+            );
+            ensure!(
+                unsafe { allocation.mapped_slice() }.is_none(),
+                "an allocation that is not persistently mapped has a mapped slice"
+            );
+            if request.mapped {
+                self.coverage
+                    .note("allocate: mapped is ignored for memory that is not host-visible");
+            }
+        }
+
         self.twin_fake.script_allocations(consumed.iter().copied());
         let twin = unsafe {
             self.twin
@@ -2193,19 +2286,173 @@ impl Harness {
             ),
             "an allocator given the same requests placed this one elsewhere"
         );
+        let twin_persistent = twin.mapped_ptr();
+        ensure_eq!(
+            twin_persistent.map(|pointer| pointer.as_ptr() as usize),
+            if maps {
+                self.twin_fake
+                    .base_address(twin.memory())
+                    .map(|base| base + offset as usize)
+            } else {
+                None
+            },
+            "mapped_ptr() of the allocation of the twin allocator"
+        );
 
         self.live.push(Live {
             allocation,
             twin: Some(twin),
+            twin_persistent,
             requested_size: request.size,
             alignment,
             name,
             raw_mappings: 0,
-            persistent: None,
+            persistent,
             allocation_id,
             fill: None,
             zero_initialized: request.zero_initialize,
         });
+        Ok(())
+    }
+
+    fn check_undone_allocation(
+        &mut self,
+        request: &Request,
+        resource: u64,
+        (memory_type, chosen): (u32, Option<u64>),
+        (expectation, result): (MapExpectation, Result<Allocation, AllocationError>),
+        before: &Observation,
+        (allocate_calls, freed, consumed): (usize, &[u64], &[vk::VkResult]),
+    ) -> Checked {
+        let (expected, fault, unmaps, event) = match expectation {
+            MapExpectation::Fails(failure) => (
+                AllocationError::Vulkan(failure),
+                MapFault::Fails(failure),
+                0,
+                "allocate: vkMapMemory fails and the allocation is undone",
+            ),
+            _ => (
+                AllocationError::InvalidAllocation,
+                MapFault::ReturnsNull,
+                1,
+                "allocate: vkMapMemory returns null and the allocation is undone",
+            ),
+        };
+        ensure_eq!(
+            result,
+            Err(expected.clone()),
+            "allocate with mapped when vkMapMemory gives {expectation:?}"
+        );
+        self.twin_fake.script_allocations(consumed.iter().copied());
+        self.twin_fake.fault_next_map(fault);
+        let twin_result = unsafe { self.twin.allocate(create_desc(request, None, resource)) };
+        ensure_eq!(
+            twin_result,
+            Err(expected),
+            "the twin allocator given the same request and the same fault of vkMapMemory"
+        );
+        let calls = self.fake.calls();
+        ensure_eq!(
+            (
+                calls.map - before.calls.map,
+                calls.unmap - before.calls.unmap
+            ),
+            (1, unmaps),
+            "vkMapMemory and vkUnmapMemory calls of an allocation whose mapping gives \
+             {expectation:?}"
+        );
+        self.coverage.note(event);
+        let new_memory = self
+            .fake
+            .memory_objects()
+            .into_iter()
+            .filter(|(memory, _)| {
+                !before.memory_objects.contains_key(memory) || freed.contains(&memory.0)
+            })
+            .collect::<Vec<_>>();
+        if let Some(chosen) = chosen {
+            ensure_eq!(
+                (calls.allocate, calls.free, new_memory.len()),
+                (
+                    before.calls.allocate + allocate_calls,
+                    before.calls.free + freed.len(),
+                    0
+                ),
+                "vkAllocateMemory and vkFreeMemory calls and new memory of an allocation undone \
+                 in an existing block, after freeing the empty blocks {freed:?}"
+            );
+            let block = self
+                .blocks
+                .get_mut(&chosen)
+                .ok_or("the chosen block is not known")?;
+            block.linear = request.linear;
+            self.coverage
+                .note("allocate: mapping fails in an existing block, which stays");
+        } else {
+            let own = request.needs_its_own_memory();
+            let block = Block {
+                size: if own {
+                    request.size
+                } else {
+                    self.world.shared_block_size(memory_type).max(request.size)
+                },
+                memory_type,
+                linear: request.linear,
+                allocate_flags: request.allocate_flags(),
+                own,
+                block_index: 0,
+            };
+            self.blocks.insert(MEMORY_OF_AN_UNDONE_ALLOCATION, block);
+            let kept = self.keeps_empty_block(MEMORY_OF_AN_UNDONE_ALLOCATION);
+            self.blocks.remove(&MEMORY_OF_AN_UNDONE_ALLOCATION);
+            ensure_eq!(
+                (
+                    calls.allocate - before.calls.allocate,
+                    calls.free - before.calls.free
+                ),
+                (allocate_calls, freed.len() + usize::from(!kept)),
+                "vkAllocateMemory and vkFreeMemory calls of an allocation undone in a new block \
+                 that is {}, after freeing the empty blocks {freed:?}",
+                if kept { "kept" } else { "not kept" }
+            );
+            if kept {
+                let [(memory, object)] = new_memory[..] else {
+                    return Err(format!(
+                        "an undone allocation whose new block is kept left the memory objects \
+                         {new_memory:?}"
+                    ));
+                };
+                ensure_eq!(
+                    object,
+                    MemoryObject {
+                        size: block.size,
+                        memory_type_index: memory_type,
+                        mapped: false,
+                    },
+                    "the kept block of an undone allocation"
+                );
+                let block_index = self.block_index_of(memory)?;
+                self.blocks.insert(
+                    memory.0,
+                    Block {
+                        block_index,
+                        ..block
+                    },
+                );
+                self.coverage
+                    .note("allocate: mapping fails, and the new block is kept empty");
+            } else {
+                ensure_eq!(
+                    new_memory,
+                    Vec::new(),
+                    "the memory objects left by an undone allocation whose new block is freed"
+                );
+                self.coverage
+                    .note("allocate: mapping fails, and the new block is freed");
+            }
+        }
+        self.coverage
+            .step("allocate: mapping fails and the allocation is undone");
         Ok(())
     }
 
@@ -2256,6 +2503,7 @@ impl Harness {
         let Live {
             allocation,
             twin,
+            twin_persistent,
             requested_size,
             alignment,
             name,
@@ -2292,6 +2540,7 @@ impl Harness {
                 Live {
                     allocation,
                     twin,
+                    twin_persistent,
                     requested_size,
                     alignment,
                     name,
@@ -2393,6 +2642,10 @@ impl Harness {
         if self.mapping_references_in(live.memory()) > 0 {
             return MapExpectation::SharesTheMapping;
         }
+        self.fault_of_the_next_map()
+    }
+
+    fn fault_of_the_next_map(&mut self) -> MapExpectation {
         match self.map_fault.take() {
             Some(MapFault::Fails(result)) => MapExpectation::Fails(result),
             Some(MapFault::ReturnsNull) => MapExpectation::ReturnsNull,
@@ -2533,23 +2786,44 @@ impl Harness {
         let before = self.observe();
         let state = self.live[index].mapping_state();
         if let Some(pointer) = self.live[index].persistent {
-            let result = unsafe { self.allocator.map_persistent(&self.live[index].allocation) };
+            let result = unsafe {
+                self.allocator
+                    .map_persistent(&mut self.live[index].allocation)
+            };
             ensure_eq!(
                 result,
                 Ok(pointer),
                 "map_persistent of an allocation that is {state}"
             );
+            ensure_eq!(
+                self.live[index].allocation.mapped_ptr(),
+                Some(pointer),
+                "mapped_ptr() after a repeated map_persistent"
+            );
             self.coverage.step(format!("map_persistent again: {state}"));
             return self.nothing_happened_since(&before, "a repeated map_persistent");
         }
         let expectation = self.map_expectation(index);
-        let result = unsafe { self.allocator.map_persistent(&self.live[index].allocation) };
+        let result = unsafe {
+            self.allocator
+                .map_persistent(&mut self.live[index].allocation)
+        };
         self.coverage
             .step(format!("map_persistent {expectation:?}: {state}"));
         if self.check_refused_map(expectation, result.clone().err(), &before, "map_persistent")? {
+            ensure_eq!(
+                self.live[index].allocation.mapped_ptr(),
+                None,
+                "mapped_ptr() after a refused map_persistent"
+            );
             return Ok(());
         }
         let pointer = result.map_err(|error| format!("map_persistent: {error:?}"))?;
+        ensure_eq!(
+            self.live[index].allocation.mapped_ptr(),
+            Some(pointer),
+            "mapped_ptr() after map_persistent"
+        );
         self.check_mapped(
             index,
             expectation,
@@ -3014,8 +3288,11 @@ impl Harness {
             _ => "free_all: with mapped blocks",
         });
         self.blocks.clear();
-        self.stale
-            .extend(self.live.drain(..).map(|live| live.allocation));
+        self.stale.extend(
+            self.live
+                .drain(..)
+                .map(|live| (live.allocation, live.persistent)),
+        );
         unsafe { self.twin.free_all() };
         Ok(())
     }
@@ -3064,12 +3341,12 @@ impl Harness {
             return Ok(());
         };
         let before = self.observe();
-        let stale = self.stale.remove(index);
+        let (stale, pointer) = self.stale.remove(index);
         let aliases_live = self.live.iter().any(|live| {
             live.allocation.memory() == stale.memory() && live.allocation.offset() == stale.offset()
         });
-        let stale = refuse(&mut self.allocator, stale, handle_use)?;
-        self.stale.insert(index, stale);
+        let stale = refuse(&mut self.allocator, stale, pointer, handle_use)?;
+        self.stale.insert(index, (stale, pointer));
         self.coverage.step(format!("stale handle: {handle_use:?}"));
         if aliases_live {
             self.coverage
@@ -3088,7 +3365,12 @@ impl Harness {
             .twin
             .take()
             .ok_or("the live allocation has no twin")?;
-        let foreign = refuse(&mut self.allocator, foreign, handle_use)?;
+        let foreign = refuse(
+            &mut self.allocator,
+            foreign,
+            self.live[index].twin_persistent,
+            handle_use,
+        )?;
         self.live[index].twin = Some(foreign);
         self.coverage
             .step(format!("foreign handle: {handle_use:?}"));
@@ -3395,9 +3677,9 @@ impl Harness {
                 "memory_properties() of a live allocation"
             );
             ensure_eq!(
-                self.allocator.persistent_ptr(&live.allocation),
+                live.allocation.mapped_ptr(),
                 live.persistent,
-                "persistent_ptr()"
+                "mapped_ptr()"
             );
             if let Some(pointer) = live.persistent {
                 let base = self
@@ -3474,6 +3756,7 @@ fn create_desc<'a>(
         linear: request.linear,
         memory_allocate_flags: request.allocate_flags(),
         export_handle_types: request.export_handle_types(),
+        mapped: request.mapped,
         allocation_scheme: match request.scheme {
             Scheme::Managed => AllocationScheme::GpuAllocatorManaged,
             Scheme::DedicatedBuffer => AllocationScheme::DedicatedBuffer(vk::Buffer(resource)),
@@ -3484,10 +3767,16 @@ fn create_desc<'a>(
 
 fn refuse(
     allocator: &mut Allocator,
-    allocation: Allocation,
+    mut allocation: Allocation,
+    pointer: Option<NonNull<u8>>,
     handle_use: HandleUse,
 ) -> Result<Allocation, String> {
     let invalid = Some(AllocationError::InvalidAllocation);
+    ensure_eq!(
+        allocation.mapped_ptr(),
+        pointer,
+        "mapped_ptr() of an allocation that is not held, before {handle_use:?}"
+    );
     unsafe {
         let error = match handle_use {
             HandleUse::Free => {
@@ -3497,7 +3786,8 @@ fn refuse(
                         allocation,
                         error: AllocationError::InvalidAllocation,
                     }) if (allocation.memory(), allocation.offset(), allocation.size())
-                        == identity =>
+                        == identity
+                        && allocation.mapped_ptr() == pointer =>
                     {
                         Ok(allocation)
                     }
@@ -3506,15 +3796,8 @@ fn refuse(
             }
             HandleUse::MapMemory => allocator.map_memory(&allocation).err(),
             HandleUse::Guard => allocator.map(&allocation).err(),
-            HandleUse::MapPersistent => allocator.map_persistent(&allocation).err(),
-            HandleUse::PersistentPtr => {
-                ensure_eq!(
-                    allocator.persistent_ptr(&allocation),
-                    None,
-                    "persistent_ptr of an allocation that is not held"
-                );
-                invalid.clone()
-            }
+            HandleUse::MapPersistent => allocator.map_persistent(&mut allocation).err(),
+            HandleUse::MappedPtr => invalid.clone(),
             HandleUse::UnmapMemory => allocator.unmap_memory(&allocation).err(),
             HandleUse::Flush => allocator.flush_allocation(&allocation).err(),
             HandleUse::Invalidate => allocator.invalidate_allocation(&allocation).err(),
@@ -3531,5 +3814,10 @@ fn refuse(
             "{handle_use:?} of an allocation that is not held"
         );
     }
+    ensure_eq!(
+        allocation.mapped_ptr(),
+        pointer,
+        "mapped_ptr() of an allocation that is not held, after {handle_use:?}"
+    );
     Ok(allocation)
 }

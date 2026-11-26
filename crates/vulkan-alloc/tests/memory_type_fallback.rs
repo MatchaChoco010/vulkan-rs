@@ -204,6 +204,7 @@ fn description(
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
         allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        mapped: false,
     };
     match kind {
         Kind::Shared => {}

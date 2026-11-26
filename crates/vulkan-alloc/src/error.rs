@@ -53,7 +53,10 @@ pub enum AllocationError {
     ///   pointer, the address of the allocation (the address of the mapped block plus
     ///   [`Allocation::offset`](crate::Allocation::offset)) cannot be represented as a
     ///   non-null pointer, or, for [`Allocator::map`](crate::Allocator::map), the
-    ///   allocation is larger than [`isize::MAX`] bytes.
+    ///   allocation is larger than [`isize::MAX`] bytes. The first two also apply to
+    ///   [`Allocator::allocate`](crate::Allocator::allocate) when it maps the allocation
+    ///   for [`AllocationCreateDesc::mapped`](crate::AllocationCreateDesc::mapped), which
+    ///   then frees it.
     /// - A range given to
     ///   [`Allocator::flush_allocation_range`](crate::Allocator::flush_allocation_range),
     ///   [`Allocator::invalidate_allocation_range`](crate::Allocator::invalidate_allocation_range),

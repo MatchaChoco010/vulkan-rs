@@ -383,6 +383,7 @@ impl MemoryBlock {
             memory: self.memory,
             offset: suballocation.offset,
             size: suballocation.size,
+            mapped_ptr: None,
         }
     }
 
@@ -721,6 +722,7 @@ mod tests {
             memory: vk::DeviceMemory(32),
             offset: suballocation.offset,
             size: suballocation.size,
+            mapped_ptr: None,
         };
         let allocation = make_allocation();
         assert_eq!(block.validate_allocation(&allocation), Ok(()));
