@@ -10,7 +10,7 @@ use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
 use vulkan::{Device, Entry, Instance, vk};
 use vulkan_alloc::{
     Allocation, AllocationCreateDesc, AllocationError, AllocationScheme, Allocator,
-    AllocatorCreateDesc, MemoryLocation,
+    AllocatorCreateDesc, AllocatorSnapshot, MemoryLocation,
 };
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
@@ -30,6 +30,7 @@ struct Gpu {
     physical_device: vk::PhysicalDevice,
     device: Device,
     external_memory_fd: bool,
+    destroyed: bool,
 }
 
 unsafe extern "system" fn collect_message(
@@ -167,6 +168,7 @@ impl Gpu {
                     physical_device,
                     device,
                     external_memory_fd,
+                    destroyed: false,
                 }),
                 Err(reason) => {
                     if !messenger.is_null() {
@@ -286,19 +288,28 @@ impl Gpu {
     }
 }
 
+impl Gpu {
+    fn destroy(&mut self) -> Vec<String> {
+        if !self.destroyed {
+            self.destroyed = true;
+            unsafe {
+                let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
+                self.device.destroy_device(None);
+                drop(serialized);
+                if !self.messenger.is_null() {
+                    self.instance
+                        .destroy_debug_utils_messenger_ext(self.messenger, None);
+                }
+                self.instance.destroy_instance(None);
+            }
+        }
+        self.take_validation_messages()
+    }
+}
+
 impl Drop for Gpu {
     fn drop(&mut self) {
-        unsafe {
-            let serialized = exclusive_access_to_the_loaders_instance_and_device_lists();
-            self.device.destroy_device(None);
-            drop(serialized);
-            if !self.messenger.is_null() {
-                self.instance
-                    .destroy_debug_utils_messenger_ext(self.messenger, None);
-            }
-            self.instance.destroy_instance(None);
-        }
-        let messages = self.take_validation_messages();
+        let messages = self.destroy();
         if !messages.is_empty() && !std::thread::panicking() {
             panic!(
                 "validation messages while destroying the device:\n{}",
@@ -494,8 +505,8 @@ impl log::Log for CapturedLog {
 }
 
 #[test]
-fn dropping_with_live_allocations_reports_and_continues() {
-    let Some(gpu) = Gpu::new() else { return };
+fn dropping_with_live_allocations_reports_them_and_frees_their_memory() {
+    let Some(mut gpu) = Gpu::new() else { return };
     log::set_logger(&CapturedLog).expect("no other logger in this test binary");
     log::set_max_level(log::LevelFilter::Error);
 
@@ -524,6 +535,7 @@ fn dropping_with_live_allocations_reports_and_continues() {
     assert_eq!(live[0].name.as_deref(), Some("script texture"));
     assert_eq!(live[0].memory, leaked_memory);
 
+    unsafe { gpu.device.destroy_buffer(buffer, None) };
     drop(allocator);
 
     let records = CAPTURED.lock().unwrap().join("\n");
@@ -532,12 +544,14 @@ fn dropping_with_live_allocations_reports_and_continues() {
         "{records}"
     );
     assert!(records.contains("\"script texture\""), "{records}");
-
-    unsafe {
-        gpu.device.destroy_buffer(buffer, None);
-        gpu.device.free_memory(leaked_memory, None);
-    }
     gpu.assert_no_validation_messages();
+    let messages = gpu.destroy();
+    assert!(
+        messages.is_empty(),
+        "dropping the allocator must have freed the memory of the live allocation, so that no \
+         VkDeviceMemory is left when the device is destroyed:\n{}",
+        messages.join("\n")
+    );
 }
 
 #[test]
@@ -787,6 +801,19 @@ fn operations() -> impl Strategy<Value = Vec<Op>> {
     prop::collection::vec(operation(), 1..=LONGEST_SEQUENCE)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ending {
+    FreeAllThenDrop,
+    Drop,
+}
+
+fn sequences() -> impl Strategy<Value = (Vec<Op>, Ending)> {
+    (
+        operations(),
+        prop::sample::select(vec![Ending::FreeAllThenDrop, Ending::Drop]),
+    )
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Resource {
     Buffer(vk::Buffer),
@@ -814,7 +841,9 @@ struct Coverage {
     device_address: usize,
     larger_than_a_block: usize,
     into_a_block_with_another_allocation: usize,
-    blocks_released_by_free: usize,
+    blocks_emptied_by_free: usize,
+    into_an_empty_block: usize,
+    drops_that_free_memory: usize,
     guard_fills: usize,
     persistent_fills: usize,
     refills: usize,
@@ -834,7 +863,9 @@ impl Coverage {
         self.device_address += other.device_address;
         self.larger_than_a_block += other.larger_than_a_block;
         self.into_a_block_with_another_allocation += other.into_a_block_with_another_allocation;
-        self.blocks_released_by_free += other.blocks_released_by_free;
+        self.blocks_emptied_by_free += other.blocks_emptied_by_free;
+        self.into_an_empty_block += other.into_an_empty_block;
+        self.drops_that_free_memory += other.drops_that_free_memory;
         self.guard_fills += other.guard_fills;
         self.persistent_fills += other.persistent_fills;
         self.refills += other.refills;
@@ -873,7 +904,7 @@ struct Sequence<'g> {
 }
 
 impl<'g> Sequence<'g> {
-    fn run(gpu: &'g Gpu, operations: &[Op]) -> Result<Coverage, String> {
+    fn run(gpu: &'g Gpu, operations: &[Op], ending: Ending) -> Result<Coverage, String> {
         let mut sequence = Sequence {
             gpu,
             memory_properties: gpu.memory_properties(),
@@ -883,10 +914,19 @@ impl<'g> Sequence<'g> {
             coverage: Coverage::default(),
         };
         let result = unsafe { sequence.apply_all(operations) };
-        unsafe { sequence.release_everything() };
+        unsafe { sequence.release_everything(ending) };
+        let Sequence {
+            allocator,
+            mut coverage,
+            ..
+        } = sequence;
+        if allocator.stats().block_count > 0 {
+            coverage.drops_that_free_memory += 1;
+        }
+        drop(allocator);
         let messages = gpu.take_validation_messages();
         match result {
-            Ok(()) if messages.is_empty() => Ok(std::mem::take(&mut sequence.coverage)),
+            Ok(()) if messages.is_empty() => Ok(coverage),
             Ok(()) => Err(format!(
                 "validation messages while releasing the resources:\n{}",
                 messages.join("\n")
@@ -913,21 +953,19 @@ impl<'g> Sequence<'g> {
                     .map_err(|e| format!("freeing what is left: {e:?}"))?;
             }
             ensure!(self.allocator.is_empty(), "the allocator is not empty");
-            let stats = self.allocator.stats();
-            ensure!(
-                stats.block_count == 0 && stats.total_block_bytes == 0,
-                "the allocator still holds memory: {stats:?}"
-            );
+            check_empty_blocks(&self.allocator.snapshot())?;
             self.check_messages()
         }
     }
 
-    unsafe fn release_everything(&mut self) {
+    unsafe fn release_everything(&mut self, ending: Ending) {
         unsafe {
             for live in std::mem::take(&mut self.live) {
                 self.destroy(live.resource);
             }
-            self.allocator.free_all();
+            if ending == Ending::FreeAllThenDrop {
+                self.allocator.free_all();
+            }
         }
     }
 
@@ -1071,6 +1109,15 @@ impl<'g> Sequence<'g> {
             } else {
                 vk::MemoryAllocateFlags::empty()
             };
+            let empty_blocks = self
+                .allocator
+                .snapshot()
+                .memory_types
+                .iter()
+                .flat_map(|memory_type| &memory_type.blocks)
+                .filter(|block| block.allocated_region_count == 0)
+                .map(|block| block.memory)
+                .collect::<Vec<_>>();
             let allocation = match self.allocator.allocate(AllocationCreateDesc {
                 name: None,
                 requirements,
@@ -1107,6 +1154,9 @@ impl<'g> Sequence<'g> {
                 .any(|live| live.allocation.memory() == allocation.memory())
             {
                 self.coverage.into_a_block_with_another_allocation += 1;
+            }
+            if empty_blocks.contains(&allocation.memory()) {
+                self.coverage.into_an_empty_block += 1;
             }
             if dedicated {
                 self.coverage.dedicated += 1;
@@ -1239,7 +1289,7 @@ impl<'g> Sequence<'g> {
                 .iter()
                 .any(|other| other.allocation.memory() == live.allocation.memory())
             {
-                self.coverage.blocks_released_by_free += 1;
+                self.coverage.blocks_emptied_by_free += 1;
             }
             self.destroy(live.resource);
             self.allocator
@@ -1349,13 +1399,19 @@ impl<'g> Sequence<'g> {
             stats.free_bytes,
             stats.total_block_bytes
         );
+        let snapshot = self.allocator.snapshot();
+        let holding = snapshot
+            .memory_types
+            .iter()
+            .flat_map(|memory_type| &memory_type.blocks)
+            .filter(|block| block.allocated_region_count > 0)
+            .count();
         ensure!(
-            stats.block_count == memories.len(),
-            "stats count {} blocks, the live allocations are in {} memory objects",
-            stats.block_count,
+            holding == memories.len(),
+            "{holding} blocks hold allocations, and the live allocations are in {} memory objects",
             memories.len()
         );
-        Ok(())
+        check_empty_blocks(&snapshot)
     }
 
     unsafe fn check_contents(&mut self) -> Result<(), String> {
@@ -1401,13 +1457,39 @@ impl<'g> Sequence<'g> {
     }
 }
 
+fn check_empty_blocks(snapshot: &AllocatorSnapshot) -> Result<(), String> {
+    for memory_type in &snapshot.memory_types {
+        let mut flags_of_empty_blocks = Vec::new();
+        for block in &memory_type.blocks {
+            if block.allocated_region_count > 0 {
+                continue;
+            }
+            ensure!(
+                !block.dedicated,
+                "{:?} of memory type {} is kept empty, although it is the memory of a dedicated \
+                 allocation",
+                block.memory,
+                memory_type.memory_type_index
+            );
+            ensure!(
+                !flags_of_empty_blocks.contains(&block.memory_allocate_flags),
+                "memory type {} holds more than one empty block with the flags {:?}",
+                memory_type.memory_type_index,
+                block.memory_allocate_flags
+            );
+            flags_of_empty_blocks.push(block.memory_allocate_flags);
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn random_sequences_of_allocations_bind_map_and_free_without_validation_messages() {
     let Some(gpu) = Gpu::new() else { return };
     gpu.assert_no_validation_messages();
     let mut runner = TestRunner::new(cases(1000));
-    let result = runner.run(&operations(), |operations| {
-        Sequence::run(&gpu, &operations)
+    let result = runner.run(&sequences(), |(operations, ending)| {
+        Sequence::run(&gpu, &operations, ending)
             .map(drop)
             .map_err(TestCaseError::fail)
     });
@@ -1425,11 +1507,11 @@ fn the_generated_sequences_reach_every_kind_of_placement_and_mapping() {
         ProptestConfig::default(),
         TestRng::deterministic_rng(RngAlgorithm::ChaCha),
     );
-    let strategy = operations();
+    let strategy = sequences();
     let mut coverage = Coverage::default();
     for _ in 0..24 {
-        let operations = strategy.new_tree(&mut runner).unwrap().current();
-        coverage.merge(&Sequence::run(&gpu, &operations).unwrap());
+        let (operations, ending) = strategy.new_tree(&mut runner).unwrap().current();
+        coverage.merge(&Sequence::run(&gpu, &operations, ending).unwrap());
     }
     println!("{coverage:#?}");
     for (name, count) in [
@@ -1446,7 +1528,12 @@ fn the_generated_sequences_reach_every_kind_of_placement_and_mapping() {
             "allocations into a block with another allocation",
             coverage.into_a_block_with_another_allocation,
         ),
-        ("blocks released by free", coverage.blocks_released_by_free),
+        ("blocks emptied by free", coverage.blocks_emptied_by_free),
+        (
+            "allocations into an empty block",
+            coverage.into_an_empty_block,
+        ),
+        ("drops that free memory", coverage.drops_that_free_memory),
         ("fills through the guard", coverage.guard_fills),
         (
             "fills through the persistent mapping",

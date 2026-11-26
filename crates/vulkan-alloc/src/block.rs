@@ -113,15 +113,30 @@ impl MemoryTypeAllocator {
         resource_class: AllocationResourceClass,
         memory_allocate_flags: vk::MemoryAllocateFlags,
     ) -> Option<Allocation> {
+        self.allocate_from_blocks(requirements, resource_class, |block| {
+            !block.is_empty() && block.is_shareable_with(resource_class, memory_allocate_flags)
+        })
+        .or_else(|| {
+            self.allocate_from_blocks(requirements, resource_class, |block| {
+                block.is_empty() && block.is_reusable_with(memory_allocate_flags)
+            })
+        })
+    }
+
+    fn allocate_from_blocks(
+        &mut self,
+        requirements: vk::MemoryRequirements,
+        resource_class: AllocationResourceClass,
+        usable: impl Fn(&MemoryBlock) -> bool,
+    ) -> Option<Allocation> {
         let memory_type_index = self.memory_type_index;
         self.blocks
             .iter_mut()
             .enumerate()
             .find_map(|(block_index, slot)| {
-                let block = slot.as_mut().filter(|block| {
-                    block.is_shareable_with(resource_class, memory_allocate_flags)
-                })?;
+                let block = slot.as_mut().filter(|block| usable(block))?;
                 let suballocation = block.suballocate(requirements.size, requirements.alignment)?;
+                block.resource_class = resource_class;
                 Some(block.allocation(memory_type_index, block_index, suballocation))
             })
     }
@@ -172,10 +187,12 @@ impl MemoryTypeAllocator {
         &mut self,
         device: &Device,
         allocation: &Allocation,
+        shared_block_size: u64,
     ) -> Result<(), AllocationError> {
         let block = self.block_mut(allocation)?;
         unsafe { block.free_allocation(device, allocation.allocation_id) }?;
         if block.is_empty()
+            && !self.keeps_empty_block(allocation.block_index, shared_block_size)
             && let Some(block) = self
                 .blocks
                 .get_mut(allocation.block_index)
@@ -184,6 +201,32 @@ impl MemoryTypeAllocator {
             unsafe { block.free_memory(device) };
         }
         Ok(())
+    }
+
+    fn keeps_empty_block(&self, block_index: usize, shared_block_size: u64) -> bool {
+        let Some(Some(block)) = self.blocks.get(block_index) else {
+            return false;
+        };
+        !block.dedicated
+            && block.size == shared_block_size
+            && !self.blocks.iter().enumerate().any(|(index, other)| {
+                index != block_index
+                    && other.as_ref().is_some_and(|other| {
+                        other.is_empty()
+                            && other.memory_allocate_flags == block.memory_allocate_flags
+                    })
+            })
+    }
+
+    pub(crate) unsafe fn free_empty_blocks(&mut self, device: &Device) -> usize {
+        let mut freed = 0;
+        for slot in &mut self.blocks {
+            if let Some(block) = slot.take_if(|block| block.is_empty()) {
+                unsafe { block.free_memory(device) };
+                freed += 1;
+            }
+        }
+        freed
     }
 
     pub(crate) unsafe fn free_all_blocks(&mut self, device: &Device) {
@@ -299,9 +342,11 @@ impl MemoryBlock {
         resource_class: AllocationResourceClass,
         memory_allocate_flags: vk::MemoryAllocateFlags,
     ) -> bool {
-        !self.dedicated
-            && self.resource_class == resource_class
-            && self.memory_allocate_flags == memory_allocate_flags
+        self.is_reusable_with(memory_allocate_flags) && self.resource_class == resource_class
+    }
+
+    fn is_reusable_with(&self, memory_allocate_flags: vk::MemoryAllocateFlags) -> bool {
+        !self.dedicated && self.memory_allocate_flags == memory_allocate_flags
     }
 
     pub(crate) fn suballocate(&mut self, size: u64, alignment: u64) -> Option<Suballocation> {
@@ -534,6 +579,7 @@ impl MemoryBlock {
             block_index,
             resource_class: self.resource_class,
             dedicated: self.dedicated,
+            memory_allocate_flags: self.memory_allocate_flags,
             memory: self.memory,
             size: self.size,
             free_bytes: 0,

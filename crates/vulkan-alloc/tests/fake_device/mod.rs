@@ -212,6 +212,34 @@ impl Drop for FakeDevice {
     }
 }
 
+pub fn assert_only_kept_empty_blocks(
+    allocator: &Allocator,
+    shared_block_size: impl Fn(u32) -> u64,
+    context: &str,
+) {
+    for memory_type in allocator.snapshot().memory_types {
+        let index = memory_type.memory_type_index;
+        let mut flags = Vec::new();
+        for block in &memory_type.blocks {
+            assert!(
+                block.allocated_region_count == 0
+                    && !block.dedicated
+                    && block.size == shared_block_size(index),
+                "{context}: after every allocation was freed, memory type {index} holds {block:?}, \
+                 which is not an empty shared block of {} bytes",
+                shared_block_size(index)
+            );
+            assert!(
+                !flags.contains(&block.memory_allocate_flags),
+                "{context}: memory type {index} keeps more than one empty block with the flags \
+                 {:?}",
+                block.memory_allocate_flags
+            );
+            flags.push(block.memory_allocate_flags);
+        }
+    }
+}
+
 pub fn desc(size: u64, alignment: u64, memory_type_index: u32) -> AllocationCreateDesc<'static> {
     AllocationCreateDesc {
         name: None,

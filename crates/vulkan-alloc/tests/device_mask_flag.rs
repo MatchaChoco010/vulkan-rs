@@ -1,6 +1,8 @@
 mod fake_device;
 
-use fake_device::{DEVICE_LOCAL, FakeDevice, HOST_COHERENT, desc};
+use fake_device::{
+    BLOCK_SIZE, DEVICE_LOCAL, FakeDevice, HOST_COHERENT, assert_only_kept_empty_blocks, desc,
+};
 use proptest::prelude::*;
 use proptest::sample::select;
 use vulkan::vk;
@@ -144,6 +146,8 @@ proptest! {
             unsafe { allocator.free(allocation) }.unwrap();
         }
         prop_assert!(allocator.is_empty(), "{}", context);
+        assert_only_kept_empty_blocks(&allocator, |_| BLOCK_SIZE, &context);
+        drop(allocator);
         prop_assert_eq!(fake.misuse(), Vec::<String>::new(), "{}", context);
         prop_assert!(fake.memory_objects().is_empty(), "{}", context);
     }

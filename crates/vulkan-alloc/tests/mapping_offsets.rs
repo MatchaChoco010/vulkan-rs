@@ -1,6 +1,9 @@
 mod fake_device;
 
-use fake_device::{FakeDevice, HOST_COHERENT, MapFault, NON_COHERENT_ATOM_SIZE, desc};
+use fake_device::{
+    FakeDevice, HOST_COHERENT, MapFault, NON_COHERENT_ATOM_SIZE, assert_only_kept_empty_blocks,
+    desc,
+};
 use proptest::prelude::*;
 use vulkan_alloc::{AllocationError, Allocator, AllocatorCreateDesc};
 
@@ -49,6 +52,8 @@ fn pointers_are_the_block_address_plus_the_offset_for_any_offset() {
             allocator.free(second).unwrap();
             allocator.free(first).unwrap();
         }
+        assert_only_kept_empty_blocks(&allocator, |_| u64::MAX, &format!("offset {first_size}"));
+        drop(allocator);
         assert_eq!(fake.misuse(), Vec::<String>::new(), "offset {first_size}");
         assert!(fake.memory_objects().is_empty(), "offset {first_size}");
     }

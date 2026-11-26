@@ -1,7 +1,8 @@
 mod fake_device;
 
 use fake_device::{
-    DEVICE_LOCAL, FakeDevice, HOST_COHERENT, HOST_NON_COHERENT, NON_COHERENT_ATOM_SIZE, desc,
+    BLOCK_SIZE, DEVICE_LOCAL, FakeDevice, HOST_COHERENT, HOST_NON_COHERENT, NON_COHERENT_ATOM_SIZE,
+    assert_only_kept_empty_blocks, desc,
 };
 use proptest::prelude::*;
 use proptest::sample::select;
@@ -152,6 +153,8 @@ proptest! {
             unsafe { allocator.free(allocation) }.unwrap();
         }
         prop_assert!(allocator.is_empty(), "{}", context);
+        assert_only_kept_empty_blocks(&allocator, |_| BLOCK_SIZE, &context);
+        drop(allocator);
         prop_assert_eq!(fake.misuse(), Vec::<String>::new(), "{}", context);
         prop_assert!(fake.memory_objects().is_empty(), "{}", context);
     }

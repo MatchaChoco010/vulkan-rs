@@ -1,6 +1,6 @@
 mod fake_device;
 
-use fake_device::FakeDevice;
+use fake_device::{FakeDevice, assert_only_kept_empty_blocks};
 use proptest::prelude::*;
 use proptest::sample::select;
 use vulkan::vk;
@@ -305,6 +305,16 @@ proptest! {
             unsafe { allocator.free(allocation) }.unwrap();
         }
         prop_assert!(allocator.is_empty(), "{}", context);
+        assert_only_kept_empty_blocks(
+            &allocator,
+            |memory_type| {
+                device
+                    .known_heap_size(memory_type as usize)
+                    .map_or(4096, |heap_size| heap_size.min(4096))
+            },
+            &context,
+        );
+        drop(allocator);
         prop_assert_eq!(fake.misuse(), Vec::<String>::new(), "{}", context);
         prop_assert!(fake.memory_objects().is_empty(), "{}", context);
     }
