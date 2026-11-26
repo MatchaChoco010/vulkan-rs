@@ -1,4 +1,6 @@
+use super::unnamed_items;
 use crate::model::Model;
+use std::borrow::Cow;
 use vulkan_registry::{DocItem, DocPage};
 
 const DESCRIBED_UNDER_ANOTHER_NAME: &[(&str, &str, &str)] = &[
@@ -49,8 +51,8 @@ const DESCRIBED_UNDER_ANOTHER_NAME: &[(&str, &str, &str)] = &[
 ];
 
 pub(super) struct Described<'a> {
-    pub(super) item: &'a DocItem,
-    pub(super) under_the_name: Option<&'static str>,
+    pub(super) text: Cow<'a, str>,
+    pub(super) under_the_name: Option<&'a str>,
 }
 
 fn after_a_separator(text: &str) -> Option<&str> {
@@ -104,16 +106,51 @@ pub(super) fn described<'a>(page: &'a DocPage, name: &str) -> Option<Described<'
     };
     if let Some(item) = item(name) {
         return Some(Described {
-            item,
+            text: Cow::Borrowed(&item.text),
             under_the_name: None,
         });
     }
-    let (_, _, other) = DESCRIBED_UNDER_ANOTHER_NAME
+    let other = DESCRIBED_UNDER_ANOTHER_NAME
         .iter()
-        .find(|(owner, own, _)| *owner == page.name && *own == name)?;
+        .find(|(owner, own, _)| *owner == page.name && *own == name)
+        .and_then(|(_, _, other)| Some((*other, item(other)?)));
+    if let Some((other, item)) = other {
+        return Some(Described {
+            text: Cow::Borrowed(&item.text),
+            under_the_name: Some(other),
+        });
+    }
     Some(Described {
-        item: item(other)?,
-        under_the_name: Some(other),
+        text: unnamed_items::description(page, name)?,
+        under_the_name: None,
+    })
+}
+
+pub(super) fn described_under_an_alias<'a>(
+    page: &'a DocPage,
+    name: &str,
+    aliases: &[&'a str],
+) -> Option<Described<'a>> {
+    let mut under_an_alias = aliases
+        .iter()
+        .filter_map(|alias| Some((*alias, described(page, alias)?)))
+        .collect::<Vec<_>>();
+    assert!(
+        under_an_alias.len() <= 1,
+        "the page {} describes {name} under {} of its alias names, so that nothing says which \
+         description to take: {}",
+        page.name,
+        under_an_alias.len(),
+        under_an_alias
+            .iter()
+            .map(|(alias, _)| *alias)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let (alias, described) = under_an_alias.pop()?;
+    Some(Described {
+        text: described.text,
+        under_the_name: Some(alias),
     })
 }
 
@@ -251,8 +288,152 @@ mod tests {
             ],
         );
         let described = described(&page, "display").expect("described");
-        assert_eq!(described.item.name, "display");
+        assert_eq!(described.text, "pname:display is the display.");
         assert_eq!(described.under_the_name, None);
+    }
+
+    #[test]
+    fn an_item_that_starts_with_no_name_comes_after_the_items_that_start_with_a_name() {
+        let about = |name: &str| vulkan_registry::DocUnnamedItem {
+            anchors: vec![format!("features-{name}")],
+            text: format!("If pname:{name} is set, it applies."),
+            problem: None,
+        };
+        let mut page = page(
+            "vkGetDrmDisplayEXT",
+            &[
+                ("pDisplay", "pname:pDisplay is the old text."),
+                ("drmFd", "pname:drmFd is the descriptor."),
+            ],
+        );
+        page.unnamed_items = vec![about("display"), about("drmFd"), about("connectorId")];
+        for (name, text, under_the_name) in [
+            ("drmFd", "pname:drmFd is the descriptor.", None),
+            (
+                "display",
+                "pname:pDisplay is the old text.",
+                Some("pDisplay"),
+            ),
+            (
+                "connectorId",
+                "If pname:connectorId is set, it applies.",
+                None,
+            ),
+        ] {
+            let described = described(&page, name).expect("described");
+            assert_eq!(described.text, text);
+            assert_eq!(described.under_the_name, under_the_name, "{name}");
+        }
+        assert!(described(&page, "physicalDevice").is_none());
+    }
+
+    #[test]
+    fn a_value_is_described_under_the_one_alias_name_that_the_page_describes() {
+        let mut page = page(
+            "VkFace",
+            &[
+                (
+                    "VK_FACE_FRONT_KHR",
+                    "ename:VK_FACE_FRONT_KHR specifies one face.",
+                ),
+                (
+                    "VK_FACE_BACK_KHR",
+                    "ename:VK_FACE_BACK_KHR specifies a face.",
+                ),
+                (
+                    "VK_FACE_BACK_EXT",
+                    "ename:VK_FACE_BACK_EXT specifies a face too.",
+                ),
+            ],
+        );
+        page.unnamed_items = vec![vulkan_registry::DocUnnamedItem {
+            anchors: Vec::new(),
+            text: "VK_FACE_BOTH_KHR specifies both.".to_string(),
+            problem: None,
+        }];
+        for (aliases, text) in [
+            (
+                &["VK_FACE_FRONT_NV", "VK_FACE_FRONT_KHR"][..],
+                Some((
+                    "VK_FACE_FRONT_KHR",
+                    "ename:VK_FACE_FRONT_KHR specifies one face.",
+                )),
+            ),
+            (
+                &["VK_FACE_BOTH_KHR"],
+                Some(("VK_FACE_BOTH_KHR", "ename:VK_FACE_BOTH_KHR specifies both.")),
+            ),
+            (&["VK_FACE_NONE_KHR"], None),
+            (&[], None),
+        ] {
+            let described = described_under_an_alias(&page, "VK_FACE", aliases)
+                .map(|described| (described.under_the_name, described.text.into_owned()));
+            let expected = text.map(|(alias, text)| (Some(alias), text.to_string()));
+            assert_eq!(described, expected, "{aliases:?}");
+        }
+        assert_eq!(
+            catch_quietly(|| {
+                let aliases = ["VK_FACE_BACK_KHR", "VK_FACE_BACK_NV", "VK_FACE_BACK_EXT"];
+                described_under_an_alias(&page, "VK_FACE_BACK", &aliases).is_some()
+            }),
+            Err(
+                "the page VkFace describes VK_FACE_BACK under 2 of its alias names, so that \
+                 nothing says which description to take: VK_FACE_BACK_KHR, VK_FACE_BACK_EXT"
+                    .to_string()
+            )
+        );
+    }
+
+    const DESCRIBED_UNDER_AN_ALIAS: &[(&str, &str, &str)] = &[(
+        "VkImageCreateFlagBits",
+        "VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT",
+        "VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT",
+    )];
+
+    #[test]
+    fn exactly_these_values_of_the_specification_are_described_only_under_an_alias_name() {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let enums = model.ir.enums.iter().map(|e| (&e.name, &e.fields));
+        let bitmasks = model.ir.bitmasks.iter().map(|b| (&b.name, &b.fields));
+        let mut under_an_alias = Vec::new();
+        let mut with_aliases = 0;
+        for (owner, fields) in enums.chain(bitmasks) {
+            let Some(page) = model.page(owner) else {
+                continue;
+            };
+            for field in fields.iter().filter(|field| !field.aliases.is_empty()) {
+                with_aliases += 1;
+                let aliases = field.aliases.iter().map(String::as_str).collect::<Vec<_>>();
+                if described(page, &field.name).is_some() {
+                    continue;
+                }
+                if let Some(found) = described_under_an_alias(page, &field.name, &aliases) {
+                    let alias = found.under_the_name.expect("the alias name");
+                    under_an_alias.push((owner.as_str(), field.name.as_str(), alias));
+                    let documented = model.described(&Cfg::default(), owner, &field.name);
+                    let lead = format!(
+                        "`{}`, which the specification describes under the name `{alias}`: ",
+                        field.name
+                    );
+                    assert!(
+                        matches!(
+                            documented.as_deref(),
+                            Some([Block::Text(text), ..]) if text.starts_with(&lead)
+                        ),
+                        "{documented:?}"
+                    );
+                }
+            }
+        }
+        assert!(
+            with_aliases >= 500,
+            "only {with_aliases} values have aliases"
+        );
+        assert_eq!(
+            under_an_alias, DESCRIBED_UNDER_AN_ALIAS,
+            "exactly these values have no description of their own on the reference page of \
+             their type, which describes them under a name that the registry has as an alias"
+        );
     }
 
     #[test]
@@ -300,7 +481,8 @@ mod tests {
             let described = described(&page, name)
                 .unwrap_or_else(|| panic!("{name} has no description on the page"));
             assert_eq!(
-                described.item.name, item,
+                names_at_the_start(&described.text).first(),
+                Some(&item),
                 "{name} is described by the item of {item}"
             );
             assert_eq!(described.under_the_name, None, "{name}");

@@ -529,6 +529,8 @@ impl DeprecatedAttributes {
 struct Specification {
     pages: BTreeMap<String, Page>,
     value_descriptions: BTreeMap<String, Vec<ValueDescription>>,
+    unnamed_descriptions: BTreeMap<String, Vec<(String, String)>>,
+    value_aliases: BTreeMap<String, BTreeSet<String>>,
     tables: Vec<Table>,
     extensions: BTreeSet<String>,
     attributes: BTreeMap<String, String>,
@@ -564,6 +566,12 @@ struct Markup {
     described_item: Regex,
     value_description: Regex,
     table_delimiter: Regex,
+    leading_anchors: Regex,
+    anchor_name: Regex,
+    member_anchor: Regex,
+    name_macro: Regex,
+    value_without_its_macro: Regex,
+    specified: Regex,
     block_attributes: Regex,
     block_title: Regex,
     block_delimiter: Regex,
@@ -589,6 +597,12 @@ impl Markup {
                 r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)ename:(\w+)\s+specifies\s+\S",
             ),
             table_delimiter: regex(r"^\|={3,}\s*$"),
+            leading_anchors: regex(r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)"),
+            anchor_name: regex(r"\[\[\s*([^\],\s]+)"),
+            member_anchor: regex(r"^(?:features|limits)-(\w+)$"),
+            name_macro: regex(r"\b(pname|ename):(\w+)"),
+            value_without_its_macro: regex(r"^(VK_[A-Z0-9_]+)\s+specifies\s+\S"),
+            specified: regex(r"^\s+specifies\s+\S"),
             block_attributes: regex(r#"^\[(?:|[\w.#%{,"'].*)\]$"#),
             block_title: regex(r"^\.\.?[^ \t.]"),
             block_delimiter: regex(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|\|={3,})$"),
@@ -627,6 +641,7 @@ struct Sources {
     root: PathBuf,
     defined: BTreeSet<String>,
     equivalent_flags: BTreeMap<String, Vec<String>>,
+    value_aliases: BTreeMap<String, BTreeSet<String>>,
     conditional: Regex,
     end_conditional: Regex,
     tagged_include: Regex,
@@ -693,6 +708,32 @@ fn equivalent_flags(registry: &str) -> BTreeMap<String, Vec<String>> {
     flags
 }
 
+fn value_aliases(registry: &str) -> BTreeMap<String, BTreeSet<String>> {
+    let mut alias_of = BTreeMap::new();
+    for tag in regex(r"<enum\s[^>]*>").find_iter(registry) {
+        let tag = tag.as_str();
+        if let (Some(name), Some(alias)) = (xml_attribute(tag, "name"), xml_attribute(tag, "alias"))
+        {
+            alias_of.insert(name, alias);
+        }
+    }
+    let mut aliases = BTreeMap::<String, BTreeSet<String>>::new();
+    for name in alias_of.keys() {
+        let mut value = *name;
+        for _ in 0..alias_of.len() {
+            match alias_of.get(value) {
+                Some(next) => value = next,
+                None => break,
+            }
+        }
+        aliases
+            .entry(value.to_string())
+            .or_default()
+            .insert(name.to_string());
+    }
+    aliases
+}
+
 impl Sources {
     fn new(root: &Path) -> Self {
         let registry = fs::read_to_string(root.join("xml/vk.xml")).expect("read xml/vk.xml");
@@ -709,6 +750,7 @@ impl Sources {
             root: root.to_path_buf(),
             defined,
             equivalent_flags: equivalent_flags(&registry),
+            value_aliases: value_aliases(&registry),
             conditional: regex(r"^(ifdef|ifndef)::([^\[]*)\[(.*)\]\s*$"),
             end_conditional: regex(r"^endif::[^\[]*\[\]\s*$"),
             tagged_include: regex(r"^include::\{chapters\}/([^\[]+)\[tags?=([^\],;]+)\]\s*$"),
@@ -1012,6 +1054,8 @@ impl Specification {
         let mut specification = Self {
             pages: BTreeMap::new(),
             value_descriptions: BTreeMap::new(),
+            unnamed_descriptions: BTreeMap::new(),
+            value_aliases: sources.value_aliases.clone(),
             tables,
             extensions,
             attributes,
@@ -1037,7 +1081,84 @@ impl Specification {
         }
         specification.pages = pages;
         specification.value_descriptions = specification.value_descriptions_in(&segments);
+        specification.unnamed_descriptions = specification.unnamed_descriptions_of_the_pages();
         specification
+    }
+
+    fn unnamed_descriptions_of_the_pages(&self) -> BTreeMap<String, Vec<(String, String)>> {
+        self.pages
+            .keys()
+            .map(|page| (page.clone(), self.unnamed_descriptions_on(page)))
+            .collect()
+    }
+
+    fn unnamed_descriptions_on(&self, page: &str) -> Vec<(String, String)> {
+        let Some(page) = self.pages.get(page) else {
+            return Vec::new();
+        };
+        let markup = &self.markup;
+        let lines = page.body.lines().collect::<Vec<_>>();
+        let mut descriptions = Vec::new();
+        let mut index = 0;
+        while index < lines.len() {
+            let start = index;
+            index += 1;
+            if !markup.list_item.is_match(lines[start]) {
+                continue;
+            }
+            index = self.item_end(&lines, start);
+            let text = lines[start..index].join("\n");
+            if markup.described_item.is_match(&text) {
+                continue;
+            }
+            let Some(leading) = markup.leading_anchors.captures(&text) else {
+                continue;
+            };
+            if leading[1].contains("[[VUID-") {
+                continue;
+            }
+            let said = &text[leading[0].len()..];
+            for anchor in markup.anchor_name.captures_iter(&leading[1]) {
+                if let Some(member) = markup.member_anchor.captures(&anchor[1])
+                    && regex(&format!(r"\bpname:{}\b", &member[1])).is_match(said)
+                {
+                    descriptions.push((member[1].to_string(), text.clone()));
+                }
+            }
+            let value = match markup.value_without_its_macro.captures(said) {
+                Some(value) => Some(value[1].to_string()),
+                None => markup
+                    .name_macro
+                    .captures(said)
+                    .filter(|first| {
+                        let after = &said[first.get(0).map_or(0, |name| name.end())..];
+                        &first[1] == "ename" && markup.specified.is_match(after)
+                    })
+                    .map(|first| first[2].to_string()),
+            };
+            if let Some(value) = value {
+                descriptions.push((value, text.clone()));
+            }
+        }
+        descriptions
+    }
+
+    fn described_without_its_name_first(
+        &self,
+        page: &str,
+        macro_name: &str,
+        name: &str,
+    ) -> Vec<&str> {
+        if self.describes(page, macro_name, name) {
+            return Vec::new();
+        }
+        self.unnamed_descriptions
+            .get(page)
+            .into_iter()
+            .flatten()
+            .filter(|(described, _)| described == name)
+            .map(|(_, text)| text.as_str())
+            .collect()
     }
 
     fn value_descriptions_in(
@@ -2297,6 +2418,8 @@ struct Checker {
     legacy_aliases_without_a_constant: BTreeMap<&'static str, BTreeSet<String>>,
     links_of_untitled_anchors: usize,
     untitled_anchors: Vec<String>,
+    described_without_their_name_first: Vec<String>,
+    described_under_an_alias: Vec<String>,
 }
 
 struct Generated {
@@ -2603,6 +2726,10 @@ impl Checker {
             let name = declared_name(declaration);
             if let Some(page) = owner_page {
                 self.undescribed(spec, &item, page, ("pname", name));
+                let texts = spec.described_without_its_name_first(page, "pname", name);
+                if !texts.is_empty() {
+                    self.item_without_the_name_first(spec, &item, (page, name), None, &texts);
+                }
             }
             return;
         }
@@ -2614,6 +2741,20 @@ impl Checker {
             );
             return;
         };
+        let described_without_its_name_first = spec
+            .unnamed_descriptions
+            .get(page)
+            .into_iter()
+            .flatten()
+            .map(|(name, _)| name.as_str())
+            .filter(|name| is_rust_name_of(field, name))
+            .find(|name| !spec.describes(page, "pname", name))
+            .filter(|_| !generated.described_under_another_name.is_match(doc));
+        if let Some(name) = described_without_its_name_first {
+            let texts = spec.described_without_its_name_first(page, "pname", name);
+            self.item_without_the_name_first(spec, &item, (page, name), Some(doc), &texts);
+            return;
+        }
         let names = generated.names_at_start(doc);
         let Some(first) = names.first() else {
             self.fail(&item, "does not start with the name of the member");
@@ -2651,6 +2792,41 @@ impl Checker {
         self.whole(spec, &item, page, ("pname", other), description);
     }
 
+    fn item_without_the_name_first(
+        &mut self,
+        spec: &Specification,
+        item: &str,
+        (page, name): (&str, &str),
+        doc: Option<&str>,
+        texts: &[&str],
+    ) {
+        let Some(doc) = doc else {
+            self.fail(item, format!("the specification describes `{name}` on the page `{page}` in a list item that does not start with the name, but the documentation does not use it"));
+            return;
+        };
+        let [text] = texts else {
+            self.fail(
+                item,
+                format!(
+                    "is described, but {} list items of the page `{page}` describe `{name}` without starting with the name",
+                    texts.len()
+                ),
+            );
+            return;
+        };
+        self.described_without_their_name_first
+            .push(format!("{page}::{name}"));
+        if generated_words(doc) != spec.words(text) {
+            self.fail(
+                item,
+                format!(
+                    "`{doc}` is not the list item of the page `{page}` that describes `{name}`: `{}`",
+                    flat(text)
+                ),
+            );
+        }
+    }
+
     fn not_valid_usage(&mut self, spec: &Specification, item: &str, page: &str, doc: &str) {
         if spec.states_valid_usage(page, doc) {
             self.fail(
@@ -2681,6 +2857,56 @@ impl Checker {
         let [c_name, ..] = aliases else {
             return;
         };
+        let is_an_alias = doc.starts_with(&format!("`{c_name}` is an alias of [`"));
+        if let (false, Some(page)) = (is_an_alias, owner_page) {
+            let texts = spec.described_without_its_name_first(page, "ename", c_name);
+            if !texts.is_empty() {
+                let described = !generated.value_of.is_match(doc);
+                match described {
+                    true => self.described_values += 1,
+                    false => self.undescribed_values += 1,
+                }
+                let doc = described.then_some(doc.as_str());
+                self.item_without_the_name_first(spec, item, (page, c_name), doc, &texts);
+                return;
+            }
+        }
+        if let Some(names) = generated.described_under_another_name.captures(doc) {
+            self.described_values += 1;
+            let (own, other) = (&names[1], &names[2]);
+            let description = &doc[names[0].len()..];
+            let Some(page) = owner_page else {
+                self.fail(item, "is described although its type has no reference page");
+                return;
+            };
+            if own != c_name {
+                self.fail(
+                    item,
+                    format!("is documented with the description of `{own}`"),
+                );
+            }
+            let is_an_alias = spec
+                .value_aliases
+                .get(c_name.as_str())
+                .is_some_and(|aliases| aliases.contains(other));
+            if !is_an_alias {
+                self.fail(item, format!("the documentation takes the description of `{other}`, which the registry does not have as an alias of `{c_name}`"));
+            }
+            if spec.describes(page, "ename", c_name) {
+                self.fail(item, format!("the specification describes `{c_name}` on the page `{page}` under its own name, but the documentation takes the description of its alias `{other}`"));
+            }
+            if !spec.describes(page, "ename", other) {
+                self.fail(item, format!("the documentation takes the description of `{other}` for `{c_name}`, but the specification describes no `{other}` on the page `{page}`"));
+            }
+            if generated.names_at_start(description).first() != Some(&other) {
+                self.fail(item, format!("the description that the documentation takes for `{c_name}` is not the one of `{other}`"));
+            }
+            self.contained(spec, item, page, description);
+            self.whole(spec, item, page, ("ename", other), description);
+            self.described_under_an_alias
+                .push(format!("{page}::{c_name} under {other}"));
+            return;
+        }
         if !doc.starts_with(&format!("`{c_name}`")) {
             let names = generated.names_at_start(doc);
             match (names.contains(&c_name.as_str()), owner_page) {
@@ -2714,6 +2940,15 @@ impl Checker {
             self.undescribed(spec, item, page, ("ename", c_name));
             if !spec.table_rows(Some(page), values, c_name).is_empty() {
                 self.fail(item, format!("the specification describes `{c_name}` in a table row, but the documentation does not use it"));
+            }
+            let under_an_alias = spec
+                .value_aliases
+                .get(c_name.as_str())
+                .into_iter()
+                .flatten()
+                .find(|alias| spec.describes(page, "ename", alias));
+            if let Some(alias) = under_an_alias {
+                self.fail(item, format!("the specification describes `{c_name}` on the page `{page}` under its alias name `{alias}`, but the documentation does not use it"));
             }
             let elsewhere = spec.described_outside_the_page(page, c_name);
             if !elsewhere.is_empty() {
@@ -3001,6 +3236,19 @@ const DESCRIPTIONS_OF_NO_MEMBER: &[&str] = &[
     "VkVideoEncodeH265PictureInfoKHR::pStdSliceSegmentHeader",
 ];
 
+const DESCRIBED_BY_AN_ITEM_THAT_STARTS_WITH_NO_NAME: &[&str] = &[
+    "VkGeometryTypeKHR::VK_GEOMETRY_TYPE_MICROMAP_KHR",
+    "VkPhysicalDeviceFragmentShaderBarycentricPropertiesKHR::triStripVertexOrderIndependentOfProvokingVertex",
+    "VkPhysicalDeviceMaintenance9PropertiesKHR::image2DViewOf3DSparse",
+    "VkPhysicalDeviceVulkan12Features::subgroupBroadcastDynamicId",
+    "VkPipelineCreateFlagBits::VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT",
+    "VkPipelineCreateFlagBits2::VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT",
+];
+
+const DESCRIBED_UNDER_AN_ALIAS: &[&str] = &[
+    "VkImageCreateFlagBits::VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT under VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT",
+];
+
 const DESCRIBED_OUTSIDE_THEIR_PAGE: &[&str] = &[
     "VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM: chapters/formats.adoc outside the reference pages",
     "VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM: chapters/formats.adoc outside the reference pages",
@@ -3257,6 +3505,30 @@ fn generated_documentation_matches_the_specification() {
             ),
         ]),
         "the legacy aliases that the bindings have no constant of their own for: the Vulkan Video one because the registry data that the bindings are generated from has no aliases of the values of the Vulkan Video headers; 15 flag bits because the Rust name of the alias is the Rust name of another name of the same value, whose constant names the alias in a paragraph and as a `#[doc(alias)]`; 10 macros of extensions because the bindings have one constant for the name and one for the version of an extension"
+    );
+    assert_eq!(
+        checker
+            .described_without_their_name_first
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        DESCRIBED_BY_AN_ITEM_THAT_STARTS_WITH_NO_NAME
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "exactly these members and values are documented with a list item of their page that does not start with their name: it has the anchor of the feature or limit and names the member, or the value is the first name in it and `specifies` follows, or the item starts with the name of the value without its macro. Read an item before listing what it describes here"
+    );
+    assert_eq!(
+        checker
+            .described_under_an_alias
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        DESCRIBED_UNDER_AN_ALIAS
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "exactly these values are documented with the list item that their page has under a name that the registry gives them as an alias"
     );
     for (what, count, at_least) in [
         (
@@ -3559,6 +3831,11 @@ fn fixture_specification() -> Specification {
     let mut specification = Specification {
         pages: BTreeMap::new(),
         value_descriptions: BTreeMap::new(),
+        unnamed_descriptions: BTreeMap::new(),
+        value_aliases: BTreeMap::from([(
+            "VK_COLOR_CINNABAR".to_string(),
+            BTreeSet::from(["VK_COLOR_VERMILION".to_string()]),
+        )]),
         tables: fixture_tables(),
         extensions: BTreeSet::new(),
         attributes: BTreeMap::from([("times".to_string(), "×".to_string())]),
@@ -3658,6 +3935,10 @@ Empty ranges are for another day.
   * pname:width, pname:height, and
     pname:depth are the size of the thing.
   * pname:sizeInBytes is the size of the thing in bytes.
+  * [[limits-margin]] When the <<limits-range,pname:range>> is laid out,
+    pname:margin indicates the space around it.
+  * [[limits-padding]] Things are padded.
+  * [[things-padding]] The pname:padding is not described here.
 
 A thing is empty with the following properties:
 
@@ -3683,7 +3964,15 @@ A thing is empty with the following properties:
   * ename:VK_COLOR_GOLD and ename:VK_COLOR_SILVER specify a metal.
   * ename:VK_COLOR_ALL is equivalent to the logical OR of:
   ** ename:VK_COLOR_RED
-  ** ename:VK_COLOR_GOLD",
+  ** ename:VK_COLOR_GOLD
+  * VK_COLOR_IVORY specifies ivory,
+    without its macro.
+  * When things are dark, ename:VK_COLOR_EBONY specifies ebony:
+  ** darker than ename:VK_COLOR_IVORY
+  * Otherwise, ename:VK_COLOR_OCHRE is set.
+  * With ename:VK_COLOR_RED, ename:VK_COLOR_OCHRE specifies nothing.
+  * VK_COLOR_OCHRE is set.
+  * ename:VK_COLOR_VERMILION specifies a red.",
         ),
         (
             "VkLimits",
@@ -3740,6 +4029,7 @@ include::{generated}/validity/funcpointers/PFN_vkThingCallback.adoc[]",
         specification.pages.insert(name.to_string(), page());
     }
     specification.value_descriptions = specification.value_descriptions_in(&segments);
+    specification.unnamed_descriptions = specification.unnamed_descriptions_of_the_pages();
     specification
 }
 
@@ -3808,6 +4098,8 @@ pub struct Thing {
     pub byte_size: u32,
     /// The C member `uint32_t padding`.
     pub padding: u32,
+    /// When the range is laid out, `margin` indicates the space around it.
+    pub margin: u32,
 }
 
 /// Alias of [`Thing`].
@@ -3892,6 +4184,21 @@ impl Color {
     /// `VK_COLOR_OCHRE`, a value of [`VkColor`](PAGES/VkColor.html).
     #[doc(alias = "VK_COLOR_OCHRE")]
     pub const OCHRE: Self = Self(19);
+    /// `VK_COLOR_IVORY` specifies ivory, without its macro.
+    #[doc(alias = "VK_COLOR_IVORY")]
+    pub const IVORY: Self = Self(20);
+    /// When things are dark, `VK_COLOR_EBONY` specifies ebony:
+    ///
+    /// - darker than [`VK_COLOR_IVORY`](Color::IVORY)
+    #[doc(alias = "VK_COLOR_EBONY")]
+    pub const EBONY: Self = Self(21);
+    /// `VK_COLOR_CINNABAR`, which the specification describes under the name `VK_COLOR_VERMILION`:
+    /// [`VK_COLOR_VERMILION`](Color::VERMILION) specifies a red.
+    #[doc(alias = "VK_COLOR_CINNABAR")]
+    pub const CINNABAR: Self = Self(22);
+    /// `VK_COLOR_VERMILION` is an alias of [`VK_COLOR_CINNABAR`](Self::CINNABAR).
+    #[doc(alias = "VK_COLOR_VERMILION")]
+    pub const VERMILION: Self = Self(22);
 }
 
 /// Application-defined thing callback.
@@ -4769,9 +5076,207 @@ fn checker_collects_the_values_that_a_list_item_outside_their_page_describes() {
                     ])
                 )]
             ),
+            (
+                "VK_COLOR_VERMILION".to_string(),
+                vec![(
+                    on_the_page("VkColor"),
+                    list_item(&["  * ename:VK_COLOR_VERMILION specifies a red."])
+                )]
+            ),
         ],
         "an item that names a value in a list, in valid usage, among other words or in a cell of a table describes none"
     );
+}
+
+#[test]
+fn the_aliases_of_a_value_are_the_names_that_the_registry_gives_it_through_other_aliases_too() {
+    let aliases = value_aliases(
+        r#"<enums name="VkFace"><enum value="0" name="VK_FACE_FRONT"/>
+        <enum name="VK_FACE_FRONT_KHR" alias="VK_FACE_FRONT"/>
+        <enum alias="VK_FACE_FRONT_KHR" name="VK_FACE_FRONT_EXT"/></enums>
+        <require><enum extends="VkFace" name="VK_FACE_BACK_NV" alias="VK_FACE_BACK"/></require>"#,
+    );
+    let names = |value: &str| {
+        aliases
+            .get(value)
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        names("VK_FACE_FRONT"),
+        ["VK_FACE_FRONT_EXT", "VK_FACE_FRONT_KHR"]
+    );
+    assert_eq!(names("VK_FACE_BACK"), ["VK_FACE_BACK_NV"]);
+    assert_eq!(names("VK_FACE_FRONT_KHR"), Vec::<&str>::new());
+}
+
+#[test]
+fn checker_accepts_and_collects_a_value_described_under_an_alias_name() {
+    let checker = fixture_checker(FIXTURE_SOURCE);
+    assert_eq!(
+        checker.described_under_an_alias,
+        ["VkColor::VK_COLOR_CINNABAR under VK_COLOR_VERMILION"]
+    );
+    assert_reported(
+        "a value documented only by its type although the page describes its alias",
+        "/// `VK_COLOR_CINNABAR`, which the specification describes under the name `VK_COLOR_VERMILION`:\n    /// [`VK_COLOR_VERMILION`](Color::VERMILION) specifies a red.",
+        "/// `VK_COLOR_CINNABAR`, a value of [`VkColor`](PAGES/VkColor.html).",
+        "Color::CINNABAR: the specification describes `VK_COLOR_CINNABAR` on the page `VkColor` under its alias name `VK_COLOR_VERMILION`, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_value_that_takes_a_description_under_another_name_wrongly() {
+    for (defect, replace, with, report) in [
+        (
+            "the description of a name that is no alias",
+            "/// `VK_COLOR_CINNABAR`, which the specification describes under the name `VK_COLOR_VERMILION`:\n    /// [`VK_COLOR_VERMILION`](Color::VERMILION) specifies a red.",
+            "/// `VK_COLOR_CINNABAR`, which the specification describes under the name `VK_COLOR_GREEN`:\n    /// [`VK_COLOR_GREEN`](Color::GREEN) specifies green.",
+            "Color::CINNABAR: the documentation takes the description of `VK_COLOR_GREEN`, which the registry does not have as an alias of `VK_COLOR_CINNABAR`",
+        ),
+        (
+            "other words than the item of the alias",
+            "/// [`VK_COLOR_VERMILION`](Color::VERMILION) specifies a red.",
+            "/// [`VK_COLOR_VERMILION`](Color::VERMILION) specifies a blue.",
+            "Color::CINNABAR: `[`VK_COLOR_VERMILION`](Color::VERMILION) specifies a blue.` is not in the text that the specification has for `VkColor`",
+        ),
+        (
+            "the description of another item under the name of the alias",
+            "/// [`VK_COLOR_VERMILION`](Color::VERMILION) specifies a red.",
+            "/// [`VK_COLOR_GREEN`](Color::GREEN) specifies green.",
+            "Color::CINNABAR: the description that the documentation takes for `VK_COLOR_CINNABAR` is not the one of `VK_COLOR_VERMILION`",
+        ),
+        (
+            "a description under the name of a value that the page describes itself",
+            "/// `VK_COLOR_RED` specifies red.",
+            "/// `VK_COLOR_RED`, which the specification describes under the name `VK_COLOR_VERMILION`: [`VK_COLOR_VERMILION`](Color::VERMILION) specifies a red.",
+            "Color::RED: the specification describes `VK_COLOR_RED` on the page `VkColor` under its own name, but the documentation takes the description of its alias `VK_COLOR_VERMILION`",
+        ),
+    ] {
+        assert_reported(defect, replace, with, report);
+    }
+}
+
+#[test]
+fn checker_collects_what_a_list_item_that_starts_with_no_name_describes() {
+    let checker = fixture_checker(FIXTURE_SOURCE);
+    assert_eq!(
+        checker.described_without_their_name_first,
+        [
+            "VkThing::margin",
+            "VkColor::VK_COLOR_IVORY",
+            "VkColor::VK_COLOR_EBONY",
+        ]
+    );
+    let specification = fixture_specification();
+    let described = |page: &str| {
+        specification.unnamed_descriptions[page]
+            .iter()
+            .map(|(name, text)| (name.as_str(), text.as_str()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        described("VkThing"),
+        [(
+            "margin",
+            "  * [[limits-margin]] When the <<limits-range,pname:range>> is laid out,\n    pname:margin indicates the space around it."
+        )],
+        "an anchor of a limit whose item does not name the member, and a name under another anchor, describe no member"
+    );
+    assert_eq!(
+        described("VkColor"),
+        [
+            (
+                "VK_COLOR_IVORY",
+                "  * VK_COLOR_IVORY specifies ivory,\n    without its macro."
+            ),
+            (
+                "VK_COLOR_EBONY",
+                "  * When things are dark, ename:VK_COLOR_EBONY specifies ebony:\n  ** darker than ename:VK_COLOR_IVORY"
+            ),
+        ],
+        "a value that is not the first name of its item, or that the item does not specify, is not described"
+    );
+    assert_eq!(described("VkColorKHR"), described("VkColor"));
+    assert_eq!(described("VkLimits"), []);
+}
+
+#[test]
+fn checker_reports_a_fallback_when_a_list_item_that_starts_with_no_name_describes_the_item() {
+    assert_reported(
+        "a member documented only by its declaration",
+        "/// When the range is laid out, `margin` indicates the space around it.",
+        "/// The C member `uint32_t margin`.",
+        "Thing::margin: the specification describes `margin` on the page `VkThing` in a list item that does not start with the name, but the documentation does not use it",
+    );
+    assert_reported(
+        "a value documented only by its type although an item names it without its macro",
+        "/// `VK_COLOR_IVORY` specifies ivory, without its macro.",
+        "/// `VK_COLOR_IVORY`, a value of [`VkColor`](PAGES/VkColor.html).",
+        "Color::IVORY: the specification describes `VK_COLOR_IVORY` on the page `VkColor` in a list item that does not start with the name, but the documentation does not use it",
+    );
+    assert_reported(
+        "a value documented only by its type although an item names it first",
+        "/// When things are dark, `VK_COLOR_EBONY` specifies ebony:\n    ///\n    /// - darker than [`VK_COLOR_IVORY`](Color::IVORY)\n",
+        "/// `VK_COLOR_EBONY`, a value of [`VkColor`](PAGES/VkColor.html).\n",
+        "Color::EBONY: the specification describes `VK_COLOR_EBONY` on the page `VkColor` in a list item that does not start with the name, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_description_that_is_not_the_list_item_that_starts_with_no_name() {
+    for (defect, replace, with, report) in [
+        (
+            "a member with other words",
+            "/// When the range is laid out, `margin` indicates the space around it.",
+            "/// When the range is laid out, `margin` indicates the space in it.",
+            "Thing::margin: `When the range is laid out, `margin` indicates the space in it.` is not the list item of the page `VkThing` that describes `margin`: `* [[limits-margin]] When the <<limits-range,pname:range>> is laid out, pname:margin indicates the space around it.`",
+        ),
+        (
+            "a member with the start of the item left out",
+            "/// When the range is laid out, `margin` indicates the space around it.",
+            "/// `margin` indicates the space around it.",
+            "Thing::margin: ``margin` indicates the space around it.` is not the list item of the page `VkThing` that describes `margin`",
+        ),
+        (
+            "a value with a part of the item left out",
+            "    ///\n    /// - darker than [`VK_COLOR_IVORY`](Color::IVORY)\n",
+            "",
+            "Color::EBONY: `When things are dark, `VK_COLOR_EBONY` specifies ebony:` is not the list item of the page `VkColor` that describes `VK_COLOR_EBONY`",
+        ),
+        (
+            "a value with more than the item",
+            "/// `VK_COLOR_IVORY` specifies ivory, without its macro.",
+            "/// `VK_COLOR_IVORY` specifies ivory, without its macro. It is white.",
+            "Color::IVORY: ``VK_COLOR_IVORY` specifies ivory, without its macro. It is white.` is not the list item of the page `VkColor` that describes `VK_COLOR_IVORY`",
+        ),
+    ] {
+        assert_reported(defect, replace, with, report);
+    }
+}
+
+#[test]
+fn checker_reports_what_several_list_items_that_start_with_no_name_describe() {
+    let mut specification = fixture_specification();
+    for descriptions in specification.unnamed_descriptions.values_mut() {
+        let again = descriptions.clone();
+        descriptions.extend(again);
+    }
+    let source = FIXTURE_SOURCE.replace("PAGES/", REFERENCE_PAGES);
+    let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
+    let mut checker = Checker::default();
+    check_files(&specification, &Generated::new(), &mut checker, &[file]);
+    assert_eq!(
+        checker.failures,
+        [
+            "Thing::margin: is described, but 2 list items of the page `VkThing` describe `margin` without starting with the name",
+            "Color::IVORY: is described, but 2 list items of the page `VkColor` describe `VK_COLOR_IVORY` without starting with the name",
+            "Color::EBONY: is described, but 2 list items of the page `VkColor` describe `VK_COLOR_EBONY` without starting with the name",
+        ]
+    );
+    assert!(checker.described_without_their_name_first.is_empty());
 }
 
 #[test]

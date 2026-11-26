@@ -12392,8 +12392,7 @@ impl GeometryTypeKHR {
     #[doc(alias = "VK_GEOMETRY_TYPE_DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX")]
     #[cfg(feature = "beta")]
     pub const DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX: Self = Self(1000478000);
-    /// `VK_GEOMETRY_TYPE_MICROMAP_KHR`, a value of
-    /// [`VkGeometryTypeKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkGeometryTypeKHR.html).
+    /// `VK_GEOMETRY_TYPE_MICROMAP_KHR` specifies a geometry type consisting of a micromap array.
     #[doc(alias = "VK_GEOMETRY_TYPE_MICROMAP_KHR")]
     pub const MICROMAP: Self = Self(1000623000);
     /// `VK_GEOMETRY_TYPE_TRIANGLES_NV` is an alias of

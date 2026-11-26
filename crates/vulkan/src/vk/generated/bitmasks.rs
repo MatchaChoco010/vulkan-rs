@@ -11567,8 +11567,13 @@ impl ImageCreateFlagBits {
     /// `VK_IMAGE_CREATE_FRAGMENT_DENSITY_MAP_OFFSET_BIT_EXT`.
     #[doc(alias = "VK_IMAGE_CREATE_FRAGMENT_DENSITY_MAP_OFFSET_BIT_EXT")]
     pub const FRAGMENT_DENSITY_MAP_OFFSET_EXT: Self = Self(32768);
-    /// `VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT`, a value of
-    /// [`VkImageCreateFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageCreateFlagBits.html).
+    /// `VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT`, which the specification describes
+    /// under the name `VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT`:
+    /// [`VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT`](ImageCreateFlagBits::DESCRIPTOR_BUFFER_CAPTURE_REPLAY_EXT)
+    /// specifies that the image can be used with descriptor buffers when capturing and replaying
+    /// (e.g. for trace capture and replay), see
+    /// [`VkOpaqueCaptureDescriptorDataCreateInfoEXT`](OpaqueCaptureDescriptorDataCreateInfoEXT) for
+    /// more detail.
     #[doc(alias = "VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT")]
     pub const DESCRIPTOR_HEAP_CAPTURE_REPLAY_EXT: Self = Self(65536);
     /// `VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT` specifies that the image can be used to create
@@ -15660,8 +15665,10 @@ impl PipelineCreateFlagBits {
     /// pipeline creation, and the [`VkPipeline`](Pipeline) will be `VK_NULL_HANDLE`.
     #[doc(alias = "VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT")]
     pub const FAIL_ON_PIPELINE_COMPILE_REQUIRED: Self = Self(256);
-    /// `VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT`, a value of
-    /// [`VkPipelineCreateFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineCreateFlagBits.html).
+    /// When creating multiple pipelines, `VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT` specifies
+    /// that control will be returned to the application if any individual pipeline returns a result
+    /// which is not [`VK_SUCCESS`](VkResult::SUCCESS) rather than continuing to create additional
+    /// pipelines.
     #[doc(alias = "VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT")]
     pub const EARLY_RETURN_ON_FAILURE: Self = Self(512);
     /// `VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT` specifies that pipeline libraries being
@@ -16027,8 +16034,10 @@ impl PipelineCreateFlagBits2 {
     /// returned by pipeline creation, and the [`VkPipeline`](Pipeline) will be `VK_NULL_HANDLE`.
     #[doc(alias = "VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT")]
     pub const FAIL_ON_PIPELINE_COMPILE_REQUIRED: Self = Self(256);
-    /// `VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT`, a value of
-    /// [`VkPipelineCreateFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineCreateFlagBits2.html).
+    /// When creating multiple pipelines, `VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT`
+    /// specifies that control will be returned to the application if any individual pipeline
+    /// returns a result which is not [`VK_SUCCESS`](VkResult::SUCCESS) rather than continuing to
+    /// create additional pipelines.
     #[doc(alias = "VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT")]
     pub const EARLY_RETURN_ON_FAILURE: Self = Self(512);
     /// `VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT` specifies that pipeline libraries
@@ -43952,8 +43961,13 @@ impl ImageCreateFlags {
     /// `VK_IMAGE_CREATE_FRAGMENT_DENSITY_MAP_OFFSET_BIT_EXT`.
     #[doc(alias = "VK_IMAGE_CREATE_FRAGMENT_DENSITY_MAP_OFFSET_BIT_EXT")]
     pub const FRAGMENT_DENSITY_MAP_OFFSET_EXT: Self = Self(32768);
-    /// `VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT`, a value of
-    /// [`VkImageCreateFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageCreateFlagBits.html).
+    /// `VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT`, which the specification describes
+    /// under the name `VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT`:
+    /// [`VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT`](ImageCreateFlagBits::DESCRIPTOR_BUFFER_CAPTURE_REPLAY_EXT)
+    /// specifies that the image can be used with descriptor buffers when capturing and replaying
+    /// (e.g. for trace capture and replay), see
+    /// [`VkOpaqueCaptureDescriptorDataCreateInfoEXT`](OpaqueCaptureDescriptorDataCreateInfoEXT) for
+    /// more detail.
     #[doc(alias = "VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT")]
     pub const DESCRIPTOR_HEAP_CAPTURE_REPLAY_EXT: Self = Self(65536);
     /// `VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT` specifies that the image can be used to create
@@ -50300,8 +50314,10 @@ impl PipelineCreateFlags {
     /// pipeline creation, and the [`VkPipeline`](Pipeline) will be `VK_NULL_HANDLE`.
     #[doc(alias = "VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT")]
     pub const FAIL_ON_PIPELINE_COMPILE_REQUIRED: Self = Self(256);
-    /// `VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT`, a value of
-    /// [`VkPipelineCreateFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineCreateFlagBits.html).
+    /// When creating multiple pipelines, `VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT` specifies
+    /// that control will be returned to the application if any individual pipeline returns a result
+    /// which is not [`VK_SUCCESS`](VkResult::SUCCESS) rather than continuing to create additional
+    /// pipelines.
     #[doc(alias = "VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT")]
     pub const EARLY_RETURN_ON_FAILURE: Self = Self(512);
     /// `VK_PIPELINE_CREATE_LINK_TIME_OPTIMIZATION_BIT_EXT` specifies that pipeline libraries being
@@ -50704,8 +50720,10 @@ impl PipelineCreateFlags2 {
     /// returned by pipeline creation, and the [`VkPipeline`](Pipeline) will be `VK_NULL_HANDLE`.
     #[doc(alias = "VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT")]
     pub const FAIL_ON_PIPELINE_COMPILE_REQUIRED: Self = Self(256);
-    /// `VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT`, a value of
-    /// [`VkPipelineCreateFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineCreateFlagBits2.html).
+    /// When creating multiple pipelines, `VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT`
+    /// specifies that control will be returned to the application if any individual pipeline
+    /// returns a result which is not [`VK_SUCCESS`](VkResult::SUCCESS) rather than continuing to
+    /// create additional pipelines.
     #[doc(alias = "VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT")]
     pub const EARLY_RETURN_ON_FAILURE: Self = Self(512);
     /// `VK_PIPELINE_CREATE_2_LINK_TIME_OPTIMIZATION_BIT_EXT` specifies that pipeline libraries

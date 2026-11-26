@@ -6,6 +6,7 @@ mod links;
 mod other_names;
 mod render;
 mod tables;
+mod unnamed_items;
 mod value_descriptions;
 
 pub(crate) use legacy::{
@@ -164,8 +165,11 @@ impl<'a> Model<'a> {
 
     pub(crate) fn described(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
         let page = self.page(owner)?;
-        let described = other_names::described(page, item)?;
-        let mut blocks = self.description(from, Place::Page(page), item, &described.item.text);
+        let described = other_names::described(page, item).or_else(|| {
+            let aliases = self.aliases_of_the_value(owner, item);
+            other_names::described_under_an_alias(page, item, &aliases)
+        })?;
+        let mut blocks = self.description(from, Place::Page(page), item, &described.text);
         if let (Some(other), Some(Block::Text(lead))) =
             (described.under_the_name, blocks.first_mut())
         {
@@ -260,6 +264,19 @@ impl<'a> Model<'a> {
             });
         }
         blocks
+    }
+
+    fn aliases_of_the_value(&self, owner: &str, value: &str) -> Vec<&'a str> {
+        let enums = self.ir.enums.iter().map(|e| (&e.name, &e.fields));
+        let bitmasks = self.ir.bitmasks.iter().map(|b| (&b.name, &b.fields));
+        enums
+            .chain(bitmasks)
+            .filter(|(name, _)| *name == owner)
+            .flat_map(|(_, fields)| fields)
+            .filter(|field| field.name == value)
+            .flat_map(|field| &field.aliases)
+            .map(String::as_str)
+            .collect()
     }
 
     fn values_of(&self, owner: &str) -> BTreeSet<&'a str> {
@@ -831,6 +848,101 @@ mod tests {
             })
             .collect();
         docs
+    }
+
+    #[test]
+    fn a_value_takes_the_description_that_its_page_has_under_an_alias_name() {
+        let ir = ir();
+        let docs = with_items_elsewhere(
+            &[(
+                "VK_TINT_COOL_BIT",
+                "ename:VK_TINT_COOL_BIT specifies a cool tint.",
+            )],
+            &[],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
+        let described = |owner: &str, name: &str| model.described(&Cfg::default(), owner, name);
+        assert_eq!(
+            described("VkTintFlagBits", "VK_TINT_COLD_BIT"),
+            Some(vec![text(
+                "`VK_TINT_COLD_BIT`, which the specification describes under the name `VK_TINT_COOL_BIT`: [`VK_TINT_COOL_BIT`](TintFlagBits::COOL) specifies a cool tint."
+            )])
+        );
+        assert_eq!(
+            described("VkTintFlagBits", "VK_TINT_COOL_BIT"),
+            Some(vec![text("`VK_TINT_COOL_BIT` specifies a cool tint.")])
+        );
+        assert_eq!(described("VkTintFlagBits", "VK_TINT_WARM_BIT"), None);
+        assert_eq!(
+            described("VkShade", "VK_TINT_COLD_BIT"),
+            None,
+            "the aliases are those of a value of the type"
+        );
+    }
+
+    #[test]
+    fn an_item_of_the_page_that_starts_with_no_name_describes_a_member_or_a_value() {
+        let ir = ir();
+        let mut docs = with_items_elsewhere(
+            &[],
+            &[
+                ("VK_SHADE_DEEP", "ename:VK_SHADE_DEEP specifies an extent."),
+                ("VK_SHADE_PALE", "ename:VK_SHADE_PALE specifies an extent."),
+            ],
+        );
+        let unnamed = |anchors: &[&str], text: &str| vulkan_registry::DocUnnamedItem {
+            anchors: anchors.iter().map(|anchor| anchor.to_string()).collect(),
+            text: text.to_string(),
+            problem: None,
+        };
+        for page in &mut docs.pages {
+            page.unnamed_items = match page.name.as_str() {
+                "VkExtent2D" => vec![unnamed(
+                    &["limits-depth"],
+                    "If the <<limits-width,pname:width>> is set, pname:depth\nindicates the depth of slink:VkExtent2D.",
+                )],
+                "VkShade" => vec![
+                    unnamed(&[], "VK_SHADE_DEEP specifies the deepest\nelink:VkShade."),
+                    unnamed(
+                        &[],
+                        "Between the others, ename:VK_SHADE_GREY specifies grey:\n** not ename:VK_SHADE_GREY",
+                    ),
+                    unnamed(&[], "Otherwise, ename:VK_SHADE_PALE is set."),
+                ],
+                _ => Vec::new(),
+            };
+        }
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
+        let described = |owner: &str, name: &str| model.described(&Cfg::default(), owner, name);
+        assert_eq!(
+            described("VkExtent2D", "depth"),
+            Some(vec![text(
+                "If the `width` is set, `depth`\nindicates the depth of [`VkExtent2D`](Extent2D)."
+            )])
+        );
+        assert_eq!(
+            described("VkShade", "VK_SHADE_DEEP"),
+            Some(vec![text(
+                "`VK_SHADE_DEEP` specifies the deepest\n[`VkShade`](Shade)."
+            )]),
+            "the name gets its macro"
+        );
+        assert_eq!(
+            described("VkShade", "VK_SHADE_GREY"),
+            Some(vec![
+                text("Between the others, `VK_SHADE_GREY` specifies grey:"),
+                Block::list(["not `VK_SHADE_GREY`".to_string()]),
+            ])
+        );
+        for mentioned in ["VK_SHADE_PALE", "VK_SHADE_DARK"] {
+            assert_eq!(
+                described("VkShade", mentioned),
+                None,
+                "{mentioned} is not described by an item of the page"
+            );
+        }
     }
 
     #[test]
