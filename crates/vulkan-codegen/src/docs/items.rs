@@ -1225,6 +1225,18 @@ mod tests {
     }
 
     fn dumped(source: &[&str]) -> Option<Result<Vec<(String, String)>, String>> {
+        let page = match dumped_page(source)? {
+            Ok(page) => page,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(Ok(page
+            .items
+            .iter()
+            .map(|item| (item.name.clone(), item.text.clone()))
+            .collect()))
+    }
+
+    fn dumped_page(source: &[&str]) -> Option<Result<vulkan_registry::DocPage, String>> {
         let steps = [
             "with tempfile.TemporaryDirectory() as directory:",
             "    source = pathlib.Path(directory) / 'page.adoc'",
@@ -1232,7 +1244,7 @@ mod tests {
             "    generated = {'sync/flagDefinitions/VK_PAGE.adoc': ['  ** ename:VK_A', '  ** ename:VK_B']}",
             "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}, generated=generated))",
             "items = tool.spec_described_items(body, 'VkPage')",
-            "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
+            "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items, 'unnamed_items': tool.spec_unnamed_items(body)}",
             "docs = {'commit': '', 'anchors': {}, 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': [], 'items_outside_pages': []}",
             "print(json.dumps(docs))",
         ];
@@ -1240,12 +1252,8 @@ mod tests {
             Ok(json) => json,
             Err(error) => return Some(Err(error)),
         };
-        let docs = Docs::from_json(&json).unwrap_or_else(|error| panic!("{error}: {json}"));
-        Some(Ok(docs.pages[0]
-            .items
-            .iter()
-            .map(|item| (item.name.clone(), item.text.clone()))
-            .collect()))
+        let mut docs = Docs::from_json(&json).unwrap_or_else(|error| panic!("{error}: {json}"));
+        Some(Ok(docs.pages.remove(0)))
     }
 
     fn generated_files(registry: &[&str]) -> Option<Result<String, String>> {
@@ -1964,6 +1972,75 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_dump_has_the_items_of_a_page_that_start_with_no_name_with_their_anchors() {
+        let Some(page) = dumped_page(&[
+            "  * pname:named is a member.",
+            "  * [[features-wide]] If",
+            "    pname:wide is ename:VK_TRUE, lines are wide.",
+            "  ** nested",
+            "  * [[limits-a]] [[limits-b, the limit b]]",
+            "    When wide, pname:a and pname:b apply.",
+            "  * VK_LINE_WIDE specifies wide lines.",
+            "  * [[VUID-VkPage-wide-00001]]",
+            "    pname:wide must: be ename:VK_TRUE",
+            "  * Otherwise:",
+            "+",
+            "+",
+            "More.",
+            "  * See:",
+            "include::{generated}/more.adoc[]",
+            "",
+            "  * [[anchor-other]] pname:other is another member.",
+        ]) else {
+            return;
+        };
+        let page = page.expect("the page is read");
+        let named = page
+            .items
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            named,
+            ["pname:named is a member.", "pname:other is another member."]
+        );
+        let unnamed = page
+            .unnamed_items
+            .iter()
+            .map(|item| {
+                let anchors = item.anchors.iter().map(String::as_str).collect::<Vec<_>>();
+                (anchors, item.text.as_str(), item.problem.as_deref())
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            unnamed,
+            [
+                (
+                    vec!["features-wide"],
+                    "If\npname:wide is ename:VK_TRUE, lines are wide.\n** nested",
+                    None
+                ),
+                (
+                    vec!["limits-a", "limits-b"],
+                    "When wide, pname:a and pname:b apply.",
+                    None
+                ),
+                (vec![], "VK_LINE_WIDE specifies wide lines.", None),
+                (
+                    vec![],
+                    "Otherwise:\n+\n+\nMore.",
+                    Some("cannot be read reliably: two list continuations in a row")
+                ),
+                (
+                    vec![],
+                    "See:\ninclude::{generated}/more.adoc[]",
+                    Some("goes on in a file that is not read: include::{generated}/more.adoc[]")
+                ),
+            ]
+        );
+    }
+
     fn dumped_file(source: &[&str]) -> Option<Result<Docs, String>> {
         let steps = [
             "with tempfile.TemporaryDirectory() as directory:",
@@ -1972,7 +2049,7 @@ mod tests {
             "    lines = list(tool.spec_lines(source, {'VK_KHR_defined'}))",
             "blocks = tool.spec_page_blocks(lines)",
             "items = lambda first, last, name: tool.spec_described_items(lines[first + 2 : last], name)",
-            "page = lambda first, last, attributes: {'name': attributes['refpage'], 'kind': attributes['type'], 'desc': attributes['desc'], 'aliases': [], 'file': '', 'items': items(first, last, attributes['refpage'])}",
+            "page = lambda first, last, attributes: {'name': attributes['refpage'], 'kind': attributes['type'], 'desc': attributes['desc'], 'aliases': [], 'file': '', 'items': items(first, last, attributes['refpage']), 'unnamed_items': tool.spec_unnamed_items(lines[first + 2 : last])}",
             "outside = tool.spec_items_outside_pages('chapters/page.adoc', lines, blocks)",
             "docs = {'commit': '', 'anchors': {}, 'attributes': {}, 'titles': {}, 'pages': [page(*block) for block in blocks], 'tables': [], 'items_outside_pages': outside}",
             "print(json.dumps(docs))",

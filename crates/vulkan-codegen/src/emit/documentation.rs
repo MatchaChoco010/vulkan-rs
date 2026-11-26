@@ -21,6 +21,7 @@ fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
                 text: text.to_string(),
             })
             .collect(),
+        unnamed_items: Vec::new(),
     }
 }
 

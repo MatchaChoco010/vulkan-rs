@@ -74,6 +74,15 @@ pub struct DocPage {
     pub aliases: Vec<String>,
     pub file: String,
     pub items: Vec<DocItem>,
+    pub unnamed_items: Vec<DocUnnamedItem>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct DocUnnamedItem {
+    pub anchors: Vec<String>,
+    pub text: String,
+    #[serde(default)]
+    pub problem: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

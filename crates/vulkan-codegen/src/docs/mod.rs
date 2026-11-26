@@ -509,6 +509,7 @@ mod tests {
                             text: "pname:height is {unknown}.".to_string(),
                         },
                     ],
+                    unnamed_items: Vec::new(),
                 },
                 DocPage {
                     name: "VkShade".to_string(),
