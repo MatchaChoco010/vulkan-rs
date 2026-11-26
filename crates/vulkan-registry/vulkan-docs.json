@@ -1004,66 +1004,6 @@
    "text": "ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT"
   },
   {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT",
-   "text": "ename:VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT",
-   "text": "ename:VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_GEOMETRY_BIT",
-   "text": "ename:VK_SHADER_STAGE_GEOMETRY_BIT"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_FRAGMENT_BIT",
-   "text": "ename:VK_SHADER_STAGE_FRAGMENT_BIT"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_TASK_BIT_EXT",
-   "text": "ename:VK_SHADER_STAGE_TASK_BIT_EXT"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_MESH_BIT_EXT",
-   "text": "ename:VK_SHADER_STAGE_MESH_BIT_EXT\n| ename:VK_PIPELINE_BIND_POINT_GRAPHICS\n| all <<drawing, drawing commands>>"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_CALLABLE_BIT_KHR",
-   "text": "ename:VK_SHADER_STAGE_CALLABLE_BIT_KHR"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR",
-   "text": "ename:VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_INTERSECTION_BIT_KHR",
-   "text": "ename:VK_SHADER_STAGE_INTERSECTION_BIT_KHR"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_MISS_BIT_KHR",
-   "text": "ename:VK_SHADER_STAGE_MISS_BIT_KHR"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_RAYGEN_BIT_KHR",
-   "text": "ename:VK_SHADER_STAGE_RAYGEN_BIT_KHR\n| ename:VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR\n|\nflink:vkCmdTraceRaysNV\nflink:vkCmdTraceRaysKHR and flink:vkCmdTraceRaysIndirectKHR"
-  },
-  {
-   "file": "chapters/shaders.adoc",
-   "name": "VK_SHADER_STAGE_CLUSTER_CULLING_BIT_HUAWEI",
-   "text": "ename:VK_SHADER_STAGE_CLUSTER_CULLING_BIT_HUAWEI\n| ename:VK_PIPELINE_BIND_POINT_SUBPASS_SHADING_HUAWEI\n| flink:vkCmdSubpassShadingHUAWEI"
-  },
-  {
    "file": "chapters/synchronization.adoc",
    "name": "VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT",
    "text": "ename:VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT"

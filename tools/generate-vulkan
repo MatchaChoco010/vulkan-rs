@@ -436,7 +436,10 @@ def build_ir(vk, registry_tree, allow_non_sdk_tag: bool):
 # Khronos builds the reference pages from these blocks. For each block this dumps the
 # short description and the list items that start with the name of a member, a parameter
 # or an enumerant. Some types describe their values in a table instead, so the tables that
-# name an enumerant are dumped as well, whether they are in a block or not.
+# name an enumerant are dumped as well, whether they are in a block or not. A few values
+# are described in a list outside the blocks, so the list items out there that start with
+# the name of an enumerant are dumped too. The list items in the cells of a table are not
+# read as items: they are a part of the table.
 
 SPEC_CONDITIONAL = re.compile(r"^(ifdef|ifndef)::([^\[]*)\[(.*)\]\s*$")
 SPEC_END_CONDITIONAL = re.compile(r"^endif::[^\[]*\[\]\s*$")
@@ -805,10 +808,14 @@ def spec_described_items(
     items, and an item can start with several names (`pname:x and pname:y are ...`): the
     generator picks the item for a name. The items of valid usage, which start with a
     `[[VUID-...]]` anchor, state a requirement and do not describe what they name, so they
-    are left out."""
+    are left out. So are the items in the cells of a table, which end where their cell
+    ends and not where a list item does."""
     described = []
     index = 0
     while index < len(body):
+        if SPEC_TABLE_DELIMITER.match(body[index]):
+            index = spec_table_end(body, index) + 1
+            continue
         if not spec_is_first_level_item(body[index]):
             index += 1
             continue
@@ -970,6 +977,16 @@ def spec_anchor_pages(
     return anchor_pages
 
 
+def spec_table_end(lines: list[str], index: int) -> int:
+    """The index of the delimiter that closes the table that `lines[index]` opens, or the
+    number of lines if nothing closes it."""
+    delimiter = lines[index].strip()
+    end = index + 1
+    while end < len(lines) and lines[end].strip() != delimiter:
+        end += 1
+    return end
+
+
 def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, str]]) -> list[dict]:
     """The tables (`|===` blocks) that name an enumerant, as AsciiDoc text that starts
     with the attribute, anchor and title lines above the table, and the reference page
@@ -980,10 +997,7 @@ def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, s
         if not SPEC_TABLE_DELIMITER.match(lines[index]):
             index += 1
             continue
-        delimiter = lines[index].strip()
-        end = index + 1
-        while end < len(lines) and lines[end].strip() != delimiter:
-            end += 1
+        end = spec_table_end(lines, index)
         start = index
         while start > 0 and SPEC_BLOCK_HEADER.match(lines[start - 1]):
             start -= 1

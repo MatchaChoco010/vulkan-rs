@@ -2023,6 +2023,20 @@ mod tests {
             "[open,refpage='VkThird',desc='The third type',type='enums']",
             "--",
             "--",
+            "",
+            "[cols=\"1,1\"]",
+            "|====",
+            "|Values |Use",
+            "a| * ename:VK_CELL_A",
+            "  * ename:VK_CELL_B specifies b in a cell.",
+            "  * ename:VK_CELL_C",
+            "| ename:VK_USE",
+            "",
+            "a|",
+            "  * ename:VK_CELL_D",
+            "| ename:VK_USE",
+            "|====",
+            "  * ename:VK_AFTER specifies what follows the table.",
         ]) else {
             return;
         };
@@ -2078,7 +2092,13 @@ mod tests {
                     "VK_LAST",
                     "ename:VK_LAST specifies the last value,\nwhich the next block ends."
                 ),
-            ]
+                (
+                    file,
+                    "VK_AFTER",
+                    "ename:VK_AFTER specifies what follows the table."
+                ),
+            ],
+            "the list items in the cells of a table are no items of their own"
         );
     }
 
