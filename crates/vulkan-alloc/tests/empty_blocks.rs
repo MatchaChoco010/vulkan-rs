@@ -104,6 +104,7 @@ struct Block {
     linear: bool,
     flags: vk::MemoryAllocateFlags,
     own: bool,
+    block_index: usize,
 }
 
 struct Live {
@@ -175,12 +176,22 @@ impl Model {
             .collect()
     }
 
-    fn may_share(&self, request: Request, memory: u64, block: &Block) -> bool {
-        !request.has_its_own_memory()
-            && !block.own
-            && block.memory_type == request.memory_type
-            && block.flags == request.flags()
-            && (block.linear == request.linear || self.is_empty_block(memory))
+    fn first_with_room(&self, request: Request, empty: bool) -> Option<u64> {
+        self.blocks
+            .iter()
+            .filter(|&(&memory, block)| {
+                !request.has_its_own_memory()
+                    && !block.own
+                    && block.memory_type == request.memory_type
+                    && block.flags == request.flags()
+                    && self.is_empty_block(memory) == empty
+                    && (empty || block.linear == request.linear)
+                    && gaps(block.size, &self.taken_in(memory))
+                        .into_iter()
+                        .any(|gap| fits(gap, request.size, request.alignment()))
+            })
+            .min_by_key(|(_, block)| block.block_index)
+            .map(|(&memory, _)| memory)
     }
 
     fn apply(
@@ -205,12 +216,8 @@ impl Model {
     ) -> Result<(), TestCaseError> {
         self.made += 1;
         let before = fake.calls();
-        let has_room = self.blocks.iter().any(|(&memory, block)| {
-            self.may_share(request, memory, block)
-                && gaps(block.size, &self.taken_in(memory))
-                    .into_iter()
-                    .any(|gap| fits(gap, request.size, request.alignment()))
-        });
+        let holding = self.first_with_room(request, false);
+        let empty = self.first_with_room(request, true);
         let empty_with_other_flags = self.blocks.iter().any(|(&memory, block)| {
             !request.has_its_own_memory()
                 && block.memory_type == request.memory_type
@@ -221,19 +228,22 @@ impl Model {
             .map_err(|error| fail(format!("the allocation was refused: {error:?}")))?;
         let memory = allocation.memory().0;
         let calls = fake.calls();
-        if has_room {
+        if let Some(chosen) = holding.or(empty) {
             prop_assert_eq!(
                 calls.allocate,
                 before.allocate,
                 "a request that fits in a block it may share must not allocate memory"
             );
-            let block = self.blocks.get(&memory).copied();
-            prop_assert!(
-                block.is_some_and(|block| self.may_share(request, memory, &block)),
-                "the allocation was placed in {:?}, which the request may not share",
-                block
+            prop_assert_eq!(
+                memory,
+                chosen,
+                "the allocation must go to the first block with room that holds allocations \
+                 of its kind, or else to the first empty block with room"
             );
-            if self.is_empty_block(memory) {
+            if holding.is_some() && empty.is_some() {
+                self.note("allocate: tries the empty block after the blocks that hold allocations");
+            }
+            if holding.is_none() {
                 let block = self.blocks.get_mut(&memory).unwrap();
                 let other_kind = block.linear != request.linear;
                 block.linear = request.linear;
@@ -256,6 +266,14 @@ impl Model {
                 "the new memory has the handle of a block that exists"
             );
             let own = request.has_its_own_memory();
+            let block_index = allocator
+                .snapshot()
+                .memory_types
+                .iter()
+                .flat_map(|memory_type| &memory_type.blocks)
+                .find(|block| block.memory == allocation.memory())
+                .map(|block| block.block_index);
+            prop_assert!(block_index.is_some(), "the snapshot lacks the new block");
             self.blocks.insert(
                 memory,
                 Block {
@@ -268,6 +286,7 @@ impl Model {
                     linear: request.linear,
                     flags: request.flags(),
                     own,
+                    block_index: block_index.unwrap(),
                 },
             );
             if empty_with_other_flags {
@@ -307,17 +326,23 @@ impl Model {
             return Ok(());
         }
         let block = self.blocks[&memory];
-        let another_empty_block = self.blocks.iter().any(|(&other, other_block)| {
-            other != memory
-                && other_block.memory_type == block.memory_type
-                && self.is_empty_block(other)
-        });
-        if !block.own && block.size == BLOCK_SIZE && !another_empty_block {
+        let another_empty_block = |same_flags: bool| {
+            self.blocks.iter().any(|(&other, other_block)| {
+                other != memory
+                    && other_block.memory_type == block.memory_type
+                    && (other_block.flags == block.flags) == same_flags
+                    && self.is_empty_block(other)
+            })
+        };
+        if !block.own && block.size == BLOCK_SIZE && !another_empty_block(true) {
             prop_assert_eq!(
                 calls.free,
                 before.free,
-                "the only empty shared block of its memory type must be kept"
+                "the only empty shared block of its memory type and flags must be kept"
             );
+            if another_empty_block(false) {
+                self.note("free: the empty block is kept beside one with other flags");
+            }
             self.note("free: the empty block is kept");
         } else {
             prop_assert_eq!(
@@ -414,14 +439,17 @@ impl Model {
 
         let snapshot = allocator.snapshot();
         for memory_type in &snapshot.memory_types {
-            let empty = memory_type
-                .blocks
-                .iter()
-                .filter(|block| block.allocated_region_count == 0)
-                .count();
+            let mut empty = BTreeMap::<u32, usize>::new();
+            for block in &memory_type.blocks {
+                if block.allocated_region_count == 0 {
+                    *empty
+                        .entry(block.memory_allocate_flags.as_raw())
+                        .or_default() += 1;
+                }
+            }
             prop_assert!(
-                empty <= 1,
-                "memory type {} has {} empty blocks",
+                empty.values().all(|&count| count <= 1),
+                "memory type {} has more than one empty block with the same flags: {:?}",
                 memory_type.memory_type_index,
                 empty
             );
@@ -430,10 +458,18 @@ impl Model {
                 prop_assert!(model.is_some(), "the snapshot has an unknown block");
                 let model = model.unwrap();
                 prop_assert_eq!(
-                    (block.size, block.dedicated, block.resource_class),
+                    (
+                        block.size,
+                        block.dedicated,
+                        block.memory_allocate_flags,
+                        block.block_index,
+                        block.resource_class
+                    ),
                     (
                         model.size,
                         model.own,
+                        model.flags,
+                        model.block_index,
                         if model.linear {
                             AllocationResourceClass::Linear
                         } else {
@@ -601,7 +637,7 @@ proptest! {
     })]
 
     #[test]
-    fn each_memory_type_keeps_at_most_one_empty_block_and_the_allocator_frees_every_block_at_the_end(
+    fn each_memory_type_and_set_of_flags_keeps_at_most_one_empty_block_and_drop_frees_every_block(
         (ops, ending) in scenarios()
     ) {
         run(&ops, ending)?;
@@ -671,6 +707,77 @@ fn allocating_and_freeing_a_buffer_three_times_allocates_memory_once() {
 }
 
 #[test]
+fn an_empty_block_is_tried_after_the_blocks_that_hold_allocations() {
+    let fake = FakeDevice::new();
+    let mut allocator = fake.allocator();
+    let non_linear = AllocationCreateDesc {
+        linear: false,
+        ..desc(256, 1, DEVICE_LOCAL)
+    };
+    let linear = desc(256, 1, DEVICE_LOCAL);
+    unsafe {
+        let first = allocator.allocate(non_linear).unwrap();
+        let second = allocator.allocate(linear).unwrap();
+        assert_ne!(first.memory(), second.memory());
+        allocator.free(first).unwrap();
+        assert_eq!(
+            allocator.stats().block_count,
+            2,
+            "the block of the first allocation is kept empty, before the block of the second"
+        );
+
+        let third = allocator.allocate(linear).unwrap();
+        assert_eq!(
+            third.memory(),
+            second.memory(),
+            "a linear request must go to the block that holds linear allocations, not to the \
+             empty block before it"
+        );
+        let fourth = allocator.allocate(non_linear).unwrap();
+        assert_ne!(fourth.memory(), second.memory());
+        assert_eq!(
+            fake.calls().allocate,
+            2,
+            "the non-linear request must find the empty block still empty"
+        );
+        for allocation in [second, third, fourth] {
+            allocator.free(allocation).unwrap();
+        }
+    }
+    drop(allocator);
+    assert!(fake.memory_objects().is_empty());
+    assert_eq!(fake.misuse(), Vec::<String>::new());
+}
+
+#[test]
+fn allocating_and_freeing_with_and_without_device_address_in_turn_allocates_memory_once_for_each() {
+    let fake = FakeDevice::new();
+    let mut allocator = fake.allocator();
+    for round in 0..3 {
+        for flags in [
+            vk::MemoryAllocateFlags::empty(),
+            vk::MemoryAllocateFlags::DEVICE_ADDRESS,
+        ] {
+            let description = AllocationCreateDesc {
+                memory_allocate_flags: flags,
+                ..desc(256, 1, HOST_COHERENT)
+            };
+            let allocation = unsafe { allocator.allocate(description) }.unwrap();
+            unsafe { allocator.free(allocation) }.unwrap();
+            assert_eq!(
+                (fake.calls().allocate, fake.calls().free),
+                (if round == 0 && flags.is_empty() { 1 } else { 2 }, 0),
+                "round {round}, flags {flags:?}: each set of flags must keep its own empty block"
+            );
+        }
+    }
+    assert_eq!(allocator.stats().block_count, 2);
+    drop(allocator);
+    assert_eq!(fake.calls().free, 2);
+    assert!(fake.memory_objects().is_empty());
+}
+
+#[test]
 fn the_generated_sequences_reach_every_rule_of_the_empty_blocks() {
     let mut runner = TestRunner::new_with_rng(
         ProptestConfig::default(),
@@ -695,6 +802,8 @@ fn the_generated_sequences_reach_every_rule_of_the_empty_blocks() {
         "allocate: does not reuse the empty block with other flags",
         "free: one of several",
         "free: the empty block is kept",
+        "free: the empty block is kept beside one with other flags",
+        "allocate: tries the empty block after the blocks that hold allocations",
         "free: a second empty block is freed",
         "free: a block larger than the block size is freed",
         "free: memory of its own is freed",

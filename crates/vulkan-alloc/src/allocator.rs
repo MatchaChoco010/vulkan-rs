@@ -59,9 +59,10 @@ pub struct AllocatorCreateDesc<'a> {
     /// it is larger than that heap: [`Allocator::allocate`] refuses such an allocation.
     ///
     /// When the last allocation of a block of the resulting size is freed, the block is
-    /// kept empty for later allocations if its memory type has no other empty block
-    /// (see [`Allocator::free`]), so each memory type can hold up to this many bytes
-    /// without any allocation in them.
+    /// kept empty for later allocations if its memory type has no other empty block with
+    /// the same [`AllocationCreateDesc::memory_allocate_flags`] (see [`Allocator::free`]),
+    /// so each memory type can hold this many bytes without any allocation in them for
+    /// each set of flags that its shared blocks were allocated with.
     pub block_size: u64,
 }
 
@@ -97,9 +98,11 @@ impl<'a> AllocatorCreateDesc<'a> {
 /// Dropping the allocator frees every `VkDeviceMemory` it holds with `vkFreeMemory`:
 /// the blocks of live allocations, the empty blocks it keeps (see [`Allocator::free`])
 /// and the memory of dedicated, exportable and zero-initialized allocations. It makes
-/// no Vulkan call when it holds no memory: before the first allocation and after
-/// [`Allocator::free_all`]. Drop it before the device is destroyed, once the device no
-/// longer uses its memory (see the safety section of [`Allocator::allocate`]).
+/// no Vulkan call when it holds no block, that is when [`Allocator::stats`] gives a
+/// `block_count` of 0. Drop it before the device is destroyed, once every submitted
+/// command that refers to its memory has completed, also when it is dropped during
+/// unwinding (see the safety section of [`Allocator::allocate`] and the
+/// [crate documentation](crate#order-of-destruction)).
 ///
 /// If allocations are still live, dropping does not panic: it logs an error through
 /// the [`log`] crate with the number of live allocations and their total size, then
@@ -157,15 +160,19 @@ impl Allocator {
     /// tried.
     ///
     /// A request that is not refused (see the errors below) is placed in an existing
-    /// shared block of that type when one has room, was made with the same
-    /// [`AllocationCreateDesc::memory_allocate_flags`], and holds allocations with the
-    /// same [`AllocationCreateDesc::linear`] or is empty. The empty block that
-    /// [`Allocator::free`] keeps is used in this way for either kind of resource, and
-    /// then holds the kind of the allocation placed in it; a request with other
-    /// [`AllocationCreateDesc::memory_allocate_flags`] cannot use it, since the flags
-    /// are given to `vkAllocateMemory`. The blocks are tried in the order of their
-    /// [`MemoryBlockSnapshot::block_index`](crate::MemoryBlockSnapshot::block_index),
-    /// the empty one among them, and the first that has room is used.
+    /// shared block of that type that was made with the same
+    /// [`AllocationCreateDesc::memory_allocate_flags`] and has room, tried in this order:
+    ///
+    /// 1. the blocks that hold allocations with the same [`AllocationCreateDesc::linear`],
+    ///    in the order of their
+    ///    [`MemoryBlockSnapshot::block_index`](crate::MemoryBlockSnapshot::block_index);
+    /// 2. then the empty blocks that [`Allocator::free`] keeps, in the same order. An
+    ///    empty block is used for either kind of resource, and then holds the kind of
+    ///    the allocation placed in it.
+    ///
+    /// Trying the empty blocks last leaves them for requests that fit nowhere else. A
+    /// request with other [`AllocationCreateDesc::memory_allocate_flags`] cannot use a
+    /// block, since the flags are given to `vkAllocateMemory`.
     /// Otherwise a new block is allocated with `vkAllocateMemory`: the smaller of
     /// [`AllocatorCreateDesc::block_size`] and the size of the memory heap of the type,
     /// or the allocation's size if that is larger, which is never larger than a heap
@@ -234,7 +241,9 @@ impl Allocator {
     ///   type; if the allocator does not check `desc.requirements.size` against the
     ///   memory heap of the chosen type (see the errors above), the size must not be
     ///   larger than that heap; and the number of `VkDeviceMemory` objects on the device
-    ///   must stay below `maxMemoryAllocationCount`.
+    ///   must stay below `maxMemoryAllocationCount`. Each block of the allocator counts
+    ///   as one of them, also an empty block that it keeps for later allocations (see
+    ///   [`Allocator::free`]).
     /// - For [`AllocationScheme::DedicatedBuffer`](crate::AllocationScheme::DedicatedBuffer)
     ///   and [`AllocationScheme::DedicatedImage`](crate::AllocationScheme::DedicatedImage),
     ///   the handle must be a resource of this device that is not bound to memory yet,
@@ -260,11 +269,13 @@ impl Allocator {
     /// - Once this returns an allocation, the allocator holds `VkDeviceMemory`, which
     ///   dropping the allocator frees with `vkFreeMemory`: the memory of live
     ///   allocations as well as the empty blocks it keeps (see [`Allocator::free`]). So
-    ///   the allocator must be dropped before the device is destroyed, unless
-    ///   [`Allocator::free_all`] was called after the last allocation, which leaves it
-    ///   holding no memory. When it is dropped, no command that accesses memory of the
-    ///   allocator may be pending, and resources bound to that memory, and pointers
-    ///   obtained by mapping it, must not be used afterwards. An allocator that is never
+    ///   the allocator must be dropped before the device is destroyed, unless it holds
+    ///   no block by then ([`Allocator::stats`] gives a `block_count` of 0, for example
+    ///   after [`Allocator::free_all`]). When it is dropped, every submitted command that
+    ///   refers to memory of the allocator must have completed, and resources bound to
+    ///   that memory, and pointers obtained by mapping it, must not be used afterwards.
+    ///   This applies to a drop during unwinding from a panic as well (see the
+    ///   [crate documentation](crate#order-of-destruction)). An allocator that is never
     ///   dropped, for example because it was passed to [`std::mem::forget`], frees
     ///   nothing, and its memory has to be freed some other way before the device is
     ///   destroyed, as Vulkan requires of every `VkDeviceMemory`.
@@ -322,18 +333,26 @@ impl Allocator {
     ///
     /// - A shared block of the size of a new shared block of its memory type (the
     ///   smaller of [`AllocatorCreateDesc::block_size`] and the size of the memory heap
-    ///   of the type) is kept empty if the memory type has no other empty block. Later
-    ///   allocations of that memory type can be placed in it (see
+    ///   of the type) is kept empty if the memory type has no other empty block with
+    ///   the same [`AllocationCreateDesc::memory_allocate_flags`]. Later allocations of
+    ///   that memory type with those flags can be placed in it (see
     ///   [`Allocator::allocate`]), so that allocating and freeing one allocation again
     ///   and again calls `vkAllocateMemory` only once.
     /// - Any other block is freed with `vkFreeMemory` before this returns: a second
-    ///   empty block of the memory type, a block made larger than that size for a large
-    ///   allocation, and the `VkDeviceMemory` of a dedicated, exportable or
+    ///   empty block of the memory type and flags, a block made larger than that size
+    ///   for a large allocation, and the `VkDeviceMemory` of a dedicated, exportable or
     ///   zero-initialized allocation.
     ///
-    /// So the allocator keeps at most one empty block per memory type.
+    /// So the allocator keeps at most one empty block per memory type and set of
+    /// [`AllocationCreateDesc::memory_allocate_flags`].
     /// [`Allocator::free_empty_blocks`] frees them, and so do [`Allocator::free_all`] and
     /// dropping the allocator.
+    ///
+    /// A kept block takes room in its memory heap. Allocations that cannot use it, such
+    /// as allocations with other flags, allocations with memory of their own,
+    /// allocations larger than a block and allocations in another memory type of the
+    /// same heap, can therefore run out of memory sooner than they would without it.
+    /// [`Allocator::free_empty_blocks`] gives that room back.
     ///
     /// # Errors
     ///
@@ -350,9 +369,9 @@ impl Allocator {
     /// # Safety
     ///
     /// - The device the allocator was created with must not have been destroyed.
-    /// - The device must have finished every use of the memory: no command that
-    ///   accesses a resource bound to the allocation may be pending, because the range
-    ///   can be handed out again and its `VkDeviceMemory` can be freed.
+    /// - The device must have finished every use of the memory: every submitted command
+    ///   that refers to a resource bound to the allocation must have completed, because
+    ///   the range can be handed out again and its `VkDeviceMemory` can be freed.
     /// - Resources bound to the allocation, and pointers obtained by mapping it, must
     ///   not be used after it was freed.
     pub unsafe fn free(&mut self, allocation: Allocation) -> Result<(), FreeError> {
@@ -742,8 +761,8 @@ impl Allocator {
     /// # Safety
     ///
     /// - The device the allocator was created with must not have been destroyed.
-    /// - No command that accesses a resource bound to memory of this allocator may be
-    ///   pending, and such resources must not be used afterwards.
+    /// - Every submitted command that refers to a resource bound to memory of this
+    ///   allocator must have completed, and such resources must not be used afterwards.
     /// - No pointer obtained by mapping memory of this allocator may be used afterwards.
     pub unsafe fn free_all(&mut self) -> usize {
         let live = self.live_allocation_count();
@@ -756,14 +775,18 @@ impl Allocator {
     /// Frees the empty blocks that the allocator keeps for later allocations (see
     /// [`Allocator::free`]) with `vkFreeMemory`, and returns how many it freed.
     ///
-    /// There is at most one such block per memory type. Call this to give their memory
+    /// There is at most one such block per memory type and set of
+    /// [`AllocationCreateDesc::memory_allocate_flags`]. Call this to give their memory
     /// back to the device, for example when it runs short of memory or after the
-    /// allocations of a large part of the program were freed. The next allocation in a
-    /// memory type without an empty block allocates a new block again.
+    /// allocations of a large part of the program were freed. The next allocation that
+    /// fits in no block allocates a new block again.
     ///
     /// # Safety
     ///
-    /// The device the allocator was created with must not have been destroyed.
+    /// - The device the allocator was created with must not have been destroyed.
+    /// - Every submitted command that refers to memory of an empty block must have
+    ///   completed. [`Allocator::free`] already requires this of the allocations that
+    ///   were in the block.
     pub unsafe fn free_empty_blocks(&mut self) -> usize {
         self.memory_types
             .iter_mut()

@@ -63,7 +63,7 @@ fn assert_every_mapping_operation_met_every_mapping_state(coverage: &Coverage) {
 
 #[test]
 fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
-    let coverage = coverage_of(400, 80);
+    let coverage = coverage_of(800, 80);
     for (event, count) in &coverage.events {
         println!("{count:>8}  {event}");
     }
@@ -99,6 +99,8 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         "free: the empty block is kept",
         "free: the empty block is freed",
         "free: a second empty block is freed",
+        "free: the empty block is kept beside one with other flags",
+        "allocate: tries the empty block after the blocks that hold allocations",
         "allocate: reuses the empty block",
         "allocate: reuses the empty block for the other kind of resource",
         "free_empty_blocks: frees a block",

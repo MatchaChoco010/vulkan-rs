@@ -474,14 +474,14 @@ impl Op {
     pub fn kind(&self) -> OpKind {
         match self {
             Op::Allocate(_) => OpKind::Allocate,
-            Op::Free(_) => OpKind::Free,
+            Op::Free(_) | Op::FreeEmptyBlocks => OpKind::Free,
             Op::MapMemory(_) => OpKind::MapMemory,
             Op::UnmapMemory(_) => OpKind::UnmapMemory,
             Op::MapPersistent(_) => OpKind::MapPersistent,
             Op::Guard(..) => OpKind::Guard,
             Op::Flush(_) | Op::FlushRange(..) => OpKind::Flush,
             Op::Invalidate(_) | Op::InvalidateRange(..) => OpKind::Invalidate,
-            Op::FreeAll | Op::FreeEmptyBlocks => OpKind::FreeAll,
+            Op::FreeAll => OpKind::FreeAll,
             Op::UseStale(..) => OpKind::UseStale,
             Op::UseForeign(..) => OpKind::UseForeign,
             Op::FailNextAllocation(_) => OpKind::FailNextAllocation,
@@ -739,7 +739,11 @@ pub fn ops(world: &World, mix: Mix) -> impl Strategy<Value = Op> + use<> {
     let by_kind = |kind: OpKind| -> BoxedStrategy<Op> {
         match kind {
             OpKind::Allocate => requests(world).prop_map(Op::Allocate).boxed(),
-            OpKind::Free => picks().prop_map(Op::Free).boxed(),
+            OpKind::Free => prop_oneof![
+                11 => picks().prop_map(Op::Free),
+                1 => Just(Op::FreeEmptyBlocks),
+            ]
+            .boxed(),
             OpKind::MapMemory => picks().prop_map(Op::MapMemory).boxed(),
             OpKind::UnmapMemory => picks().prop_map(Op::UnmapMemory).boxed(),
             OpKind::MapPersistent => picks().prop_map(Op::MapPersistent).boxed(),
@@ -756,7 +760,7 @@ pub fn ops(world: &World, mix: Mix) -> impl Strategy<Value = Op> + use<> {
                 (picks(), spans()).prop_map(|(pick, span)| Op::InvalidateRange(pick, span)),
             ]
             .boxed(),
-            OpKind::FreeAll => prop_oneof![Just(Op::FreeAll), Just(Op::FreeEmptyBlocks)].boxed(),
+            OpKind::FreeAll => Just(Op::FreeAll).boxed(),
             OpKind::UseStale => (picks(), handle_uses())
                 .prop_map(|(pick, handle_use)| Op::UseStale(pick, handle_use))
                 .boxed(),
@@ -1201,6 +1205,7 @@ impl Harness {
             && !self.blocks.iter().any(|(&other, other_block)| {
                 other != memory
                     && other_block.memory_type == block.memory_type
+                    && other_block.allocate_flags == block.allocate_flags
                     && self.taken_in(other).is_empty()
             })
     }
@@ -1292,22 +1297,28 @@ impl Harness {
         let alignment = self.effective_alignment(memory_type, request.alignment);
         let own = request.needs_its_own_memory();
         let allocate_flags = request.allocate_flags();
-        let shareable = |memory: u64, block: &Block| {
-            !block.own
-                && block.memory_type == memory_type
-                && (block.linear == request.linear || self.taken_in(memory).is_empty())
-                && block.allocate_flags == allocate_flags
+        let first_with_room = |empty: bool| {
+            self.blocks
+                .iter()
+                .filter(|&(&memory, block)| {
+                    !own && !block.own
+                        && block.memory_type == memory_type
+                        && block.allocate_flags == allocate_flags
+                        && self.taken_in(memory).is_empty() == empty
+                        && (empty || block.linear == request.linear)
+                        && gaps(block.size, &self.taken_in(memory))
+                            .into_iter()
+                            .any(|gap| fits(gap, request.size, alignment))
+                })
+                .min_by_key(|(_, block)| block.block_index)
+                .map(|(&memory, _)| memory)
         };
-        let has_room = !own
-            && self.blocks.iter().any(|(&memory, block)| {
-                shareable(memory, block)
-                    && gaps(block.size, &self.taken_in(memory))
-                        .into_iter()
-                        .any(|gap| fits(gap, request.size, alignment))
-            });
+        let holding = first_with_room(false);
+        let empty = first_with_room(true);
+        let chosen = holding.or(empty);
 
         let calls = self.fake.calls();
-        let allocation = if has_room {
+        let allocation = if let Some(chosen) = chosen {
             let allocation =
                 result.map_err(|error| format!("a shared block has room, but: {error:?}"))?;
             ensure_eq!(
@@ -1316,12 +1327,17 @@ impl Harness {
                 "vkAllocateMemory calls although a shared block has room"
             );
             let memory = allocation.memory().0;
-            let block = self.blocks.get(&memory).copied();
-            ensure!(
-                block.is_some_and(|block| shareable(memory, &block)),
-                "placed in {block:?}, which is not a block the request can share"
+            ensure_eq!(
+                memory,
+                chosen,
+                "the block of the allocation, which is the first block with room that holds \
+                 allocations of its kind, or else the first empty block with room"
             );
-            if self.taken_in(memory).is_empty()
+            if holding.is_some() && empty.is_some() {
+                self.coverage
+                    .note("allocate: tries the empty block after the blocks that hold allocations");
+            }
+            if holding.is_none()
                 && let Some(block) = self.blocks.get_mut(&memory)
             {
                 self.coverage.note(if block.linear == request.linear {
@@ -1646,6 +1662,16 @@ impl Harness {
             } else {
                 "free: a second empty block is freed"
             });
+            if kept
+                && self.blocks.iter().any(|(&other, other_block)| {
+                    other != memory
+                        && other_block.memory_type == block.memory_type
+                        && self.taken_in(other).is_empty()
+                })
+            {
+                self.coverage
+                    .note("free: the empty block is kept beside one with other flags");
+            }
             if !kept {
                 self.blocks.remove(&memory);
             }
@@ -2480,7 +2506,7 @@ impl Harness {
                 "memory type {index} is listed without blocks"
             );
             let mut type_totals = (0u64, 0u64, 0u64, 0usize, 0usize);
-            let mut empty_blocks = 0;
+            let mut empty_blocks = BTreeMap::<u32, usize>::new();
             let mut previous_block = None;
             for block in &memory_type.blocks {
                 let memory = block.memory.0;
@@ -2505,6 +2531,7 @@ impl Harness {
                         block.size,
                         index,
                         block.dedicated,
+                        block.memory_allocate_flags,
                         block.block_index,
                         block.resource_class
                     ),
@@ -2512,6 +2539,7 @@ impl Harness {
                         model.size,
                         model.memory_type,
                         model.own,
+                        model.allocate_flags,
                         model.block_index,
                         if model.linear {
                             AllocationResourceClass::Linear
@@ -2592,7 +2620,9 @@ impl Harness {
                     block.memory
                 );
                 if allocated.is_empty() {
-                    empty_blocks += 1;
+                    *empty_blocks
+                        .entry(model.allocate_flags.as_raw())
+                        .or_default() += 1;
                     ensure!(
                         !model.own && model.size == self.world.shared_block_size(index),
                         "{:?} is kept without allocations, but it is not a shared block of the \
@@ -2640,8 +2670,9 @@ impl Harness {
                 }));
             }
             ensure!(
-                empty_blocks <= 1,
-                "memory type {index} keeps {empty_blocks} empty blocks"
+                empty_blocks.values().all(|&count| count <= 1),
+                "memory type {index} keeps more than one empty block with the same allocate \
+                 flags: {empty_blocks:?}"
             );
             ensure_eq!(
                 (

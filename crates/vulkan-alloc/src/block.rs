@@ -113,14 +113,28 @@ impl MemoryTypeAllocator {
         resource_class: AllocationResourceClass,
         memory_allocate_flags: vk::MemoryAllocateFlags,
     ) -> Option<Allocation> {
+        self.allocate_from_blocks(requirements, resource_class, |block| {
+            !block.is_empty() && block.is_shareable_with(resource_class, memory_allocate_flags)
+        })
+        .or_else(|| {
+            self.allocate_from_blocks(requirements, resource_class, |block| {
+                block.is_empty() && block.is_reusable_with(memory_allocate_flags)
+            })
+        })
+    }
+
+    fn allocate_from_blocks(
+        &mut self,
+        requirements: vk::MemoryRequirements,
+        resource_class: AllocationResourceClass,
+        usable: impl Fn(&MemoryBlock) -> bool,
+    ) -> Option<Allocation> {
         let memory_type_index = self.memory_type_index;
         self.blocks
             .iter_mut()
             .enumerate()
             .find_map(|(block_index, slot)| {
-                let block = slot.as_mut().filter(|block| {
-                    block.is_shareable_with(resource_class, memory_allocate_flags)
-                })?;
+                let block = slot.as_mut().filter(|block| usable(block))?;
                 let suballocation = block.suballocate(requirements.size, requirements.alignment)?;
                 block.resource_class = resource_class;
                 Some(block.allocation(memory_type_index, block_index, suballocation))
@@ -196,7 +210,11 @@ impl MemoryTypeAllocator {
         !block.dedicated
             && block.size == shared_block_size
             && !self.blocks.iter().enumerate().any(|(index, other)| {
-                index != block_index && other.as_ref().is_some_and(MemoryBlock::is_empty)
+                index != block_index
+                    && other.as_ref().is_some_and(|other| {
+                        other.is_empty()
+                            && other.memory_allocate_flags == block.memory_allocate_flags
+                    })
             })
     }
 
@@ -324,9 +342,11 @@ impl MemoryBlock {
         resource_class: AllocationResourceClass,
         memory_allocate_flags: vk::MemoryAllocateFlags,
     ) -> bool {
-        !self.dedicated
-            && (self.resource_class == resource_class || self.is_empty())
-            && self.memory_allocate_flags == memory_allocate_flags
+        self.is_reusable_with(memory_allocate_flags) && self.resource_class == resource_class
+    }
+
+    fn is_reusable_with(&self, memory_allocate_flags: vk::MemoryAllocateFlags) -> bool {
+        !self.dedicated && self.memory_allocate_flags == memory_allocate_flags
     }
 
     pub(crate) fn suballocate(&mut self, size: u64, alignment: u64) -> Option<Suballocation> {
@@ -559,6 +579,7 @@ impl MemoryBlock {
             block_index,
             resource_class: self.resource_class,
             dedicated: self.dedicated,
+            memory_allocate_flags: self.memory_allocate_flags,
             memory: self.memory,
             size: self.size,
             free_bytes: 0,

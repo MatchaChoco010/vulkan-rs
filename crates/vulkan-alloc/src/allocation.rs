@@ -52,9 +52,14 @@ pub struct AllocationCreateDesc<'a> {
     /// [`vk::ImageTiling::OPTIMAL`], images with any other DRM format modifier, and
     /// tensors with another tiling.
     ///
-    /// Linear and non-linear allocations never share a `VkDeviceMemory`, which keeps
-    /// them out of each other's `bufferImageGranularity` pages. Binding a resource of
-    /// the other kind to the allocation breaks that; see the safety section of
+    /// Linear and non-linear allocations are never in the same `VkDeviceMemory` at the
+    /// same time: a block that holds allocations takes only allocations of their kind.
+    /// An empty block that the allocator keeps (see
+    /// [`Allocator::free`](crate::Allocator::free)) takes either kind, so one block can
+    /// hold linear allocations at one time and non-linear ones later. Resources of a
+    /// freed allocation are not used any more, so this keeps the resources in use out of
+    /// each other's `bufferImageGranularity` pages. Binding a resource of the other kind
+    /// to the allocation breaks that; see the safety section of
     /// [`Allocator::allocate`](crate::Allocator::allocate).
     pub linear: bool,
     /// Flags for `VkMemoryAllocateFlagsInfo`, chained to the `vkAllocateMemory` call
@@ -181,10 +186,12 @@ impl Allocation {
 /// The kind of resource a block holds, as reported by
 /// [`MemoryBlockSnapshot::resource_class`](crate::MemoryBlockSnapshot::resource_class).
 ///
-/// Allocations of different classes never share a `VkDeviceMemory`, so the
-/// `bufferImageGranularity` limit, which applies between a linear and a non-linear
-/// resource in the same memory object, never applies between two allocations whose
-/// [`AllocationCreateDesc::linear`] was stated correctly.
+/// Allocations of different classes are never in the same `VkDeviceMemory` at the same
+/// time: while a block holds allocations, it takes only allocations of their class. An
+/// empty block that the allocator keeps takes the class of the next allocation placed
+/// in it. So the `bufferImageGranularity` limit, which applies between a linear and a
+/// non-linear resource in the same memory object, never applies between two live
+/// allocations whose [`AllocationCreateDesc::linear`] was stated correctly.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AllocationResourceClass {
     /// Allocations made with [`AllocationCreateDesc::linear`] set to `true`.

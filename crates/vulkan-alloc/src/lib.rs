@@ -91,23 +91,27 @@
 //! `vkAllocateMemory` running out of device memory is reported with the same error. A
 //! description the allocator does not accept, such as one of size 0, is refused with
 //! [`AllocationError::InvalidAllocationCreateDesc`] before anything else is checked.
-//! Allocations that differ in [`AllocationCreateDesc::linear`] or
-//! [`AllocationCreateDesc::memory_allocate_flags`] never share a block. Dedicated
+//! Allocations that differ in [`AllocationCreateDesc::memory_allocate_flags`] never
+//! share a block, and allocations that differ in [`AllocationCreateDesc::linear`] are
+//! never in a block at the same time. Dedicated
 //! allocations ([`AllocationScheme::DedicatedBuffer`],
 //! [`AllocationScheme::DedicatedImage`]), exportable allocations
 //! ([`AllocationCreateDesc::export_handle_types`]) and zero-initialized allocations
 //! ([`vulkan::vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] in
 //! [`AllocationCreateDesc::memory_allocate_flags`]) get a `VkDeviceMemory` of their own.
+//!
 //! When the last allocation of a shared block is freed, the block is kept empty if it
 //! has the size of a new shared block of its memory type and the type has no other
-//! empty block. The next allocations of that type with the same
-//! [`AllocationCreateDesc::memory_allocate_flags`] are placed in it, whatever their
+//! empty block with the same [`AllocationCreateDesc::memory_allocate_flags`]. An
+//! allocation of that type with those flags that fits in no block holding allocations
+//! of its kind is placed in the empty block, whatever its
 //! [`AllocationCreateDesc::linear`]. This spares a `vkAllocateMemory` call each time a
 //! program allocates and frees one allocation, such as a staging buffer, in a memory
 //! type that holds nothing else. Other blocks are freed when their last allocation is
-//! freed (see [`Allocator::free`]).
-//! [`Allocator::free_empty_blocks`] frees the empty blocks, and dropping the allocator
-//! frees all of its memory.
+//! freed (see [`Allocator::free`]). A kept block still takes room in its memory heap,
+//! so other allocations from that heap can run out of memory sooner than they would
+//! without it; [`Allocator::free_empty_blocks`] gives that memory back, and dropping
+//! the allocator frees all of its memory.
 //!
 //! The free ranges of a block are kept in lists by size class. A request first looks
 //! only at the first free range of each list, from the class of the requested size
@@ -201,12 +205,24 @@
 //!
 //! Dropping the allocator frees all of its `VkDeviceMemory` with `vkFreeMemory`: the
 //! empty blocks it keeps (see [`Allocator::free`]) and the memory of allocations that
-//! were not freed. So it is dropped before the device is destroyed, once the device no
-//! longer uses that memory; the safety section of [`Allocator::allocate`] requires
-//! this. An allocator that holds no memory, because it never allocated or because
-//! [`Allocator::free_all`] was called after its last allocation, makes no Vulkan call
-//! when dropped, and may be dropped after the device was destroyed. Allocating,
-//! freeing, mapping, unmapping, flushing or invalidating after that is not allowed.
+//! were not freed. So it is dropped before the device is destroyed, once every
+//! submitted command that refers to that memory has completed; the safety section of
+//! [`Allocator::allocate`] requires this. An allocator that holds no block
+//! ([`Allocator::stats`] gives a `block_count` of 0), for example because it never
+//! allocated or because [`Allocator::free_all`] was called after its last allocation,
+//! makes no Vulkan call when dropped, and may be dropped after the device was
+//! destroyed. Allocating, freeing, mapping, unmapping, flushing or invalidating after
+//! that is not allowed.
+//!
+//! This holds for a drop during unwinding too. If code panics between submitting
+//! commands that refer to the allocator's memory and waiting for them, unwinding drops
+//! the allocator, and with it frees memory that pending commands refer to. Keep the
+//! allocator from being dropped first in that case, for example:
+//!
+//! - declare a guard that waits for the device to become idle in its `Drop` after the
+//!   allocator, so that it is dropped, and waits, before the allocator is;
+//! - or keep the allocator in a [`ManuallyDrop`](std::mem::ManuallyDrop) and drop it
+//!   yourself once the device has finished.
 //!
 //! # Leaks
 //!
@@ -217,8 +233,9 @@
 //! Dropping an [`Allocator`] that still has live allocations does not panic. It logs an
 //! error through the [`log`] crate that lists each live allocation with its
 //! [`AllocationCreateDesc::name`], then frees their `VkDeviceMemory` with the rest of
-//! its memory. The device must no longer use the resources bound to that memory, and
-//! they must not be used afterwards (see the safety section of [`Allocator::allocate`]).
+//! its memory. Every submitted command that refers to that memory must have completed,
+//! and the resources bound to it must not be used afterwards (see the safety section of
+//! [`Allocator::allocate`]).
 //!
 //! # Threads
 //!

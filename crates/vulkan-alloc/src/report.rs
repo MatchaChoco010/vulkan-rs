@@ -75,8 +75,8 @@ pub struct MemoryTypeSnapshot {
 /// One `VkDeviceMemory` block in a [`MemoryTypeSnapshot`].
 ///
 /// A block can be empty, with no allocated region: the allocator keeps up to one empty
-/// block per memory type for later allocations (see
-/// [`Allocator::free`](crate::Allocator::free)).
+/// block per memory type and [`MemoryBlockSnapshot::memory_allocate_flags`] for later
+/// allocations (see [`Allocator::free`](crate::Allocator::free)).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryBlockSnapshot {
     /// The position of the block among the blocks of its memory type. It stays the same
@@ -90,6 +90,11 @@ pub struct MemoryBlockSnapshot {
     /// Whether the block is the `VkDeviceMemory` of a single dedicated, exportable or
     /// zero-initialized allocation.
     pub dedicated: bool,
+    /// The [`memory_allocate_flags`] the block was allocated with. Only allocations with
+    /// the same flags are placed in it.
+    ///
+    /// [`memory_allocate_flags`]: crate::AllocationCreateDesc::memory_allocate_flags
+    pub memory_allocate_flags: vk::MemoryAllocateFlags,
     /// The `VkDeviceMemory` of the block.
     pub memory: vk::DeviceMemory,
     /// The size of the block in bytes.
