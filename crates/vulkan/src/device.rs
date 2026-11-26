@@ -37,12 +37,12 @@ impl Device {
     /// # Vulkan-Loader releases before 1.4.345
     ///
     /// The function looks up every device-level command with `vkGetDeviceProcAddr`.
-    /// Vulkan-Loader releases before 1.4.345, which are the loaders of the Vulkan SDK
-    /// releases before 1.4.350.0 and include version 1.3.275, which Ubuntu 24.04 ships,
-    /// do not synchronize such a lookup with `vkCreateDevice` and `vkDestroyDevice` on
-    /// other threads, whatever device and instance those are called for, nor with a
-    /// `vkCreateInstance` on another thread that fails, or in which one of the installed
-    /// drivers fails: the lookup can read memory that those calls have freed, and crash.
+    /// Vulkan-Loader releases before 1.4.345 (every Vulkan SDK release before 1.4.350.0
+    /// has one, and Ubuntu 24.04 ships version 1.3.275) do not synchronize such a lookup
+    /// with `vkCreateDevice` and `vkDestroyDevice` on other threads, whatever device and
+    /// instance those are called for, nor with a `vkCreateInstance` on another thread
+    /// that fails, or in which one of the installed drivers fails: the lookup can read
+    /// memory that those calls have freed, and crash.
     /// The same holds for every other lookup with `vkGetDeviceProcAddr`
     /// ([`Instance::get_device_proc_addr`] and [`vk::DeviceFn::load`]) and for the
     /// commands `vkSetDebugUtilsObjectNameEXT`, `vkSetDebugUtilsObjectTagEXT`,
@@ -50,8 +50,8 @@ impl Device {
     ///
     /// With such a loader, do not create or destroy a device, and do not create an
     /// instance, on another thread while this function, [`Instance::create_device`] or
-    /// one of those calls runs. The crate does not serialize the calls for the
-    /// application. Vulkan-Loader reports its own version through
+    /// one of the lookups and commands named above runs. The crate does not serialize
+    /// the calls for the application. Vulkan-Loader reports its own version through
     /// [`Entry::enumerate_instance_version`](crate::Entry::enumerate_instance_version).
     ///
     /// # Panics
