@@ -155,7 +155,7 @@ mod tests {
         ] {
             assert!(
                 squash(&fault).contains(&format!(
-                    "pub fn {setter}(mut self, value: &'a mut [{element}]) -> Self {{ self.{member} = if value.is_empty() {{ core::ptr::null_mut() }} else {{ value.as_mut_ptr() }}; self }}"
+                    "pub fn {setter}(mut self, value: &'a mut [{element}]) -> Self {{ self.{member} = mut_ptr_or_null(value); self }}"
                 )),
                 "{setter}: {fault}"
             );
@@ -174,7 +174,7 @@ mod tests {
         let inheritance = generated(&model, "VkCommandBufferInheritanceViewportScissorInfoNV");
         assert!(
             squash(&inheritance).contains(
-                "pub fn viewport_depths(mut self, value: &'a [Viewport]) -> Self { self.viewport_depth_count = len_as_count(value.len(), \"VkCommandBufferInheritanceViewportScissorInfoNV::pViewportDepths\", \"viewportDepthCount\"); self.p_viewport_depths = value.as_ptr(); self }"
+                "pub fn viewport_depths(mut self, value: &'a [Viewport]) -> Self { self.viewport_depth_count = len_as_count(value.len(), \"VkCommandBufferInheritanceViewportScissorInfoNV::pViewportDepths\", \"viewportDepthCount\"); self.p_viewport_depths = ptr_or_null(value); self }"
             ),
             "{inheritance}"
         );
@@ -182,6 +182,7 @@ mod tests {
             doc_of(&inheritance, "pub fn viewport_depths("),
             [
                 "Sets [`p_viewport_depths`](Self::p_viewport_depths) to the start of a slice of elements and [`viewport_depth_count`](Self::viewport_depth_count) to its length.",
+                "An empty slice sets [`p_viewport_depths`](Self::p_viewport_depths) to a null pointer.",
                 "# Panics",
                 "Panics if the slice has more elements than `viewportDepthCount`, a `uint32_t`, can count.",
             ]

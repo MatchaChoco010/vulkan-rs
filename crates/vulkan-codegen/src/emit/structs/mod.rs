@@ -3,6 +3,8 @@ mod absent_arrays;
 mod bit_fields;
 mod bounded_arrays;
 mod defaults;
+#[cfg(test)]
+mod empty_slices;
 mod nullable_arrays;
 mod read_only_members;
 mod setters;
@@ -334,7 +336,7 @@ mod tests {
         assert!(out.contains("pub struct DeviceQueueCreateInfo<'a> {"));
         assert!(out.contains("pub _marker: PhantomData<&'a ()>,"));
         assert!(out.contains(
-            "pub fn queue_priorities(mut self, value: &'a [f32]) -> Self { self.queue_count = len_as_count(value.len(), \"VkDeviceQueueCreateInfo::pQueuePriorities\", \"queueCount\"); self.p_queue_priorities = value.as_ptr(); self }"
+            "pub fn queue_priorities(mut self, value: &'a [f32]) -> Self { self.queue_count = len_as_count(value.len(), \"VkDeviceQueueCreateInfo::pQueuePriorities\", \"queueCount\"); self.p_queue_priorities = ptr_or_null(value); self }"
         ));
         assert!(out.contains("s_type: StructureType::DEVICE_QUEUE_CREATE_INFO,"));
         assert!(out.contains("unsafe impl TaggedStructure for DeviceQueueCreateInfo<'_> {"));
@@ -390,7 +392,7 @@ mod tests {
         let out = squash(&emit(&Model::new(&ir)));
         assert!(out.contains("pub pp_enabled_extension_names: *const *const c_char,"));
         assert!(out.contains(
-            "pub fn enabled_extension_names(mut self, value: &'a [CStrPtr<'a>]) -> Self { self.enabled_extension_count = len_as_count(value.len(), \"VkInstanceCreateInfo::ppEnabledExtensionNames\", \"enabledExtensionCount\"); self.pp_enabled_extension_names = value.as_ptr().cast(); self }"
+            "pub fn enabled_extension_names(mut self, value: &'a [CStrPtr<'a>]) -> Self { self.enabled_extension_count = len_as_count(value.len(), \"VkInstanceCreateInfo::ppEnabledExtensionNames\", \"enabledExtensionCount\"); self.pp_enabled_extension_names = ptr_or_null(value).cast(); self }"
         ));
         assert!(out.contains(
             "pub fn application_name(mut self, value: &'a CStr) -> Self { self.p_application_name = value.as_ptr(); self }"

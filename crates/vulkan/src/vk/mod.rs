@@ -90,6 +90,7 @@ mod handle;
 mod layer_setting;
 mod names;
 mod platform;
+mod ptr_or_null;
 mod result;
 
 pub use api_version::*;
@@ -107,4 +108,5 @@ pub use handle::Handle;
 pub use layer_setting::LayerSettingValue;
 pub(crate) use names::{debug_enum, debug_flags, name_of, value_of};
 pub use platform::*;
+pub(crate) use ptr_or_null::{mut_ptr_or_null, ptr_or_null};
 pub use result::Result;

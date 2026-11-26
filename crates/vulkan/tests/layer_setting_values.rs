@@ -11,10 +11,14 @@ fn assert_counts_values<T: vk::LayerSettingValue>(ty: vk::LayerSettingTypeEXT, v
             "{ty:?}: valueCount is the number of values, not the {} bytes that they take",
             size_of_val(values)
         );
+        let start = if values.is_empty() {
+            core::ptr::null()
+        } else {
+            values.as_ptr().cast::<c_void>()
+        };
         assert_eq!(
-            setting.p_values,
-            values.as_ptr().cast::<c_void>(),
-            "{ty:?}: pValues is the start of the slice"
+            setting.p_values, start,
+            "{ty:?}: pValues is the start of the slice, or null for no values"
         );
         assert_eq!(setting.ty, ty, "{ty:?}: values leaves the type as it was");
     }

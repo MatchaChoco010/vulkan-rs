@@ -1,4 +1,5 @@
 use super::definition;
+use super::empty_slices::{Empty, slice_setters};
 use super::nullable_arrays::NULLABLE_ARRAYS;
 use crate::emit::{doc_of, squash};
 use crate::model::{CType, Model};
@@ -77,8 +78,8 @@ fn an_empty_slice_of_an_array_that_is_not_optional_sets_the_count_to_zero() {
     let out = definition(&model, &ir.structs[1]);
     let squashed = squash(&out);
     for setter in [
-        "pub fn required(mut self, value: &'a [u32]) -> Self { if !self.p_optional.is_null() { assert_eq!(self.pair_count as usize, value.len(), \"VkArraysNV::pRequired: every array sharing `pairCount` must have the same length\"); } self.pair_count = len_as_count(value.len(), \"VkArraysNV::pRequired\", \"pairCount\"); self.p_required = value.as_ptr(); self }",
-        "pub fn plain(mut self, value: &'a [u32]) -> Self { self.plain_count = len_as_count(value.len(), \"VkArraysNV::pPlain\", \"plainCount\"); self.p_plain = value.as_ptr(); self }",
+        "pub fn required(mut self, value: &'a [u32]) -> Self { if !self.p_optional.is_null() { assert_eq!(self.pair_count as usize, value.len(), \"VkArraysNV::pRequired: every array sharing `pairCount` must have the same length\"); } self.pair_count = len_as_count(value.len(), \"VkArraysNV::pRequired\", \"pairCount\"); self.p_required = ptr_or_null(value); self }",
+        "pub fn plain(mut self, value: &'a [u32]) -> Self { self.plain_count = len_as_count(value.len(), \"VkArraysNV::pPlain\", \"plainCount\"); self.p_plain = ptr_or_null(value); self }",
     ] {
         assert!(squashed.contains(setter), "{setter}: {squashed}");
     }
@@ -86,6 +87,7 @@ fn an_empty_slice_of_an_array_that_is_not_optional_sets_the_count_to_zero() {
         doc_of(&out, "pub fn plain("),
         [
             "Sets [`p_plain`](Self::p_plain) to the start of a slice of elements and [`plain_count`](Self::plain_count) to its length.",
+            "An empty slice sets [`p_plain`](Self::p_plain) to a null pointer.",
             "# Panics",
             "Panics if the slice has more elements than `plainCount`, a `uint32_t`, can count.",
         ]
@@ -118,6 +120,7 @@ fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the
     let mut listed_arrays = 0;
     for s in model.ir.structs.iter().filter(|s| !s.union) {
         let out = squash(&definition(&model, s));
+        let setters = slice_setters(&out);
         for m in &s.members {
             let ty = CType::of(m);
             if ty.depth() == 0 || ty.is_array() {
@@ -128,9 +131,9 @@ fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the
             };
             let field = field_name(&m.name);
             let count_field = field_name(&count.name);
-            if !out.contains(&format!("self.{field} = value.as_")) {
+            let Some(setter) = setters.iter().find(|setter| setter.field == field) else {
                 continue;
-            }
+            };
             counted_arrays += 1;
             let sets_null = out.contains(&format!("self.{field} = core::ptr::null"));
             let guards_the_count = out.contains(&format!(
@@ -148,9 +151,10 @@ fn the_registry_setters_take_an_empty_slice_as_an_absent_array_exactly_where_the
                 .iter()
                 .any(|listed| listed.structure == s.name && listed.member == m.name);
             let nullable = m.optional || listed;
+            let empty = if nullable { Empty::Absent } else { Empty::Null };
             assert_eq!(
-                (sets_null, guards_the_count, leaves_the_count),
-                (nullable, nullable, nullable),
+                (sets_null, guards_the_count, leaves_the_count, setter.empty),
+                (nullable, nullable, nullable, empty),
                 "{}::{}, whose pointer the registry {} as optional{}: {out}",
                 s.name,
                 m.name,

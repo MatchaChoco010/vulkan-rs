@@ -150,6 +150,7 @@ pub(crate) fn assert_listed_nullable_arrays_exist(ir: &Registry) {
 #[cfg(test)]
 mod tests {
     use super::super::definition;
+    use super::super::empty_slices::slice_setters;
     use super::*;
     use crate::emit::squash;
     use crate::model::Model;
@@ -269,10 +270,11 @@ mod tests {
             };
             let mut has_such_an_array = false;
             let generated = squash(&definition(&model, s));
+            let setters = slice_setters(&generated);
             for m in &s.members {
                 let ty = CType::of(m);
-                let takes_a_slice =
-                    generated.contains(&format!("self.{} = value.as_", field_name(&m.name)));
+                let field = field_name(&m.name);
+                let takes_a_slice = setters.iter().any(|setter| setter.field == field);
                 if ty.depth() == 0
                     || ty.is_array()
                     || m.optional

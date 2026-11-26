@@ -1018,9 +1018,9 @@ mod tests {
         );
         assert!(
             flat.contains(&format!(
-                "Sets [`p_code`](Self::p_code) to the start of a slice of bytes and [`code_size`](Self::code_size) to its length.  {requirement} pub fn code(mut self, value: &'a [u8]) -> Self {{"
+                "Sets [`p_code`](Self::p_code) to the start of a slice of bytes and [`code_size`](Self::code_size) to its length.  An empty slice sets [`p_code`](Self::p_code) to a null pointer.  {requirement} pub fn code(mut self, value: &'a [u8]) -> Self {{"
             )),
-            "the requirement follows the first paragraph of the documentation of ShaderCreateInfoEXT::code"
+            "the requirement follows what the documentation of ShaderCreateInfoEXT::code says about the pointer and the size"
         );
     }
 }
