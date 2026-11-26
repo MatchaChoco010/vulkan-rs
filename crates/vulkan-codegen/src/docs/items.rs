@@ -1233,7 +1233,7 @@ mod tests {
             "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}, generated=generated))",
             "items = tool.spec_described_items(body, 'VkPage')",
             "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
-            "docs = {'commit': '', 'anchors': {}, 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
+            "docs = {'commit': '', 'anchors': {}, 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': [], 'items_outside_pages': []}",
             "print(json.dumps(docs))",
         ];
         let json = match run_with_the_tool(&steps, &[], &source.join("\n"))? {
@@ -1962,5 +1962,180 @@ mod tests {
             ],
             &[NEXT],
         );
+    }
+
+    fn dumped_file(source: &[&str]) -> Option<Result<Docs, String>> {
+        let steps = [
+            "with tempfile.TemporaryDirectory() as directory:",
+            "    source = pathlib.Path(directory) / 'page.adoc'",
+            "    source.write_text(sys.stdin.read())",
+            "    lines = list(tool.spec_lines(source, {'VK_KHR_defined'}))",
+            "blocks = tool.spec_page_blocks(lines)",
+            "items = lambda first, last, name: tool.spec_described_items(lines[first + 2 : last], name)",
+            "page = lambda first, last, attributes: {'name': attributes['refpage'], 'kind': attributes['type'], 'desc': attributes['desc'], 'aliases': [], 'file': '', 'items': items(first, last, attributes['refpage'])}",
+            "outside = tool.spec_items_outside_pages('chapters/page.adoc', lines, blocks)",
+            "docs = {'commit': '', 'anchors': {}, 'attributes': {}, 'titles': {}, 'pages': [page(*block) for block in blocks], 'tables': [], 'items_outside_pages': outside}",
+            "print(json.dumps(docs))",
+        ];
+        let json = match run_with_the_tool(&steps, &[], &source.join("\n"))? {
+            Ok(json) => json,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(Ok(
+            Docs::from_json(&json).unwrap_or_else(|error| panic!("{error}: {json}"))
+        ))
+    }
+
+    #[test]
+    fn the_dump_has_the_items_outside_the_reference_pages_that_start_with_a_value() {
+        let Some(docs) = dumped_file(&[
+            "  * ename:VK_BEFORE specifies what comes before every page.",
+            "  * pname:member is no value.",
+            "  * [[VUID-vkCommand-value-00001]]",
+            "    ename:VK_USAGE must: be valid",
+            "  * Otherwise, ename:VK_INSIDE specifies nothing at the start.",
+            "",
+            "[open,refpage='VkFirst',desc='The first type',type='enums']",
+            "--",
+            "  * ename:VK_FIRST_A specifies a.",
+            "--",
+            "ifdef::VK_KHR_defined[]",
+            "  * ename:VK_FIRST_B",
+            "    specifies b, after the block of its type:",
+            "  ** nested",
+            "+",
+            "More about b.",
+            "  * [[anchor-c]] ename:VK_FIRST_C",
+            "endif::VK_KHR_defined[]",
+            "ifdef::VK_KHR_undefined[]",
+            "  * ename:VK_FIRST_GONE specifies a value that this build does not have.",
+            "endif::VK_KHR_undefined[]",
+            "",
+            "[open,refpage='VkSecond',desc='The second type',type='enums']",
+            "--",
+            "  * ename:VK_SECOND_A specifies a.",
+            "--",
+            "",
+            "[open,refpage='VkNoBlock',desc='No block follows',type='enums']",
+            "",
+            "  * ename:VK_LAST specifies the last value,",
+            "    which the next block ends.",
+            "[open,refpage='VkThird',desc='The third type',type='enums']",
+            "--",
+            "--",
+            "",
+            "[cols=\"1,1\"]",
+            "|====",
+            "|Values |Use",
+            "a| * ename:VK_CELL_A",
+            "  * ename:VK_CELL_B specifies b in a cell.",
+            "  * ename:VK_CELL_C",
+            "| ename:VK_USE",
+            "",
+            "a|",
+            "  * ename:VK_CELL_D",
+            "| ename:VK_USE",
+            "|====",
+            "  * ename:VK_AFTER specifies what follows the table.",
+        ]) else {
+            return;
+        };
+        let docs = docs.expect("the file is read");
+        let pages = docs
+            .pages
+            .iter()
+            .map(|page| {
+                let items = page
+                    .items
+                    .iter()
+                    .map(|item| (item.name.as_str(), item.text.as_str()))
+                    .collect::<Vec<_>>();
+                (page.name.as_str(), items)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            pages,
+            [
+                (
+                    "VkFirst",
+                    vec![("VK_FIRST_A", "ename:VK_FIRST_A specifies a.")]
+                ),
+                (
+                    "VkSecond",
+                    vec![("VK_SECOND_A", "ename:VK_SECOND_A specifies a.")]
+                ),
+                ("VkThird", vec![]),
+            ]
+        );
+        let outside = docs
+            .items_outside_pages
+            .iter()
+            .map(|item| (item.file.as_str(), item.name.as_str(), item.text.as_str()))
+            .collect::<Vec<_>>();
+        let file = "chapters/page.adoc";
+        assert_eq!(
+            outside,
+            [
+                (
+                    file,
+                    "VK_BEFORE",
+                    "ename:VK_BEFORE specifies what comes before every page."
+                ),
+                (
+                    file,
+                    "VK_FIRST_B",
+                    "ename:VK_FIRST_B\nspecifies b, after the block of its type:\n** nested\n+\nMore about b."
+                ),
+                (file, "VK_FIRST_C", "ename:VK_FIRST_C"),
+                (
+                    file,
+                    "VK_LAST",
+                    "ename:VK_LAST specifies the last value,\nwhich the next block ends."
+                ),
+                (
+                    file,
+                    "VK_AFTER",
+                    "ename:VK_AFTER specifies what follows the table."
+                ),
+            ],
+            "the list items in the cells of a table are no items of their own"
+        );
+    }
+
+    #[test]
+    fn the_dump_stops_at_an_item_of_a_value_outside_the_pages_that_cannot_be_read_reliably() {
+        for (source, problem) in [
+            (
+                ["  * ename:VK_A specifies:", "+", "+", "More."],
+                "the list item of VK_A cannot be read reliably: two list continuations in a row",
+            ),
+            (
+                [
+                    "  * ename:VK_A specifies the flags of:",
+                    "include::{generated}/flags.adoc[]",
+                    "",
+                    "More.",
+                ],
+                "the list item of VK_A goes on in a file that is not read: include::{generated}/flags.adoc[]",
+            ),
+        ] {
+            let Some(docs) = dumped_file(&source) else {
+                return;
+            };
+            let error = docs
+                .map(|docs| docs.items_outside_pages)
+                .expect_err(&source.join("\n"));
+            assert!(
+                error.contains(&format!(
+                    "chapters/page.adoc, outside the reference pages: {problem}"
+                )),
+                "{error}"
+            );
+        }
+        let Some(docs) = dumped_file(&["  * pname:a is:", "+", "+", "More."]) else {
+            return;
+        };
+        let outside = docs.expect("the item of a member outside the pages is not read");
+        assert!(outside.items_outside_pages.is_empty());
     }
 }

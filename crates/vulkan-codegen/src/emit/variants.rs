@@ -111,6 +111,8 @@ fn value_doc(model: &Model<'_>, owner: &str, owner_cfg: &Cfg, v: &Variant<'_>) -
         ))
     } else if let Some(tabulated) = model.tabulated(&from, owner, c_name) {
         Doc::new().blocks(tabulated)
+    } else if let Some(described) = model.described_outside_the_page(&from, owner, c_name) {
+        Doc::new().blocks(described)
     } else {
         Doc::new().text(format!(
             "`{c_name}`, a value of {}.",

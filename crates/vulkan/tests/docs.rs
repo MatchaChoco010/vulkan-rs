@@ -372,8 +372,30 @@ impl LegacyRegistry {
     }
 }
 
+struct ValueDescription {
+    page: Option<String>,
+    file: String,
+    text: String,
+}
+
+impl ValueDescription {
+    fn place(&self) -> String {
+        match &self.page {
+            Some(page) => format!("the page {page}"),
+            None => format!("{} outside the reference pages", self.file),
+        }
+    }
+}
+
+struct Segment {
+    page: Option<String>,
+    file: String,
+    lines: Vec<String>,
+}
+
 struct Specification {
     pages: BTreeMap<String, Page>,
+    value_descriptions: BTreeMap<String, Vec<ValueDescription>>,
     tables: Vec<Table>,
     extensions: BTreeSet<String>,
     attributes: BTreeMap<String, String>,
@@ -404,6 +426,8 @@ struct Markup {
     note: Regex,
     mark: Regex,
     described_item: Regex,
+    value_description: Regex,
+    table_delimiter: Regex,
     block_attributes: Regex,
     block_title: Regex,
     block_delimiter: Regex,
@@ -425,6 +449,10 @@ impl Markup {
             described_item: regex(
                 r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)(pname:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)pname:\w+)*|ename:\w+(?:(?:,\s+(?:and\s+)?|\s+and\s+)ename:\w+)*)\b",
             ),
+            value_description: regex(
+                r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)ename:(\w+)\s+specifies\s+\S",
+            ),
+            table_delimiter: regex(r"^\|={3,}\s*$"),
             block_attributes: regex(r#"^\[(?:|[\w.#%{,"'].*)\]$"#),
             block_title: regex(r"^\.\.?[^ \t.]"),
             block_delimiter: regex(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|\|={3,})$"),
@@ -679,6 +707,7 @@ impl Specification {
         let table_syntax = TableSyntax::new();
 
         let mut pages = BTreeMap::new();
+        let mut segments = Vec::new();
         let mut tables = Vec::new();
         let mut titles = BTreeMap::new();
         let mut defined_anchors = BTreeMap::new();
@@ -766,6 +795,26 @@ impl Specification {
                 index = end + 1;
             }
 
+            let mut outside_from = 0;
+            for (first, last, name) in &blocks {
+                segments.push(Segment {
+                    page: None,
+                    file: relative.clone(),
+                    lines: lines[outside_from..*first].to_vec(),
+                });
+                segments.push(Segment {
+                    page: Some(name.clone()),
+                    file: relative.clone(),
+                    lines: lines[first + 2..*last].to_vec(),
+                });
+                outside_from = (last + 1).min(lines.len());
+            }
+            segments.push(Segment {
+                page: None,
+                file: relative.clone(),
+                lines: lines[outside_from..].to_vec(),
+            });
+
             let mut index = 0;
             while index < lines.len() {
                 if !table_syntax.delimiter.is_match(&lines[index]) {
@@ -821,6 +870,7 @@ impl Specification {
             .collect();
         let mut specification = Self {
             pages: BTreeMap::new(),
+            value_descriptions: BTreeMap::new(),
             tables,
             extensions,
             attributes,
@@ -837,7 +887,50 @@ impl Specification {
             page.body_words = specification.words(&page.body);
         }
         specification.pages = pages;
+        specification.value_descriptions = specification.value_descriptions_in(&segments);
         specification
+    }
+
+    fn value_descriptions_in(
+        &self,
+        segments: &[Segment],
+    ) -> BTreeMap<String, Vec<ValueDescription>> {
+        let mut descriptions = BTreeMap::<String, Vec<ValueDescription>>::new();
+        for segment in segments {
+            let lines = segment.lines.iter().map(String::as_str).collect::<Vec<_>>();
+            let mut index = 0;
+            while index < lines.len() {
+                let start = index;
+                index += 1;
+                if self.markup.table_delimiter.is_match(lines[start]) {
+                    let delimiter = lines[start].trim_end();
+                    let cells = lines[index..]
+                        .iter()
+                        .position(|line| line.trim_end() == delimiter)
+                        .unwrap_or(lines.len() - index);
+                    index += cells + 1;
+                    continue;
+                }
+                if !self.markup.list_item.is_match(lines[start]) {
+                    continue;
+                }
+                index = self.item_end(&lines, start);
+                let text = lines[start..index].join("\n");
+                if let Some(described) = self.markup.value_description.captures(&text)
+                    && !described[1].contains("[[VUID-")
+                {
+                    descriptions
+                        .entry(described[2].to_string())
+                        .or_default()
+                        .push(ValueDescription {
+                            page: segment.page.clone(),
+                            file: segment.file.clone(),
+                            text,
+                        });
+                }
+            }
+        }
+        descriptions
     }
 
     fn words(&self, text: &str) -> String {
@@ -1174,6 +1267,15 @@ impl Specification {
         self.described(page, macro_name)
             .iter()
             .any(|described| described == item)
+    }
+
+    fn described_outside_the_page(&self, page: &str, value: &str) -> &[ValueDescription] {
+        if !self.pages.contains_key(page) || self.describes(page, "ename", value) {
+            return &[];
+        }
+        self.value_descriptions
+            .get(value)
+            .map_or(&[], Vec::as_slice)
     }
 
     fn described(&self, page: &str, macro_name: &str) -> Vec<String> {
@@ -1798,6 +1900,7 @@ struct Checker {
     legacy_statements: BTreeMap<&'static str, usize>,
     legacy_shown: BTreeMap<String, usize>,
     legacy_not_shown: BTreeMap<String, usize>,
+    described_outside_their_page: Vec<String>,
 }
 
 struct Generated {
@@ -2181,6 +2284,14 @@ impl Checker {
             if !spec.table_rows(Some(page), values, c_name).is_empty() {
                 self.fail(item, format!("the specification describes `{c_name}` in a table row, but the documentation does not use it"));
             }
+            let elsewhere = spec.described_outside_the_page(page, c_name);
+            if !elsewhere.is_empty() {
+                let places = elsewhere
+                    .iter()
+                    .map(|description| description.place())
+                    .collect::<Vec<_>>();
+                self.fail(item, format!("the specification describes `{c_name}` outside the page `{page}` ({}), but the documentation does not use it", places.join(", ")));
+            }
             return;
         }
         self.described_values += 1;
@@ -2190,13 +2301,39 @@ impl Checker {
             self.tabulated(spec, generated, owner, item, c_name, raw);
             return;
         }
-        match owner_page {
-            Some(page) => {
+        let elsewhere = spec.described_outside_the_page(owner_page.unwrap_or_default(), c_name);
+        match (owner_page, elsewhere) {
+            (None, _) => self.fail(item, "is described although its type has no reference page"),
+            (Some(page), [description]) => {
+                if !spec.table_rows(Some(page), values, c_name).is_empty() {
+                    self.fail(item, format!("the specification describes `{c_name}` in a table row, which comes before the list item of {}", description.place()));
+                }
+                self.described_outside_their_page
+                    .push(format!("{c_name}: {}", description.place()));
+                let expected = spec.words(&description.text);
+                if generated_words(doc) != expected {
+                    self.fail(
+                        item,
+                        format!(
+                            "`{doc}` is not the list item of {} that describes `{c_name}`: `{}`",
+                            description.place(),
+                            flat(&description.text)
+                        ),
+                    );
+                }
+            }
+            (Some(_), [_, _, ..]) => self.fail(
+                item,
+                format!(
+                    "is described, but {} list items outside the page of its type describe `{c_name}`",
+                    elsewhere.len()
+                ),
+            ),
+            (Some(page), []) => {
                 self.contained(spec, item, page, doc);
                 self.whole(spec, item, page, ("ename", c_name), doc);
                 self.not_valid_usage(spec, item, page, doc);
             }
-            None => self.fail(item, "is described although its type has no reference page"),
         }
     }
 
@@ -2433,6 +2570,15 @@ const DESCRIPTIONS_OF_NO_MEMBER: &[&str] = &[
     "VkVideoEncodeH265PictureInfoKHR::pStdSliceSegmentHeader",
 ];
 
+const DESCRIBED_OUTSIDE_THEIR_PAGE: &[&str] = &[
+    "VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM: chapters/formats.adoc outside the reference pages",
+    "VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM: chapters/formats.adoc outside the reference pages",
+    "VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM: chapters/formats.adoc outside the reference pages",
+    "VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT: the page VkPipelineStageFlagBits",
+    "VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR: chapters/video/encode.adoc outside the reference pages",
+    "VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR: chapters/video/encode.adoc outside the reference pages",
+];
+
 #[test]
 fn generated_documentation_matches_the_specification() {
     let root = workspace_root();
@@ -2565,6 +2711,18 @@ fn generated_documentation_matches_the_specification() {
         checker.specification_links,
         checker.legacy_statements.values().sum::<usize>(),
         "the legacy statements are the only links into the specification"
+    );
+    assert_eq!(
+        checker
+            .described_outside_their_page
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        DESCRIBED_OUTSIDE_THEIR_PAGE
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "exactly these values are documented with a list item from outside the reference page of their type, which has no item for them. An item out there can be about one use of a value, so read the item before listing a value here"
     );
     for (what, count, at_least) in [
         (
@@ -2866,6 +3024,7 @@ fn fixture_tables() -> Vec<Table> {
 fn fixture_specification() -> Specification {
     let mut specification = Specification {
         pages: BTreeMap::new(),
+        value_descriptions: BTreeMap::new(),
         tables: fixture_tables(),
         extensions: BTreeSet::new(),
         attributes: BTreeMap::from([("times".to_string(), "×".to_string())]),
@@ -2968,6 +3127,9 @@ Empty ranges are for another day.
 A thing is empty with the following properties:
 
   * pname:elsewhere equal to `0`
+  * ename:VK_COLOR_UMBER specifies umber,
+    on the page of the things.
+  * ename:VK_COLOR_OCHRE is set.
 
 .Valid Usage
 ****
@@ -3024,7 +3186,9 @@ A thing is empty with the following properties:
 include::{generated}/validity/funcpointers/PFN_vkThingCallback.adoc[]",
         ),
     ];
+    let mut segments = vec![fixture_segment(None, FIXTURE_RUNNING_TEXT)];
     for (name, description, body) in pages {
+        segments.push(fixture_segment(Some(name), body));
         let body = specification.with_notes_at_their_marks(body);
         let body_words = specification.words(&body);
         let page = || Page {
@@ -3040,8 +3204,41 @@ include::{generated}/validity/funcpointers/PFN_vkThingCallback.adoc[]",
         }
         specification.pages.insert(name.to_string(), page());
     }
+    specification.value_descriptions = specification.value_descriptions_in(&segments);
     specification
 }
+
+fn fixture_segment(page: Option<&str>, text: &str) -> Segment {
+    Segment {
+        page: page.map(str::to_string),
+        file: FIXTURE_FILE.to_string(),
+        lines: text.lines().map(str::to_string).collect(),
+    }
+}
+
+const FIXTURE_RUNNING_TEXT: &str = "
+Things are drawn in the following colors:
+
+  * ename:VK_COLOR_AMBER
+    specifies amber, outside the reference pages:
+  ** a color of things
+  * ename:VK_COLOR_OCHRE
+  * ename:VK_COLOR_OCHRE, which specifies no color
+  * ename:VK_COLOR_RED specifies red where things are drawn.
+  * ename:VK_COLOR_BLUE specifies blue where things are drawn.
+
+|====
+|Colors |Use
+a| * ename:VK_COLOR_OCHRE specifies no color in the first item of a cell
+  * ename:VK_COLOR_OCHRE specifies no color in the last item of a cell
+| any
+|====
+
+.Valid Usage
+****
+  * [[VUID-vkCountThings-color-00002]]
+    ename:VK_COLOR_OCHRE specifies a requirement
+****";
 
 const FIXTURE_SOURCE: &str = r#"
 /// Structure specifying a thing.
@@ -3149,6 +3346,17 @@ impl Color {
     /// [`VK_COLOR_GOLD`](Color::GOLD) and `VK_COLOR_SILVER` specify a metal.
     #[doc(alias = "VK_COLOR_SILVER")]
     pub const SILVER: Self = Self(16);
+    /// `VK_COLOR_AMBER` specifies amber, outside the reference pages:
+    ///
+    /// - a color of things
+    #[doc(alias = "VK_COLOR_AMBER")]
+    pub const AMBER: Self = Self(17);
+    /// `VK_COLOR_UMBER` specifies umber, on the page of the things.
+    #[doc(alias = "VK_COLOR_UMBER")]
+    pub const UMBER: Self = Self(18);
+    /// `VK_COLOR_OCHRE`, a value of [`VkColor`](PAGES/VkColor.html).
+    #[doc(alias = "VK_COLOR_OCHRE")]
+    pub const OCHRE: Self = Self(19);
 }
 
 /// Application-defined thing callback.
@@ -3946,6 +4154,195 @@ fn checker_reports_a_value_fallback_when_a_table_row_of_the_specification_descri
         "/// `VK_COLOR_BLUE` in the table “Color Wavelengths” of the specification:\n    ///\n    /// - Wavelength:\n    ///   - short\n    ///   - or very short\n",
         "/// `VK_COLOR_BLUE`, a value of [`VkColor`](PAGES/VkColor.html).\n",
         "Color::BLUE: the specification describes `VK_COLOR_BLUE` in a table row, but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_collects_the_values_that_a_list_item_outside_their_page_describes() {
+    let checker = fixture_checker(FIXTURE_SOURCE);
+    assert_eq!(
+        checker.described_outside_their_page,
+        [
+            "VK_COLOR_AMBER: chapters/things.adoc outside the reference pages",
+            "VK_COLOR_UMBER: the page VkThing",
+        ]
+    );
+    let descriptions = fixture_specification()
+        .value_descriptions
+        .into_iter()
+        .map(|(value, descriptions)| {
+            let found = descriptions
+                .into_iter()
+                .map(|description| (description.place(), description.text))
+                .collect::<Vec<_>>();
+            (value, found)
+        })
+        .collect::<Vec<_>>();
+    let on_the_page = |page: &str| format!("the page {page}");
+    let outside_pages = || "chapters/things.adoc outside the reference pages".to_string();
+    let list_item = |lines: &[&str]| lines.join("\n");
+    assert_eq!(
+        descriptions,
+        [
+            (
+                "VK_COLOR_AMBER".to_string(),
+                vec![(
+                    outside_pages(),
+                    list_item(&[
+                        "  * ename:VK_COLOR_AMBER",
+                        "    specifies amber, outside the reference pages:",
+                        "  ** a color of things",
+                    ])
+                )]
+            ),
+            (
+                "VK_COLOR_BLUE".to_string(),
+                vec![(
+                    outside_pages(),
+                    list_item(&["  * ename:VK_COLOR_BLUE specifies blue where things are drawn."])
+                )]
+            ),
+            (
+                "VK_COLOR_GREEN".to_string(),
+                vec![(
+                    on_the_page("VkColor"),
+                    list_item(&["  * ename:VK_COLOR_GREEN specifies green."])
+                )]
+            ),
+            (
+                "VK_COLOR_RED".to_string(),
+                vec![
+                    (
+                        outside_pages(),
+                        list_item(&[
+                            "  * ename:VK_COLOR_RED specifies red where things are drawn."
+                        ])
+                    ),
+                    (
+                        on_the_page("VkColor"),
+                        list_item(&["  * ename:VK_COLOR_RED specifies red."])
+                    ),
+                ]
+            ),
+            (
+                "VK_COLOR_UMBER".to_string(),
+                vec![(
+                    on_the_page("VkThing"),
+                    list_item(&[
+                        "  * ename:VK_COLOR_UMBER specifies umber,",
+                        "    on the page of the things.",
+                    ])
+                )]
+            ),
+        ],
+        "an item that names a value in a list, in valid usage, among other words or in a cell of a table describes none"
+    );
+}
+
+#[test]
+fn checker_reports_a_value_fallback_when_a_list_item_outside_the_page_describes_the_value() {
+    assert_reported(
+        "a value documented only by its type although the running text describes it",
+        "/// `VK_COLOR_AMBER` specifies amber, outside the reference pages:\n    ///\n    /// - a color of things\n",
+        "/// `VK_COLOR_AMBER`, a value of [`VkColor`](PAGES/VkColor.html).\n",
+        "Color::AMBER: the specification describes `VK_COLOR_AMBER` outside the page `VkColor` (chapters/things.adoc outside the reference pages), but the documentation does not use it",
+    );
+    assert_reported(
+        "a value documented only by its type although another page describes it",
+        "/// `VK_COLOR_UMBER` specifies umber, on the page of the things.",
+        "/// `VK_COLOR_UMBER`, a value of [`VkColor`](PAGES/VkColor.html).",
+        "Color::UMBER: the specification describes `VK_COLOR_UMBER` outside the page `VkColor` (the page VkThing), but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_list_item_outside_the_page_taken_before_a_table_row() {
+    assert_reported(
+        "a value with a table row documented by an item of the running text",
+        "/// `VK_COLOR_BLUE` in the table “Color Wavelengths” of the specification:\n    ///\n    /// - Wavelength:\n    ///   - short\n    ///   - or very short\n",
+        "/// `VK_COLOR_BLUE` specifies blue where things are drawn.\n",
+        "Color::BLUE: the specification describes `VK_COLOR_BLUE` in a table row, which comes before the list item of chapters/things.adoc outside the reference pages",
+    );
+}
+
+#[test]
+fn checker_reports_a_description_that_is_not_the_list_item_outside_the_page() {
+    for (defect, replace, with) in [
+        (
+            "a part of the item left out",
+            "    ///\n    /// - a color of things\n",
+            "",
+        ),
+        (
+            "other words",
+            "/// `VK_COLOR_AMBER` specifies amber, outside",
+            "/// `VK_COLOR_AMBER` specifies umber, outside",
+        ),
+        (
+            "more than the item",
+            "    /// - a color of things\n",
+            "    /// - a color of things\n    /// - and more\n",
+        ),
+    ] {
+        assert_reported(
+            defect,
+            replace,
+            with,
+            "is not the list item of chapters/things.adoc outside the reference pages that describes `VK_COLOR_AMBER`: `* ename:VK_COLOR_AMBER specifies amber, outside the reference pages: ** a color of things`",
+        );
+    }
+    assert_reported(
+        "a description that no list item has",
+        "/// `VK_COLOR_OCHRE`, a value of [`VkColor`](PAGES/VkColor.html).",
+        "/// `VK_COLOR_OCHRE` specifies ochre.",
+        "Color::OCHRE: ``VK_COLOR_OCHRE` specifies ochre.` is not in the text that the specification has for `VkColor`",
+    );
+}
+
+#[test]
+fn checker_reports_a_value_that_several_list_items_outside_its_page_describe() {
+    let mut specification = fixture_specification();
+    let again = fixture_segment(
+        None,
+        "  * ename:VK_COLOR_AMBER specifies amber, outside the reference pages:\n  ** a color of things",
+    );
+    let more = specification.value_descriptions_in(&[again]);
+    for (value, descriptions) in more {
+        specification
+            .value_descriptions
+            .entry(value)
+            .or_default()
+            .extend(descriptions);
+    }
+    let failures = |source: &str| {
+        let source = source.replace("PAGES/", REFERENCE_PAGES);
+        let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
+        let mut checker = Checker::default();
+        check_files(&specification, &Generated::new(), &mut checker, &[file]);
+        assert!(
+            checker
+                .described_outside_their_page
+                .iter()
+                .all(|value| !value.contains("VK_COLOR_AMBER"))
+        );
+        checker.failures
+    };
+    assert_eq!(
+        failures(FIXTURE_SOURCE),
+        [
+            "Color::AMBER: is described, but 2 list items outside the page of its type describe `VK_COLOR_AMBER`"
+        ]
+    );
+    let undescribed = FIXTURE_SOURCE.replacen(
+        "/// `VK_COLOR_AMBER` specifies amber, outside the reference pages:\n    ///\n    /// - a color of things\n",
+        "/// `VK_COLOR_AMBER`, a value of [`VkColor`](PAGES/VkColor.html).\n",
+        1,
+    );
+    assert_eq!(
+        failures(&undescribed),
+        [
+            "Color::AMBER: the specification describes `VK_COLOR_AMBER` outside the page `VkColor` (chapters/things.adoc outside the reference pages, chapters/things.adoc outside the reference pages), but the documentation does not use it"
+        ]
     );
 }
 

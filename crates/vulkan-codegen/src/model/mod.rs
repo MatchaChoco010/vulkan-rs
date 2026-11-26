@@ -19,7 +19,9 @@ pub(crate) use platform::{is_opaque, is_platform_type};
 pub(crate) use rust_types::Scalar;
 pub(crate) use void_arrays::{TypedValues, VoidArrayLength, void_array_len, void_array_length};
 
-use crate::docs::{LegacyMarks, Links, Table, legacy_marks, read_table};
+use crate::docs::{
+    LegacyMarks, Links, Table, ValueDescriptions, legacy_marks, read_table, value_descriptions,
+};
 use crate::naming::enum_variant_name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -32,6 +34,7 @@ pub(crate) struct Model<'a> {
     pub(crate) docs: &'a Docs,
     pub(crate) pages: BTreeMap<&'a str, &'a DocPage>,
     pub(crate) tables: Vec<(&'a DocTable, Table)>,
+    pub(crate) value_descriptions: ValueDescriptions<'a>,
     pub(crate) command_aliases: BTreeMap<&'a str, &'a str>,
     pub(crate) links: Links,
     pub(crate) legacy: LegacyMarks<'a>,
@@ -92,6 +95,7 @@ impl<'a> Model<'a> {
                 .iter()
                 .filter_map(|table| Some((table, read_table(&table.text)?)))
                 .collect(),
+            value_descriptions: value_descriptions(docs),
             command_aliases: command_aliases.collect(),
             links: Links::default(),
             legacy: legacy_marks(ir),

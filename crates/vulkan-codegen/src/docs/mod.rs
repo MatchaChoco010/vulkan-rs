@@ -5,6 +5,7 @@ mod links;
 mod other_names;
 mod render;
 mod tables;
+mod value_descriptions;
 
 pub(crate) use legacy::{
     LegacyMarks, assert_every_legacy_mark_has_an_item, assert_listed_legacy_macros_are_marked,
@@ -14,6 +15,7 @@ pub(crate) use links::Links;
 pub(crate) use other_names::assert_every_other_name_is_in_use;
 pub(crate) use render::{Block, Doc};
 pub(crate) use tables::{Table, read as read_table};
+pub(crate) use value_descriptions::{ValueDescriptions, value_descriptions};
 
 use crate::model::{Cfg, Model, parse_version};
 use crate::naming::type_name;
@@ -21,6 +23,7 @@ use asciidoc::{Converted, Converter, Link, Unsupported, code_span};
 use items::Part;
 use std::collections::{BTreeMap, BTreeSet};
 use tables::Cell;
+use value_descriptions::Place;
 use vulkan_registry::{DocPage, DocTable};
 
 pub(crate) const REFERENCE_PAGES: &str = "https://docs.vulkan.org/refpages/latest/refpages/source/";
@@ -87,11 +90,11 @@ impl<'a> Model<'a> {
         }
     }
 
-    fn markdown(&self, from: &Cfg, page: &str, own: &str, text: &str) -> String {
+    fn markdown(&self, from: &Cfg, place: Place<'_>, own: &str, text: &str) -> String {
         self.try_markdown(from, own, text)
             .unwrap_or_else(|unsupported| {
                 panic!(
-                    "the description of {own} on the page {page} has no Markdown form \
+                    "the description of {own} on {place} has no Markdown form \
                      ({unsupported:?}): {text}"
                 )
             })
@@ -144,21 +147,14 @@ impl<'a> Model<'a> {
 
     pub(crate) fn summary(&self, from: &Cfg, c_name: &str) -> Option<String> {
         let page = self.page(c_name)?;
-        let summary = self.markdown(from, &page.name, c_name, &page.desc);
+        let summary = self.markdown(from, Place::Page(page), c_name, &page.desc);
         (!summary.trim().is_empty()).then(|| sentence(&summary))
     }
 
     pub(crate) fn described(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
         let page = self.page(owner)?;
         let described = other_names::described(page, item)?;
-        let mut parts = item_parts(page, item, &described.item.text);
-        let notes = notes_of(page);
-        items::take_notes(&mut parts);
-        let marks = match notes.is_empty() {
-            true => BTreeSet::new(),
-            false => items::refer_to_notes(&mut parts),
-        };
-        let mut blocks = self.blocks(from, &page.name, item, parts);
+        let mut blocks = self.description(from, Place::Page(page), item, &described.item.text);
         if let (Some(other), Some(Block::Text(lead))) =
             (described.under_the_name, blocks.first_mut())
         {
@@ -166,33 +162,69 @@ impl<'a> Model<'a> {
                 "`{item}`, which the specification describes under the name `{other}`: {lead}"
             );
         }
-        for number in marks {
-            let mut note = vec![Block::Text(format!("**Note {number}**"))];
-            note.extend(self.blocks(from, &page.name, item, notes[&number].clone()));
-            blocks.push(Block::Quote(note));
-        }
         Some(blocks)
     }
 
-    fn blocks(&self, from: &Cfg, page: &str, own: &str, parts: Vec<Part>) -> Vec<Block> {
+    pub(crate) fn described_outside_the_page(
+        &self,
+        from: &Cfg,
+        owner: &str,
+        value: &str,
+    ) -> Option<Vec<Block>> {
+        self.page(owner)?;
+        let descriptions = self.value_descriptions.get(value)?;
+        let [description] = descriptions.as_slice() else {
+            let places = descriptions
+                .iter()
+                .map(|description| description.place.to_string())
+                .collect::<Vec<_>>();
+            panic!(
+                "the reference page of its type does not describe {value}, and {} list items \
+                 elsewhere do, so that nothing says which one to take: {}",
+                places.len(),
+                places.join(", ")
+            );
+        };
+        Some(self.description(from, description.place, value, description.text))
+    }
+
+    fn description(&self, from: &Cfg, place: Place<'_>, item: &str, text: &str) -> Vec<Block> {
+        let mut parts = item_parts(place, item, text);
+        let notes = notes_of(place, &place.items_with(item, text));
+        items::take_notes(&mut parts);
+        let marks = match notes.is_empty() {
+            true => BTreeSet::new(),
+            false => items::refer_to_notes(&mut parts),
+        };
+        let mut blocks = self.blocks(from, place, item, parts);
+        for number in marks {
+            let mut note = vec![Block::Text(format!("**Note {number}**"))];
+            note.extend(self.blocks(from, place, item, notes[&number].clone()));
+            blocks.push(Block::Quote(note));
+        }
+        blocks
+    }
+
+    fn blocks(&self, from: &Cfg, place: Place<'_>, own: &str, parts: Vec<Part>) -> Vec<Block> {
         let mut blocks = Vec::new();
         for part in parts {
             blocks.push(match part {
                 Part::Paragraph(text) => Block::Text(without_space_before_punctuation(
-                    &self.markdown(from, page, own, &text),
+                    &self.markdown(from, place, own, &text),
                 )),
                 Part::List(items) => Block::List(
                     items
                         .into_iter()
-                        .map(|item| self.blocks(from, page, own, item))
+                        .map(|item| self.blocks(from, place, own, item))
                         .collect(),
                 ),
                 Part::Terms(items) => Block::List(
                     items
                         .into_iter()
                         .map(|(term, parts)| {
-                            let mut item = vec![Block::Text(self.markdown(from, page, own, &term))];
-                            item.extend(self.blocks(from, page, own, parts));
+                            let mut item =
+                                vec![Block::Text(self.markdown(from, place, own, &term))];
+                            item.extend(self.blocks(from, place, own, parts));
                             item
                         })
                         .collect(),
@@ -204,12 +236,12 @@ impl<'a> Model<'a> {
                 } => {
                     let caption = match title {
                         Some(title) => {
-                            format!("**{label}: {}**", self.markdown(from, page, own, &title))
+                            format!("**{label}: {}**", self.markdown(from, place, own, &title))
                         }
                         None => format!("**{label}**"),
                     };
                     let mut quoted = vec![Block::Text(caption)];
-                    quoted.extend(self.blocks(from, page, own, parts));
+                    quoted.extend(self.blocks(from, place, own, parts));
                     Block::Quote(quoted)
                 }
                 Part::Math(formula) => Block::Text(code_span(&formula)),
@@ -357,38 +389,31 @@ impl<'a> Model<'a> {
     }
 }
 
-fn item_parts(page: &DocPage, item: &str, text: &str) -> Vec<Part> {
+fn item_parts(place: Place<'_>, item: &str, text: &str) -> Vec<Part> {
     items::read(text).unwrap_or_else(|unsupported| {
-        panic!(
-            "the description of {item} on the page {} cannot be read ({unsupported:?}): {text}",
-            page.name
-        )
+        panic!("the description of {item} on {place} cannot be read ({unsupported:?}): {text}")
     })
 }
 
-fn notes_of(page: &DocPage) -> BTreeMap<u32, Vec<Part>> {
+fn notes_of(place: Place<'_>, items: &[(&str, &str)]) -> BTreeMap<u32, Vec<Part>> {
     let mut notes = BTreeMap::new();
-    if !page
-        .items
-        .iter()
-        .any(|item| items::may_have_notes(&item.text))
-    {
+    let has_all_its_items = matches!(place, Place::Page(_));
+    if has_all_its_items && !items.iter().any(|(_, text)| items::may_have_notes(text)) {
         return notes;
     }
     let mut marks = BTreeSet::new();
-    for item in &page.items {
-        let mut parts = item_parts(page, &item.name, &item.text);
+    for (name, text) in items {
+        let mut parts = item_parts(place, name, text);
         for (number, note) in items::take_notes(&mut parts) {
             let twice = notes.insert(number, note).is_some();
-            assert!(!twice, "the page {} has two notes {number}", page.name);
+            assert!(!twice, "{place} has two notes {number}");
         }
         marks.extend(items::refer_to_notes(&mut parts));
     }
     let numbers = notes.keys().copied().collect::<BTreeSet<_>>();
     assert!(
-        notes.is_empty() || marks == numbers,
-        "the notes {numbers:?} and the marks {marks:?} on the page {} do not pair up",
-        page.name
+        (has_all_its_items && notes.is_empty()) || marks == numbers,
+        "the notes {numbers:?} and the marks {marks:?} on {place} do not pair up"
     );
     notes
 }
@@ -448,7 +473,7 @@ mod tests {
     use super::*;
     use crate::test_support::{registry, structure};
     use std::collections::BTreeMap;
-    use vulkan_registry::{DocItem, DocTable, Docs, Enum, EnumField};
+    use vulkan_registry::{DocItem, DocItemOutsidePages, DocTable, Docs, Enum, EnumField};
 
     fn docs() -> Docs {
         Docs {
@@ -605,6 +630,7 @@ mod tests {
                     ],
                 ),
             ],
+            items_outside_pages: Vec::new(),
         }
     }
 
@@ -766,6 +792,249 @@ mod tests {
             model.described(&Cfg::default(), "VkExtent2D", "depth"),
             None
         );
+    }
+
+    fn with_items_elsewhere(
+        on_the_page_of_the_tints: &[(&str, &str)],
+        outside_pages: &[(&str, &str)],
+    ) -> Docs {
+        let mut docs = docs();
+        let tints = docs
+            .pages
+            .iter_mut()
+            .find(|page| page.name == "VkTintFlagBits")
+            .expect("the page of the tints");
+        tints
+            .items
+            .extend(on_the_page_of_the_tints.iter().map(|(name, text)| DocItem {
+                name: name.to_string(),
+                text: text.to_string(),
+            }));
+        docs.items_outside_pages = outside_pages
+            .iter()
+            .map(|(name, text)| DocItemOutsidePages {
+                file: "chapters/extents.adoc".to_string(),
+                name: name.to_string(),
+                text: text.to_string(),
+            })
+            .collect();
+        docs
+    }
+
+    #[test]
+    fn a_value_that_its_page_does_not_describe_takes_the_one_item_that_describes_it_elsewhere() {
+        let ir = ir();
+        let docs = with_items_elsewhere(
+            &[
+                (
+                    "VK_SHADE_DEEP",
+                    "ename:VK_SHADE_DEEP specifies the deepest\nelink:VkShade, deeper than ename:VK_SHADE_DARK.",
+                ),
+                ("VK_SHADE_DARK", "ename:VK_SHADE_DARK is set."),
+            ],
+            &[
+                (
+                    "VK_SHADE_PALE",
+                    "ename:VK_SHADE_PALE\nspecifies a pale shade:\n** paler than ename:VK_SHADE_PALE",
+                ),
+                ("VK_COLOR_RED", "ename:VK_COLOR_RED specifies red."),
+                ("VK_SHADE_DARK", "ename:VK_SHADE_DARK"),
+                (
+                    "VK_SHADE_GREY",
+                    "ename:VK_SHADE_GREY and ename:VK_SHADE_DARK",
+                ),
+            ],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
+        let described = |owner: &str, value: &str| {
+            assert_eq!(model.described(&Cfg::default(), owner, value), None);
+            model.described_outside_the_page(&Cfg::default(), owner, value)
+        };
+        assert_eq!(
+            described("VkShade", "VK_SHADE_DEEP"),
+            Some(vec![text(
+                "`VK_SHADE_DEEP` specifies the deepest\n[`VkShade`](Shade), deeper than [`VK_SHADE_DARK`](Shade::DARK)."
+            )]),
+            "an item on the page of another type"
+        );
+        assert_eq!(
+            described("VkShade", "VK_SHADE_PALE"),
+            Some(vec![
+                text("`VK_SHADE_PALE`\nspecifies a pale shade:"),
+                Block::list(["paler than `VK_SHADE_PALE`".to_string()]),
+            ]),
+            "an item outside the reference pages"
+        );
+        assert_eq!(
+            described("VkColor", "VK_COLOR_RED"),
+            None,
+            "a value of a type without a reference page"
+        );
+        for mentioned in ["VK_SHADE_DARK", "VK_SHADE_GREY", "VK_SHADE_LIGHT"] {
+            assert_eq!(
+                described("VkShade", mentioned),
+                None,
+                "{mentioned} is named in lists, which does not describe it"
+            );
+        }
+    }
+
+    #[test]
+    fn the_items_of_a_page_do_not_take_what_an_item_outside_the_pages_says_under_their_name() {
+        let ir = ir();
+        let docs = with_items_elsewhere(
+            &[],
+            &[
+                ("depth", "ename:depth specifies a depth."),
+                ("width", "ename:width specifies another width."),
+            ],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "depth"),
+            None
+        );
+        let width = model.described(&Cfg::default(), "VkExtent2D", "width");
+        assert!(
+            matches!(
+                width.as_deref(),
+                Some([Block::Text(text), ..]) if text.starts_with("`width` is the width")
+            ),
+            "{width:?}"
+        );
+    }
+
+    #[test]
+    fn several_items_that_describe_a_value_outside_its_page_abort_generation() {
+        let ir = ir();
+        let docs = with_items_elsewhere(
+            &[("VK_SHADE_DEEP", "ename:VK_SHADE_DEEP specifies a tint.")],
+            &[("VK_SHADE_DEEP", "ename:VK_SHADE_DEEP specifies an extent.")],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        let panic = crate::test_support::catch_quietly(|| {
+            model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_DEEP")
+        })
+        .expect_err("one of the two items is taken");
+        assert_eq!(
+            panic,
+            "the reference page of its type does not describe VK_SHADE_DEEP, and 2 list items \
+             elsewhere do, so that nothing says which one to take: the page VkTintFlagBits, the \
+             lines of chapters/extents.adoc outside the reference pages"
+        );
+    }
+
+    #[test]
+    fn an_item_outside_the_pages_has_its_own_notes_and_an_item_of_another_page_the_notes_of_that_page()
+     {
+        let ir = ir();
+        let docs = with_items_elsewhere(
+            &[
+                (
+                    "VK_SHADE_DARK",
+                    "ename:VK_SHADE_DARK specifies a dark^2^ shade.",
+                ),
+                (
+                    "VK_TINT_WARM_BIT",
+                    "ename:VK_TINT_WARM_BIT specifies warmth.\n\n2:: Like the night.",
+                ),
+            ],
+            &[
+                (
+                    "VK_SHADE_PALE",
+                    "ename:VK_SHADE_PALE specifies a pale^1^ shade.\n\n1:: Not white.",
+                ),
+                (
+                    "VK_SHADE_DEEP",
+                    "ename:VK_SHADE_DEEP specifies a deep^1^ shade.\n\n1:: Not black.",
+                ),
+            ],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
+        for (value, described, note) in [
+            (
+                "VK_SHADE_DARK",
+                "a dark (note 2) shade.",
+                ("2", "Like the night."),
+            ),
+            (
+                "VK_SHADE_PALE",
+                "a pale (note 1) shade.",
+                ("1", "Not white."),
+            ),
+            (
+                "VK_SHADE_DEEP",
+                "a deep (note 1) shade.",
+                ("1", "Not black."),
+            ),
+        ] {
+            assert_eq!(
+                model.described_outside_the_page(&Cfg::default(), "VkShade", value),
+                Some(vec![
+                    text(&format!("`{value}` specifies {described}")),
+                    Block::Quote(vec![text(&format!("**Note {}**", note.0)), text(note.1)]),
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn a_mark_outside_the_pages_without_its_note_in_the_same_item_aborts_generation() {
+        let ir = ir();
+        for (pale, deep, message) in [
+            (
+                "ename:VK_SHADE_PALE specifies a pale^1^ shade.",
+                "ename:VK_SHADE_DEEP specifies a deep shade.\n\n1:: Not white.",
+                "the notes {} and the marks {1} on the lines of chapters/extents.adoc outside \
+                 the reference pages do not pair up",
+            ),
+            (
+                "ename:VK_SHADE_PALE specifies a pale^1^ shade^2^.\n\n1:: Not white.",
+                "ename:VK_SHADE_DEEP specifies a deep shade.\n\n2:: Not black.",
+                "the notes {1} and the marks {1, 2} on the lines of chapters/extents.adoc \
+                 outside the reference pages do not pair up",
+            ),
+        ] {
+            let docs =
+                with_items_elsewhere(&[], &[("VK_SHADE_PALE", pale), ("VK_SHADE_DEEP", deep)]);
+            let model = Model::with_docs(&ir, &docs);
+            let panic = crate::test_support::catch_quietly(|| {
+                model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_PALE")
+            })
+            .expect_err(pale);
+            assert_eq!(panic, message);
+        }
+        let docs = with_items_elsewhere(
+            &[],
+            &[(
+                "VK_SHADE_PALE",
+                "ename:VK_SHADE_PALE specifies 2^8^ pale shades.",
+            )],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_PALE"),
+            Some(vec![Block::Text(
+                "`VK_SHADE_PALE` specifies 2<sup>8</sup> pale shades.".to_string()
+            )]),
+            "a superscript after a digit is an exponent"
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "the description of VK_SHADE_PALE on the lines of chapters/extents.adoc outside the reference pages has no Markdown form (Attribute(\"unknown\")): ename:VK_SHADE_PALE specifies {unknown}."
+    )]
+    fn an_item_outside_the_pages_that_cannot_be_converted_aborts_generation() {
+        let ir = ir();
+        let docs = with_items_elsewhere(
+            &[],
+            &[("VK_SHADE_PALE", "ename:VK_SHADE_PALE specifies {unknown}.")],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_PALE");
     }
 
     fn with_the_width_described_as(lines: &[&str]) -> Docs {

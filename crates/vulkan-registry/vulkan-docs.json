@@ -92,6 +92,1038 @@
   "wbro": ""
  },
  "commit": "560d4305e8a6",
+ "items_outside_pages": [
+  {
+   "file": "appendices/VK_EXT_custom_border_color.adoc",
+   "name": "VK_BORDER_COLOR_FLOAT_CUSTOM_EXT",
+   "text": "ename:VK_BORDER_COLOR_FLOAT_CUSTOM_EXT"
+  },
+  {
+   "file": "appendices/VK_EXT_custom_border_color.adoc",
+   "name": "VK_BORDER_COLOR_INT_CUSTOM_EXT",
+   "text": "ename:VK_BORDER_COLOR_INT_CUSTOM_EXT"
+  },
+  {
+   "file": "appendices/VK_KHR_device_group.adoc",
+   "name": "VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_CAPABILITIES_KHR",
+   "text": "ename:VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_CAPABILITIES_KHR"
+  },
+  {
+   "file": "appendices/VK_KHR_device_group.adoc",
+   "name": "VK_STRUCTURE_TYPE_IMAGE_SWAPCHAIN_CREATE_INFO_KHR",
+   "text": "ename:VK_STRUCTURE_TYPE_IMAGE_SWAPCHAIN_CREATE_INFO_KHR"
+  },
+  {
+   "file": "appendices/VK_KHR_device_group.adoc",
+   "name": "VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR",
+   "text": "ename:VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR"
+  },
+  {
+   "file": "appendices/VK_KHR_device_group.adoc",
+   "name": "VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR",
+   "text": "ename:VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR"
+  },
+  {
+   "file": "appendices/VK_KHR_device_group.adoc",
+   "name": "VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_INFO_KHR",
+   "text": "ename:VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_INFO_KHR"
+  },
+  {
+   "file": "appendices/VK_KHR_device_group.adoc",
+   "name": "VK_STRUCTURE_TYPE_DEVICE_GROUP_SWAPCHAIN_CREATE_INFO_KHR",
+   "text": "ename:VK_STRUCTURE_TYPE_DEVICE_GROUP_SWAPCHAIN_CREATE_INFO_KHR"
+  },
+  {
+   "file": "appendices/VK_KHR_device_group.adoc",
+   "name": "VK_SWAPCHAIN_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT_KHR",
+   "text": "ename:VK_SWAPCHAIN_CREATE_SPLIT_INSTANCE_BIND_REGIONS_BIT_KHR"
+  },
+  {
+   "file": "appendices/VK_KHR_format_feature_flags2.adoc",
+   "name": "VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT_KHR",
+   "text": "ename:VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT_KHR and\nename:VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT_KHR specify\nthat an implementation supports reading and writing, respectively, a\ngiven elink:VkFormat through storage operations without specifying the\nformat in the shader."
+  },
+  {
+   "file": "appendices/VK_KHR_format_feature_flags2.adoc",
+   "name": "VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_DEPTH_COMPARISON_BIT_KHR",
+   "text": "ename:VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_DEPTH_COMPARISON_BIT_KHR\nspecifies that an implementation supports depth comparison performed by\ncode:OpImage*Dref* instructions on a given elink:VkFormat.\nPreviously the result of executing a code:OpImage*Dref* instruction on\nan image view, where the pname:format was not one of the depth/stencil\nformats with a depth component, was undefined.\nThis bit clarifies on which formats such instructions can be used."
+  },
+  {
+   "file": "appendices/VK_KHR_swapchain.adoc",
+   "name": "VK_SUBOPTIMAL_KHR",
+   "text": "ename:VK_SUBOPTIMAL_KHR - Presentation will still succeed, subject to\nthe window resize behavior, but the swapchain is no longer configured\noptimally for the surface it targets.\nApplications should query updated surface information and recreate their\nswapchain at the next convenient opportunity."
+  },
+  {
+   "file": "appendices/VK_KHR_swapchain.adoc",
+   "name": "VK_ERROR_OUT_OF_DATE_KHR",
+   "text": "ename:VK_ERROR_OUT_OF_DATE_KHR - Failure.\nThe swapchain is no longer compatible with the surface it targets.\nThe application must query updated surface information and recreate the\nswapchain before presentation will succeed."
+  },
+  {
+   "file": "chapters/VK_ARM_data_graph/graphs.adoc",
+   "name": "VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_INPUT_ARM",
+   "text": "ename:VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_INPUT_ARM"
+  },
+  {
+   "file": "chapters/VK_ARM_data_graph/graphs.adoc",
+   "name": "VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_REFERENCE_ARM",
+   "text": "ename:VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_REFERENCE_ARM"
+  },
+  {
+   "file": "chapters/VK_ARM_data_graph/graphs.adoc",
+   "name": "VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_HINT_ARM",
+   "text": "ename:VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_HINT_ARM"
+  },
+  {
+   "file": "chapters/VK_ARM_data_graph/graphs.adoc",
+   "name": "VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_FLOW_VECTOR_ARM",
+   "text": "ename:VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_FLOW_VECTOR_ARM"
+  },
+  {
+   "file": "chapters/VK_ARM_data_graph/graphs.adoc",
+   "name": "VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_COST_ARM",
+   "text": "ename:VK_DATA_GRAPH_PIPELINE_NODE_CONNECTION_TYPE_OPTICAL_FLOW_COST_ARM"
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_PRESENT_MODE_IMMEDIATE_KHR",
+   "text": "ename:VK_PRESENT_MODE_IMMEDIATE_KHR.\nThe presentation engine may: ignore non-zero values of\nsname:VkPresentTimeGOOGLE::pname:desiredPresentTime in favor of\npresenting immediately.\nThe value of\nsname:VkPastPresentationTimingGOOGLE::pname:earliestPresentTime must: be\nthe same as\nsname:VkPastPresentationTimingGOOGLE::pname:actualPresentTime, which\nshould: be when the presentation engine displayed the image."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_PRESENT_MODE_MAILBOX_KHR",
+   "text": "ename:VK_PRESENT_MODE_MAILBOX_KHR.\nThe intention of using this present mode with this extension is to\nhandle cases where an image is presented late, and the next image is\npresented soon enough to replace it at the next vertical blanking\nperiod.\nFor images that are displayed to the user, the value of\nsname:VkPastPresentationTimingGOOGLE::pname:actualPresentTime must: be\nwhen the image was displayed.\nFor images that are not displayed to the user,\nfname:vkGetPastPresentationTimingGOOGLE may: not return a\nsname:VkPastPresentationTimingGOOGLE structure, or it may: return a\nsname:VkPastPresentationTimingGOOGLE structure with the value of zero\nfor both sname:VkPastPresentationTimingGOOGLE::pname:actualPresentTime\nand sname:VkPastPresentationTimingGOOGLE::pname:earliestPresentTime.\nIt is possible that an application can: submit images with\nsname:VkPresentTimeGOOGLE::pname:desiredPresentTime values such that new\nimages may: not be displayed.\nFor example, if sname:VkPresentTimeGOOGLE::pname:desiredPresentTime is\nfar enough in the future that an image is not presented before\nfname:vkQueuePresentKHR is called to present another image, the first\nimage will not be displayed to the user.\nIf the application continues to do that, the presentation engine may:\nnot display new images."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_PRESENT_MODE_FIFO_RELAXED_KHR",
+   "text": "ename:VK_PRESENT_MODE_FIFO_RELAXED_KHR.\nFor images that are presented in time to be displayed at the next\nvertical blanking period, the semantics are identical as for\nename:VK_PRESENT_MODE_FIFO_KHR.\nFor images that are presented late, and are displayed after the start of\nthe vertical blanking period (i.e. with tearing), the values of\nsname:VkPastPresentationTimingGOOGLE may: be treated as if the image was\ndisplayed at the start of the vertical blanking period, or may: be\ntreated the same as for ename:VK_PRESENT_MODE_IMMEDIATE_KHR."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_SUCCESS",
+   "text": "ename:VK_SUCCESS specifies the presentation engine is presenting the\ncontents of the shared presentable image, as per the swapchain's\nelink:VkPresentModeKHR."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_SUBOPTIMAL_KHR",
+   "text": "ename:VK_SUBOPTIMAL_KHR the swapchain no longer matches the surface\nproperties exactly, but the presentation engine is presenting the\ncontents of the shared presentable image, as per the swapchain's\nelink:VkPresentModeKHR."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_ERROR_OUT_OF_DATE_KHR",
+   "text": "ename:VK_ERROR_OUT_OF_DATE_KHR the surface has changed in such a way\nthat it is no longer compatible with the swapchain."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_ERROR_SURFACE_LOST_KHR",
+   "text": "ename:VK_ERROR_SURFACE_LOST_KHR the surface is no longer available."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_SUCCESS",
+   "text": "ename:VK_SUCCESS is returned if an image became available."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_ERROR_SURFACE_LOST_KHR",
+   "text": "ename:VK_ERROR_SURFACE_LOST_KHR is returned if the surface becomes no\nlonger available."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_NOT_READY",
+   "text": "ename:VK_NOT_READY is returned if pname:timeout is zero and no image was\navailable."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_TIMEOUT",
+   "text": "ename:VK_TIMEOUT is returned if pname:timeout is greater than zero and\nless than code:UINT64_MAX, and no image became available within the time\nallowed."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_SUBOPTIMAL_KHR",
+   "text": "ename:VK_SUBOPTIMAL_KHR may: be returned if an image became available,\nand the swapchain no longer matches the surface properties exactly, but\ncan: still be used to present to the surface successfully."
+  },
+  {
+   "file": "chapters/VK_KHR_surface/wsi.adoc",
+   "name": "VK_ERROR_OUT_OF_DATE_KHR",
+   "text": "ename:VK_ERROR_OUT_OF_DATE_KHR is returned if the surface has changed in\nsuch a way that it is no longer compatible with the swapchain, and\nfurther presentation requests using the swapchain will fail.\nApplications must: query the new surface properties and recreate their\nswapchain if they wish to continue presenting to the surface."
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_GENERAL",
+   "text": "ename:VK_IMAGE_LAYOUT_GENERAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR",
+   "text": "ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR",
+   "text": "ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT",
+   "text": "ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM",
+   "text": "ename:VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_GENERAL",
+   "text": "ename:VK_IMAGE_LAYOUT_GENERAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR",
+   "text": "ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR",
+   "text": "ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT",
+   "text": "ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM",
+   "text": "ename:VK_IMAGE_LAYOUT_TENSOR_ALIASING_ARM"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_GENERAL",
+   "text": "ename:VK_IMAGE_LAYOUT_GENERAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR",
+   "text": "ename:VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL",
+   "text": "ename:VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR",
+   "text": "ename:VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT",
+   "text": "ename:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT"
+  },
+  {
+   "file": "chapters/descriptors.adoc",
+   "name": "VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ",
+   "text": "ename:VK_IMAGE_LAYOUT_RENDERING_LOCAL_READ"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_VIEWPORT",
+   "text": "ename:VK_DYNAMIC_STATE_VIEWPORT"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_SCISSOR",
+   "text": "ename:VK_DYNAMIC_STATE_SCISSOR"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_LINE_WIDTH",
+   "text": "ename:VK_DYNAMIC_STATE_LINE_WIDTH"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_DEPTH_BIAS",
+   "text": "ename:VK_DYNAMIC_STATE_DEPTH_BIAS"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_BLEND_CONSTANTS",
+   "text": "ename:VK_DYNAMIC_STATE_BLEND_CONSTANTS"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_DEPTH_BOUNDS",
+   "text": "ename:VK_DYNAMIC_STATE_DEPTH_BOUNDS"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT",
+   "text": "ename:VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT",
+   "text": "ename:VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT"
+  },
+  {
+   "file": "chapters/executiongraphs.adoc",
+   "name": "VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR",
+   "text": "ename:VK_DYNAMIC_STATE_FRAGMENT_SHADING_RATE_KHR"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT",
+   "text": "ename:VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT specifies that a tensor can:\nbe used as a source tensor for <<copies-tensors,copy commands>>."
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT",
+   "text": "ename:VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT specifies that a tensor can:\nbe used as a destination tensor for <<copies-tensors,copy commands>>."
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM",
+   "text": "ename:VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM specifies that a tensor\nview can: be used as a <<descriptors-storagetensor,storage tensor>> in\nshaders."
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM",
+   "text": "ename:VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM specifies that a\ntensor can: be aliased to an image or that an image can: be aliased to a\ntensor."
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM",
+   "text": "ename:VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM specifies that a\ntensor view can: be used as a <<descriptors-storagetensor,storage\ntensor>> with <<graphs-pipelines,data graph pipelines>>."
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_IMAGE_VIEW_TYPE_2D",
+   "text": "ename:VK_IMAGE_VIEW_TYPE_2D"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_IMAGE_VIEW_TYPE_2D_ARRAY",
+   "text": "ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R4G4_UNORM_PACK8",
+   "text": "ename:VK_FORMAT_R4G4_UNORM_PACK8"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R4G4B4A4_UNORM_PACK16",
+   "text": "ename:VK_FORMAT_R4G4B4A4_UNORM_PACK16"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B4G4R4A4_UNORM_PACK16",
+   "text": "ename:VK_FORMAT_B4G4R4A4_UNORM_PACK16"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R5G6B5_UNORM_PACK16",
+   "text": "ename:VK_FORMAT_R5G6B5_UNORM_PACK16"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B5G6R5_UNORM_PACK16",
+   "text": "ename:VK_FORMAT_B5G6R5_UNORM_PACK16"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R5G5B5A1_UNORM_PACK16",
+   "text": "ename:VK_FORMAT_R5G5B5A1_UNORM_PACK16"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B5G5R5A1_UNORM_PACK16",
+   "text": "ename:VK_FORMAT_B5G5R5A1_UNORM_PACK16"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_A1R5G5B5_UNORM_PACK16",
+   "text": "ename:VK_FORMAT_A1R5G5B5_UNORM_PACK16"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_UNORM",
+   "text": "ename:VK_FORMAT_R8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_SNORM",
+   "text": "ename:VK_FORMAT_R8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_SRGB",
+   "text": "ename:VK_FORMAT_R8_SRGB"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_UNORM",
+   "text": "ename:VK_FORMAT_R8G8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_SNORM",
+   "text": "ename:VK_FORMAT_R8G8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_SRGB",
+   "text": "ename:VK_FORMAT_R8G8_SRGB"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8_UNORM",
+   "text": "ename:VK_FORMAT_R8G8B8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8_SNORM",
+   "text": "ename:VK_FORMAT_R8G8B8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8_SRGB",
+   "text": "ename:VK_FORMAT_R8G8B8_SRGB"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B8G8R8_UNORM",
+   "text": "ename:VK_FORMAT_B8G8R8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B8G8R8_SNORM",
+   "text": "ename:VK_FORMAT_B8G8R8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B8G8R8_SRGB",
+   "text": "ename:VK_FORMAT_B8G8R8_SRGB"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8A8_UNORM",
+   "text": "ename:VK_FORMAT_R8G8B8A8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8A8_SNORM",
+   "text": "ename:VK_FORMAT_R8G8B8A8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8A8_SRGB",
+   "text": "ename:VK_FORMAT_R8G8B8A8_SRGB"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B8G8R8A8_UNORM",
+   "text": "ename:VK_FORMAT_B8G8R8A8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B8G8R8A8_SNORM",
+   "text": "ename:VK_FORMAT_B8G8R8A8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B8G8R8A8_SRGB",
+   "text": "ename:VK_FORMAT_B8G8R8A8_SRGB"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_A8B8G8R8_UNORM_PACK32",
+   "text": "ename:VK_FORMAT_A8B8G8R8_UNORM_PACK32"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_A8B8G8R8_SNORM_PACK32",
+   "text": "ename:VK_FORMAT_A8B8G8R8_SNORM_PACK32"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_A8B8G8R8_SRGB_PACK32",
+   "text": "ename:VK_FORMAT_A8B8G8R8_SRGB_PACK32"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_IMAGE_VIEW_TYPE_2D",
+   "text": "ename:VK_IMAGE_VIEW_TYPE_2D"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_IMAGE_VIEW_TYPE_2D_ARRAY",
+   "text": "ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK",
+   "text": "ename:VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK",
+   "text": "ename:VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK",
+   "text": "ename:VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK",
+   "text": "ename:VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK",
+   "text": "ename:VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK",
+   "text": "ename:VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_IMAGE_VIEW_TYPE_2D",
+   "text": "ename:VK_IMAGE_VIEW_TYPE_2D"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_IMAGE_VIEW_TYPE_2D_ARRAY",
+   "text": "ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_UNORM",
+   "text": "ename:VK_FORMAT_R8G8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32_SFLOAT",
+   "text": "ename:VK_FORMAT_R32G32_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32B32_SFLOAT",
+   "text": "ename:VK_FORMAT_R32G32B32_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16_SFLOAT",
+   "text": "ename:VK_FORMAT_R16G16_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16B16A16_SFLOAT",
+   "text": "ename:VK_FORMAT_R16G16B16A16_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16_SNORM",
+   "text": "ename:VK_FORMAT_R16G16_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16B16A16_SNORM",
+   "text": "ename:VK_FORMAT_R16G16B16A16_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32_SFLOAT",
+   "text": "ename:VK_FORMAT_R32_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16_SFLOAT",
+   "text": "ename:VK_FORMAT_R16_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_UINT",
+   "text": "ename:VK_FORMAT_R8_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8A8_UNORM",
+   "text": "ename:VK_FORMAT_R8G8B8A8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8A8_SNORM",
+   "text": "ename:VK_FORMAT_R8G8B8A8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8A8_UINT",
+   "text": "ename:VK_FORMAT_R8G8B8A8_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8B8A8_SINT",
+   "text": "ename:VK_FORMAT_R8G8B8A8_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32_UINT",
+   "text": "ename:VK_FORMAT_R32_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32_SINT",
+   "text": "ename:VK_FORMAT_R32_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32_SFLOAT",
+   "text": "ename:VK_FORMAT_R32_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32_UINT",
+   "text": "ename:VK_FORMAT_R32G32_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32_SINT",
+   "text": "ename:VK_FORMAT_R32G32_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32_SFLOAT",
+   "text": "ename:VK_FORMAT_R32G32_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32B32A32_UINT",
+   "text": "ename:VK_FORMAT_R32G32B32A32_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32B32A32_SINT",
+   "text": "ename:VK_FORMAT_R32G32B32A32_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R32G32B32A32_SFLOAT",
+   "text": "ename:VK_FORMAT_R32G32B32A32_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16B16A16_UINT",
+   "text": "ename:VK_FORMAT_R16G16B16A16_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16B16A16_SINT",
+   "text": "ename:VK_FORMAT_R16G16B16A16_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16B16A16_SFLOAT",
+   "text": "ename:VK_FORMAT_R16G16B16A16_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16_SFLOAT",
+   "text": "ename:VK_FORMAT_R16G16_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_B10G11R11_UFLOAT_PACK32",
+   "text": "ename:VK_FORMAT_B10G11R11_UFLOAT_PACK32"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16_SFLOAT",
+   "text": "ename:VK_FORMAT_R16_SFLOAT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16B16A16_UNORM",
+   "text": "ename:VK_FORMAT_R16G16B16A16_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_A2B10G10R10_UNORM_PACK32",
+   "text": "ename:VK_FORMAT_A2B10G10R10_UNORM_PACK32"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16_UNORM",
+   "text": "ename:VK_FORMAT_R16G16_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_UNORM",
+   "text": "ename:VK_FORMAT_R8G8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16_UNORM",
+   "text": "ename:VK_FORMAT_R16_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_UNORM",
+   "text": "ename:VK_FORMAT_R8_UNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16B16A16_SNORM",
+   "text": "ename:VK_FORMAT_R16G16B16A16_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16_SNORM",
+   "text": "ename:VK_FORMAT_R16G16_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_SNORM",
+   "text": "ename:VK_FORMAT_R8G8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16_SNORM",
+   "text": "ename:VK_FORMAT_R16_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_SNORM",
+   "text": "ename:VK_FORMAT_R8_SNORM"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16_SINT",
+   "text": "ename:VK_FORMAT_R16G16_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_SINT",
+   "text": "ename:VK_FORMAT_R8G8_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16_SINT",
+   "text": "ename:VK_FORMAT_R16_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_SINT",
+   "text": "ename:VK_FORMAT_R8_SINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_A2B10G10R10_UINT_PACK32",
+   "text": "ename:VK_FORMAT_A2B10G10R10_UINT_PACK32"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16G16_UINT",
+   "text": "ename:VK_FORMAT_R16G16_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8G8_UINT",
+   "text": "ename:VK_FORMAT_R8G8_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R16_UINT",
+   "text": "ename:VK_FORMAT_R16_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_R8_UINT",
+   "text": "ename:VK_FORMAT_R8_UINT"
+  },
+  {
+   "file": "chapters/formats.adoc",
+   "name": "VK_FORMAT_A8_UNORM",
+   "text": "ename:VK_FORMAT_A8_UNORM"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_PREINITIALIZED",
+   "text": "ename:VK_IMAGE_LAYOUT_PREINITIALIZED"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_GENERAL",
+   "text": "ename:VK_IMAGE_LAYOUT_GENERAL"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT",
+   "text": "ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_UNDEFINED",
+   "text": "ename:VK_IMAGE_LAYOUT_UNDEFINED"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_PREINITIALIZED",
+   "text": "ename:VK_IMAGE_LAYOUT_PREINITIALIZED"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT",
+   "text": "ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT",
+   "text": "ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT",
+   "text": "ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT",
+   "text": "ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT",
+   "text": "ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_PREINITIALIZED",
+   "text": "ename:VK_IMAGE_LAYOUT_PREINITIALIZED"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_GENERAL",
+   "text": "ename:VK_IMAGE_LAYOUT_GENERAL"
+  },
+  {
+   "file": "chapters/resources.adoc",
+   "name": "VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT",
+   "text": "ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT",
+   "text": "ename:VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT",
+   "text": "ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT",
+   "text": "ename:VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT",
+   "text": "ename:VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT",
+   "text": "ename:VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT",
+   "text": "ename:VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT",
+   "text": "ename:VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT"
+  },
+  {
+   "file": "chapters/synchronization.adoc",
+   "name": "VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT",
+   "text": "ename:VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT"
+  },
+  {
+   "file": "chapters/video/encode.adoc",
+   "name": "VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR",
+   "text": "ename:VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR\nspecifies support for using <<encode-quantization-delta-map,quantization\ndelta maps>>."
+  },
+  {
+   "file": "chapters/video/encode.adoc",
+   "name": "VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR",
+   "text": "ename:VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR specifies support\nfor using <<encode-emphasis-map,emphasis maps>>."
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_BUFFER_USAGE_VIDEO_DECODE_SRC_BIT_KHR",
+   "text": "ename:VK_BUFFER_USAGE_VIDEO_DECODE_SRC_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_BUFFER_USAGE_VIDEO_DECODE_DST_BIT_KHR",
+   "text": "ename:VK_BUFFER_USAGE_VIDEO_DECODE_DST_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_BUFFER_USAGE_VIDEO_ENCODE_SRC_BIT_KHR",
+   "text": "ename:VK_BUFFER_USAGE_VIDEO_ENCODE_SRC_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_BUFFER_USAGE_VIDEO_ENCODE_DST_BIT_KHR",
+   "text": "ename:VK_BUFFER_USAGE_VIDEO_ENCODE_DST_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_ENCODE_QUANTIZATION_DELTA_MAP_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_ENCODE_QUANTIZATION_DELTA_MAP_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_IMAGE_USAGE_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR",
+   "text": "ename:VK_IMAGE_USAGE_VIDEO_ENCODE_EMPHASIS_MAP_BIT_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR",
+   "text": "ename:VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR"
+  },
+  {
+   "file": "chapters/videocoding.adoc",
+   "name": "VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR",
+   "text": "ename:VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR"
+  }
+ ],
  "pages": [
   {
    "aliases": [],

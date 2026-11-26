@@ -2,8 +2,8 @@ use super::{bitmasks, commands, constants, doc_of, enums, extensions, handles, s
 use crate::model::Model;
 use crate::test_support::{counted, field, registry, result_command, tagged};
 use vulkan_registry::{
-    Bitmask, Constant, DocItem, DocPage, DocTable, Docs, Enum, EnumField, Extension, Flags, Handle,
-    Legacy, LegacyKind, Registry, Version,
+    Bitmask, Constant, DocItem, DocItemOutsidePages, DocPage, DocTable, Docs, Enum, EnumField,
+    Extension, Flags, Handle, Legacy, LegacyKind, Registry, Version,
 };
 
 fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
@@ -524,6 +524,89 @@ fn values_without_a_described_list_item_take_the_cells_of_their_table_row() {
         doc_of(&out, "pub const QUEUE: Self = Self(4)")[0],
         "`VK_OBJECT_TYPE_QUEUE`, the object type of [`VkDevice`](Device).",
         "the object type that the registry gives comes before a table row"
+    );
+}
+
+#[test]
+fn a_list_item_outside_the_pages_describes_only_a_value_that_nothing_else_describes() {
+    let ir = ir();
+    let mut docs = docs();
+    docs.pages
+        .push(page("VkStructureType", "Structure types", &[]));
+    docs.pages.push(page("VkObjectType", "Object types", &[]));
+    for page in &mut docs.pages {
+        page.items.retain(|item| item.name != "queueIndex");
+    }
+    let outside_pages = |name: &str, text: &str| DocItemOutsidePages {
+        file: "chapters/queues.adoc".to_string(),
+        name: name.to_string(),
+        text: format!("ename:{name} specifies {text}."),
+    };
+    docs.items_outside_pages = [
+        "VK_COLOR_RED",
+        "VK_COLOR_CRIMSON",
+        "VK_COLOR_GREEN",
+        "VK_STRUCTURE_TYPE_QUEUE_INFO",
+        "VK_OBJECT_TYPE_QUEUE",
+    ]
+    .iter()
+    .flat_map(|name| {
+        [
+            outside_pages(name, "one thing"),
+            outside_pages(name, "another"),
+        ]
+    })
+    .chain(["VK_COLOR_BLUE", "reserved", "queueIndex"].map(|name| outside_pages(name, "a thing")))
+    .collect();
+    let model = Model::with_docs(&ir, &docs);
+    let values = enums::emit(&model);
+    for (constant, doc, source) in [
+        (
+            "pub const RED:",
+            "`VK_COLOR_RED` specifies red, not [`VK_COLOR_BLUE`](Color::BLUE).",
+            "a list item of the page",
+        ),
+        (
+            "pub const CRIMSON:",
+            "`VK_COLOR_CRIMSON` is an alias of [`VK_COLOR_RED`](Self::RED).",
+            "the name that it is an alias of",
+        ),
+        (
+            "pub const GREEN:",
+            "`VK_COLOR_GREEN` in the table “Wavelengths” of the specification:",
+            "a table row",
+        ),
+        (
+            "pub const QUEUE_INFO:",
+            "`VK_STRUCTURE_TYPE_QUEUE_INFO`, the structure type of [`VkDeviceInfo`](DeviceInfo).",
+            "the structure of the registry",
+        ),
+        (
+            "pub const QUEUE: Self = Self(4)",
+            "`VK_OBJECT_TYPE_QUEUE`, the object type of [`VkDevice`](Device).",
+            "the handle of the registry",
+        ),
+        (
+            "pub const BLUE:",
+            "`VK_COLOR_BLUE` specifies a thing.",
+            "the list item outside the pages",
+        ),
+    ] {
+        assert_eq!(
+            doc_of(&values, constant)[0],
+            doc,
+            "{source} describes the value"
+        );
+    }
+    assert_eq!(
+        doc_of(&structs::emit(&model), "pub reserved:"),
+        ["The C member `uint32_t reserved`."],
+        "a member takes no list item from outside the pages"
+    );
+    let parameters = doc_of(&commands::emit(&model), "pub unsafe fn get_queue_raw(");
+    assert_eq!(
+        parameters[3], "- `pQueue` is a pointer to a [`VkQueue`](Queue) object.",
+        "a parameter takes no list item from outside the pages"
     );
 }
 
