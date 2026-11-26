@@ -219,8 +219,9 @@
 //! the allocator, and with it frees memory that pending commands refer to. Keep the
 //! allocator from being dropped first in that case, for example:
 //!
-//! - declare a guard that waits for the device to become idle in its `Drop` after the
-//!   allocator, so that it is dropped, and waits, before the allocator is;
+//! - wait for the device to become idle in the `Drop` of a guard that is dropped before
+//!   the allocator: a local variable declared after the allocator, or a struct field
+//!   declared before it;
 //! - or keep the allocator in a [`ManuallyDrop`](std::mem::ManuallyDrop) and drop it
 //!   yourself once the device has finished.
 //!
