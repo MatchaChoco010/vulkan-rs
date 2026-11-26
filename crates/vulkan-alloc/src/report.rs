@@ -229,7 +229,8 @@ mod tests {
         block_sizes: &[u64],
         first_handle: u64,
     ) -> (MemoryTypeAllocator, ExpectedTotals) {
-        let mut memory_type = MemoryTypeAllocator::new(memory_type_index);
+        let mut memory_type =
+            MemoryTypeAllocator::new(memory_type_index, vk::MemoryPropertyFlags::empty());
         let mut allocated = Vec::new();
         for (index, &size) in block_sizes.iter().enumerate() {
             let mut block = MemoryBlock::new(

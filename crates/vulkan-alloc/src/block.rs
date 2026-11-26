@@ -92,13 +92,15 @@ impl BlockRequest {
 
 pub(crate) struct MemoryTypeAllocator {
     memory_type_index: u32,
+    property_flags: vk::MemoryPropertyFlags,
     blocks: Vec<Option<MemoryBlock>>,
 }
 
 impl MemoryTypeAllocator {
-    pub(crate) fn new(memory_type_index: u32) -> Self {
+    pub(crate) fn new(memory_type_index: u32, property_flags: vk::MemoryPropertyFlags) -> Self {
         Self {
             memory_type_index,
+            property_flags,
             blocks: Vec::new(),
         }
     }
@@ -130,6 +132,7 @@ impl MemoryTypeAllocator {
         usable: impl Fn(&MemoryBlock) -> bool,
     ) -> Option<Allocation> {
         let memory_type_index = self.memory_type_index;
+        let property_flags = self.property_flags;
         self.blocks
             .iter_mut()
             .enumerate()
@@ -137,7 +140,12 @@ impl MemoryTypeAllocator {
                 let block = slot.as_mut().filter(|block| usable(block))?;
                 let suballocation = block.suballocate(requirements.size, requirements.alignment)?;
                 block.resource_class = resource_class;
-                Some(block.allocation(memory_type_index, block_index, suballocation))
+                Some(block.allocation(
+                    memory_type_index,
+                    property_flags,
+                    block_index,
+                    suballocation,
+                ))
             })
     }
 
@@ -147,7 +155,12 @@ impl MemoryTypeAllocator {
         suballocation: Suballocation,
     ) -> Allocation {
         let block_index = self.vacant_slot_index();
-        let allocation = block.allocation(self.memory_type_index, block_index, suballocation);
+        let allocation = block.allocation(
+            self.memory_type_index,
+            self.property_flags,
+            block_index,
+            suballocation,
+        );
         self.blocks[block_index] = Some(block);
         allocation
     }
@@ -356,11 +369,14 @@ impl MemoryBlock {
     fn allocation(
         &self,
         memory_type_index: u32,
+        memory_properties: vk::MemoryPropertyFlags,
         block_index: usize,
         suballocation: Suballocation,
     ) -> Allocation {
         Allocation {
             memory_type_index,
+            memory_properties,
+            dedicated: self.dedicated,
             block_index,
             allocation_id: suballocation.id,
             resource_class: self.resource_class,
@@ -697,6 +713,8 @@ mod tests {
         let suballocation = block.suballocator.allocate(128, 64).unwrap();
         let make_allocation = || Allocation {
             memory_type_index: 0,
+            memory_properties: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            dedicated: false,
             block_index: 0,
             allocation_id: suballocation.id,
             resource_class: AllocationResourceClass::Optimal,
