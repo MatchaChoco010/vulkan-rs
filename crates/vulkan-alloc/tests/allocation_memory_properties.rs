@@ -266,7 +266,7 @@ fn an_allocation_that_falls_back_reports_the_flags_of_the_type_it_was_made_in() 
         block_size: BLOCK_SIZE,
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     });
-    fake.script_allocations([vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY]);
+    fake.script_allocations([vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY; 5]);
     let request = Request {
         size: 256,
         memory_type_bits: u32::MAX,
@@ -275,7 +275,7 @@ fn an_allocation_that_falls_back_reports_the_flags_of_the_type_it_was_made_in() 
         device_address: false,
         kind: Kind::Shared,
         freed_at_once: false,
-        out_of_memory_first: 1,
+        out_of_memory_first: 5,
     };
     let allocation = unsafe { allocator.allocate(create_desc(&request, 1)) }.unwrap();
     assert_eq!(
