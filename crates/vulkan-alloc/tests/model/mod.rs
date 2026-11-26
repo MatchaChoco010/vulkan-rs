@@ -210,6 +210,13 @@ impl Location {
         }
     }
 
+    fn documented_avoided_flags(self) -> vk::MemoryPropertyFlags {
+        match self {
+            Location::CpuOnly => LOCAL,
+            _ => vk::MemoryPropertyFlags::empty(),
+        }
+    }
+
     fn memory_location(self) -> MemoryLocation {
         match self {
             Location::GpuOnly => MemoryLocation::GpuOnly,
@@ -319,13 +326,20 @@ pub fn documented_memory_type_without(
         })
         .map(|(index, memory_type)| (index as u32, memory_type.flags))
         .collect::<Vec<_>>();
-    let shared =
-        |flags: vk::MemoryPropertyFlags| (flags.as_raw() & preferred.as_raw()).count_ones();
-    let most = candidates.iter().map(|&(_, flags)| shared(flags)).max()?;
+    let avoided = request.location.documented_avoided_flags();
+    let common = |a: vk::MemoryPropertyFlags, b: vk::MemoryPropertyFlags| {
+        (a.as_raw() & b.as_raw()).count_ones()
+    };
+    let lacking_and_avoided = |flags: vk::MemoryPropertyFlags| {
+        common(preferred, preferred) - common(preferred, flags) + common(avoided, flags)
+    };
+    let fewest = candidates
+        .iter()
+        .map(|&(_, flags)| lacking_and_avoided(flags))
+        .min()?;
     candidates
         .iter()
-        .find(|&&(_, flags)| flags.contains(preferred))
-        .or_else(|| candidates.iter().find(|&&(_, flags)| shared(flags) == most))
+        .find(|&&(_, flags)| lacking_and_avoided(flags) == fewest)
         .map(|&(index, _)| index)
 }
 

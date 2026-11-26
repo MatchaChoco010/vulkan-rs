@@ -156,9 +156,11 @@ impl Allocator {
     ///
     /// The memory type is chosen among those allowed by
     /// `desc.requirements.memory_type_bits` that have every flag
-    /// [`AllocationCreateDesc::location`] requires: the lowest-indexed one that also has
-    /// every preferred flag, or else the one with the most preferred flags (the lowest
-    /// index on a tie). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
+    /// [`AllocationCreateDesc::location`] requires: the one that lacks the fewest of its
+    /// preferred flags and has the fewest of the flags it avoids, both counted together
+    /// (the lowest index on a tie), which is the lowest-indexed one with every preferred
+    /// flag and no avoided flag when there is one. Only `DEVICE_LOCAL` is ever avoided,
+    /// by [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
     /// are left out unless the required or preferred flags of the location include one
     /// of these two flags, and memory types with `PROTECTED` are left out unless those
     /// flags include `PROTECTED`; memory types of a tile memory heap are always left out
@@ -175,9 +177,11 @@ impl Allocator {
     /// `vkAllocateMemory` for the type once more; the type is out of memory if that call
     /// returns [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] too. So `vkAllocateMemory` can
     /// be called several times in one call of this function, and the allocation can be
-    /// made in a memory type with fewer preferred flags than the first one chosen, such as
-    /// a [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) allocation in host
-    /// memory when the host-visible device-local heap is full;
+    /// made in a memory type that ranks lower than the first one chosen, such as a
+    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) allocation in host
+    /// memory when the host-visible device-local heap is full, or a
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) allocation in
+    /// device-local memory when host memory is full;
     /// [`Allocation::memory_type_index`] is the type it was made in. The
     /// [`MemoryLocation`](crate::MemoryLocation) documentation tells which location suits
     /// which use.
@@ -334,6 +338,7 @@ impl Allocator {
                 memory_type_bits,
                 desc.location.required_flags(),
                 desc.location.preferred_flags(),
+                desc.location.avoided_flags(),
             )
             .ok_or(if memory_type_bits == desc.requirements.memory_type_bits {
                 AllocationError::NoCompatibleMemoryType

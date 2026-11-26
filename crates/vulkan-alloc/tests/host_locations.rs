@@ -62,6 +62,11 @@ fn documented_choice(
     let chosen = match location {
         MemoryLocation::GpuToCpu => first_with(CACHED),
         MemoryLocation::CpuToGpu => first_with(LOCAL),
+        MemoryLocation::CpuOnly => coherent
+            .iter()
+            .copied()
+            .find(|&index| !types[index].contains(LOCAL))
+            .or(coherent.first().copied()),
         _ => coherent.first().copied(),
     };
     chosen.map(|index| index as u32)
@@ -117,7 +122,8 @@ fn check_host_location(
             assert_eq!(
                 index, expected,
                 "{context}: chose type {index} instead of the lowest-indexed allowed coherent \
-                 type, cached first for GpuToCpu and device-local first for CpuToGpu"
+                 type, cached first for GpuToCpu, device-local first for CpuToGpu and \
+                 device-local last for CpuOnly"
             );
         }
         (Err(error), None) => assert_eq!(
@@ -198,6 +204,25 @@ fn each_location_takes_its_memory_on_a_discrete_gpu_with_host_visible_device_mem
     );
     for location in HOST_LOCATIONS {
         check_host_location(&types, 0b1111, location);
+    }
+}
+
+#[test]
+fn cpu_only_takes_host_memory_that_comes_after_a_device_local_type() {
+    let types = [LOCAL | VISIBLE | COHERENT, VISIBLE | COHERENT | CACHED];
+    assert_eq!(
+        allocated_type(&types, 0b11, MemoryLocation::CpuOnly),
+        Ok((1, VISIBLE | COHERENT | CACHED)),
+        "the types are not in a subset relation, so the specification lets the \
+         device-local type come first, and CpuOnly still takes host memory"
+    );
+    assert_eq!(
+        allocated_type(&types, 0b01, MemoryLocation::CpuOnly),
+        Ok((0, LOCAL | VISIBLE | COHERENT)),
+        "device-local memory when no other coherent type is allowed"
+    );
+    for location in HOST_LOCATIONS {
+        check_host_location(&types, 0b11, location);
     }
 }
 

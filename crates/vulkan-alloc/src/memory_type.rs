@@ -1,13 +1,17 @@
 use vulkan::vk;
 
-/// The memory property flags an allocation's memory type must have and should have.
+/// The memory property flags an allocation's memory type must have, should have and
+/// should not have.
 ///
 /// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
-/// every required flag. Among them it takes the lowest-indexed one with every preferred
-/// flag, or else the one with the most preferred flags. If that memory type is out of
-/// memory, it takes the next one by the same rule among the rest, so the memory of an
-/// allocation always has the required flags, but can lack some of the preferred ones even
-/// when another allowed type has them.
+/// every required flag. Among them it takes the one that lacks the fewest preferred flags
+/// and has the fewest avoided flags, both counted together, and the lowest-indexed one of
+/// those on a tie. So the lowest-indexed type with every preferred flag and no avoided
+/// flag is taken whenever there is one. Only [`MemoryLocation::CpuOnly`] avoids a flag,
+/// `DEVICE_LOCAL`. If the chosen memory type is out of memory, it takes the next one by
+/// the same rule among the rest, so the memory of an allocation always has the required
+/// flags, but can lack some of the preferred ones, or have an avoided one, even when
+/// another allowed type would rank higher.
 /// [`Allocation::memory_properties`](crate::Allocation::memory_properties) gives the flags
 /// of the type that was chosen.
 ///
@@ -18,19 +22,18 @@ use vulkan::vk;
 /// - [`MemoryLocation::CpuToGpu`]: the host writes and the device reads the memory
 ///   directly, such as uniform buffers and vertex buffers written every frame.
 /// - [`MemoryLocation::CpuOnly`]: the host writes, and the device only copies from it,
-///   such as staging buffers.
+///   such as staging buffers for uploads.
 /// - [`MemoryLocation::GpuToCpu`]: the device writes and the host reads, such as
 ///   readback buffers.
 ///
 /// [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
 /// [`MemoryLocation::GpuToCpu`] require `HOST_VISIBLE` and `HOST_COHERENT`, so their
-/// memory is always host-coherent: mapped memory can be
-/// written and read without
+/// memory is always host-coherent: mapped memory can be written and read without
 /// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) or
 /// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation), which
-/// make no Vulkan call for such memory. If no
-/// memory type allowed by the resource's `memory_type_bits` is host-visible and
-/// host-coherent, [`Allocator::allocate`](crate::Allocator::allocate) fails with
+/// make no Vulkan call for such memory. If no memory type allowed by the resource's
+/// `memory_type_bits` is host-visible and host-coherent,
+/// [`Allocator::allocate`](crate::Allocator::allocate) fails with
 /// [`AllocationError::NoCompatibleMemoryType`](crate::AllocationError::NoCompatibleMemoryType)
 /// instead of taking memory that is not coherent. The Vulkan specification, describing
 /// `VkMemoryRequirements::memoryTypeBits`, guarantees that the requirements of a buffer
@@ -76,9 +79,14 @@ pub enum MemoryLocation {
     /// types with the required flags, the lowest-indexed one that is also
     /// `DEVICE_LOCAL` is taken, or the lowest-indexed one if none is. Host-visible
     /// device-local memory, such as the memory a discrete GPU exposes through its PCIe
-    /// BAR or the memory of an integrated GPU, is faster for the device to read. When it
-    /// is out of memory, the allocation falls back to host memory (see
+    /// BAR or the memory of an integrated GPU, is faster for the device to read. When the
+    /// chosen type is out of memory, the allocation moves to the next host-visible
+    /// coherent type by the same rule, which is usually host memory (see
     /// [`Allocator::allocate`](crate::Allocator::allocate)). Host writes need no flush.
+    ///
+    /// On a logical device that represents more than one physical device, device-local
+    /// heaps usually have `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`, and memory of such a heap
+    /// must not be mapped (see the [crate documentation](crate#mapping)).
     CpuToGpu,
     /// Memory the device writes and the host reads back: requires
     /// `HOST_VISIBLE | HOST_COHERENT` and prefers
@@ -86,18 +94,18 @@ pub enum MemoryLocation {
     /// required flags, the lowest-indexed one that is also `HOST_CACHED` is taken, or the
     /// lowest-indexed one if none is. Host reads need no invalidate.
     GpuToCpu,
-    /// Memory the host writes and reads, and the device uses only as the source or
-    /// destination of transfers, such as staging buffers: requires and prefers
-    /// `HOST_VISIBLE | HOST_COHERENT`, so the lowest-indexed allowed type with both flags
-    /// is taken. Host writes need no flush.
+    /// Memory the host writes and the device only copies from, such as staging buffers
+    /// for uploads: requires and prefers `HOST_VISIBLE | HOST_COHERENT` and avoids
+    /// `DEVICE_LOCAL`. So among the allowed types with the required flags, the
+    /// lowest-indexed one without `DEVICE_LOCAL` is taken, which keeps staging buffers out
+    /// of a small host-visible device-local heap, or the lowest-indexed one if all of them
+    /// are `DEVICE_LOCAL`, as on many integrated GPUs. When the memory without
+    /// `DEVICE_LOCAL` is out of memory, the allocation moves to a device-local type (see
+    /// [`Allocator::allocate`](crate::Allocator::allocate)). Host writes need no flush.
     ///
-    /// The Vulkan specification places a memory type at a lower index than every type
-    /// whose property flags are a strict superset of its own. So if the device has a type
-    /// with `HOST_VISIBLE | HOST_COHERENT` and without `DEVICE_LOCAL`, it is taken over
-    /// the device-local types that also have every flag it has, and staging buffers do
-    /// not use up a small host-visible device-local heap. A device whose only
-    /// host-visible coherent memory is device-local, such as many integrated GPUs, gives
-    /// that memory.
+    /// For memory that the device writes and the host reads back, use
+    /// [`MemoryLocation::GpuToCpu`], which prefers `HOST_CACHED` memory, faster for the
+    /// host to read.
     CpuOnly,
     /// Explicit flags.
     ///
@@ -111,7 +119,8 @@ pub enum MemoryLocation {
         /// Flags the memory type must have.
         required: vk::MemoryPropertyFlags,
         /// Flags the memory type should have. Types are ranked by how many of these
-        /// flags they have; they do not have to include `required`.
+        /// flags they lack; they do not have to include `required`. A custom location
+        /// avoids no flag.
         preferred: vk::MemoryPropertyFlags,
     },
 }
@@ -153,6 +162,15 @@ impl MemoryLocation {
                 vk::MemoryPropertyFlags::HOST_VISIBLE.union(vk::MemoryPropertyFlags::HOST_COHERENT)
             }
             Self::Custom { required, .. } => required,
+        }
+    }
+
+    pub(crate) fn avoided_flags(self) -> vk::MemoryPropertyFlags {
+        match self {
+            Self::CpuOnly => vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            Self::GpuOnly | Self::CpuToGpu | Self::GpuToCpu | Self::Custom { .. } => {
+                vk::MemoryPropertyFlags::empty()
+            }
         }
     }
 
@@ -207,9 +225,10 @@ pub(crate) fn find_memory_type_index(
     memory_type_bits: u32,
     required: vk::MemoryPropertyFlags,
     preferred: vk::MemoryPropertyFlags,
+    avoided: vk::MemoryPropertyFlags,
 ) -> Option<u32> {
     let mut best = None;
-    let mut best_score = 0;
+    let mut best_cost = u32::MAX;
     for index in 0..properties.memory_type_count {
         let type_bit = 1u32.checked_shl(index).unwrap_or(0);
         if memory_type_bits & type_bit == 0 {
@@ -232,13 +251,14 @@ pub(crate) fn find_memory_type_index(
         {
             continue;
         }
-        let score = (flags.as_raw() & preferred.as_raw()).count_ones();
-        if best.is_none() || score > best_score {
+        let cost = (preferred.as_raw() & !flags.as_raw()).count_ones()
+            + (avoided.as_raw() & flags.as_raw()).count_ones();
+        if cost < best_cost {
             best = Some(index);
-            best_score = score;
+            best_cost = cost;
         }
-        if flags.contains(preferred) {
-            return Some(index);
+        if cost == 0 {
+            return best;
         }
     }
     best
@@ -362,28 +382,33 @@ pub(crate) mod tests {
             }
             let memory_type_bits = next() as u32 & ((1 << flags.len()) - 1);
             for location in locations {
-                let (required, preferred) = (location.required_flags(), location.preferred_flags());
+                let (required, preferred, avoided) = (
+                    location.required_flags(),
+                    location.preferred_flags(),
+                    location.avoided_flags(),
+                );
                 let candidates = (0..flags.len())
                     .filter(|&index| memory_type_bits & (1 << index) != 0)
                     .filter(|&index| flags[index].contains(required))
                     .filter(|&index| !in_tile_memory[index])
                     .collect::<Vec<_>>();
-                let score =
-                    |index: usize| (flags[index].as_raw() & preferred.as_raw()).count_ones();
+                let cost = |index: usize| {
+                    (preferred.as_raw() & !flags[index].as_raw()).count_ones()
+                        + (avoided.as_raw() & flags[index].as_raw()).count_ones()
+                };
                 let documented = candidates
                     .iter()
                     .copied()
-                    .find(|&index| flags[index].contains(preferred))
-                    .or_else(|| {
-                        let best = candidates.iter().copied().map(score).max()?;
-                        candidates
-                            .iter()
-                            .copied()
-                            .find(|&index| score(index) == best)
-                    })
+                    .min_by_key(|&index| cost(index))
                     .map(|index| index as u32);
                 assert_eq!(
-                    find_memory_type_index(&properties, memory_type_bits, required, preferred),
+                    find_memory_type_index(
+                        &properties,
+                        memory_type_bits,
+                        required,
+                        preferred,
+                        avoided
+                    ),
                     documented,
                     "heap count {}, heaps of the types {:?}, types in tile memory {in_tile_memory:?}, \
                      allowed {memory_type_bits:#b}, {location:?}: only a heap below the heap count \
@@ -412,6 +437,7 @@ pub(crate) mod tests {
             1 << 31,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::empty(),
         );
         assert_eq!(index, Some(31));
     }
