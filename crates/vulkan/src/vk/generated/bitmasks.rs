@@ -9336,8 +9336,8 @@ impl FormatFeatureFlagBits2 {
     /// `bufferFeatures` members.
     #[doc(alias = "VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV")]
     pub const LINEAR_COLOR_ATTACHMENT_NV: Self = Self(274877906944);
-    /// `VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM`, a value of
-    /// [`VkFormatFeatureFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlagBits2.html).
+    /// `VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM` specifies that a tensor view can be used as a
+    /// storage tensor in shaders.
     #[doc(alias = "VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM")]
     pub const TENSOR_SHADER_ARM: Self = Self(549755813888);
     /// `VK_FORMAT_FEATURE_2_OPTICAL_FLOW_IMAGE_BIT_NV` specifies that an image view with this
@@ -9353,8 +9353,8 @@ impl FormatFeatureFlagBits2 {
     /// can be used as an output cost map for optical flow operations
     #[doc(alias = "VK_FORMAT_FEATURE_2_OPTICAL_FLOW_COST_BIT_NV")]
     pub const OPTICAL_FLOW_COST_NV: Self = Self(4398046511104);
-    /// `VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM`, a value of
-    /// [`VkFormatFeatureFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlagBits2.html).
+    /// `VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM` specifies that a tensor can be aliased
+    /// to an image or that an image can be aliased to a tensor.
     #[doc(alias = "VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM")]
     pub const TENSOR_IMAGE_ALIASING_ARM: Self = Self(8796093022208);
     /// `VK_FORMAT_FEATURE_2_BLOCK_MATCHING_SXD_BIT_QCOM` specifies that image views created with
@@ -9375,8 +9375,8 @@ impl FormatFeatureFlagBits2 {
     /// the [`VK_IMAGE_USAGE_HOST_TRANSFER_BIT`](ImageUsageFlagBits::HOST_TRANSFER) usage flag set.
     #[doc(alias = "VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT")]
     pub const HOST_IMAGE_TRANSFER: Self = Self(70368744177664);
-    /// `VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM`, a value of
-    /// [`VkFormatFeatureFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlagBits2.html).
+    /// `VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM` specifies that a tensor view can be used as
+    /// a storage tensor with data graph pipelines.
     #[doc(alias = "VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM")]
     pub const TENSOR_DATA_GRAPH_ARM: Self = Self(281474976710656);
     /// `VK_FORMAT_FEATURE_2_VIDEO_ENCODE_QUANTIZATION_DELTA_MAP_BIT_KHR` specifies that an image
@@ -17434,8 +17434,9 @@ impl PipelineStageFlagBits2 {
     /// [`vkCmdConvertCooperativeVectorMatrixNV`](crate::Device::cmd_convert_cooperative_vector_matrix_nv).
     #[doc(alias = "VK_PIPELINE_STAGE_2_CONVERT_COOPERATIVE_VECTOR_MATRIX_BIT_NV")]
     pub const CONVERT_COOPERATIVE_VECTOR_MATRIX_NV: Self = Self(17592186044416);
-    /// `VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT` specifies the execution of decompression
+    /// commands with [`vkCmdDecompressMemoryEXT`](crate::Device::cmd_decompress_memory_ext) and
+    /// [`vkCmdDecompressMemoryIndirectCountEXT`](crate::Device::cmd_decompress_memory_indirect_count_ext).
     #[doc(alias = "VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT")]
     pub const MEMORY_DECOMPRESSION_EXT: Self = Self(35184372088832);
     /// `VK_PIPELINE_STAGE_2_COPY_INDIRECT_BIT_KHR` specifies the stage of the pipeline where
@@ -24225,12 +24226,11 @@ impl VideoEncodeCapabilityFlagBitsKHR {
         alias = "VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR"
     )]
     pub const INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION: Self = Self(2);
-    /// `VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR`, a value of
-    /// [`VkVideoEncodeCapabilityFlagBitsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkVideoEncodeCapabilityFlagBitsKHR.html).
+    /// `VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR` specifies support for using
+    /// quantization delta maps.
     #[doc(alias = "VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR")]
     pub const QUANTIZATION_DELTA_MAP: Self = Self(4);
-    /// `VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR`, a value of
-    /// [`VkVideoEncodeCapabilityFlagBitsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkVideoEncodeCapabilityFlagBitsKHR.html).
+    /// `VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR` specifies support for using emphasis maps.
     #[doc(alias = "VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR")]
     pub const EMPHASIS_MAP: Self = Self(8);
     /// The values of this type that have a constant, each with the name of its constant,
@@ -40757,8 +40757,8 @@ impl FormatFeatureFlags2 {
     /// `bufferFeatures` members.
     #[doc(alias = "VK_FORMAT_FEATURE_2_LINEAR_COLOR_ATTACHMENT_BIT_NV")]
     pub const LINEAR_COLOR_ATTACHMENT_NV: Self = Self(274877906944);
-    /// `VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM`, a value of
-    /// [`VkFormatFeatureFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlagBits2.html).
+    /// `VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM` specifies that a tensor view can be used as a
+    /// storage tensor in shaders.
     #[doc(alias = "VK_FORMAT_FEATURE_2_TENSOR_SHADER_BIT_ARM")]
     pub const TENSOR_SHADER_ARM: Self = Self(549755813888);
     /// `VK_FORMAT_FEATURE_2_OPTICAL_FLOW_IMAGE_BIT_NV` specifies that an image view with this
@@ -40774,8 +40774,8 @@ impl FormatFeatureFlags2 {
     /// can be used as an output cost map for optical flow operations
     #[doc(alias = "VK_FORMAT_FEATURE_2_OPTICAL_FLOW_COST_BIT_NV")]
     pub const OPTICAL_FLOW_COST_NV: Self = Self(4398046511104);
-    /// `VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM`, a value of
-    /// [`VkFormatFeatureFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlagBits2.html).
+    /// `VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM` specifies that a tensor can be aliased
+    /// to an image or that an image can be aliased to a tensor.
     #[doc(alias = "VK_FORMAT_FEATURE_2_TENSOR_IMAGE_ALIASING_BIT_ARM")]
     pub const TENSOR_IMAGE_ALIASING_ARM: Self = Self(8796093022208);
     /// `VK_FORMAT_FEATURE_2_BLOCK_MATCHING_SXD_BIT_QCOM` specifies that image views created with
@@ -40796,8 +40796,8 @@ impl FormatFeatureFlags2 {
     /// the [`VK_IMAGE_USAGE_HOST_TRANSFER_BIT`](ImageUsageFlagBits::HOST_TRANSFER) usage flag set.
     #[doc(alias = "VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT")]
     pub const HOST_IMAGE_TRANSFER: Self = Self(70368744177664);
-    /// `VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM`, a value of
-    /// [`VkFormatFeatureFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlagBits2.html).
+    /// `VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM` specifies that a tensor view can be used as
+    /// a storage tensor with data graph pipelines.
     #[doc(alias = "VK_FORMAT_FEATURE_2_TENSOR_DATA_GRAPH_BIT_ARM")]
     pub const TENSOR_DATA_GRAPH_ARM: Self = Self(281474976710656);
     /// `VK_FORMAT_FEATURE_2_VIDEO_ENCODE_QUANTIZATION_DELTA_MAP_BIT_KHR` specifies that an image
@@ -53326,8 +53326,9 @@ impl PipelineStageFlags2 {
     /// [`vkCmdConvertCooperativeVectorMatrixNV`](crate::Device::cmd_convert_cooperative_vector_matrix_nv).
     #[doc(alias = "VK_PIPELINE_STAGE_2_CONVERT_COOPERATIVE_VECTOR_MATRIX_BIT_NV")]
     pub const CONVERT_COOPERATIVE_VECTOR_MATRIX_NV: Self = Self(17592186044416);
-    /// `VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT` specifies the execution of decompression
+    /// commands with [`vkCmdDecompressMemoryEXT`](crate::Device::cmd_decompress_memory_ext) and
+    /// [`vkCmdDecompressMemoryIndirectCountEXT`](crate::Device::cmd_decompress_memory_indirect_count_ext).
     #[doc(alias = "VK_PIPELINE_STAGE_2_MEMORY_DECOMPRESSION_BIT_EXT")]
     pub const MEMORY_DECOMPRESSION_EXT: Self = Self(35184372088832);
     /// `VK_PIPELINE_STAGE_2_COPY_INDIRECT_BIT_KHR` specifies the stage of the pipeline where
@@ -64020,12 +64021,11 @@ impl VideoEncodeCapabilityFlagsKHR {
         alias = "VK_VIDEO_ENCODE_CAPABILITY_INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION_BIT_KHR"
     )]
     pub const INSUFFICIENT_BITSTREAM_BUFFER_RANGE_DETECTION: Self = Self(2);
-    /// `VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR`, a value of
-    /// [`VkVideoEncodeCapabilityFlagBitsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkVideoEncodeCapabilityFlagBitsKHR.html).
+    /// `VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR` specifies support for using
+    /// quantization delta maps.
     #[doc(alias = "VK_VIDEO_ENCODE_CAPABILITY_QUANTIZATION_DELTA_MAP_BIT_KHR")]
     pub const QUANTIZATION_DELTA_MAP: Self = Self(4);
-    /// `VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR`, a value of
-    /// [`VkVideoEncodeCapabilityFlagBitsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkVideoEncodeCapabilityFlagBitsKHR.html).
+    /// `VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR` specifies support for using emphasis maps.
     #[doc(alias = "VK_VIDEO_ENCODE_CAPABILITY_EMPHASIS_MAP_BIT_KHR")]
     pub const EMPHASIS_MAP: Self = Self(8);
     /// The values of this type that have a constant, each with the name of its constant,
