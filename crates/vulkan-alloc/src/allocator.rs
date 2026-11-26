@@ -160,11 +160,12 @@ impl Allocator {
     /// preferred flags and has the fewest of the flags it avoids, both counted together
     /// (the lowest index on a tie), which is the lowest-indexed one with every preferred
     /// flag and no avoided flag when there is one. Only `DEVICE_LOCAL` is ever avoided,
-    /// by [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly). Memory types with `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD`
-    /// are left out unless the required or preferred flags of the location include one
-    /// of these two flags, and memory types with `PROTECTED` are left out unless those
-    /// flags include `PROTECTED`; memory types of a tile memory heap are always left out
-    /// (see [`MemoryLocation`](crate::MemoryLocation)).
+    /// by [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly). Memory types with
+    /// `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` are left out unless the required or
+    /// preferred flags of the location include one of these two flags, and memory types
+    /// with `PROTECTED` are left out unless those flags include `PROTECTED`; memory
+    /// types of a tile memory heap are always left out (see
+    /// [`MemoryLocation`](crate::MemoryLocation)).
     ///
     /// If the chosen memory type is out of memory for the request, it is left out too, and
     /// the next memory type is chosen in the same way among the rest, until one has the
