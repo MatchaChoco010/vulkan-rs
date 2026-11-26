@@ -183,11 +183,11 @@
 //! Such allocations can be made and bound to resources, but must not be passed to any
 //! of the mapping functions. The allocator does not check this.
 //!
-//! Memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is always
-//! `HOST_COHERENT`, so mapped writes and reads need neither a flush nor an invalidate
-//! (see [`MemoryLocation`]). [`MemoryLocation::GpuOnly`] and a
-//! [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
-//! host-visible memory without it. Such memory needs [`Allocator::flush_allocation`]
+//! Memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
+//! [`MemoryLocation::GpuToCpu`] is always `HOST_COHERENT`, so mapped writes and reads
+//! need neither a flush nor an invalidate (see [`MemoryLocation`]).
+//! [`MemoryLocation::GpuOnly`] and a [`MemoryLocation::Custom`] location that does not
+//! require `HOST_COHERENT` can give host-visible memory without it. Such memory needs [`Allocator::flush_allocation`]
 //! after host writes and [`Allocator::invalidate_allocation`] before host reads (or
 //! [`MappedAllocation::flush`] and [`MappedAllocation::invalidate`]). These functions do
 //! nothing for `HOST_COHERENT` memory, so the memory type need not be checked: call the

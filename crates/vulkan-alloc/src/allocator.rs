@@ -586,7 +586,8 @@ impl Allocator {
 
     /// Flushes the host writes to a mapped allocation with `vkFlushMappedMemoryRanges`, so
     /// that the device can see them. Only memory types without `HOST_COHERENT` need it.
-    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu) always has `HOST_COHERENT`;
     /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
@@ -656,7 +657,8 @@ impl Allocator {
     /// Invalidates the host's view of a mapped allocation with
     /// `vkInvalidateMappedMemoryRanges`, so that the host can see device writes that were
     /// made available to the host. Only memory types without `HOST_COHERENT` need it.
-    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
+    /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
+    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) and
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu) always has `HOST_COHERENT`;
     /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
     /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
