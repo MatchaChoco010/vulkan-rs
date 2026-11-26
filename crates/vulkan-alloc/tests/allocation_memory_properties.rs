@@ -57,6 +57,7 @@ struct Request {
     device_address: bool,
     kind: Kind,
     freed_at_once: bool,
+    out_of_memory_first: usize,
 }
 
 fn property_flags(mask: u8) -> vk::MemoryPropertyFlags {
@@ -149,6 +150,10 @@ fn allocate_all(types: &[vk::MemoryPropertyFlags], requests: &[Request]) -> usiz
     let mut live = Vec::new();
     let mut succeeded = 0;
     for (resource, request) in (1..).zip(requests) {
+        fake.script_allocations(std::iter::repeat_n(
+            vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY,
+            request.out_of_memory_first,
+        ));
         let Ok(allocation) = (unsafe { allocator.allocate(create_desc(request, resource)) }) else {
             continue;
         };
@@ -189,9 +194,19 @@ fn request() -> impl Strategy<Value = Request> {
         any::<bool>(),
         select(KINDS.to_vec()),
         any::<bool>(),
+        prop_oneof![3 => Just(0usize), 2 => 1..=3usize],
     )
         .prop_map(
-            |(size, memory_type_bits, location, linear, device_address, kind, freed_at_once)| {
+            |(
+                size,
+                memory_type_bits,
+                location,
+                linear,
+                device_address,
+                kind,
+                freed_at_once,
+                out_of_memory_first,
+            )| {
                 Request {
                     size,
                     memory_type_bits,
@@ -200,6 +215,7 @@ fn request() -> impl Strategy<Value = Request> {
                     device_address,
                     kind,
                     freed_at_once,
+                    out_of_memory_first,
                 }
             },
         )
@@ -225,6 +241,7 @@ fn every_kind_of_allocation_reports_its_memory_type_flags_and_whether_it_has_its
                     device_address: false,
                     kind,
                     freed_at_once: false,
+                    out_of_memory_first: 0,
                 });
             }
         }
@@ -234,6 +251,41 @@ fn every_kind_of_allocation_reports_its_memory_type_flags_and_whether_it_has_its
         requests.len(),
         "every request has a memory type"
     );
+}
+
+#[test]
+fn an_allocation_that_falls_back_reports_the_flags_of_the_type_it_was_made_in() {
+    let types = [VISIBLE | COHERENT | CACHED, VISIBLE | COHERENT];
+    let fake = FakeDevice::new();
+    let mut allocator = Allocator::new(AllocatorCreateDesc {
+        device: fake.device(),
+        memory_properties: memory_properties(&types),
+        non_coherent_atom_size: 64,
+        block_size: BLOCK_SIZE,
+    });
+    fake.script_allocations([vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY]);
+    let request = Request {
+        size: 256,
+        memory_type_bits: u32::MAX,
+        location: MemoryLocation::GpuToCpu,
+        linear: true,
+        device_address: false,
+        kind: Kind::Shared,
+        freed_at_once: false,
+        out_of_memory_first: 1,
+    };
+    let allocation = unsafe { allocator.allocate(create_desc(&request, 1)) }.unwrap();
+    assert_eq!(
+        allocation.memory_type_index(),
+        1,
+        "the cached type is out of memory"
+    );
+    assert_eq!(
+        allocation.memory_properties(),
+        VISIBLE | COHERENT,
+        "the flags of the type the allocation was made in, not of the type chosen first"
+    );
+    unsafe { allocator.free(allocation) }.unwrap();
 }
 
 #[test]

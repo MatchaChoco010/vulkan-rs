@@ -83,10 +83,17 @@
 //! [`Allocator::allocate`] picks a memory type, then places the allocation in an existing
 //! block of that type that has room and is compatible, or allocates a new block of the
 //! smaller of [`AllocatorCreateDesc::block_size`] and the size of the type's memory heap
-//! (or of the allocation's size, if that is larger). An allocation larger than the
-//! memory heap of its type is refused with [`AllocationError::OutOfMemory`], without a
-//! `vkAllocateMemory` call, whenever the memory properties give the size of that heap;
-//! `vkAllocateMemory` running out of device memory is reported with the same error. A
+//! (or of the allocation's size, if that is larger). A memory type is out of memory for
+//! the allocation if the allocation is larger than the memory heap of the type, which is
+//! found without a `vkAllocateMemory` call whenever the memory properties give the size
+//! of that heap, or if `vkAllocateMemory` returns `VK_ERROR_OUT_OF_DEVICE_MEMORY`. In the
+//! second case the allocator first frees the empty blocks it keeps in the memory types of
+//! that heap, if there are any, and calls `vkAllocateMemory` for the type once more. When
+//! a memory type is out of memory, the allocator picks the next one among the remaining
+//! types by the same rule and tries it, and returns [`AllocationError::OutOfMemory`] only
+//! when every memory type the allocation may use is out of memory. So an allocation can
+//! end up in a memory type with fewer of the preferred flags of its [`MemoryLocation`]
+//! than the first one picked. A
 //! description the allocator does not accept, such as one of size 0, is refused with
 //! [`AllocationError::InvalidAllocationCreateDesc`] before anything else is checked.
 //! Allocations that differ in [`AllocationCreateDesc::memory_allocate_flags`] never
@@ -107,9 +114,11 @@
 //! program allocates and frees one allocation, such as a staging buffer, in a memory
 //! type that holds nothing else. Other blocks are freed when their last allocation is
 //! freed (see [`Allocator::free`]). A kept block still takes room in its memory heap,
-//! so other allocations from that heap can run out of memory sooner than they would
-//! without it; [`Allocator::free_empty_blocks`] gives that memory back, and dropping
-//! the allocator frees all of its memory.
+//! which other allocations from that heap may need. When `vkAllocateMemory` runs out
+//! of memory in a heap, the empty blocks of that heap are freed and the allocation is
+//! tried again, as described above, so the room is given back when it is needed.
+//! [`Allocator::free_empty_blocks`] frees the empty blocks at once, and dropping the
+//! allocator frees all of its memory.
 //!
 //! The free ranges of a block are kept in lists by size class. A request first looks
 //! only at the first free range of each list, from the class of the requested size
@@ -133,7 +142,6 @@
 //! - create, bind or destroy buffers and images;
 //! - know when the device has finished with memory: [`Allocator::free`] releases memory
 //!   immediately, so the caller waits for the device first;
-//! - try another memory type when `vkAllocateMemory` fails for the chosen one;
 //! - check memory heap budgets or `maxMemoryAllocationCount`;
 //! - move allocations to reduce fragmentation;
 //! - import memory. Memory whose size and layout are decided elsewhere, such as a

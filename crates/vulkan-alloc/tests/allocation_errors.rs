@@ -60,8 +60,10 @@ impl Device {
         properties
     }
 
-    fn chosen_memory_type(&self, memory_type_bits: u32) -> Option<usize> {
-        (0..self.heap_indices.len()).find(|&index| memory_type_bits >> index & 1 == 1)
+    fn allowed_memory_types(&self, memory_type_bits: u32) -> Vec<usize> {
+        (0..self.heap_indices.len())
+            .filter(|&index| memory_type_bits >> index & 1 == 1)
+            .collect()
     }
 
     fn known_heap_size(&self, memory_type: usize) -> Option<u64> {
@@ -160,8 +162,8 @@ fn description(
 #[derive(Debug, PartialEq, Eq)]
 enum Expected {
     Refused(AllocationError),
-    Failed(AllocationError),
-    Allocated,
+    Failed(AllocationError, usize),
+    Allocated(usize),
 }
 
 fn expected(
@@ -175,19 +177,34 @@ fn expected(
     if size == 0 || (alignment != 0 && !alignment.is_power_of_two()) || device_mask {
         return Expected::Refused(AllocationError::InvalidAllocationCreateDesc);
     }
-    let Some(memory_type) = device.chosen_memory_type(memory_type_bits) else {
+    let allowed = device.allowed_memory_types(memory_type_bits);
+    if allowed.is_empty() {
         return Expected::Refused(AllocationError::NoCompatibleMemoryType);
-    };
-    if device
-        .known_heap_size(memory_type)
-        .is_some_and(|heap_size| size > heap_size)
-    {
-        return Expected::Refused(AllocationError::OutOfMemory);
     }
-    match allocate_memory_result {
-        vk::VkResult::SUCCESS => Expected::Allocated,
-        vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY => Expected::Failed(AllocationError::OutOfMemory),
-        result => Expected::Failed(AllocationError::Vulkan(result)),
+    let mut calls = 0;
+    for memory_type in allowed {
+        if device
+            .known_heap_size(memory_type)
+            .is_some_and(|heap_size| size > heap_size)
+        {
+            continue;
+        }
+        calls += 1;
+        let result = if calls == 1 {
+            allocate_memory_result
+        } else {
+            vk::VkResult::SUCCESS
+        };
+        match result {
+            vk::VkResult::SUCCESS => return Expected::Allocated(calls),
+            vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY => {}
+            result => return Expected::Failed(AllocationError::Vulkan(result), calls),
+        }
+    }
+    if calls == 0 {
+        Expected::Refused(AllocationError::OutOfMemory)
+    } else {
+        Expected::Failed(AllocationError::OutOfMemory, calls)
     }
 }
 
@@ -249,7 +266,7 @@ proptest! {
             device_mask,
             allocate_memory_result,
         );
-        let fails = expected != Expected::Allocated;
+        let fails = !matches!(expected, Expected::Allocated(_));
 
         match expected {
             Expected::Refused(error) => {
@@ -260,7 +277,7 @@ proptest! {
                     "{}: a refused allocation must not call the device", context
                 );
             }
-            Expected::Failed(error) => {
+            Expected::Failed(error, calls) => {
                 prop_assert_eq!(
                     &result,
                     &Err(error),
@@ -268,8 +285,8 @@ proptest! {
                 );
                 prop_assert_eq!(
                     fake.calls().allocate,
-                    calls_before.allocate + 1,
-                    "{}: a request for new memory must call vkAllocateMemory once", context
+                    calls_before.allocate + calls,
+                    "{}: vkAllocateMemory is called once for each memory type tried", context
                 );
                 prop_assert_eq!(
                     fake.calls().free,
@@ -277,8 +294,13 @@ proptest! {
                     "{}: a failed vkAllocateMemory must not be followed by vkFreeMemory", context
                 );
             }
-            Expected::Allocated => {
+            Expected::Allocated(calls) => {
                 prop_assert!(result.is_ok(), "{}: the allocation must succeed: {:?}", context, result);
+                prop_assert_eq!(
+                    fake.calls().allocate,
+                    calls_before.allocate + calls,
+                    "{}: vkAllocateMemory is called once for each memory type tried", context
+                );
                 let allocation = result.unwrap();
                 prop_assert!(allocation.size() >= size, "{}", context);
                 unsafe { allocator.free(allocation) }.unwrap();

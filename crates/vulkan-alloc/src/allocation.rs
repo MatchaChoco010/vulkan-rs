@@ -35,8 +35,8 @@ pub struct AllocationCreateDesc<'a> {
     /// Only memory types whose bit is set in `memory_type_bits` are considered. A `size`
     /// of 0 is rejected with
     /// [`AllocationError::InvalidAllocationCreateDesc`](crate::AllocationError::InvalidAllocationCreateDesc),
-    /// and a `size` larger than the memory heap of the chosen memory type with
-    /// [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory) (see
+    /// and a `size` larger than the memory heap of every memory type that may be chosen
+    /// with [`AllocationError::OutOfMemory`](crate::AllocationError::OutOfMemory) (see
     /// [`Allocator::allocate`](crate::Allocator::allocate) for when the heap is known).
     ///
     /// The allocation's offset is a multiple of `alignment`, and an `alignment` of 0 is

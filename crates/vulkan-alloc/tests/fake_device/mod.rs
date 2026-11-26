@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::ffi::{CStr, c_char, c_void};
 use std::sync::Mutex;
 
@@ -79,6 +79,8 @@ struct State {
     non_coherent_atom_size: u64,
     synchronized: Vec<SynchronizedRange>,
     next_allocation_fails: Option<vk::VkResult>,
+    allocation_results: VecDeque<vk::VkResult>,
+    allocated_memory_types: Vec<u32>,
     next_map_fault: Option<MapFault>,
     next_synchronization_fails: Option<vk::VkResult>,
 }
@@ -103,6 +105,8 @@ impl FakeDevice {
             non_coherent_atom_size: non_coherent_atom_size.max(1),
             synchronized: Vec::new(),
             next_allocation_fails: None,
+            allocation_results: VecDeque::new(),
+            allocated_memory_types: Vec::new(),
             next_map_fault: None,
             next_synchronization_fails: None,
         })));
@@ -189,6 +193,14 @@ impl FakeDevice {
 
     pub fn fail_next_allocation(&self, result: vk::VkResult) {
         self.state().next_allocation_fails = Some(result);
+    }
+
+    pub fn script_allocations(&self, results: impl IntoIterator<Item = vk::VkResult>) {
+        self.state().allocation_results.extend(results);
+    }
+
+    pub fn allocated_memory_types(&self) -> Vec<u32> {
+        self.state().allocated_memory_types.clone()
     }
 
     pub fn fault_next_map(&self, fault: MapFault) {
@@ -366,6 +378,7 @@ unsafe extern "system" fn allocate_memory(
     let mut state = unsafe { state_of(device) };
     let info = unsafe { &*p_allocate_info };
     state.calls.allocate += 1;
+    state.allocated_memory_types.push(info.memory_type_index);
     if info.s_type != vk::StructureType::MEMORY_ALLOCATE_INFO {
         state
             .misuse
@@ -384,6 +397,13 @@ unsafe extern "system" fn allocate_memory(
         }
     };
     if let Some(result) = state.next_allocation_fails.take() {
+        return result;
+    }
+    if let Some(result) = state
+        .allocation_results
+        .pop_front()
+        .filter(|&result| result != vk::VkResult::SUCCESS)
+    {
         return result;
     }
     let handle = state.released_handles.pop_first().unwrap_or_else(|| {

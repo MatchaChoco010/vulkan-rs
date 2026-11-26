@@ -62,7 +62,8 @@ pub struct AllocatorCreateDesc<'a> {
     /// kept empty for later allocations if its memory type has no other empty block with
     /// the same [`AllocationCreateDesc::memory_allocate_flags`] (see [`Allocator::free`]),
     /// so each memory type can hold this many bytes without any allocation in them for
-    /// each set of flags that its shared blocks were allocated with.
+    /// each set of flags that its shared blocks were allocated with, until
+    /// `vkAllocateMemory` runs out of memory in their heap (see [`Allocator::allocate`]).
     pub block_size: u64,
 }
 
@@ -161,11 +162,24 @@ impl Allocator {
     /// are left out unless the required or preferred flags of the location include one
     /// of these two flags, and memory types with `PROTECTED` are left out unless those
     /// flags include `PROTECTED`; memory types of a tile memory heap are always left out
-    /// (see [`MemoryLocation`](crate::MemoryLocation)). Only the chosen memory type is
-    /// tried.
+    /// (see [`MemoryLocation`](crate::MemoryLocation)).
     ///
-    /// A request that is not refused (see the errors below) is placed in an existing
-    /// shared block of that type that was made with the same
+    /// If the chosen memory type is out of memory for the request, it is left out too, and
+    /// the next memory type is chosen in the same way among the rest, until one has the
+    /// memory or none is left. A memory type is out of memory if `desc.requirements.size`
+    /// is larger than the `size` of the memory heap of the type, which is found without a
+    /// Vulkan call, or if `vkAllocateMemory` returns
+    /// [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] for it. In the second case, if the
+    /// allocator keeps empty blocks (see [`Allocator::free`]) in memory types with the same
+    /// `heap_index` as the type, it first frees all of them with `vkFreeMemory` and calls
+    /// `vkAllocateMemory` for the type once more; the type is out of memory if that call
+    /// returns [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] too. So `vkAllocateMemory` can
+    /// be called several times in one call of this function, and the allocation can be
+    /// made in a memory type with fewer preferred flags than the first one chosen;
+    /// [`Allocation::memory_type_index`] is the type it was made in.
+    ///
+    /// In each memory type it tries, a request that is not refused (see the errors below)
+    /// is placed in an existing shared block of that type that was made with the same
     /// [`AllocationCreateDesc::memory_allocate_flags`] and has room, tried in this order:
     ///
     /// 1. the blocks that hold allocations with the same [`AllocationCreateDesc::linear`],
@@ -211,22 +225,24 @@ impl Allocator {
     ///    are not protected and to tensors that are not protected, but not to other
     ///    resources, such as images with optimal tiling (see
     ///    [`MemoryLocation`](crate::MemoryLocation)).
-    /// 3. [`AllocationError::OutOfMemory`] if `desc.requirements.size` is larger than the
-    ///    `size` of the memory heap of the chosen type. The heap is the entry
-    ///    `heap_index` of the type in [`AllocatorCreateDesc::memory_properties`]; it is
-    ///    checked only if `heap_index` is below `memory_heap_count` (and
-    ///    [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0, as for
-    ///    [`AllocatorCreateDesc::block_size`]. This applies to every allocation, shared,
-    ///    dedicated, exportable or zero-initialized.
-    /// 4. [`AllocationError::OutOfMemory`] if `vkAllocateMemory` returns
-    ///    [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`], and [`AllocationError::Vulkan`]
-    ///    with the result if it fails otherwise, for example with
+    /// 3. [`AllocationError::Vulkan`] with the result if `vkAllocateMemory` fails with a
+    ///    result other than [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`], for example with
     ///    [`vk::VkResult::ERROR_OUT_OF_HOST_MEMORY`] or
-    ///    [`vk::VkResult::ERROR_TOO_MANY_OBJECTS`].
+    ///    [`vk::VkResult::ERROR_TOO_MANY_OBJECTS`]. It is returned at once, without trying
+    ///    another memory type.
+    /// 4. [`AllocationError::OutOfMemory`] if every memory type that may be chosen is out
+    ///    of memory, as described above. The heap of a type is the entry `heap_index` of
+    ///    the type in [`AllocatorCreateDesc::memory_properties`]; its size is compared
+    ///    only if `heap_index` is below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`])
+    ///    and its `size` is not 0, as for [`AllocatorCreateDesc::block_size`]. This
+    ///    applies to every allocation, shared, dedicated, exportable or zero-initialized.
+    ///    If the request is larger than the heap of every such type, it is returned
+    ///    without a Vulkan call.
     ///
-    /// The first three are returned before any Vulkan call. Nothing is allocated when an
-    /// error is returned. [`AllocationError::InvalidAllocation`] is returned only when no
-    /// identifier is left for a new allocation (see that variant).
+    /// The first two are returned before any Vulkan call. Nothing is allocated when an
+    /// error is returned, but the empty blocks of a heap in which `vkAllocateMemory` ran
+    /// out of memory may have been freed. [`AllocationError::InvalidAllocation`] is
+    /// returned only when no identifier is left for a new allocation (see that variant).
     ///
     /// # Safety
     ///
@@ -235,17 +251,17 @@ impl Allocator {
     ///   device. For a logical device that represents more than one physical device,
     ///   those of any of them will do: the physical devices of a device group have
     ///   identical properties.
-    /// - The `vkAllocateMemory` call made from `desc` must be valid. In particular:
+    /// - The `vkAllocateMemory` calls made from `desc` must be valid. In particular:
     ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
     ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
     ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
     ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
     ///   `protectedMemory` feature; non-empty
     ///   [`AllocationCreateDesc::export_handle_types`] need the external-memory
-    ///   extensions for those handle types enabled and supported for the chosen memory
-    ///   type; if the allocator does not check `desc.requirements.size` against the
-    ///   memory heap of the chosen type (see the errors above), the size must not be
-    ///   larger than that heap; and the number of `VkDeviceMemory` objects on the device
+    ///   extensions for those handle types enabled and supported for every memory type
+    ///   that may be chosen; if the allocator does not check `desc.requirements.size`
+    ///   against the memory heap of such a type (see the errors above), the size must not
+    ///   be larger than that heap; and the number of `VkDeviceMemory` objects on the device
     ///   must stay below `maxMemoryAllocationCount`. Each block of the allocator counts
     ///   as one of them, also an empty block that it keeps for later allocations (see
     ///   [`Allocator::free`]).
@@ -254,6 +270,11 @@ impl Allocator {
     ///   the handle must be a resource of this device that is not bound to memory yet,
     ///   `desc.requirements` must be its memory requirements, and the device must
     ///   support dedicated allocations (Vulkan 1.1 or `VK_KHR_dedicated_allocation`).
+    /// - When `vkAllocateMemory` runs out of memory, this frees the empty blocks of the
+    ///   heap with `vkFreeMemory` (see above), as [`Allocator::free_empty_blocks`] does.
+    ///   Every submitted command that refers to memory of an empty block must have
+    ///   completed. [`Allocator::free`] already requires this of the allocations that
+    ///   were in the block, so this is no new condition.
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
     /// - On a logical device that represents more than one physical device, the returned
@@ -296,32 +317,39 @@ impl Allocator {
         } else {
             AllocationResourceClass::Optimal
         };
-        let memory_type_index = find_memory_type_index(
-            &self.memory_properties,
-            desc.requirements.memory_type_bits,
-            desc.location.required_flags(),
-            desc.location.preferred_flags(),
-        )
-        .ok_or(AllocationError::NoCompatibleMemoryType)?;
-        if self
-            .heap_size(memory_type_index)
-            .is_some_and(|heap_size| desc.requirements.size > heap_size)
-        {
-            return Err(AllocationError::OutOfMemory);
-        }
-        let requirements = self.adjusted_requirements(memory_type_index, desc.requirements)?;
-        let allocation = unsafe {
-            self.allocate_from_type(
-                memory_type_index,
-                requirements,
-                resource_class,
-                BlockRequest {
-                    dedicated: desc.allocation_scheme.into(),
-                    memory_allocate_flags: desc.memory_allocate_flags,
-                    export_handle_types: desc.export_handle_types,
-                },
+        let request = BlockRequest {
+            dedicated: desc.allocation_scheme.into(),
+            memory_allocate_flags: desc.memory_allocate_flags,
+            export_handle_types: desc.export_handle_types,
+        };
+        let mut memory_type_bits = desc.requirements.memory_type_bits;
+        let allocation = loop {
+            let memory_type_index = find_memory_type_index(
+                &self.memory_properties,
+                memory_type_bits,
+                desc.location.required_flags(),
+                desc.location.preferred_flags(),
             )
-        }?;
+            .ok_or(if memory_type_bits == desc.requirements.memory_type_bits {
+                AllocationError::NoCompatibleMemoryType
+            } else {
+                AllocationError::OutOfMemory
+            })?;
+            memory_type_bits &= !(1 << memory_type_index);
+            if self
+                .heap_size(memory_type_index)
+                .is_some_and(|heap_size| desc.requirements.size > heap_size)
+            {
+                continue;
+            }
+            let requirements = self.adjusted_requirements(memory_type_index, desc.requirements)?;
+            match unsafe {
+                self.allocate_from_type(memory_type_index, requirements, resource_class, request)
+            } {
+                Err(AllocationError::OutOfMemory) => continue,
+                result => break result?,
+            }
+        };
         if let Some(name) = desc.name
             && let Ok(block) = block_mut(&mut self.memory_types, &allocation)
         {
@@ -353,11 +381,13 @@ impl Allocator {
     /// [`Allocator::free_empty_blocks`] frees them, and so do [`Allocator::free_all`] and
     /// dropping the allocator.
     ///
-    /// A kept block takes room in its memory heap. Allocations that cannot use it, such
-    /// as allocations with other flags, allocations with memory of their own,
-    /// allocations larger than a block and allocations in another memory type of the
-    /// same heap, can therefore run out of memory sooner than they would without it.
-    /// [`Allocator::free_empty_blocks`] gives that room back.
+    /// A kept block takes room in its memory heap that allocations which cannot use it
+    /// may need, such as allocations with other flags, allocations with memory of their
+    /// own, allocations larger than a block and allocations in another memory type of
+    /// the same heap. When `vkAllocateMemory` runs out of memory for such an allocation,
+    /// [`Allocator::allocate`] frees the empty blocks of the memory types of that heap
+    /// and tries again, so the room is given back when it is needed, and
+    /// [`Allocator::free_empty_blocks`] need not be called for it.
     ///
     /// # Errors
     ///
@@ -757,10 +787,13 @@ impl Allocator {
     /// [`Allocator::free`]) with `vkFreeMemory`, and returns how many it freed.
     ///
     /// There is at most one such block per memory type and set of
-    /// [`AllocationCreateDesc::memory_allocate_flags`]. Call this to give their memory
-    /// back to the device, for example when it runs short of memory or after the
-    /// allocations of a large part of the program were freed. The next allocation that
-    /// fits in no block allocates a new block again.
+    /// [`AllocationCreateDesc::memory_allocate_flags`]. [`Allocator::allocate`] frees the
+    /// empty blocks of a memory heap by itself when `vkAllocateMemory` runs out of memory
+    /// in that heap, so they need not be freed to make room for allocations of this
+    /// allocator. Call this to give their memory back for other uses, for example before
+    /// memory is allocated without this allocator, or after the allocations of a large
+    /// part of the program were freed. The next allocation that fits in no block
+    /// allocates a new block again.
     ///
     /// # Safety
     ///
@@ -798,21 +831,42 @@ impl Allocator {
         }
 
         let block_size = request.block_size(requirements.size, shared_block_size);
-        let mut block = unsafe {
+        let allocate_block = |device: &Device| unsafe {
             MemoryBlock::allocate(
-                &self.device,
+                device,
                 memory_type_index,
                 block_size,
                 resource_class,
                 request,
             )
+        };
+        let mut block = match allocate_block(&self.device) {
+            Err(AllocationError::OutOfMemory)
+                if unsafe { self.free_empty_blocks_of_heap(memory_type_index) } > 0 =>
+            {
+                allocate_block(&self.device)
+            }
+            result => result,
         }?;
         let Some(suballocation) = block.suballocate(requirements.size, requirements.alignment)
         else {
             unsafe { block.free_memory(&self.device) };
             return Err(AllocationError::InvalidAllocation);
         };
-        Ok(memory_type.insert_block(block, suballocation))
+        Ok(self.memory_types[memory_type_index as usize].insert_block(block, suballocation))
+    }
+
+    unsafe fn free_empty_blocks_of_heap(&mut self, memory_type_index: u32) -> usize {
+        let heap_index =
+            |index: u32| self.memory_properties.memory_types[index as usize].heap_index;
+        let heap = heap_index(memory_type_index);
+        let mut freed = 0;
+        for memory_type in &mut self.memory_types {
+            if heap_index(memory_type.memory_type_index()) == heap {
+                freed += unsafe { memory_type.free_empty_blocks(&self.device) };
+            }
+        }
+        freed
     }
 
     unsafe fn map_host_visible(
