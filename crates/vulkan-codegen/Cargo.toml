@@ -12,4 +12,5 @@ vulkan-registry.workspace = true
 
 [dev-dependencies]
 proptest = { version = "1", default-features = false, features = ["std"] }
+regex = "1"
 syn = { version = "2", features = ["full", "visit"] }

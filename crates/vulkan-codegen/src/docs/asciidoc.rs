@@ -15,6 +15,7 @@ pub(crate) enum Unsupported {
     Attribute(String),
     Macro(String),
     UnknownMacro(String),
+    MacroUse(String),
     EscapedSpan,
     Passthrough,
     Unterminated(&'static str),
@@ -24,35 +25,61 @@ pub(crate) enum Unsupported {
 
 pub(crate) type Converted = Result<String, Unsupported>;
 
-const NORMATIVE_WORDS: &[&str] = &[
-    "can",
-    "cannot",
-    "may",
-    "must",
-    "optional",
-    "optionally",
-    "required",
-    "should",
-    "undefined",
-];
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Argument {
+    Nothing,
+    OptionalWord,
+    Word,
+    WordWithStars,
+    WordWithHyphens,
+    MemberPath,
+    MemberPathWithStars,
+    Code,
+}
 
-const LINK_MACROS: &[(&str, Link)] = &[
-    ("slink", Link::Type),
-    ("elink", Link::Type),
-    ("tlink", Link::Type),
-    ("basetype", Link::Type),
-    ("ename", Link::EnumValue),
-    ("flink", Link::Command),
-    ("dlink", Link::Define),
-    ("apiext", Link::Extension),
-    ("reflink", Link::ReferencePage),
-];
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Rendering {
+    Name,
+    Code,
+    Link(Link),
+}
 
-const CODE_MACROS: &[&str] = &[
-    "pname", "ptext", "sname", "stext", "fname", "ftext", "etext", "dname", "tname", "code",
+const SPEC_MACROS: &[(&str, Argument, Rendering)] = &[
+    ("can", Argument::OptionalWord, Rendering::Name),
+    ("cannot", Argument::OptionalWord, Rendering::Name),
+    ("may", Argument::OptionalWord, Rendering::Name),
+    ("must", Argument::OptionalWord, Rendering::Name),
+    ("optional", Argument::OptionalWord, Rendering::Name),
+    ("optionally", Argument::OptionalWord, Rendering::Name),
+    ("required", Argument::OptionalWord, Rendering::Name),
+    ("should", Argument::OptionalWord, Rendering::Name),
+    (
+        "reflink",
+        Argument::WordWithHyphens,
+        Rendering::Link(Link::ReferencePage),
+    ),
+    ("apiext", Argument::Word, Rendering::Link(Link::Extension)),
+    ("flink", Argument::Word, Rendering::Link(Link::Command)),
+    ("fname", Argument::Word, Rendering::Code),
+    ("ftext", Argument::WordWithStars, Rendering::Code),
+    ("sname", Argument::Word, Rendering::Code),
+    ("slink", Argument::Word, Rendering::Link(Link::Type)),
+    ("stext", Argument::WordWithStars, Rendering::Code),
+    ("ename", Argument::Word, Rendering::Link(Link::EnumValue)),
+    ("elink", Argument::Word, Rendering::Link(Link::Type)),
+    ("etext", Argument::WordWithStars, Rendering::Code),
+    ("pname", Argument::MemberPath, Rendering::Code),
+    ("ptext", Argument::MemberPathWithStars, Rendering::Code),
+    ("dname", Argument::Word, Rendering::Code),
+    ("dlink", Argument::Word, Rendering::Link(Link::Define)),
+    ("tname", Argument::Word, Rendering::Code),
+    ("tlink", Argument::Word, Rendering::Link(Link::Type)),
+    ("basetype", Argument::Word, Rendering::Link(Link::Type)),
+    ("code", Argument::Code, Rendering::Code),
+    ("attr", Argument::Word, Rendering::Code),
+    ("tag", Argument::Word, Rendering::Code),
+    ("undefined", Argument::Nothing, Rendering::Name),
 ];
-
-const STRONG_MACROS: &[&str] = &["tag", "attr"];
 
 const UNSUPPORTED_MACROS: &[&str] = &["footnote", "image", "xref", "stem", "anchor", "pass"];
 
@@ -66,13 +93,17 @@ fn is_word(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
+fn is_any_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 fn word_len(text: &str, extra: &[char]) -> usize {
     text.find(|c: char| !(is_word(c) || extra.contains(&c)))
         .unwrap_or(text.len())
 }
 
-fn member_path_len(text: &str) -> usize {
-    let mut len = word_len(text, &[]);
+fn member_path_len(text: &str, extra: &[char]) -> usize {
+    let mut len = word_len(text, extra);
     if len == 0 {
         return 0;
     }
@@ -85,11 +116,77 @@ fn member_path_len(text: &str) -> usize {
         } else {
             return len;
         };
-        let next = word_len(&rest[separator..], &[]);
+        let next = word_len(&rest[separator..], extra);
         if next == 0 {
             return len;
         }
         len += separator + next;
+    }
+}
+
+fn hyphenated_word_len(text: &str) -> usize {
+    let mut len = 0;
+    while let Some(c) = text[len..].chars().next() {
+        let rest = &text[len..];
+        let arrow = rest.starts_with("->");
+        let dash = rest.starts_with("--")
+            && text[..len].ends_with(is_any_word)
+            && rest[2..].starts_with(is_any_word);
+        if !(is_word(c) || c == '-') || arrow || dash {
+            break;
+        }
+        len += 1;
+    }
+    len
+}
+
+impl Argument {
+    fn len(self, text: &str) -> Option<usize> {
+        let len = match self {
+            Argument::Nothing => return Some(0),
+            Argument::OptionalWord => return Some(word_len(text, &[])),
+            Argument::Word => word_len(text, &[]),
+            Argument::WordWithStars => word_len(text, &['*']),
+            Argument::WordWithHyphens => hyphenated_word_len(text),
+            Argument::MemberPath => member_path_len(text, &[]),
+            Argument::MemberPathWithStars => member_path_len(text, &['*']),
+            Argument::Code => code_len(text),
+        };
+        (len > 0).then_some(len)
+    }
+}
+
+fn spec_macro_argument_len(
+    order: usize,
+    argument: &str,
+    in_a_word: bool,
+) -> Result<Option<usize>, Unsupported> {
+    let (name, taken, _) = SPEC_MACROS[order];
+    let Some(mut len) = taken.len(argument) else {
+        return Ok(None);
+    };
+    if let Some(after) = argument[len..].strip_prefix(':') {
+        for (earlier, (earlier_name, _, _)) in SPEC_MACROS[..order].iter().enumerate() {
+            let Some(before) = argument[..len].strip_suffix(earlier_name) else {
+                continue;
+            };
+            if spec_macro_argument_len(earlier, after, before.ends_with(is_word))?.is_some() {
+                let Some(cut_short) = taken.len(before) else {
+                    return Ok(None);
+                };
+                len = cut_short;
+                break;
+            }
+        }
+    }
+    let leaves_a_word_out = taken == Argument::OptionalWord && len > 0;
+    match (in_a_word, len) {
+        (true, 0) => Ok(None),
+        (false, _) if !leaves_a_word_out => Ok(Some(len)),
+        _ => Err(Unsupported::MacroUse(format!(
+            "{name}:{}",
+            &argument[..len]
+        ))),
     }
 }
 
@@ -183,7 +280,7 @@ impl Converter<'_> {
         while index < text.len() {
             let rest = &text[index..];
             let at_word_start = previous.is_none_or(|c| !is_word(c));
-            if at_word_start && let Some((consumed, markdown)) = self.named_macro(rest)? {
+            if let Some((consumed, markdown)) = self.named_macro(rest, at_word_start)? {
                 out.push_str(&markdown);
                 previous = rest[..consumed].chars().next_back();
                 index += consumed;
@@ -197,7 +294,11 @@ impl Converter<'_> {
         Ok(out)
     }
 
-    fn named_macro(&self, rest: &str) -> Result<Option<(usize, String)>, Unsupported> {
+    fn named_macro(
+        &self,
+        rest: &str,
+        at_word_start: bool,
+    ) -> Result<Option<(usize, String)>, Unsupported> {
         let name_len = rest
             .find(|c: char| !c.is_ascii_lowercase())
             .unwrap_or(rest.len());
@@ -208,49 +309,23 @@ impl Converter<'_> {
         let argument = &rest[name_len + 1..];
         let consumed = |argument_len: usize| name_len + 1 + argument_len;
 
-        if NORMATIVE_WORDS.contains(&name) {
-            let suffix = word_len(argument, &[]);
-            return Ok(Some((
-                consumed(suffix),
-                format!("{name}{}", &argument[..suffix]),
-            )));
-        }
-        if let Some((_, link)) = LINK_MACROS
-            .iter()
-            .find(|(macro_name, _)| *macro_name == name)
-        {
-            let len = match link {
-                Link::ReferencePage => word_len(argument, &['-']),
-                _ => word_len(argument, &[]),
-            };
-            if len == 0 {
+        if let Some(order) = SPEC_MACROS.iter().position(|(spec, _, _)| *spec == name) {
+            let Some(len) = spec_macro_argument_len(order, argument, !at_word_start)? else {
                 return Ok(None);
-            }
+            };
             let target = &argument[..len];
-            let markdown = match (self.resolve)(*link, target) {
-                Some(destination) => format!("[`{target}`]({destination})"),
-                None => code_span(target),
+            let markdown = match SPEC_MACROS[order].2 {
+                Rendering::Name => name.to_string(),
+                Rendering::Code => code_span(target),
+                Rendering::Link(link) => match (self.resolve)(link, target) {
+                    Some(destination) => format!("[`{target}`]({destination})"),
+                    None => code_span(target),
+                },
             };
             return Ok(Some((consumed(len), markdown)));
         }
-        if CODE_MACROS.contains(&name) {
-            let len = match name {
-                "pname" => member_path_len(argument),
-                "ptext" | "stext" | "ftext" | "etext" => word_len(argument, &['*']),
-                "code" => code_len(argument),
-                _ => word_len(argument, &[]),
-            };
-            if len == 0 {
-                return Ok(None);
-            }
-            return Ok(Some((consumed(len), code_span(&argument[..len]))));
-        }
-        if STRONG_MACROS.contains(&name) {
-            let len = word_len(argument, &[]);
-            if len == 0 {
-                return Ok(None);
-            }
-            return Ok(Some((consumed(len), format!("**{}**", &argument[..len]))));
+        if !at_word_start {
+            return Ok(None);
         }
         if name == "latexmath" && argument.starts_with('[') {
             let close =
@@ -361,7 +436,7 @@ impl Converter<'_> {
         if replacements && rest.starts_with("--") {
             let next = rest[2..].chars().next();
             let bounds = |c: Option<char>| c.is_none_or(|c| c == ' ' || c == '\n');
-            let between_words = previous.is_some_and(is_word) && next.is_some_and(is_word);
+            let between_words = previous.is_some_and(is_any_word) && next.is_some_and(is_any_word);
             if between_words || (bounds(previous) && bounds(next)) {
                 return Ok((2, "—".to_string()));
             }
@@ -590,13 +665,95 @@ mod tests {
         assert_eq!(markdown("this is undefined:."), "this is undefined.");
     }
 
-    #[test]
-    fn words_ending_in_a_macro_name_are_not_macros() {
+    fn refused(text: &str, macro_use: &str) {
         assert_eq!(
-            markdown("the barcode:x and encode: this"),
-            "the barcode:x and encode: this"
+            convert(text),
+            Err(Unsupported::MacroUse(macro_use.to_string())),
+            "{text:?}"
         );
-        assert_eq!(markdown("note: pname: alone"), "note: pname: alone");
+    }
+
+    #[test]
+    fn a_word_after_the_colon_of_a_normative_macro_is_refused() {
+        for (text, macro_use) in [
+            ("must:be x", "must:be"),
+            ("it can:not y", "can:not"),
+            ("may:_", "may:_"),
+            ("optional:1x.", "optional:1x"),
+            ("a must:should: z", "must:should"),
+            ("pname:a.must:be", "must:be"),
+        ] {
+            refused(text, macro_use);
+        }
+        assert_eq!(
+            markdown("required:. undefined:x and must:: and should:can: y"),
+            "required. undefinedx and must: and shouldcan y"
+        );
+    }
+
+    #[test]
+    fn a_macro_of_the_specification_in_a_word_is_refused_and_one_that_takes_nothing_is_text() {
+        for (text, macro_use) in [
+            ("the barcode:x", "code:x"),
+            ("xpname:foo.bar", "pname:foo.bar"),
+            ("a_pname:y", "pname:y"),
+            ("scan:x", "can:x"),
+            ("1must:be", "must:be"),
+            ("pname:xename:VK_TRUE", "ename:VK_TRUE"),
+            ("pname:xmust:be", "must:be"),
+        ] {
+            refused(text, macro_use);
+        }
+        let text =
+            "scan: x, a rescan:, xundefined:y, encode: this, pseudocode: and note: pname: alone";
+        assert_eq!(markdown(text), text);
+        assert_eq!(
+            markdown("pname:xmust: y and VkFoo::pname:x"),
+            "`xmust`: y and VkFoo::`x`"
+        );
+        assert_eq!(
+            markdown("_pname:pNext chain_ and *must:* and (pname:x)"),
+            "_`pNext` chain_ and **must** and (`x`)"
+        );
+    }
+
+    #[test]
+    fn member_paths_of_ptext_and_the_names_of_tags_and_attributes_become_code() {
+        assert_eq!(
+            markdown("ptext:pCreateInfo->p* and ptext:a.b"),
+            "`pCreateInfo->p*` and `a.b`"
+        );
+        assert_eq!(markdown("tag:enums and attr:len"), "`enums` and `len`");
+    }
+
+    #[test]
+    fn a_macro_that_the_specification_registers_earlier_is_read_first() {
+        assert_eq!(
+            markdown("pname:ename:VK_TRUE and ename:pname:x"),
+            "pname:[`VK_TRUE`](TRUE) and `pname`:x"
+        );
+        assert_eq!(
+            markdown("pname:a.must: and should:can:"),
+            "`a`.must and shouldcan"
+        );
+        assert_eq!(markdown("pname:pname:x"), "`pname`:x");
+    }
+
+    #[test]
+    fn a_reference_page_name_ends_before_an_arrow_and_before_a_dash_between_words() {
+        assert_eq!(
+            markdown("reflink:provisional-headers- and reflink:-x"),
+            "[`provisional-headers-`](https://example.org/provisional-headers-.html) and [`-x`](https://example.org/-x.html)"
+        );
+        assert_eq!(
+            markdown("reflink:a->b and reflink:a--b and reflink:a-- b"),
+            "[`a`](https://example.org/a.html)-\\>b and [`a`](https://example.org/a.html)—b and [`a--`](https://example.org/a--.html) b"
+        );
+        assert_eq!(
+            markdown("reflink:a--é and é--a and é-- a"),
+            "[`a`](https://example.org/a.html)—é and é—a and é-- a",
+            "a word character on either side of a dash is any letter or digit"
+        );
     }
 
     #[test]
@@ -705,42 +862,484 @@ mod tests {
         assert_eq!(markdown("a \\b and \\[x\\]"), "a \\\\b and \\\\\\[x\\\\\\]");
     }
 
-    #[test]
-    fn every_inline_macro_that_the_specification_defines_is_known() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../third_party/vulkan-docs/config/spec-macros/extension.rb");
-        let Ok(source) = std::fs::read_to_string(&path) else {
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum Emission {
+        Strong(String),
+        Text(String),
+        Code,
+        Link(Vec<String>),
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct Specified {
+        name: String,
+        pattern: String,
+        emission: Emission,
+    }
+
+    fn specified_macros() -> Vec<Specified> {
+        let specified = |name: &str, pattern: String, emission: Emission| Specified {
+            name: name.to_string(),
+            pattern,
+            emission,
+        };
+        let strong = |name: &str| {
+            specified(
+                name,
+                format!("{name}:(\\w*)"),
+                Emission::Strong(name.to_string()),
+            )
+        };
+        let code = |name: &str, argument: &str| {
+            specified(name, format!("{name}:({argument})"), Emission::Code)
+        };
+        let link = |name: &str, argument: &str, dictionaries: &[&str]| {
+            let dictionaries = dictionaries.iter().map(|name| name.to_string()).collect();
+            specified(
+                name,
+                format!("{name}:({argument})"),
+                Emission::Link(dictionaries),
+            )
+        };
+        vec![
+            strong("can"),
+            strong("cannot"),
+            strong("may"),
+            strong("must"),
+            strong("optional"),
+            strong("optionally"),
+            strong("required"),
+            strong("should"),
+            link("reflink", r"[-\w]+", &[]),
+            link("apiext", r"\w+", &["features"]),
+            link("flink", r"\w+", &["protos"]),
+            code("fname", r"\w+"),
+            code("ftext", r"[\w\*]+"),
+            code("sname", r"\w+"),
+            link("slink", r"\w+", &["structs", "handles"]),
+            code("stext", r"[\w\*]+"),
+            link("ename", r"\w+", &["consts", "enums"]),
+            link("elink", r"\w+", &["enums"]),
+            code("etext", r"[\w\*]+"),
+            code("pname", r"\w+((\.|&#8594;)\w+)*"),
+            code("ptext", r"[\w\*]+((\.|&#8594;)[\w\*]+)*"),
+            code("dname", r"\w+"),
+            link("dlink", r"\w+", &["defines"]),
+            code("tname", r"\w+"),
+            link("tlink", r"\w+", &["flags", "funcpointers", "defines"]),
+            link("basetype", r"\w+", &["basetypes"]),
+            code("code", r"\w+([.*]\w+)*\**"),
+            code("attr", r"\w+"),
+            code("tag", r"\w+"),
+            specified(
+                "undefined",
+                "undefined:".to_string(),
+                Emission::Text("undefined".to_string()),
+            ),
+        ]
+    }
+
+    #[derive(Default)]
+    struct RubyClass {
+        name: String,
+        base: String,
+        macro_name: Option<String>,
+        pattern: Option<String>,
+        text: Option<String>,
+        quoted: Vec<String>,
+        links: bool,
+        dictionaries: Vec<String>,
+    }
+
+    fn ruby_classes(source: &str) -> Vec<RubyClass> {
+        const DICTIONARY: &str = "$apiNames.";
+        let mut classes = Vec::<RubyClass>::new();
+        let mut lines = source.lines().map(str::trim);
+        while let Some(line) = lines.next() {
+            let header = line
+                .strip_prefix("class ")
+                .and_then(|header| header.split_once(" < "));
+            if let Some((name, base)) = header {
+                classes.push(RubyClass {
+                    name: name.to_string(),
+                    base: base.to_string(),
+                    ..Default::default()
+                });
+                continue;
+            }
+            let Some(class) = classes.last_mut() else {
+                continue;
+            };
+            if line.starts_with('#') {
+                continue;
+            }
+            if let Some(name) = line.strip_prefix("named :") {
+                class.macro_name = Some(name.to_string());
+            } else if let Some(pattern) = line
+                .strip_prefix("match /")
+                .and_then(|pattern| pattern.strip_suffix('/'))
+            {
+                class.pattern = Some(pattern.to_string());
+            } else if line == "def text" {
+                class.text = lines.next().map(|text| text.trim_matches('\'').to_string());
+            } else if let Some((_, expression)) = line.split_once("create_inline parent, :quoted, ")
+            {
+                class.quoted.push(expression.to_string());
+            } else if line.contains("Inline.new(parent, :anchor, linkname,") {
+                class.links = true;
+            }
+            for (at, _) in line.match_indices(DICTIONARY) {
+                let name = &line[at + DICTIONARY.len()..];
+                let name = &name[..word_len(name, &[])];
+                if !class.dictionaries.iter().any(|known| known == name) {
+                    class.dictionaries.push(name.to_string());
+                }
+            }
+        }
+        classes
+    }
+
+    fn emission(classes: &[RubyClass], class: &RubyClass) -> Emission {
+        let mut emitter = class;
+        while emitter.quoted.is_empty() && !emitter.links {
+            emitter = classes
+                .iter()
+                .find(|base| base.name == emitter.base)
+                .unwrap_or_else(|| panic!("{} and its base classes emit nothing", class.name));
+        }
+        let quoted = emitter
+            .quoted
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let literal = |expression: &str| {
+            expression
+                .strip_prefix('\'')
+                .and_then(|text| text.strip_suffix('\''))
+                .filter(|text| word_len(text, &[]) == text.len())
+                .map(str::to_string)
+        };
+        match (quoted.as_slice(), emitter.links) {
+            (["'<strong class=\"purple\">' + text + '</strong>'"], false) => Emission::Strong(
+                class
+                    .text
+                    .clone()
+                    .unwrap_or_else(|| panic!("{} has no text", class.name)),
+            ),
+            (["'<code>' + target.gsub('&#8594;', '-&gt;') + '</code>'"], false) => Emission::Code,
+            (["(mark ? '?? ' : '') + '<code>' + linkxref + '</code>'"], true) => {
+                Emission::Link(class.dictionaries.clone())
+            }
+            ([expression], false) if literal(expression).is_some() => {
+                Emission::Text(literal(expression).expect("a literal"))
+            }
+            _ => panic!(
+                "the test does not know what {} emits: {quoted:?}",
+                class.name
+            ),
+        }
+    }
+
+    fn registered_macros() -> Option<Vec<Specified>> {
+        let config = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../third_party/vulkan-docs/config");
+        let read = |file: &str| std::fs::read_to_string(config.join(file)).ok();
+        let (Some(registration), Some(definitions)) =
+            (read("spec-macros.rb"), read("spec-macros/extension.rb"))
+        else {
             assert!(
                 std::env::var_os("VULKAN_RS_REQUIRE_DOCS_TEST").is_none(),
                 "the macro test is required but third_party/vulkan-docs is not checked out"
             );
             eprintln!("skipping the macro test: third_party/vulkan-docs is not checked out");
-            return;
+            return None;
         };
-        let defined = source
+        let classes = ruby_classes(&definitions);
+        let registered = registration
             .lines()
-            .filter_map(|line| line.trim().strip_prefix("named :"))
-            .map(str::trim)
+            .filter_map(|line| line.trim().strip_prefix("inline_macro "))
             .collect::<Vec<_>>();
-        assert!(
-            defined.len() >= 30,
-            "only {} inline macros were found in {}",
-            defined.len(),
-            path.display()
-        );
-        let known = NORMATIVE_WORDS
+        let defined = classes
             .iter()
-            .chain(CODE_MACROS)
-            .chain(STRONG_MACROS)
-            .chain(LINK_MACROS.iter().map(|(name, _)| name))
-            .copied()
+            .filter(|class| class.macro_name.is_some())
+            .map(|class| class.name.as_str())
             .collect::<Vec<_>>();
-        for name in defined {
+        for name in &defined {
             assert!(
-                known.contains(&name),
-                "the specification defines the inline macro `{name}:`, which the converter does not know"
+                registered.contains(name),
+                "the specification defines the macro class {name} and does not register it"
             );
         }
+        let specified = registered.iter().map(|name| {
+            let class = classes
+                .iter()
+                .find(|class| class.name == *name)
+                .unwrap_or_else(|| panic!("the registered macro class {name} is not defined"));
+            let part = |part: &Option<String>, what: &str| {
+                part.clone()
+                    .unwrap_or_else(|| panic!("the macro class {name} has no {what}"))
+            };
+            Specified {
+                name: part(&class.macro_name, "name"),
+                pattern: part(&class.pattern, "pattern"),
+                emission: emission(&classes, class),
+            }
+        });
+        Some(specified.collect())
+    }
+
+    #[test]
+    fn the_macros_under_test_are_the_inline_macros_that_the_specification_registers() {
+        let Some(registered) = registered_macros() else {
+            return;
+        };
+        assert!(
+            registered.len() >= 30,
+            "only {} inline macros were found",
+            registered.len()
+        );
+        let specified = specified_macros();
+        for (index, registered) in registered.iter().enumerate() {
+            assert_eq!(
+                specified.get(index),
+                Some(registered),
+                "the macro that the specification registers at position {index}"
+            );
+        }
+        assert_eq!(specified.len(), registered.len());
+    }
+
+    #[test]
+    fn the_converter_knows_the_macros_under_test_in_the_order_of_the_specification() {
+        let specified = specified_macros();
+        assert_eq!(
+            SPEC_MACROS
+                .iter()
+                .map(|(name, _, _)| *name)
+                .collect::<Vec<_>>(),
+            specified
+                .iter()
+                .map(|specified| specified.name.as_str())
+                .collect::<Vec<_>>()
+        );
+        for (index, earlier) in specified.iter().enumerate() {
+            for later in &specified[index + 1..] {
+                assert!(
+                    !later.name.ends_with(&earlier.name),
+                    "`{}:` is read before `{}:`, which ends with its name: reading from left to \
+                     right does not give what the specification gives",
+                    earlier.name,
+                    later.name
+                );
+            }
+        }
+    }
+
+    const ARROW: char = '\u{1}';
+    const DASH: char = '\u{2}';
+
+    fn after_the_replacements(text: &str) -> String {
+        let chars = text.chars().collect::<Vec<_>>();
+        let in_a_word = |c: Option<&char>| c.is_some_and(|c| c.is_alphanumeric() || *c == '_');
+        let at_a_bound = |c: Option<&char>| c.is_none_or(|c| *c == ' ' || *c == '\n');
+        let mut out = String::with_capacity(text.len());
+        let mut index = 0;
+        while index < chars.len() {
+            let before = index.checked_sub(1).map(|before| &chars[before]);
+            let after = chars.get(index + 2);
+            let hyphens = chars[index] == '-' && chars.get(index + 1) == Some(&'-');
+            let dash = hyphens
+                && (in_a_word(before) && in_a_word(after)
+                    || at_a_bound(before) && at_a_bound(after));
+            if dash {
+                out.push(DASH);
+                index += 2;
+            } else {
+                out.push(chars[index]);
+                index += 1;
+            }
+        }
+        out.replace("->", &ARROW.to_string())
+    }
+
+    fn link_kind(dictionaries: &[String]) -> Link {
+        match dictionaries.first().map(String::as_str) {
+            None => Link::ReferencePage,
+            Some("structs" | "enums" | "flags" | "basetypes") => Link::Type,
+            Some("consts") => Link::EnumValue,
+            Some("protos") => Link::Command,
+            Some("defines") => Link::Define,
+            Some("features") => Link::Extension,
+            Some(other) => panic!("the test does not know the dictionary `{other}`"),
+        }
+    }
+
+    fn rendered(specified: &Specified, target: &str) -> String {
+        let target = target.replace(ARROW, "->");
+        match &specified.emission {
+            Emission::Strong(text) | Emission::Text(text) => text.clone(),
+            Emission::Code => format!("`{target}`"),
+            Emission::Link(dictionaries) => {
+                format!("[`{target}`]({:?}/{target})", link_kind(dictionaries))
+            }
+        }
+    }
+
+    fn patterns() -> &'static [(Specified, regex::Regex)] {
+        static PATTERNS: std::sync::OnceLock<Vec<(Specified, regex::Regex)>> =
+            std::sync::OnceLock::new();
+        PATTERNS.get_or_init(|| {
+            let compiled = |specified: Specified| {
+                let pattern = specified.pattern.replace("&#8594;", "\\x01");
+                let pattern = regex::Regex::new(&format!("(?-u:{pattern})"))
+                    .unwrap_or_else(|error| panic!("{}: {error}", specified.pattern));
+                (specified, pattern)
+            };
+            specified_macros().into_iter().map(compiled).collect()
+        })
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum Piece {
+        Text(String),
+        Rendered { markdown: String, source: String },
+        Refused(String),
+    }
+
+    fn last_character(pieces: &[Piece]) -> Option<char> {
+        pieces.iter().rev().find_map(|piece| match piece {
+            Piece::Text(source) | Piece::Refused(source) | Piece::Rendered { source, .. } => {
+                source.chars().next_back()
+            }
+        })
+    }
+
+    fn leaves_a_word_out(specified: &Specified, target: &str) -> bool {
+        matches!(specified.emission, Emission::Strong(_)) && !target.is_empty()
+    }
+
+    fn pieces_in_the_order(text: &str, order: &mut dyn Iterator<Item = usize>) -> Vec<Piece> {
+        let mut pieces = vec![Piece::Text(after_the_replacements(text))];
+        for index in order {
+            let (specified, pattern) = &patterns()[index];
+            let mut split = Vec::new();
+            for piece in pieces {
+                let Piece::Text(text) = piece else {
+                    split.push(piece);
+                    continue;
+                };
+                let mut end = 0;
+                for found in pattern.captures_iter(&text) {
+                    let whole = found.get(0).expect("the whole match");
+                    let target = found.get(1).map_or("", |target| target.as_str());
+                    let before = text[..whole.start()]
+                        .chars()
+                        .next_back()
+                        .or_else(|| last_character(&split));
+                    let in_a_word = before.is_some_and(is_word);
+                    if in_a_word && target.is_empty() {
+                        continue;
+                    }
+                    let source = whole.as_str().to_string();
+                    split.push(Piece::Text(text[end..whole.start()].to_string()));
+                    split.push(if in_a_word || leaves_a_word_out(specified, target) {
+                        Piece::Refused(source)
+                    } else {
+                        Piece::Rendered {
+                            markdown: rendered(specified, target),
+                            source,
+                        }
+                    });
+                    end = whole.end();
+                }
+                split.push(Piece::Text(text[end..].to_string()));
+            }
+            pieces = split;
+        }
+        pieces
+    }
+
+    fn as_the_converter_renders(text: &str) -> Option<String> {
+        pieces_in_the_order(text, &mut (0..patterns().len()))
+            .iter()
+            .map(|piece| match piece {
+                Piece::Text(text) => Some(
+                    text.replace(ARROW, "-\\>")
+                        .replace(DASH, "—")
+                        .replace('*', "\\*"),
+                ),
+                Piece::Rendered { markdown, .. } => Some(markdown.clone()),
+                Piece::Refused(_) => None,
+            })
+            .collect()
+    }
+
+    fn with_every_link_resolved<T>(read: impl FnOnce(&Converter) -> T) -> T {
+        let (attributes, titles) = (BTreeMap::new(), BTreeMap::new());
+        let resolve = |link: Link, name: &str| Some(format!("{link:?}/{name}"));
+        read(&Converter {
+            attributes: &attributes,
+            titles: &titles,
+            resolve: &resolve,
+        })
+    }
+
+    fn taken_by_the_pattern(
+        specified: &Specified,
+        pattern: &regex::Regex,
+        source: &str,
+        in_a_word: bool,
+    ) -> Result<Option<(usize, String)>, Unsupported> {
+        let replaced = after_the_replacements(source);
+        let Some(found) = pattern.captures(&replaced) else {
+            return Ok(None);
+        };
+        let whole = found.get(0).expect("the whole match");
+        assert_eq!(whole.start(), 0, "{source:?}");
+        let target = found.get(1).map_or("", |target| target.as_str());
+        let len = whole.as_str().replace(ARROW, "->").len();
+        match (in_a_word, target.is_empty()) {
+            (true, true) => Ok(None),
+            (false, _) if !leaves_a_word_out(specified, target) => {
+                Ok(Some((len, rendered(specified, target))))
+            }
+            _ => Err(Unsupported::MacroUse(source[..len].to_string())),
+        }
+    }
+
+    fn assert_read_as_the_pattern_matches(converter: &Converter, index: usize, tail: &str) {
+        let (specified, pattern) = &patterns()[index];
+        let source = format!("{}:{tail}", specified.name);
+        for in_a_word in [false, true] {
+            assert_eq!(
+                converter.named_macro(&source, !in_a_word),
+                taken_by_the_pattern(specified, pattern, &source, in_a_word),
+                "{source:?} is read as its pattern matches, except that a word after a \
+                 normative macro and an argument of a macro in a word are refused and a macro \
+                 that takes nothing in a word is text (in a word: {in_a_word})"
+            );
+        }
+    }
+
+    #[test]
+    fn every_macro_takes_what_its_pattern_in_the_specification_matches() {
+        let alphabet = ['a', 'Z', '0', '_', '.', '*', '-', '>', ':', ' ', 'é'];
+        let mut tails = vec![String::new()];
+        let mut longest = tails.clone();
+        for _ in 0..3 {
+            longest = longest
+                .iter()
+                .flat_map(|tail| alphabet.iter().map(move |c| format!("{tail}{c}")))
+                .collect();
+            tails.extend(longest.iter().cloned());
+        }
+        with_every_link_resolved(|converter| {
+            for index in 0..patterns().len() {
+                for tail in &tails {
+                    assert_read_as_the_pattern_matches(converter, index, tail);
+                }
+            }
+        });
     }
 
     #[test]
@@ -810,112 +1409,143 @@ mod tests {
         })
     }
 
-    #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-    enum Rendering {
-        Code,
-        Strong,
-        ReferencePage,
-        Normative,
-    }
-
-    const WORD: &str = "[A-Za-z0-9_]{1,3}";
-
-    fn specified_macros() -> Vec<(&'static str, String, Rendering)> {
-        let word_or_stars = "[A-Za-z0-9_*]{1,4}".to_string();
-        let mut macros = vec![
-            (
-                "pname",
-                format!("{WORD}((\\.|->){WORD}){{0,2}}"),
-                Rendering::Code,
-            ),
-            (
-                "code",
-                format!("{WORD}([.*]{WORD}){{0,2}}\\*{{0,2}}"),
-                Rendering::Code,
-            ),
-            (
-                "reflink",
-                "[-A-Za-z0-9_]{1,4}".to_string(),
-                Rendering::ReferencePage,
-            ),
+    fn macro_tail() -> impl Strategy<Value = String> {
+        let piece = prop_oneof![
+            6 => "[abXYZ0-9_]{1,3}",
+            2 => Just(".".to_string()),
+            2 => Just("->".to_string()),
+            2 => Just("*".to_string()),
+            2 => Just("-".to_string()),
+            1 => Just("--".to_string()),
+            1 => proptest::sample::select(vec![":", " ", ">", "é", "..", ","])
+                .prop_map(str::to_string),
         ];
-        for name in ["ptext", "stext", "ftext", "etext"] {
-            macros.push((name, word_or_stars.clone(), Rendering::Code));
-        }
-        for name in [
-            "sname", "fname", "dname", "tname", "slink", "elink", "tlink", "basetype", "ename",
-            "flink", "dlink", "apiext",
-        ] {
-            macros.push((name, WORD.to_string(), Rendering::Code));
-        }
-        for name in STRONG_MACROS {
-            macros.push((name, WORD.to_string(), Rendering::Strong));
-        }
-        for name in NORMATIVE_WORDS {
-            macros.push((name, "[A-Za-z0-9_]{0,3}".to_string(), Rendering::Normative));
-        }
-        macros
+        proptest::collection::vec(piece, 0..8).prop_map(|pieces| pieces.concat())
     }
 
-    fn macro_use() -> impl Strategy<Value = (&'static str, String, Rendering)> {
-        proptest::sample::select(specified_macros()).prop_flat_map(|(name, argument, rendering)| {
-            let argument = proptest::string::string_regex(&argument).expect("a regular expression");
-            (Just(name), argument, Just(rendering))
-        })
+    fn text_with_macros() -> impl Strategy<Value = String> {
+        let names = SPEC_MACROS
+            .iter()
+            .map(|(name, _, _)| *name)
+            .collect::<Vec<_>>();
+        let words = vec!["a", "Bc", "x1", "A_", "a_b", "re", "VK_X"];
+        let arguments = vec!["a.b", "p->q.r", "V*x", "a-b", "x_1", "a--b", "a->"];
+        let marks = vec![".", "->", "-", "--", "*", ":", " ", ", ", "(", ")", "..."];
+        let piece = prop_oneof![
+            4 => proptest::sample::select(names.clone()).prop_map(|name| format!("{name}:")),
+            2 => (
+                proptest::sample::select(names.clone()),
+                proptest::sample::select(arguments),
+            )
+                .prop_map(|(name, argument)| format!("{name}:{argument}")),
+            1 => proptest::sample::select(names).prop_map(str::to_string),
+            3 => proptest::sample::select(words).prop_map(str::to_string),
+            3 => proptest::sample::select(marks).prop_map(str::to_string),
+        ];
+        proptest::collection::vec(piece, 1..10)
+            .prop_map(|pieces| pieces.concat())
+            .prop_filter("stars that could mark bold text", |text| {
+                text.split('*').count() <= 2 || text.contains("**") && text.split('*').count() == 3
+            })
     }
 
     #[test]
-    fn the_macros_with_generated_arguments_are_the_macros_that_the_converter_knows() {
-        let generated = specified_macros()
-            .iter()
-            .map(|(name, _, _)| *name)
-            .collect::<std::collections::BTreeSet<_>>();
-        let known = NORMATIVE_WORDS
-            .iter()
-            .chain(CODE_MACROS)
-            .chain(STRONG_MACROS)
-            .chain(LINK_MACROS.iter().map(|(name, _)| name))
-            .copied()
-            .collect::<std::collections::BTreeSet<_>>();
-        assert_eq!(generated, known);
-        let mut reached = BTreeMap::<(Rendering, &str), usize>::new();
-        let uses = crate::test_support::deterministic_values(macro_use(), 1024);
-        for (_, argument, rendering) in &uses {
+    fn the_generated_texts_have_macros_in_every_position() {
+        let texts = crate::test_support::deterministic_values(text_with_macros(), 1024);
+        let mut reached = BTreeMap::<&str, usize>::new();
+        for text in &texts {
+            let in_order = pieces_in_the_order(text, &mut (0..patterns().len()));
+            let reversed = pieces_in_the_order(text, &mut (0..patterns().len()).rev());
+            let is_rendered = |piece: &Piece| matches!(piece, Piece::Rendered { .. });
+            let is_refused = |piece: &Piece| matches!(piece, Piece::Refused(_));
+            let source = after_the_replacements(text);
+            let any_text = |holds: &dyn Fn(&str) -> bool| {
+                in_order
+                    .iter()
+                    .any(|piece| matches!(piece, Piece::Text(text) if holds(text)))
+            };
+            let any_rendered = |holds: &dyn Fn(&str) -> bool| {
+                in_order.iter().any(
+                    |piece| matches!(piece, Piece::Rendered { markdown, .. } if holds(markdown)),
+                )
+            };
+            let any_refused = |holds: &dyn Fn(&str) -> bool| {
+                in_order
+                    .iter()
+                    .any(|piece| matches!(piece, Piece::Refused(source) if holds(source)))
+            };
+            let is_normative = |source: &str| {
+                SPEC_MACROS.iter().any(|(name, argument, _)| {
+                    *argument == Argument::OptionalWord
+                        && source
+                            .strip_prefix(name)
+                            .is_some_and(|rest| rest.starts_with(':'))
+                })
+            };
             for (case, holds) in [
-                ("any argument", true),
-                ("an empty argument", argument.is_empty()),
-                ("a path", argument.contains('.') || argument.contains("->")),
-                ("a star", argument.contains('*')),
-                ("a hyphen", argument.contains('-')),
+                ("a macro", any_rendered(&|_| true)),
+                (
+                    "two macros",
+                    in_order.iter().filter(|piece| is_rendered(piece)).count() >= 2,
+                ),
+                ("no refused use", !in_order.iter().any(is_refused)),
+                (
+                    "a refused word after a normative macro",
+                    any_refused(&is_normative),
+                ),
+                (
+                    "a refused macro in a word",
+                    any_refused(&|source| !is_normative(source)),
+                ),
+                ("macros whose order matters", in_order != reversed),
+                (
+                    "a member path",
+                    any_rendered(&|code| code.contains("->") || code.contains('.')),
+                ),
+                (
+                    "a star in an argument",
+                    any_rendered(&|code| code.contains('*')),
+                ),
+                (
+                    "a star outside a macro",
+                    any_text(&|text| text.contains('*')),
+                ),
+                ("a dash", source.contains(DASH)),
+                (
+                    "an arrow outside a macro",
+                    any_text(&|text| text.contains(ARROW)),
+                ),
             ] {
-                *reached.entry((*rendering, case)).or_default() += usize::from(holds);
+                *reached.entry(case).or_default() += usize::from(holds);
             }
         }
         for (case, at_least) in [
-            ((Rendering::Code, "any argument"), 300),
-            ((Rendering::Code, "a path"), 30),
-            ((Rendering::Code, "a star"), 60),
-            ((Rendering::Strong, "any argument"), 30),
-            ((Rendering::ReferencePage, "any argument"), 20),
-            ((Rendering::ReferencePage, "a hyphen"), 5),
-            ((Rendering::Normative, "any argument"), 100),
-            ((Rendering::Normative, "an empty argument"), 20),
+            ("a macro", 400),
+            ("two macros", 100),
+            ("no refused use", 400),
+            ("a refused word after a normative macro", 200),
+            ("a refused macro in a word", 150),
+            ("macros whose order matters", 250),
+            ("a member path", 5),
+            ("a star in an argument", 5),
+            ("a star outside a macro", 100),
+            ("a dash", 80),
+            ("an arrow outside a macro", 150),
         ] {
-            let uses = reached.get(&case).copied().unwrap_or(0);
+            let texts = reached.get(case).copied().unwrap_or(0);
             assert!(
-                uses >= at_least,
-                "only {uses} of 1024 generated macros are {case:?}: {reached:?}"
+                texts >= at_least,
+                "only {texts} of 1024 generated texts have {case}: {reached:?}"
             );
         }
     }
 
     #[test]
     fn a_macro_without_an_argument_stays_text() {
-        let macros = CODE_MACROS
-            .iter()
-            .chain(STRONG_MACROS)
-            .chain(LINK_MACROS.iter().map(|(name, _)| name));
-        for name in macros {
+        let macros = SPEC_MACROS.iter().filter(|(_, argument, _)| {
+            !matches!(argument, Argument::Nothing | Argument::OptionalWord)
+        });
+        for (name, _, _) in macros {
             for text in [
                 format!("{name}: x"),
                 format!("a {name}:"),
@@ -1021,25 +1651,28 @@ mod tests {
         #![proptest_config(crate::test_support::proptest_config(1024))]
 
         #[test]
-        fn a_macro_takes_the_argument_that_the_macro_of_the_specification_takes(
-            before in proptest::sample::select(&["", "a ", "(", "x, ", "-"][..]),
-            (name, argument, rendering) in macro_use(),
-            after in proptest::sample::select(&["", " x", ", x", ") x", ": x", ". x", "."][..]),
+        fn a_macro_takes_what_its_pattern_in_the_specification_matches_in_a_longer_text(
+            index in 0..SPEC_MACROS.len(),
+            tail in macro_tail(),
         ) {
-            let rendered = match rendering {
-                Rendering::Code => format!("`{argument}`"),
-                Rendering::Strong => format!("**{argument}**"),
-                Rendering::ReferencePage => {
-                    format!("[`{argument}`](https://example.org/{argument}.html)")
-                }
-                Rendering::Normative => format!("{name}{argument}"),
-            };
-            let source = format!("{before}{name}:{argument}{after}");
-            prop_assert_eq!(
-                convert(&source),
-                Ok(format!("{before}{rendered}{after}")),
-                "{:?}", source
-            );
+            with_every_link_resolved(|converter| {
+                assert_read_as_the_pattern_matches(converter, index, &tail);
+            });
+        }
+
+        #[test]
+        fn macros_are_rendered_as_the_passes_of_the_specification_render_them_or_refused(
+            text in text_with_macros(),
+        ) {
+            let converted = with_every_link_resolved(|converter| converter.inline(&text));
+            match as_the_converter_renders(&text) {
+                Some(rendered) => prop_assert_eq!(converted, Ok(rendered), "{:?}", text),
+                None => prop_assert!(
+                    matches!(converted, Err(Unsupported::MacroUse(_))),
+                    "{:?} has a word after a normative macro or a macro in a word, and is {:?}",
+                    text, converted
+                ),
+            }
         }
 
         #[test]
