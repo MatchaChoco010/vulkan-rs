@@ -54,6 +54,7 @@ pub struct OutputImage {
 pub struct Ctx {
     pub instance: Instance,
     pub messenger: vk::DebugUtilsMessengerEXT,
+    pub physical_device: vk::PhysicalDevice,
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
     pub device: Device,
     pub queue: vk::Queue,
@@ -423,6 +424,7 @@ impl Ctx {
             Ctx {
                 instance,
                 messenger,
+                physical_device,
                 memory_properties,
                 device,
                 queue,

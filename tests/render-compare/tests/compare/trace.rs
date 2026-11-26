@@ -15,6 +15,8 @@ fn is_pointer_value(key: &str) -> bool {
     key.starts_with("pfn") || key == "pUserData" || key == "ppData"
 }
 
+const MAX_ALIGNMENT: u64 = 256;
+
 const ADDRESS_QUERIES: &[&str] = &[
     "vkGetBufferDeviceAddress",
     "vkGetBufferDeviceAddressKHR",
@@ -57,6 +59,14 @@ impl Addresses {
             .map(|&(_, query)| query)
     }
 
+    fn query_and_offset_of(&self, value: u64) -> Option<(usize, u64)> {
+        self.latest
+            .iter()
+            .filter(|&&(known, _)| known <= value && value - known <= MAX_ALIGNMENT)
+            .max_by_key(|&&(known, _)| known)
+            .map(|&(known, query)| (query, value - known))
+    }
+
     fn remove_from(&self, bytes: &mut [u8]) {
         for word in bytes.chunks_exact_mut(8) {
             let value = u64::from_le_bytes((&*word).try_into().unwrap());
@@ -95,8 +105,11 @@ fn normalize(value: Value, key: Option<&str>, binaries: &Path, addresses: &Addre
                 fnv1a(&bytes)
             ))
         }
-        value => match as_address(&value).and_then(|found| addresses.query_of(found)) {
-            Some(query) => Value::String(format!("<device address of query {query}>")),
+        value => match as_address(&value).and_then(|found| addresses.query_and_offset_of(found)) {
+            Some((query, 0)) => Value::String(format!("<device address of query {query}>")),
+            Some((query, offset)) => {
+                Value::String(format!("<device address of query {query} + {offset}>"))
+            }
             None => value,
         },
     }

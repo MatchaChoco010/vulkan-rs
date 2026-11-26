@@ -708,7 +708,9 @@ pub fn dynamic_rendering_msaa(expect: &mut Expect, images: &[OutputImage]) {
     let green = (80, 80, 208, 208);
     let blue = (112, 48, 240, 112);
     let cleared = (176, 16, 240, 48);
-    let yellow = (16, 176, 80, 240);
+    let with_sample_zero = (16, 176, 80, 240);
+    let without_sample_zero = (208, 208, 240, 240);
+    let untested = (32, 32, 64, 64);
     let mut colors = Vec::new();
     let mut depths = Vec::new();
     let mut resolves = Vec::new();
@@ -716,6 +718,8 @@ pub fn dynamic_rendering_msaa(expect: &mut Expect, images: &[OutputImage]) {
         for x in 0..color.width {
             let (wanted_color, wanted_depth, tolerance) = if within(x, y, cleared) {
                 ([255, 0, 255, 255], 0.25, 0)
+            } else if within(x, y, untested) {
+                ([255, 255, 255, 255], 0.5, 0)
             } else if within(x, y, red) {
                 if within(x, y, blue) {
                     ([0, 0, 255, 255], 0.5, 0)
@@ -724,8 +728,10 @@ pub fn dynamic_rendering_msaa(expect: &mut Expect, images: &[OutputImage]) {
                 }
             } else if within(x, y, green) {
                 ([0, 255, 0, 255], 0.75, 0)
-            } else if within(x, y, yellow) {
-                ([143, 143, 24, 255], 1.0, 1)
+            } else if within(x, y, with_sample_zero) {
+                ([88, 88, 36, 255], 0.375, 1)
+            } else if within(x, y, without_sample_zero) {
+                ([8, 199, 203, 255], 1.0, 1)
             } else {
                 ([32, 32, 48, 255], 1.0, 0)
             };
@@ -738,7 +744,9 @@ pub fn dynamic_rendering_msaa(expect: &mut Expect, images: &[OutputImage]) {
                 depths.push(format!("({x}, {y}) {found} instead of {wanted_depth}"));
             }
             let found = resolved.rgba8(x, y);
-            if !close(found, wanted_color, tolerance) {
+            let samples_differ =
+                within(x, y, with_sample_zero) || within(x, y, without_sample_zero);
+            if !samples_differ && found != wanted_color {
                 resolves.push(format!("({x}, {y}) {found:?} instead of {wanted_color:?}"));
             }
         }

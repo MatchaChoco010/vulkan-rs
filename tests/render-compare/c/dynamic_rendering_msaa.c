@@ -2,10 +2,12 @@
  * Dynamic rendering to a color and a depth attachment of four samples, each with a resolve
  * attachment (the average of the color samples, sample zero of the depth). The pipelines
  * take the viewport and scissor with their counts, the depth test, depth write, depth
- * compare operator, rasterizer discard and more as dynamic state; one pipeline has a sample
- * mask of two samples. Between the draws vkCmdClearAttachments clears a rectangle of both
- * attachments, and afterwards vkCmdResolveImage resolves the multisampled color image once
- * more into a third image.
+ * compare operator, rasterizer discard and more as dynamic state. Two pipelines have a
+ * sample mask, one of sample zero alone and one of the other three samples, and write
+ * depth, so that the resolved depth is the drawn one under the first and the cleared one
+ * under the second: no other depth resolve mode and no other sample gives both. Between
+ * the draws vkCmdClearAttachments clears a rectangle of both attachments, and afterwards
+ * vkCmdResolveImage resolves the multisampled color image once more into a third image.
  */
 #include "scenarios.h"
 
@@ -156,8 +158,10 @@ void scenario_dynamic_rendering_msaa(Ctx *ctx) {
     VkShaderModule fragment = shader_module(ctx, "dynamic_rendering_msaa.frag.spv");
     VkPipeline all_samples =
         msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0xf);
-    VkPipeline two_samples =
-        msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0x5);
+    VkPipeline sample_zero =
+        msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0x1);
+    VkPipeline other_samples =
+        msaa_pipeline(ctx, vertex, fragment, layout, format, depth_format, 0xe);
     vkDestroyShaderModule(ctx->device, fragment, NULL);
     vkDestroyShaderModule(ctx->device, vertex, NULL);
 
@@ -243,10 +247,22 @@ void scenario_dynamic_rendering_msaa(Ctx *ctx) {
     };
     VkClearRect clear_rect = {{{176, 16}, {64, 32}}, 0, 1};
     vkCmdClearAttachments(command_buffer, COUNT(clears), clears, 1, &clear_rect);
-    vkCmdSetDepthTestEnable(command_buffer, VK_FALSE);
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, two_samples);
-    const Push yellow = {{1.0f, 1.0f, 0.0f, 1.0f}, {NDC(16), NDC(176), NDC(80), NDC(240)}, 0.0f};
+    vkCmdSetDepthCompareOp(command_buffer, VK_COMPARE_OP_LESS);
+    vkCmdSetDepthWriteEnable(command_buffer, VK_TRUE);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sample_zero);
+    const Push yellow = {{1.0f, 1.0f, 0.0f, 1.0f},
+                         {NDC(16), NDC(176), NDC(80), NDC(240)},
+                         0.375f};
     draw_rect(command_buffer, layout, &yellow);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, other_samples);
+    const Push cyan = {{0.0f, 1.0f, 1.0f, 1.0f},
+                       {NDC(208), NDC(208), NDC(240), NDC(240)},
+                       0.375f};
+    draw_rect(command_buffer, layout, &cyan);
+    vkCmdSetDepthTestEnable(command_buffer, VK_FALSE);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, all_samples);
+    const Push untested = {{1.0f, 1.0f, 1.0f, 1.0f}, {NDC(32), NDC(32), NDC(64), NDC(64)}, 0.875f};
+    draw_rect(command_buffer, layout, &untested);
     vkCmdEndRendering(command_buffer);
 
     image_barrier(command_buffer, samples.image, color_aspect, 0, 1,
@@ -281,7 +297,8 @@ void scenario_dynamic_rendering_msaa(Ctx *ctx) {
     readback(ctx, depth.image, depth_aspect, width, height, 4, "depth", "d32f");
     readback(ctx, resolved.image, color_aspect, width, height, 4, "resolved", "rgba8");
 
-    vkDestroyPipeline(ctx->device, two_samples, NULL);
+    vkDestroyPipeline(ctx->device, other_samples, NULL);
+    vkDestroyPipeline(ctx->device, sample_zero, NULL);
     vkDestroyPipeline(ctx->device, all_samples, NULL);
     vkDestroyPipelineLayout(ctx->device, layout, NULL);
     image_destroy(ctx, &resolved);

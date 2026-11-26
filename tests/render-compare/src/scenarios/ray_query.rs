@@ -66,6 +66,7 @@ fn structure_build(
     ty: vk::AccelerationStructureTypeKHR,
     geometry: vk::AccelerationStructureGeometryKHR<'_>,
     primitive_count: u32,
+    scratch_alignment: vk::DeviceSize,
 ) -> Structure {
     unsafe {
         let geometries = [geometry];
@@ -98,13 +99,15 @@ fn structure_build(
             .check("vkCreateAccelerationStructureKHR");
         let scratch = address_buffer(
             ctx,
-            sizes.build_scratch_size,
+            sizes.build_scratch_size + scratch_alignment,
             vk::BufferUsageFlags::STORAGE_BUFFER,
             None,
         );
-        build = build
-            .dst_acceleration_structure(structure)
-            .scratch_data(vk::DeviceOrHostAddressKHR::device_address(scratch.address));
+        build = build.dst_acceleration_structure(structure).scratch_data(
+            vk::DeviceOrHostAddressKHR::device_address(
+                (scratch.address + 1).div_ceil(scratch_alignment) * scratch_alignment,
+            ),
+        );
         let ranges =
             [vk::AccelerationStructureBuildRangeInfoKHR::default()
                 .primitive_count(primitive_count)];
@@ -154,6 +157,16 @@ pub fn run(ctx: &mut Ctx) {
     ];
     let indices: [u16; 6] = [0, 1, 2, 2, 1, 3];
     let input_usage = vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
+    let mut structure_properties = vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();
+    let mut properties =
+        vk::PhysicalDeviceProperties2::default().push_next(&mut structure_properties);
+    unsafe {
+        ctx.instance
+            .get_physical_device_properties2(ctx.physical_device, &mut properties)
+    };
+    let scratch_alignment = vk::DeviceSize::from(
+        structure_properties.min_acceleration_structure_scratch_offset_alignment,
+    );
 
     let vertex_buffer = address_buffer(
         ctx,
@@ -188,6 +201,7 @@ pub fn run(ctx: &mut Ctx) {
         vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
         triangles,
         2,
+        scratch_alignment,
     );
 
     unsafe {
@@ -247,6 +261,7 @@ pub fn run(ctx: &mut Ctx) {
             vk::AccelerationStructureTypeKHR::TOP_LEVEL,
             instance_geometry,
             instances.len() as u32,
+            scratch_alignment,
         );
 
         let color = ctx.image_create(&image_desc(

@@ -1,9 +1,43 @@
 mod render;
 mod scenarios;
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::path::Path;
 
 use render::Ctx;
+
+const FILL: u8 = 0xaa;
+const FREED: u8 = 0xdd;
+
+struct FilledAllocations;
+
+unsafe impl GlobalAlloc for FilledAllocations {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        unsafe {
+            let memory = System.alloc(layout);
+            if !memory.is_null() {
+                memory.write_bytes(FILL, layout.size());
+            }
+            memory
+        }
+    }
+
+    unsafe fn dealloc(&self, memory: *mut u8, layout: Layout) {
+        unsafe {
+            for offset in 0..layout.size() {
+                memory.add(offset).write_volatile(FREED);
+            }
+            System.dealloc(memory, layout)
+        }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        unsafe { System.alloc_zeroed(layout) }
+    }
+}
+
+#[global_allocator]
+static ALLOCATOR: FilledAllocations = FilledAllocations;
 
 fn main() {
     let args = std::env::args().collect::<Vec<_>>();
