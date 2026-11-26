@@ -5,9 +5,7 @@ use std::ffi::{CStr, c_char, c_void};
 use std::sync::Mutex;
 
 use vulkan::{Device, vk};
-use vulkan_alloc::{
-    AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc, MemoryLocation,
-};
+use vulkan_alloc::{AllocationCreateDesc, Allocator, AllocatorCreateDesc, MemoryLocation};
 
 pub const DEVICE_LOCAL: u32 = 0;
 pub const HOST_COHERENT: u32 = 1;
@@ -241,22 +239,18 @@ pub fn assert_only_kept_empty_blocks(
 }
 
 pub fn desc(size: u64, alignment: u64, memory_type_index: u32) -> AllocationCreateDesc<'static> {
-    AllocationCreateDesc {
-        name: None,
-        requirements: vk::MemoryRequirements {
+    AllocationCreateDesc::new(
+        vk::MemoryRequirements {
             size,
             alignment,
             memory_type_bits: 1 << memory_type_index,
         },
-        location: MemoryLocation::custom(
+        MemoryLocation::custom(
             vk::MemoryPropertyFlags::empty(),
             vk::MemoryPropertyFlags::empty(),
         ),
-        linear: true,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }
+        true,
+    )
 }
 
 unsafe fn state_of<'a>(device: vk::Device) -> std::sync::MutexGuard<'a, State> {

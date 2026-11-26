@@ -948,7 +948,6 @@ mod tests {
     use std::ffi::c_char;
 
     use super::*;
-    use crate::allocation::AllocationScheme;
     use crate::memory_type::MemoryLocation;
 
     unsafe extern "system" fn no_commands(
@@ -988,19 +987,15 @@ mod tests {
                 );
             }
             let not_allowed = unsafe {
-                allocator.allocate(AllocationCreateDesc {
-                    name: None,
-                    requirements: vk::MemoryRequirements {
+                allocator.allocate(AllocationCreateDesc::new(
+                    vk::MemoryRequirements {
                         size: 64,
                         alignment: 1,
                         memory_type_bits: 0,
                     },
-                    location: MemoryLocation::GpuOnly,
-                    linear: true,
-                    memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                    export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-                    allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-                })
+                    MemoryLocation::GpuOnly,
+                    true,
+                ))
             };
             assert_eq!(
                 not_allowed,

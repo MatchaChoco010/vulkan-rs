@@ -5,8 +5,7 @@ use proptest::prelude::*;
 use proptest::test_runner::Config;
 use vulkan::vk;
 use vulkan_alloc::{
-    AllocationCreateDesc, AllocationError, AllocationScheme, Allocator, AllocatorCreateDesc,
-    MemoryLocation,
+    AllocationCreateDesc, AllocationError, Allocator, AllocatorCreateDesc, MemoryLocation,
 };
 
 const VISIBLE: vk::MemoryPropertyFlags = vk::MemoryPropertyFlags::HOST_VISIBLE;
@@ -71,19 +70,15 @@ fn allocated_type(
         block_size: 4096,
     });
     unsafe {
-        let allocation = allocator.allocate(AllocationCreateDesc {
-            name: None,
-            requirements: vk::MemoryRequirements {
+        let allocation = allocator.allocate(AllocationCreateDesc::new(
+            vk::MemoryRequirements {
                 size: 256,
                 alignment: 1,
                 memory_type_bits,
             },
             location,
-            linear: true,
-            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-        })?;
+            true,
+        ))?;
         let chosen = (
             allocation.memory_type_index(),
             allocation.memory_properties(),

@@ -95,12 +95,13 @@ unsafe fn create_exportable_image(gpu: &Gpu) -> Result<Owned<Image>> {
         let allocation = gpu.with_allocator(|allocator| {
             allocator.allocate(AllocationCreateDesc {
                 name: Some("exported image"),
-                requirements,
-                location: MemoryLocation::GpuOnly,
-                linear: is_linear_image(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT, modifier),
-                memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                 export_handle_types: DMA_BUF.into(),
                 allocation_scheme: AllocationScheme::DedicatedImage(*image),
+                ..AllocationCreateDesc::new(
+                    requirements,
+                    MemoryLocation::GpuOnly,
+                    is_linear_image(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT, modifier),
+                )
             })
         })?;
         // From here the image and its memory go together.
