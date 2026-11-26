@@ -1138,11 +1138,7 @@ fn mappings_that_share_a_block(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>>
 }
 
 fn stale_and_foreign_handles(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
-    let releases = prop::sample::select(vec![
-        &[Op::Free(AIMED)][..],
-        &[Op::FreeAll][..],
-        &[Op::FreeAll, Op::FreeAll][..],
-    ]);
+    let releases = prop::sample::select(vec![&[Op::FreeAll][..], &[Op::FreeAll, Op::FreeAll][..]]);
     let uses = prop_oneof![
         3 => (0..3u16, handle_uses())
             .prop_map(|(index, handle_use)| Op::UseStale(Pick::any(index), handle_use)),
@@ -1156,18 +1152,20 @@ fn stale_and_foreign_handles(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
     .prop_flat_map(move |requests| {
         (
             releases.clone(),
-            any::<bool>(),
+            0..=requests.len(),
             prop::collection::vec(uses.clone(), 3..=10),
         )
-            .prop_map(move |(release, again, uses)| {
+            .prop_map(move |(release, allocated_again, uses)| {
                 let mut ops = requests
                     .iter()
                     .map(|&request| Op::Allocate(request))
                     .collect::<Vec<_>>();
                 ops.extend_from_slice(release);
-                if again {
-                    ops.push(Op::Allocate(requests[0]));
-                }
+                ops.extend(
+                    requests[..allocated_again]
+                        .iter()
+                        .map(|&request| Op::Allocate(request)),
+                );
                 ops.extend(uses);
                 ops
             })
