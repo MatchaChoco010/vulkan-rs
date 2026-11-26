@@ -14,14 +14,26 @@ proptest! {
 
     #[test]
     fn every_sequence_of_operations_behaves_as_the_documentation_says(
-        scenario in prop_oneof![3 => scenarios(80), 1 => aimed_scenarios(&AIMS)]
+        scenario in scenarios_the_property_test_checks()
     ) {
         Harness::run(&scenario).map_err(TestCaseError::fail)?;
     }
 }
 
+fn random_scenarios() -> impl Strategy<Value = Scenario> {
+    scenarios(80)
+}
+
+fn scenarios_with_every_aim() -> impl Strategy<Value = Scenario> {
+    aimed_scenarios(&AIMS)
+}
+
+fn scenarios_the_property_test_checks() -> impl Strategy<Value = Scenario> {
+    prop_oneof![3 => random_scenarios(), 1 => scenarios_with_every_aim()]
+}
+
 const RANDOM_SCENARIOS: usize = 400;
-const SCENARIOS_OF_EACH_AIM: usize = 60;
+const AIMED_SCENARIOS: usize = 360;
 const LEAST_REACHED: u64 = 10;
 
 fn coverage_of(strategy: impl Strategy<Value = Scenario>, scenario_count: usize) -> Coverage {
@@ -85,11 +97,9 @@ fn assert_every_mapping_operation_met_every_mapping_state(coverage: &Coverage) {
 
 #[test]
 fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
-    let random = coverage_of(scenarios(80), RANDOM_SCENARIOS);
+    let random = coverage_of(random_scenarios(), RANDOM_SCENARIOS);
     let mut coverage = random.clone();
-    for aim in AIMS {
-        coverage.merge(&coverage_of(aimed_scenarios(&[aim]), SCENARIOS_OF_EACH_AIM));
-    }
+    coverage.merge(&coverage_of(scenarios_with_every_aim(), AIMED_SCENARIOS));
     for (event, count) in &coverage.events {
         println!("{count:>8}  {event}");
     }
