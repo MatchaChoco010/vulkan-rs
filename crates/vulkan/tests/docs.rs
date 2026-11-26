@@ -705,7 +705,8 @@ impl Specification {
                     .position(|line| !line.trim().is_empty())
                     .map(|skipped| (skipped, lines[index + skipped].trim_end()));
                 let goes_on = match after {
-                    None | Some((_, COMMENT)) => false,
+                    None => false,
+                    Some((_, COMMENT)) => lacks_a_description(lines[index - 1]),
                     Some((1, after)) if attached => !markup.list_item.is_match(after),
                     Some((_, after)) => {
                         after == "+"
@@ -795,7 +796,9 @@ impl Specification {
             let mut marks = BTreeSet::<u32>::new();
             for line in text {
                 let referred = markup.mark.replace_all(line, |mark: &Captures<'_>| {
-                    let number = mark[1].parse::<u32>().ok();
+                    let before = &line[..mark.get(0).expect("the mark").start()];
+                    let is_an_exponent = before.ends_with(|c: char| c.is_ascii_digit());
+                    let number = mark[1].parse::<u32>().ok().filter(|_| !is_an_exponent);
                     match number.filter(|number| notes.contains_key(number)) {
                         Some(number) => {
                             marks.insert(number);
@@ -2316,7 +2319,7 @@ fn fixture_specification() -> Specification {
         "The counts:",
         "",
         "  * pname:colors is a bitmask^1^ of colors.",
-        "  * pname:depths is a bitmask^1^ of 2^4^ depths^2^.",
+        "  * pname:depths is a bitmask^1^ of 2^1^ or 4^7^ depths^2^.",
         "  ** A nested item.",
         "",
         "  * pname:last is the last count.",
@@ -3143,6 +3146,33 @@ fn a_list_item_of_the_specification_goes_on_past_empty_lines_as_asciidoctor_read
 }
 
 #[test]
+fn a_comment_after_an_empty_line_ends_an_item_unless_a_term_waits_for_its_description() {
+    let specification = fixture_specification();
+    let with_a_term = [
+        "  * pname:a is the size.",
+        "",
+        "1::",
+        "",
+        COMMENT,
+        "The note.",
+        "",
+        "Outside.",
+    ];
+    assert_eq!(specification.item_end(&with_a_term, 0), 6);
+    let with_a_described_term = [
+        "  * pname:a is the size.",
+        "",
+        "1:: The note.",
+        "",
+        COMMENT,
+        "Outside.",
+    ];
+    assert_eq!(specification.item_end(&with_a_described_term, 0), 3);
+    let without_a_term = ["  * pname:a is the size.", "", COMMENT, "  ** Outside."];
+    assert_eq!(specification.item_end(&without_a_term, 0), 1);
+}
+
+#[test]
 fn a_numbered_note_of_the_specification_belongs_to_the_items_that_carry_its_mark() {
     let specification = fixture_specification();
     let words = |name: &str| {
@@ -3157,8 +3187,8 @@ fn a_numbered_note_of_the_specification_belongs_to_the_items_that_carry_its_mark
     );
     assert_eq!(
         words("depths"),
-        " depths is a bitmask note 1 of 2 4 depths note 2 A nested item Note 1 For all bitmasks the first note applies Note 2 The second note applies ",
-        "a superscript without a note of its number is no mark, and the notes follow the item in the order of their numbers"
+        " depths is a bitmask note 1 of 2 1 or 4 7 depths note 2 A nested item Note 1 For all bitmasks the first note applies Note 2 The second note applies ",
+        "a superscript after a digit is an exponent and no mark, also with the number of a note, and the notes follow the item in the order of their numbers"
     );
     assert_eq!(
         words("last"),

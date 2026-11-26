@@ -569,8 +569,9 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
     Where Asciidoctor reads something else than the lines say, the item cannot be read
     reliably: an indented paragraph after an empty line or after a list continuation is a
     literal block, an indented `//` is text, the indented lines after a list continuation
-    go on to the next empty line even over a first-level item, and a list continuation
-    that two empty lines follow attaches nothing but still acts on the lines after it.
+    go on to the next empty line even over a first-level item, a list continuation that
+    two empty lines follow attaches nothing but still acts on the lines after it, and a
+    comment between a term and its description after empty lines does not end the item.
 
     The lines come back without their indentation, except inside a delimited block, and
     except for a line of the text that would read as a continuation, as attributes or as a
@@ -613,6 +614,8 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
                     problem = problem or "an indented line that starts with `//`"
                 elif attaching:
                     problem = problem or "a comment after a list continuation and an empty line"
+                elif needs_a_description:
+                    problem = problem or "a comment between a term and its description"
                 break
             item = SPEC_LIST_ITEM.match(after)
             first_level = bool(item and len(item.group(1)) == 1)

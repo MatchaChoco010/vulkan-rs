@@ -844,7 +844,7 @@ mod tests {
         let ir = ir();
         let docs = with_the_members_described_as(
             &[
-                "pname:width is a bitmask^2^ of 2^pname:width^ values^1^.",
+                "pname:width is a bitmask^2^ of 2^pname:width^ values^1^ or 2^1^.",
                 "** It is wide^2^.",
             ],
             &[
@@ -863,7 +863,9 @@ mod tests {
         assert_eq!(
             model.described(&Cfg::default(), "VkExtent2D", "width"),
             Some(vec![
-                text("`width` is a bitmask (note 2) of 2<sup>`width`</sup> values (note 1)."),
+                text(
+                    "`width` is a bitmask (note 2) of 2<sup>`width`</sup> values (note 1) or 2<sup>1</sup>."
+                ),
                 Block::list(["It is wide (note 2).".to_string()]),
                 Block::Quote(vec![
                     text("**Note 1**"),
@@ -904,7 +906,7 @@ mod tests {
         let ir = ir();
         for (width, height, message) in [
             (
-                "pname:width is a bitmask^1^ of 2^32^ values.",
+                "pname:width is a bitmask^1^ of 2^1^ values^32^.",
                 "pname:height is the height.\n\n1:: The note.",
                 "the notes {1} and the marks {1, 32} on the page VkExtent2D do not pair up",
             ),

@@ -113,8 +113,8 @@ fn with_marks(text: &str, mut referred: impl FnMut(u32) -> String) -> String {
         let digits = after
             .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(after.len());
-        let number = after[digits..]
-            .starts_with('^')
+        let is_an_exponent = rest[..open].ends_with(|c: char| c.is_ascii_digit());
+        let number = (!is_an_exponent && after[digits..].starts_with('^'))
             .then(|| note_number(&after[..digits]))
             .flatten();
         match number {
@@ -849,7 +849,7 @@ mod tests {
     #[test]
     fn numbered_terms_are_notes_and_are_taken_out_of_the_item_that_they_are_nested_in() {
         let mut item = parts(&[
-            "pname:a is a bitmask^1^ of 2^n^ values^12^, x^^ and ^3",
+            "pname:a is a bitmask^1^ of 2^n^ values^12^, x^^, 2^1^, x2^12^ and ^3",
             "** nested^1^",
             "",
             "1::",
@@ -867,7 +867,7 @@ mod tests {
         assert_eq!(
             item,
             [
-                paragraph("pname:a is a bitmask^1^ of 2^n^ values^12^, x^^ and ^3"),
+                paragraph("pname:a is a bitmask^1^ of 2^n^ values^12^, x^^, 2^1^, x2^12^ and ^3"),
                 list([vec![paragraph("nested^1^")]]),
             ]
         );
@@ -875,7 +875,9 @@ mod tests {
         assert_eq!(
             item,
             [
-                paragraph("pname:a is a bitmask (note 1) of 2^n^ values (note 12), x^^ and ^3"),
+                paragraph(
+                    "pname:a is a bitmask (note 1) of 2^n^ values (note 12), x^^, 2^1^, x2^12^ and ^3"
+                ),
                 list([vec![paragraph("nested (note 1)")]]),
             ]
         );
@@ -1224,25 +1226,17 @@ mod tests {
         );
     }
 
-    fn dumped(source: &[&str]) -> Option<Result<Vec<(String, String)>, String>> {
+    fn run_with_the_tool(steps: &[&str], input: &str) -> Option<Result<String, String>> {
         let tool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/generate-vulkan");
-        let script = [
-            "import importlib.machinery, importlib.util, json, pathlib, sys, tempfile",
+        let mut script = vec![
+            "import importlib.machinery, importlib.util, json, pathlib, sys, tempfile, types",
             "loader = importlib.machinery.SourceFileLoader('generate_vulkan', sys.argv[1])",
             "specification = importlib.util.spec_from_loader('generate_vulkan', loader)",
             "tool = importlib.util.module_from_spec(specification)",
             "loader.exec_module(tool)",
-            "with tempfile.TemporaryDirectory() as directory:",
-            "    source = pathlib.Path(directory) / 'page.adoc'",
-            "    source.write_text(sys.stdin.read())",
-            "    generated = {'sync/flagDefinitions/VK_PAGE.adoc': ['  ** ename:VK_A', '  ** ename:VK_B']}",
-            "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}, generated=generated))",
-            "items = tool.spec_described_items(body, 'VkPage')",
-            "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
-            "docs = {'commit': '', 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
-            "print(json.dumps(docs))",
-        ]
-        .join("\n");
+        ];
+        script.extend(steps);
+        let script = script.join("\n");
         let spawned = Command::new("python3")
             .args(["-B", "-c", &script])
             .arg(&tool)
@@ -1265,19 +1259,93 @@ mod tests {
             .stdin
             .take()
             .expect("the input of python3")
-            .write_all(source.join("\n").as_bytes())
-            .expect("write the source");
+            .write_all(input.as_bytes())
+            .expect("write the input");
         let output = child.wait_with_output().expect("run python3");
         if !output.status.success() {
             return Some(Err(String::from_utf8_lossy(&output.stderr).into_owned()));
         }
-        let json = String::from_utf8(output.stdout).expect("a dump in UTF-8");
+        Some(Ok(
+            String::from_utf8(output.stdout).expect("output in UTF-8")
+        ))
+    }
+
+    fn dumped(source: &[&str]) -> Option<Result<Vec<(String, String)>, String>> {
+        let steps = [
+            "with tempfile.TemporaryDirectory() as directory:",
+            "    source = pathlib.Path(directory) / 'page.adoc'",
+            "    source.write_text(sys.stdin.read())",
+            "    generated = {'sync/flagDefinitions/VK_PAGE.adoc': ['  ** ename:VK_A', '  ** ename:VK_B']}",
+            "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}, generated=generated))",
+            "items = tool.spec_described_items(body, 'VkPage')",
+            "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
+            "docs = {'commit': '', 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
+            "print(json.dumps(docs))",
+        ];
+        let json = match run_with_the_tool(&steps, &source.join("\n"))? {
+            Ok(json) => json,
+            Err(error) => return Some(Err(error)),
+        };
         let docs = Docs::from_json(&json).unwrap_or_else(|error| panic!("{error}: {json}"));
         Some(Ok(docs.pages[0]
             .items
             .iter()
             .map(|item| (item.name.clone(), item.text.clone()))
             .collect()))
+    }
+
+    fn generated_files(registry: &[&str]) -> Option<Result<String, String>> {
+        let steps = [
+            "flags = lambda *names: types.SimpleNamespace(flags=[types.SimpleNamespace(name=name) for name in names])",
+            "stages = flags('VK_STAGE_A', 'VK_STAGE_B')",
+            "vk = types.SimpleNamespace(bitmasks={'VkPipelineStageFlagBits2': stages, 'VkAccessFlagBits2': flags('VK_ACCESS_A')})",
+            "with tempfile.TemporaryDirectory() as directory:",
+            "    tool.REGISTRY = pathlib.Path(directory)",
+            "    (tool.REGISTRY / 'vk.xml').write_text(sys.stdin.read())",
+            "    print(json.dumps(tool.spec_generated_files(vk), sort_keys=True))",
+        ];
+        run_with_the_tool(&steps, &registry.join("\n"))
+    }
+
+    #[test]
+    fn the_tool_writes_the_equivalent_flags_of_the_registry_and_stops_without_their_attribute() {
+        let Some(files) = generated_files(&[
+            "<registry><sync>",
+            "<syncstage name=\"VK_STAGE_ALL\">",
+            "<syncequivalent stage=\"VK_STAGE_B,VK_STAGE_GONE,VK_STAGE_A\"/>",
+            "</syncstage>",
+            "<syncstage name=\"VK_STAGE_A\"><syncsupport queues=\"VK_QUEUE\"/></syncstage>",
+            "<syncaccess name=\"VK_ACCESS_ALL\"><syncequivalent access=\"VK_ACCESS_A\"/></syncaccess>",
+            "</sync></registry>",
+        ]) else {
+            return;
+        };
+        assert_eq!(
+            files.as_deref().map(str::trim),
+            Ok(
+                "{\"sync/flagDefinitions/VK_ACCESS_ALL.adoc\": [\"  ** ename:VK_ACCESS_A\"], \
+                 \"sync/flagDefinitions/VK_STAGE_ALL.adoc\": [\"  ** ename:VK_STAGE_B\", \"  ** ename:VK_STAGE_A\"]}"
+            )
+        );
+        for (element, attribute, missing) in [
+            ("syncstage", "access", "stage"),
+            ("syncaccess", "stage", "access"),
+            ("syncstage", "stages", "stage"),
+        ] {
+            let registry = format!(
+                "<registry><sync><{element} name=\"VK_ALL\"><syncequivalent {attribute}=\"VK_A\"/></{element}></sync></registry>"
+            );
+            let Some(files) = generated_files(&[&registry]) else {
+                return;
+            };
+            let error = files.expect_err(&registry);
+            assert!(
+                error.contains(&format!(
+                    "vk.xml: <syncequivalent> of VK_ALL has no `{missing}` attribute"
+                )),
+                "{error}"
+            );
+        }
     }
 
     fn assert_dumped(source: &[&str], expected: &[(&str, &[&str])]) {
@@ -1890,6 +1958,17 @@ mod tests {
                     "====",
                 ],
                 "a term whose description after an empty line is not text",
+            ),
+            (
+                vec![
+                    "  * pname:a is the size.",
+                    "",
+                    "1::",
+                    "",
+                    "// a comment",
+                    "The note.",
+                ],
+                "a comment between a term and its description",
             ),
         ] {
             let Some(dumped) = dumped(&source) else {
