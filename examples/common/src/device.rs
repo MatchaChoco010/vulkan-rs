@@ -210,8 +210,8 @@ pub trait Destroy {
 }
 
 /// A `T` that is destroyed when this is dropped. It dereferences to `T`, so a handle is
-/// used as `*owned` and the fields of a buffer as `owned.buffer`. It gives no `&mut T`,
-/// so that the owned object cannot be replaced by another one.
+/// used as `*owned` and the fields of a buffer as `owned.buffer`. It gives no `&mut T`
+/// outside this crate, so that the owned object cannot be replaced by another one.
 ///
 /// Locals are dropped in the reverse order of their declaration, and the fields of a
 /// struct in the order of their declaration. An example that creates its objects in the
@@ -228,6 +228,14 @@ impl<T: Destroy> Owned<T> {
     pub fn into_inner(mut self) -> T {
         self.value
             .take()
+            .expect("an Owned holds its value until it is dropped")
+    }
+
+    /// The value, for the helpers of this crate that need `&mut` access to a part of it,
+    /// such as the mapped bytes of an allocation. They must not replace the value.
+    pub(crate) fn value_mut(&mut self) -> &mut T {
+        self.value
+            .as_mut()
             .expect("an Owned holds its value until it is dropped")
     }
 }
