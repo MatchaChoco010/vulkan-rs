@@ -854,15 +854,17 @@ pub enum Aim {
     MappingsThatShareABlock,
     StaleAndForeignHandles,
     BlocksAndFailedAllocations,
+    MappedAllocationsWhoseMappingFails,
 }
 
-pub const AIMS: [Aim; 6] = [
+pub const AIMS: [Aim; 7] = [
     Aim::FailingSynchronizations,
     Aim::FaultyMaps,
     Aim::MappingOperationsInEveryState,
     Aim::MappingsThatShareABlock,
     Aim::StaleAndForeignHandles,
     Aim::BlocksAndFailedAllocations,
+    Aim::MappedAllocationsWhoseMappingFails,
 ];
 
 const AIMED: Pick = Pick::any(0);
@@ -1043,6 +1045,7 @@ fn mapping_operations_in_every_state(memory_types: Vec<u32>) -> BoxedStrategy<Ve
         2 => Just(vec![Op::MapMemory(AIMED), Op::MapPersistent(AIMED)]),
         1 => Just(MAPPED_STATES[4].to_vec()),
     ];
+    let made_mapped = prop::bool::weighted(0.15);
     let neighbours = prop::option::weighted(
         0.75,
         (
@@ -1060,8 +1063,20 @@ fn mapping_operations_in_every_state(memory_types: Vec<u32>) -> BoxedStrategy<Ve
                 aimed_request(memory_type),
                 neighbours.clone(),
                 states.clone(),
+                made_mapped,
             )
-                .prop_map(move |(request, neighbour, state)| {
+                .prop_map(move |(request, neighbour, state, made_mapped)| {
+                    let (request, state) = if made_mapped {
+                        (
+                            Request {
+                                mapped: true,
+                                ..request
+                            },
+                            Vec::new(),
+                        )
+                    } else {
+                        (request, state)
+                    };
                     let mut ops = vec![Op::Allocate(request)];
                     if let Some((size, mapping)) = neighbour {
                         ops.push(Op::Allocate(Request {
@@ -1124,19 +1139,74 @@ fn mappings_that_share_a_block(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>>
         1..=64u64,
         any::<bool>(),
         uses,
+        any::<bool>(),
     )
-        .prop_map(|(memory_type, size, neighbour_size, linear, uses)| {
-            let mut ops = vec![
-                Op::Allocate(Request {
-                    linear,
-                    ..Request::plain(size, 1, memory_type)
-                }),
-                Op::Allocate(Request {
-                    linear,
-                    ..Request::plain(neighbour_size, 1, memory_type)
-                }),
-            ];
-            ops.extend(uses);
+        .prop_map(
+            |(memory_type, size, neighbour_size, linear, uses, then_allocate_mapped)| {
+                let mut ops = vec![
+                    Op::Allocate(Request {
+                        linear,
+                        ..Request::plain(size, 1, memory_type)
+                    }),
+                    Op::Allocate(Request {
+                        linear,
+                        ..Request::plain(neighbour_size, 1, memory_type)
+                    }),
+                ];
+                ops.extend(uses);
+                if then_allocate_mapped {
+                    ops.push(Op::Allocate(Request {
+                        linear,
+                        mapped: true,
+                        ..Request::plain(size, 1, memory_type)
+                    }));
+                }
+                ops
+            },
+        )
+        .boxed()
+}
+
+fn mapped_allocations_whose_mapping_fails(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
+    let faults = vec![
+        MapFault::ReturnsNull,
+        MapFault::Fails(MAP_FAILURES[0]),
+        MapFault::Fails(MAP_FAILURES[1]),
+        MapFault::Fails(MAP_FAILURES[2]),
+    ];
+    (
+        prop::sample::select(memory_types).prop_flat_map(aimed_request),
+        prop::collection::vec((prop::sample::select(faults), 0..4u8), 1..=4),
+    )
+        .prop_map(|(request, attempts)| {
+            let mapped = Request {
+                mapped: true,
+                ..request
+            };
+            let mut ops = Vec::new();
+            for (fault, before) in attempts {
+                let mapped = match before {
+                    0 => mapped,
+                    1 => {
+                        ops.push(Op::Allocate(request));
+                        mapped
+                    }
+                    2 => {
+                        ops.extend([Op::Allocate(request), Op::Free(AIMED)]);
+                        mapped
+                    }
+                    _ => Request {
+                        scheme: Scheme::DedicatedBuffer,
+                        ..mapped
+                    },
+                };
+                ops.extend([
+                    Op::FaultNextMap(fault),
+                    Op::Allocate(mapped),
+                    Op::Allocate(mapped),
+                    Op::FreeAll,
+                ]);
+            }
             ops
         })
         .boxed()
@@ -1309,11 +1379,12 @@ impl Aim {
                     && memory_type.flags.contains(VISIBLE)
                     && !memory_type.flags.contains(COHERENT)
             }),
-            Aim::FaultyMaps | Aim::MappingOperationsInEveryState | Aim::MappingsThatShareABlock => {
-                memory_types_where(world, |memory_type| {
-                    has_room(world, memory_type) && memory_type.flags.contains(VISIBLE)
-                })
-            }
+            Aim::FaultyMaps
+            | Aim::MappingOperationsInEveryState
+            | Aim::MappingsThatShareABlock
+            | Aim::MappedAllocationsWhoseMappingFails => memory_types_where(world, |memory_type| {
+                has_room(world, memory_type) && memory_type.flags.contains(VISIBLE)
+            }),
             Aim::StaleAndForeignHandles | Aim::BlocksAndFailedAllocations => {
                 memory_types_where(world, |memory_type| has_room(world, memory_type))
             }
@@ -1332,6 +1403,9 @@ impl Aim {
             Aim::MappingsThatShareABlock => mappings_that_share_a_block(memory_types),
             Aim::StaleAndForeignHandles => stale_and_foreign_handles(memory_types),
             Aim::BlocksAndFailedAllocations => blocks_and_failed_allocations(world, memory_types),
+            Aim::MappedAllocationsWhoseMappingFails => {
+                mapped_allocations_whose_mapping_fails(memory_types)
+            }
         })
     }
 }
