@@ -397,10 +397,9 @@ pub enum HandleUse {
     Invalidate,
     FlushRange,
     InvalidateRange,
-    MemoryFlags,
 }
 
-pub const HANDLE_USES: [HandleUse; 11] = [
+pub const HANDLE_USES: [HandleUse; 10] = [
     HandleUse::Free,
     HandleUse::MapMemory,
     HandleUse::Guard,
@@ -411,7 +410,6 @@ pub const HANDLE_USES: [HandleUse; 11] = [
     HandleUse::Invalidate,
     HandleUse::FlushRange,
     HandleUse::InvalidateRange,
-    HandleUse::MemoryFlags,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1441,6 +1439,16 @@ impl Harness {
             allocation.memory_type_index(),
             memory_type,
             "the memory type of the allocation"
+        );
+        ensure_eq!(
+            allocation.memory_properties(),
+            self.flags_of(memory_type),
+            "memory_properties() of the allocation"
+        );
+        ensure_eq!(
+            allocation.is_dedicated(),
+            own,
+            "is_dedicated() of the allocation"
         );
         let memory = allocation.memory().0;
         let block = self.blocks[&memory];
@@ -2726,9 +2734,9 @@ impl Harness {
         for live in &self.live {
             let flags = self.flags_of(live.allocation.memory_type_index());
             ensure_eq!(
-                self.allocator.allocation_memory_flags(&live.allocation),
-                Ok(flags),
-                "allocation_memory_flags()"
+                live.allocation.memory_properties(),
+                flags,
+                "memory_properties() of a live allocation"
             );
             ensure_eq!(
                 self.allocator.persistent_ptr(&live.allocation),
@@ -2860,7 +2868,6 @@ fn refuse(
             HandleUse::InvalidateRange => allocator
                 .invalidate_allocation_range(&allocation, 0, allocation.size())
                 .err(),
-            HandleUse::MemoryFlags => allocator.allocation_memory_flags(&allocation).err(),
         };
         ensure_eq!(
             error,

@@ -1227,10 +1227,7 @@ impl<'g> Sequence<'g> {
                 return Ok(());
             };
             let live = &self.live[index];
-            let flags = self
-                .allocator
-                .allocation_memory_flags(&live.allocation)
-                .map_err(|e| format!("allocation_memory_flags: {e}"))?;
+            let flags = live.allocation.memory_properties();
             if !flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
                 return Ok(());
             }

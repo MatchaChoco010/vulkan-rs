@@ -86,7 +86,7 @@ fn allocated_type(
         })?;
         let chosen = (
             allocation.memory_type_index(),
-            allocator.allocation_memory_flags(&allocation)?,
+            allocation.memory_properties(),
         );
         allocator.free(allocation).unwrap();
         Ok(chosen)

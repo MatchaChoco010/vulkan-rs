@@ -132,7 +132,12 @@ impl Allocator {
             .memory_type_count
             .min(vk::MAX_MEMORY_TYPES as u32);
         let memory_types = (0..memory_properties.memory_type_count)
-            .map(MemoryTypeAllocator::new)
+            .map(|index| {
+                MemoryTypeAllocator::new(
+                    index,
+                    memory_properties.memory_types[index as usize].property_flags,
+                )
+            })
             .collect();
         Self {
             device: desc.device.clone(),
@@ -257,7 +262,7 @@ impl Allocator {
     ///   functions).
     /// - The resources bound to the returned allocation must be protected resources if
     ///   its memory type has `PROTECTED`, and must not be if it does not
-    ///   ([`Allocator::allocation_memory_flags`] tells). A location that only prefers
+    ///   ([`Allocation::memory_properties`] tells). A location that only prefers
     ///   `PROTECTED` can be given either; require the flag for a protected resource.
     /// - Every resource bound to the returned allocation must be a linear resource if
     ///   [`AllocationCreateDesc::linear`] is `true` and a non-linear resource if it is
@@ -544,30 +549,6 @@ impl Allocator {
         memory_type_flags(&self.memory_properties, memory_type_index)
     }
 
-    /// The property flags of the memory type the allocation was made in.
-    /// `HOST_COHERENT` tells whether mapped writes and reads need
-    /// [`Allocator::flush_allocation`] and [`Allocator::invalidate_allocation`]; both do
-    /// nothing for memory with it, so they can be called without checking. It is
-    /// always set for allocations made with
-    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
-    /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu).
-    /// [`MemoryLocation::GpuOnly`](crate::MemoryLocation::GpuOnly) and a
-    /// [`MemoryLocation::Custom`](crate::MemoryLocation::Custom) location that does not require
-    /// `HOST_COHERENT` can give host-visible memory without it.
-    ///
-    /// # Errors
-    ///
-    /// [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    /// allocation.
-    pub fn allocation_memory_flags(
-        &self,
-        allocation: &Allocation,
-    ) -> Result<vk::MemoryPropertyFlags, AllocationError> {
-        self.block(allocation)?;
-        self.memory_type_flags(allocation.memory_type_index())
-            .ok_or(AllocationError::InvalidAllocation)
-    }
-
     /// Flushes the host writes to a mapped allocation with `vkFlushMappedMemoryRanges`, so
     /// that the device can see them. Only memory types without `HOST_COHERENT` need it.
     /// Memory of [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) and
@@ -844,8 +825,9 @@ impl Allocator {
     }
 
     fn ensure_host_visible(&self, allocation: &Allocation) -> Result<(), AllocationError> {
-        if self
-            .allocation_memory_flags(allocation)?
+        self.block(allocation)?;
+        if allocation
+            .memory_properties()
             .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
         {
             Ok(())
@@ -873,8 +855,8 @@ impl Allocator {
             size,
             self.non_coherent_atom_size,
         )?;
-        let coherent = self
-            .allocation_memory_flags(allocation)?
+        let coherent = allocation
+            .memory_properties()
             .contains(vk::MemoryPropertyFlags::HOST_COHERENT);
         Ok(range.filter(|_| !coherent))
     }

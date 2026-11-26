@@ -138,6 +138,8 @@ pub enum AllocationScheme {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Allocation {
     pub(crate) memory_type_index: u32,
+    pub(crate) memory_properties: vk::MemoryPropertyFlags,
+    pub(crate) dedicated: bool,
     pub(crate) block_index: usize,
     pub(crate) allocation_id: u64,
     pub(crate) resource_class: AllocationResourceClass,
@@ -180,6 +182,43 @@ impl Allocation {
     /// [`vk::PhysicalDeviceMemoryProperties::memory_types`].
     pub fn memory_type_index(&self) -> u32 {
         self.memory_type_index
+    }
+
+    /// The property flags of the memory type of [`Allocation::memory`], the
+    /// `property_flags` of the entry [`Allocation::memory_type_index`] of
+    /// [`AllocatorCreateDesc::memory_properties`](crate::AllocatorCreateDesc::memory_properties).
+    ///
+    /// They tell what the location gave, since a location that only prefers a flag can
+    /// give memory without it. `HOST_VISIBLE` tells whether the allocation can be mapped.
+    /// `HOST_COHERENT` tells whether mapped writes and reads need
+    /// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) and
+    /// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation); both
+    /// do nothing for memory with it, so they can be called without checking.
+    /// `HOST_COHERENT` is always set for allocations made with [`MemoryLocation::CpuToGpu`]
+    /// and [`MemoryLocation::GpuToCpu`]; [`MemoryLocation::GpuOnly`] and a
+    /// [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
+    /// host-visible memory without it.
+    pub fn memory_properties(&self) -> vk::MemoryPropertyFlags {
+        self.memory_properties
+    }
+
+    /// Whether [`Allocation::memory`] is a `VkDeviceMemory` of this allocation alone: it
+    /// was made with [`AllocationScheme::DedicatedBuffer`] or
+    /// [`AllocationScheme::DedicatedImage`], with
+    /// [`AllocationCreateDesc::export_handle_types`] that are not empty, or with
+    /// [`AllocationCreateDesc::memory_allocate_flags`] that contain
+    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]. Such an allocation has offset 0
+    /// and exactly the requested size, and no other allocation is placed in its memory.
+    /// This is the value of
+    /// [`MemoryBlockSnapshot::dedicated`](crate::MemoryBlockSnapshot::dedicated) for the
+    /// block that holds the allocation.
+    ///
+    /// `false` for every other allocation, also for one larger than a shared block (see
+    /// [`AllocatorCreateDesc::block_size`](crate::AllocatorCreateDesc::block_size)) that
+    /// got a block of its own size: that block is a shared block, which holds no other
+    /// allocation only because the allocation fills it.
+    pub fn is_dedicated(&self) -> bool {
+        self.dedicated
     }
 }
 

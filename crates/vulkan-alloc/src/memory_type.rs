@@ -5,6 +5,8 @@ use vulkan::vk;
 /// [`Allocator::allocate`](crate::Allocator::allocate) considers only memory types with
 /// every required flag. Among them it takes the lowest-indexed one with every preferred
 /// flag, or else the one with the most preferred flags.
+/// [`Allocation::memory_properties`](crate::Allocation::memory_properties) gives the flags
+/// of the type that was chosen.
 ///
 /// [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] require `HOST_VISIBLE`
 /// and `HOST_COHERENT`, so their memory is always host-coherent: mapped memory can be
