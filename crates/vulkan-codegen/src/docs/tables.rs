@@ -23,6 +23,7 @@ pub(crate) struct Table {
 struct RawCell {
     style: Option<char>,
     line: usize,
+    starts_its_line: bool,
     content: String,
 }
 
@@ -41,26 +42,70 @@ fn attribute_entries(list: &str) -> Vec<String> {
     entries
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct ColumnSpec {
+    columns: Option<usize>,
+    styled: bool,
+}
+
+fn is_digits(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_ascii_digit())
+}
+
+fn column_spec(record: &str) -> Option<ColumnSpec> {
+    let (columns, rest) = match record.split_once('*') {
+        Some((multiplier, rest)) if is_digits(multiplier) => (multiplier.parse().ok(), rest),
+        Some(_) => return None,
+        None => (Some(1), record),
+    };
+    let alignment = ['<', '^', '>'];
+    let horizontal = rest.strip_prefix(alignment);
+    let rest = match (horizontal, horizontal.unwrap_or(rest).strip_prefix('.')) {
+        (Some(_), Some(vertical)) => vertical.strip_prefix(alignment).unwrap_or(vertical),
+        (None, Some(vertical)) => vertical.strip_prefix(alignment)?,
+        (Some(after_the_alignment), None) => after_the_alignment,
+        (None, None) => rest,
+    };
+    let after_digits = rest.trim_start_matches(|c: char| c.is_ascii_digit());
+    let rest = match rest.strip_prefix('~') {
+        Some(after_the_width) => after_the_width,
+        None if after_digits.len() < rest.len() => {
+            after_digits.strip_prefix('%').unwrap_or(after_digits)
+        }
+        None => rest,
+    };
+    let mut style = rest.chars();
+    match (style.next(), style.next()) {
+        (None, _) => Some(ColumnSpec {
+            columns,
+            styled: false,
+        }),
+        (Some(style), None) if style.is_ascii_lowercase() => Some(ColumnSpec {
+            columns,
+            styled: true,
+        }),
+        _ => None,
+    }
+}
+
 fn column_count(cols: &str) -> Option<usize> {
     let cols = cols.replace(' ', "");
-    if let Ok(count) = cols.parse::<usize>()
-        && count.to_string() == cols
-    {
-        return Some(count);
+    if is_digits(&cols) && (cols == "0" || !cols.starts_with('0')) {
+        return cols.parse().ok();
     }
-    let mut count = 0;
-    for column in cols.split([',', ';']) {
-        let column = column.trim();
-        if column.chars().any(|c| c.is_ascii_alphabetic()) {
-            return None;
+    if cols.is_empty() {
+        return Some(0);
+    }
+    let separator = if cols.contains(',') { ',' } else { ';' };
+    let mut count = 0usize;
+    for record in cols.split(separator) {
+        match column_spec(record) {
+            Some(ColumnSpec { styled: true, .. }) => return None,
+            Some(ColumnSpec { columns, .. }) => count = count.checked_add(columns?)?,
+            None => {}
         }
-        count += match column.split_once('*') {
-            Some((multiplier, _)) => multiplier.trim().parse::<usize>().ok()?,
-            None if column.is_empty() => return None,
-            None => 1,
-        };
     }
-    (count > 0).then_some(count)
+    Some(count)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -149,6 +194,7 @@ fn raw_cells(content: &[&str]) -> Option<Vec<RawCell>> {
             cells.push(RawCell {
                 style,
                 line: line_index,
+                starts_its_line: segment_start == 0 && text.trim().is_empty(),
                 content: String::new(),
             });
             segment_start = index + 1;
@@ -312,17 +358,23 @@ pub(crate) fn read(text: &str) -> Option<Table> {
     let first_line = cells.first()?.line;
     let columns = match columns {
         Some(columns) => columns,
-        None => cells.iter().filter(|cell| cell.line == first_line).count(),
+        None => cells
+            .iter()
+            .position(|cell| cell.line > first_line && cell.starts_its_line)
+            .unwrap_or(cells.len()),
     };
     if cells.len() % columns != 0 {
         return None;
     }
-    let implicit_header = cells.len() > columns
-        && cells[..columns].iter().all(|cell| cell.line == first_line)
-        && cells[columns].line > first_line
-        && content
-            .get(first_line + 1)
-            .is_some_and(|line| line.trim().is_empty());
+    let is_blank = |line: &&str| line.trim().is_empty();
+    let after_the_gap = content.iter().skip(1).position(|line| !is_blank(line));
+    let implicit_header = first_line == 0
+        && content.get(1).is_some_and(is_blank)
+        && after_the_gap.is_none_or(|skipped| {
+            cells
+                .iter()
+                .any(|cell| cell.line == skipped + 1 && cell.starts_its_line)
+        });
     let mut rows = cells
         .chunks(columns)
         .map(|row| row.iter().map(cell).collect::<Vec<_>>())
@@ -542,12 +594,96 @@ mod tests {
         assert_eq!(refused.rows.len(), 2);
     }
 
+    fn header_and_rows(content: &[&str]) -> (Option<Vec<Cell>>, Vec<Vec<Cell>>) {
+        let mut text = vec!["[cols=\"1,1\"]", "|==="];
+        text.extend(content);
+        text.push("|===");
+        let table = table(&text);
+        (table.header, table.rows)
+    }
+
+    fn row(cells: &[&str]) -> Vec<Cell> {
+        cells.iter().map(|cell| lines(&[cell])).collect()
+    }
+
+    #[test]
+    fn the_implicit_header_is_the_first_row_however_the_cells_are_spread_over_the_lines() {
+        assert_eq!(
+            header_and_rows(&["|a |b |c |d", "", "|e |f"]),
+            (
+                Some(row(&["a", "b"])),
+                vec![row(&["c", "d"]), row(&["e", "f"])]
+            )
+        );
+        assert_eq!(
+            header_and_rows(&["|a |b |c", "", "|d"]),
+            (Some(row(&["a", "b"])), vec![row(&["c", "d"])])
+        );
+        assert_eq!(
+            header_and_rows(&["|a", "", "|b |e |f"]),
+            (Some(row(&["a", "b"])), vec![row(&["e", "f"])])
+        );
+        assert_eq!(
+            header_and_rows(&["|a |b", ""]),
+            (Some(row(&["a", "b"])), vec![])
+        );
+        for gap in [
+            vec![""],
+            vec!["", ""],
+            vec!["  "],
+            vec!["// a comment", ""],
+            vec!["", "// a comment"],
+        ] {
+            let mut content = vec!["|a |b"];
+            content.extend(&gap);
+            content.push("|c |d");
+            assert_eq!(
+                header_and_rows(&content),
+                (Some(row(&["a", "b"])), vec![row(&["c", "d"])]),
+                "{gap:?}"
+            );
+        }
+        for next in ["  |c |d", "\t|c |d", "d|c |d", "^.^|c |d"] {
+            assert_eq!(
+                header_and_rows(&["|a |b", "", next]),
+                (Some(row(&["a", "b"])), vec![row(&["c", "d"])]),
+                "{next:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_first_line_that_no_empty_line_follows_or_whose_cell_goes_on_is_no_header() {
+        for content in [
+            vec!["|a", "|b", "", "|c |d"],
+            vec!["|a |b", "|c |d", ""],
+            vec!["|a |b", "// a comment", "|c |d"],
+            vec!["", "|a |b", "", "|c |d"],
+            vec!["  ", "|a |b", "", "|c |d"],
+        ] {
+            assert_eq!(
+                header_and_rows(&content),
+                (None, vec![row(&["a", "b"]), row(&["c", "d"])]),
+                "{content:?}"
+            );
+        }
+        for next in ["more of b", "x |c |d", "x ||d", "x | |d"] {
+            let (header, rows) = header_and_rows(&["|a |b", "", next, "|c |d"]);
+            assert_eq!(header, None, "{next:?}");
+            assert_eq!(rows[0][0], lines(&["a"]), "{next:?}");
+            assert_eq!(rows[0][1], Cell::Unsupported, "{next:?}");
+        }
+    }
+
     #[test]
     fn column_specifications_count_multiplied_columns() {
         assert_eq!(column_count("59%,28%,13%"), Some(3));
         assert_eq!(column_count("<35,<23"), Some(2));
         assert_eq!(column_count("3*,2"), Some(4));
-        assert_eq!(column_count(""), None);
+        assert_eq!(column_count("1, 2 ,3"), Some(3));
+        assert_eq!(column_count(">.^1,.>3,^~,2*<.>20%"), Some(5));
+        assert_eq!(column_count("<.,^.2,2*>.,1"), Some(5));
+        assert_eq!(column_count("1,<.,2"), Some(3));
         assert_eq!(
             column_count("1,2a"),
             None,
@@ -555,6 +691,158 @@ mod tests {
         );
         assert_eq!(column_count("3*a"), None);
         assert_eq!(column_count("<1,^.^2l"), None);
+        assert_eq!(column_count("1,<.a"), None);
+    }
+
+    #[test]
+    fn a_column_specification_is_what_the_pattern_of_asciidoctor_matches() {
+        let pattern = regex::Regex::new(
+            r"^(?:(\d+)\*)?([<^>](?:\.[<^>]?)?|(?:[<^>]?\.)?[<^>])?(\d+%?|~)?([a-z])?$",
+        )
+        .expect("the pattern of a column specification");
+        let alphabet = ['0', '2', '*', '<', '^', '>', '.', '%', '~', 'a', 'A'];
+        let mut records = vec![String::new()];
+        let mut longest = records.clone();
+        for _ in 0..5 {
+            longest = longest
+                .iter()
+                .flat_map(|record| alphabet.iter().map(move |c| format!("{record}{c}")))
+                .collect();
+            records.extend(longest.iter().cloned());
+        }
+        for record in &records {
+            let matched = pattern.captures(record).map(|specifier| ColumnSpec {
+                columns: Some(
+                    specifier
+                        .get(1)
+                        .map_or(1, |count| count.as_str().parse().expect("a small count")),
+                ),
+                styled: specifier.get(4).is_some(),
+            });
+            assert_eq!(column_spec(record), matched, "{record:?}");
+        }
+    }
+
+    #[test]
+    fn more_columns_than_can_be_counted_refuse_the_table() {
+        for cols in [
+            "99999999999999999999999999",
+            "99999999999999999999999999*",
+            "1,99999999999999999999999999*,2",
+            "1,99999999999999999999999999*a",
+            "18446744073709551615*,1",
+        ] {
+            assert_eq!(column_count(cols), None, "{cols:?}");
+            let text = format!("[cols=\"{cols}\"]\n|===\n|a |b\n|===");
+            assert_eq!(read(&text), None, "{cols:?}");
+        }
+        assert_eq!(column_count("1,99999999999999999999999999,2"), Some(3));
+    }
+
+    #[test]
+    fn without_column_widths_the_first_row_ends_where_a_line_starts_with_a_cell() {
+        let rows = |content: &[&str]| {
+            let mut text = vec!["|==="];
+            text.extend(content);
+            text.push("|===");
+            table(&text).rows
+        };
+        assert_eq!(
+            rows(&["|a |b", "x |c", "|d |e |f"]),
+            vec![
+                vec![lines(&["a"]), lines(&["b\nx"]), lines(&["c"])],
+                row(&["d", "e", "f"])
+            ]
+        );
+        assert_eq!(
+            rows(&["|a |b", "x |c |d", "|e |f |g |h"]),
+            vec![
+                vec![
+                    lines(&["a"]),
+                    lines(&["b\nx"]),
+                    lines(&["c"]),
+                    lines(&["d"])
+                ],
+                row(&["e", "f", "g", "h"])
+            ]
+        );
+        assert_eq!(
+            rows(&["|a |b", "more of b", "  |c |d"]),
+            vec![
+                vec![lines(&["a"]), lines(&["b\nmore of b"])],
+                row(&["c", "d"])
+            ]
+        );
+        assert_eq!(
+            rows(&["|a", "|b", "m|c"]),
+            vec![row(&["a"]), row(&["b"]), vec![Cell::Unsupported]]
+        );
+        assert_eq!(
+            rows(&["", "|a |b", "|c |d"]),
+            vec![row(&["a", "b"]), row(&["c", "d"])]
+        );
+        assert_eq!(read("|===\n|a |b\nx |c\n|d |e\n|==="), None);
+    }
+
+    #[test]
+    fn column_specifications_are_separated_by_commas_or_else_by_semicolons() {
+        assert_eq!(column_count("2;1"), Some(2));
+        assert_eq!(column_count("2;1;3*"), Some(5));
+        assert_eq!(column_count("1;2,3"), Some(1));
+        assert_eq!(column_count("1,2;3,4"), Some(2));
+        assert_eq!(column_count("1;2a,3"), Some(1));
+    }
+
+    #[test]
+    fn an_empty_column_specification_is_a_column_and_one_that_is_none_is_passed_over() {
+        assert_eq!(column_count("1,,2"), Some(3));
+        assert_eq!(column_count("1,"), Some(2));
+        assert_eq!(column_count(","), Some(2));
+        assert_eq!(column_count(";"), Some(2));
+        for (cols, columns) in [
+            ("*", 0),
+            ("1,*", 1),
+            ("x*,1", 1),
+            ("1,1.5,2", 2),
+            ("1,%,2", 2),
+            ("1,.,2", 2),
+            ("1,..,2", 2),
+            ("1,<..,2", 2),
+            ("1,2*3*,2", 2),
+            ("1,2A,2", 2),
+            ("1,2ab,2", 2),
+            ("1,-1,2", 2),
+            ("1,+2*,2", 2),
+            ("1,-2*,2", 2),
+        ] {
+            assert_eq!(column_count(cols), Some(columns), "{cols:?}");
+        }
+    }
+
+    #[test]
+    fn columns_multiplied_by_zero_do_not_count_and_no_columns_leave_the_count_to_the_first_line() {
+        assert_eq!(column_count("0*"), Some(0));
+        assert_eq!(column_count("0*,1"), Some(1));
+        assert_eq!(column_count("2*,0*"), Some(2));
+        assert_eq!(column_count("0,0"), Some(2));
+        assert_eq!(column_count(""), Some(0));
+        assert_eq!(column_count("  "), Some(0));
+        for cols in ["0*", "0", "", "*", "0*;0*"] {
+            let unspecified = table(&[
+                &format!("[cols=\"{cols}\"]"),
+                "|===",
+                "|a |b |c",
+                "|d |e |f",
+                "|===",
+            ]);
+            assert_eq!(
+                unspecified.rows,
+                vec![row(&["a", "b", "c"]), row(&["d", "e", "f"])],
+                "{cols:?}"
+            );
+        }
+        let one_column = table(&["[cols=\"0*,1\"]", "|===", "|a |b", "|==="]);
+        assert_eq!(one_column.rows, vec![row(&["a"]), row(&["b"])]);
     }
 
     #[test]
@@ -862,8 +1150,12 @@ mod tests {
             next += 1;
             choices[next % choices.len()] % range
         };
-        let implicit_header = header && rows.len() > 1 && choose(2) == 0;
+        let implicit_header = header && choose(2) == 0;
         let first_row_on_one_line = matches!(cols, Cols::Absent) || implicit_header;
+        let cells_before_the_gap = match cols {
+            Cols::Absent => columns,
+            _ => 1 + choose(columns as u8) as usize,
+        };
         if first_row_on_one_line {
             rows[0] = std::mem::take(&mut rows[0])
                 .into_iter()
@@ -908,12 +1200,13 @@ mod tests {
                 } else {
                     text.extend(cell.lines().map(str::to_string));
                 }
+                if index == 0 && implicit_header && column + 1 == cells_before_the_gap {
+                    text.push(std::mem::take(&mut line));
+                    text.push(String::new());
+                }
             }
-            if one_line {
+            if !line.is_empty() {
                 text.push(line);
-            }
-            if index == 0 && implicit_header {
-                text.push(String::new());
             }
         }
         text.push(delimiter.to_string());

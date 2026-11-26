@@ -39,22 +39,50 @@ impl Brackets {
             leading_closers: line.chars().take_while(|c| is_closer(*c)).count(),
             ..Default::default()
         };
-        let mut in_string = false;
-        let mut chars = line.chars().peekable();
-        while let Some(c) = chars.next() {
+        let mut rest = line;
+        while let Some(c) = rest.chars().next() {
+            rest = &rest[c.len_utf8()..];
             match c {
-                '\\' if in_string => {
-                    chars.next();
+                '"' => {
+                    rest = after_string_literal(rest)
+                        .unwrap_or_else(|| panic!("`{line}` ends inside a string literal"));
                 }
-                '"' => in_string = !in_string,
-                '/' if !in_string && chars.peek() == Some(&'/') => break,
-                '{' | '[' | '(' if !in_string => brackets.openers += 1,
-                c if is_closer(c) && !in_string => brackets.closers += 1,
+                '\'' => rest = after_character_literal(rest).unwrap_or(rest),
+                '/' if rest.starts_with('/') => break,
+                '{' | '[' | '(' => brackets.openers += 1,
+                c if is_closer(c) => brackets.closers += 1,
                 _ => {}
             }
         }
-        assert!(!in_string, "`{line}` ends inside a string literal");
         brackets
+    }
+}
+
+fn after_string_literal(text: &str) -> Option<&str> {
+    let mut chars = text.char_indices();
+    while let Some((at, c)) = chars.next() {
+        match c {
+            '\\' => {
+                chars.next();
+            }
+            '"' => return Some(&text[at + 1..]),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn after_character_literal(text: &str) -> Option<&str> {
+    let mut chars = text.char_indices();
+    let (_, first) = chars.next()?;
+    let (second_at, second) = chars.next()?;
+    match (first, second) {
+        ('\\', _) => chars
+            .find(|(_, c)| *c == '\'')
+            .map(|(at, _)| &text[at + 1..]),
+        ('\'', _) => None,
+        (_, '\'') => Some(&text[second_at + 1..]),
+        _ => None,
     }
 }
 
@@ -85,6 +113,83 @@ mod tests {
     }
 
     #[test]
+    fn a_double_quote_or_a_bracket_in_a_character_literal_is_neither_a_string_nor_a_bracket() {
+        for line in [
+            "let quote = '\"';",
+            "let quotes = ['\"', '\\'', '\"'];",
+            "m('{', \"x{\", '(')",
+            "matches!(c, 'a'|'{'|'\\n'|'('|'\\u{7b}'|'é'|']')",
+        ] {
+            assert_eq!(
+                indent_by_nesting(&format!("{{\n{line}\n}}\n")),
+                format!("{{\n    {line}\n}}\n")
+            );
+        }
+    }
+
+    #[test]
+    fn a_character_literal_ends_at_the_quote_after_one_character_or_after_an_escape() {
+        for (after_the_quote, rest) in [
+            ("a' x", Some(" x")),
+            ("\"'(", Some("(")),
+            ("é'[", Some("[")),
+            ("\\'' x", Some(" x")),
+            ("\\\\' x", Some(" x")),
+            ("\\n'", Some("")),
+            ("\\u{7b}'}", Some("}")),
+            ("a> x", None),
+            ("a, 'b> x", None),
+            ("_ x", None),
+            ("a", None),
+            ("", None),
+            ("'' x", None),
+            ("\\", None),
+            ("\\n x", None),
+        ] {
+            assert_eq!(
+                after_character_literal(after_the_quote),
+                rest,
+                "{after_the_quote:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_string_literal_ends_at_the_first_quote_that_no_backslash_escapes() {
+        for (after_the_quote, rest) in [
+            ("\" x", Some(" x")),
+            ("a{b\"}", Some("}")),
+            ("a\\\"b\" x", Some(" x")),
+            ("a\\\\\" x", Some(" x")),
+            ("é\"\"", Some("\"")),
+            ("a", None),
+            ("a\\\"", None),
+            ("a\\", None),
+            ("", None),
+        ] {
+            assert_eq!(
+                after_string_literal(after_the_quote),
+                rest,
+                "{after_the_quote:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lifetime_starts_no_character_literal() {
+        assert_eq!(
+            indent_by_nesting("fn f<'a>(x: &'a [u8]) -> &'a str {\nx('a', 'b')\n}\n"),
+            "fn f<'a>(x: &'a [u8]) -> &'a str {\n    x('a', 'b')\n}\n"
+        );
+        assert_eq!(
+            indent_by_nesting(
+                "impl<'a> A<'a> for B<'_> {\nfn g(&'a self) {\n'l: loop {\n}\n}\n}\n"
+            ),
+            "impl<'a> A<'a> for B<'_> {\n    fn g(&'a self) {\n        'l: loop {\n        }\n    }\n}\n"
+        );
+    }
+
+    #[test]
     fn a_line_that_ends_inside_a_string_literal_aborts_generation_and_names_the_line() {
         for (source, line) in [
             ("f(\"a\n\");\n", "`f(\"a`"),
@@ -110,6 +215,10 @@ mod tests {
         "s(\"a/b}\")",
         "s(\"http://x/(y\", \"\\\\\")",
         "c = '\\\\';",
+        "let quote = '\"';",
+        "m('{', \"x{\", '\\'', \"}\")",
+        "matches!(c, 'a'|'{'|'\\n'|'('|'é'|']')",
+        "fn f<'a>(x: &'a [u8], y: &'_ str) -> &'a str;",
     ];
 
     const COMMENTS: &[&str] = &[
@@ -275,7 +384,7 @@ mod tests {
         let mut count = |case: &'static str, holds: bool| {
             *reached.entry(case).or_default() += usize::from(holds);
         };
-        for lines in deterministic_values(lines(), 256) {
+        for lines in deterministic_values(lines(), 512) {
             let laid_out = laid_out(&lines);
             for (index, line) in laid_out.iter().enumerate() {
                 let is_closer = |c: char| matches!(c, '}' | ']' | ')');
@@ -303,6 +412,12 @@ mod tests {
                 count("two slashes in a string literal", text.contains("http://"));
                 count("a division", text.contains("a / b"));
                 count("an escaped quote", text.contains("\\\" }"));
+                count(
+                    "a double quote in a character literal",
+                    text.contains("'\"'"),
+                );
+                count("a bracket in a character literal", text.contains("'{'"));
+                count("a lifetime", text.contains("<'a>"));
                 count("a line after the top level is reached again", {
                     line.depth == 0
                         && index > 0
@@ -323,6 +438,9 @@ mod tests {
             "two slashes in a string literal",
             "a division",
             "an escaped quote",
+            "a double quote in a character literal",
+            "a bracket in a character literal",
+            "a lifetime",
             "a line after the top level is reached again",
         ] {
             let lines = reached.get(case).copied().unwrap_or(0);
