@@ -270,6 +270,11 @@ impl Allocator {
     ///   the handle must be a resource of this device that is not bound to memory yet,
     ///   `desc.requirements` must be its memory requirements, and the device must
     ///   support dedicated allocations (Vulkan 1.1 or `VK_KHR_dedicated_allocation`).
+    /// - When `vkAllocateMemory` runs out of memory, this frees the empty blocks of the
+    ///   heap with `vkFreeMemory` (see above), as [`Allocator::free_empty_blocks`] does.
+    ///   Every submitted command that refers to memory of an empty block must have
+    ///   completed. [`Allocator::free`] already requires this of the allocations that
+    ///   were in the block, so this is no new condition.
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
     /// - On a logical device that represents more than one physical device, the returned
