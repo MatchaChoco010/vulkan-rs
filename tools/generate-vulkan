@@ -595,6 +595,7 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
             if line[0].isspace():
                 problem = problem or "an indented line that starts with `//`"
             attaching = False
+            needs_a_description = False
             index += 1
             continue
         if spec_is_first_level_item(line):

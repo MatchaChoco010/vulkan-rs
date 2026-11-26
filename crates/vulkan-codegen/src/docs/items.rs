@@ -1790,6 +1790,22 @@ mod tests {
     }
 
     #[test]
+    fn the_dump_gives_a_term_that_a_comment_follows_no_text_after_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:a is the size.",
+                "",
+                "1::",
+                "// a comment",
+                "",
+                "Not in the list.",
+                "  * pname:next is the next member.",
+            ],
+            &[("a", &["pname:a is the size.", "", "1::"]), NEXT],
+        );
+    }
+
+    #[test]
     fn the_dump_attaches_a_block_that_follows_a_list_continuation_after_one_empty_line() {
         assert_dumped(
             &[
