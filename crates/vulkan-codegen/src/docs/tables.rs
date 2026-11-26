@@ -42,24 +42,29 @@ fn attribute_entries(list: &str) -> Vec<String> {
     entries
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct ColumnSpec {
-    columns: usize,
+    columns: Option<usize>,
     styled: bool,
+}
+
+fn is_digits(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_ascii_digit())
 }
 
 fn column_spec(record: &str) -> Option<ColumnSpec> {
     let (columns, rest) = match record.split_once('*') {
-        Some((multiplier, rest)) if multiplier.chars().all(|c| c.is_ascii_digit()) => {
-            (multiplier.parse().ok()?, rest)
-        }
+        Some((multiplier, rest)) if is_digits(multiplier) => (multiplier.parse().ok(), rest),
         Some(_) => return None,
-        None => (1, record),
+        None => (Some(1), record),
     };
     let alignment = ['<', '^', '>'];
-    let rest = rest.strip_prefix(alignment).unwrap_or(rest);
-    let rest = match rest.strip_prefix('.') {
-        Some(vertical) => vertical.strip_prefix(alignment)?,
-        None => rest,
+    let horizontal = rest.strip_prefix(alignment);
+    let rest = match (horizontal, horizontal.unwrap_or(rest).strip_prefix('.')) {
+        (Some(_), Some(vertical)) => vertical.strip_prefix(alignment).unwrap_or(vertical),
+        (None, Some(vertical)) => vertical.strip_prefix(alignment)?,
+        (Some(after_the_alignment), None) => after_the_alignment,
+        (None, None) => rest,
     };
     let after_digits = rest.trim_start_matches(|c: char| c.is_ascii_digit());
     let rest = match rest.strip_prefix('~') {
@@ -85,10 +90,8 @@ fn column_spec(record: &str) -> Option<ColumnSpec> {
 
 fn column_count(cols: &str) -> Option<usize> {
     let cols = cols.replace(' ', "");
-    if let Ok(count) = cols.parse::<usize>()
-        && count.to_string() == cols
-    {
-        return Some(count);
+    if is_digits(&cols) && (cols == "0" || !cols.starts_with('0')) {
+        return cols.parse().ok();
     }
     if cols.is_empty() {
         return Some(0);
@@ -98,7 +101,7 @@ fn column_count(cols: &str) -> Option<usize> {
     for record in cols.split(separator) {
         match column_spec(record) {
             Some(ColumnSpec { styled: true, .. }) => return None,
-            Some(ColumnSpec { columns, .. }) => count = count.checked_add(columns)?,
+            Some(ColumnSpec { columns, .. }) => count = count.checked_add(columns?)?,
             None => {}
         }
     }
@@ -355,7 +358,10 @@ pub(crate) fn read(text: &str) -> Option<Table> {
     let first_line = cells.first()?.line;
     let columns = match columns {
         Some(columns) => columns,
-        None => cells.iter().filter(|cell| cell.line == first_line).count(),
+        None => cells
+            .iter()
+            .position(|cell| cell.line > first_line && cell.starts_its_line)
+            .unwrap_or(cells.len()),
     };
     if cells.len() % columns != 0 {
         return None;
@@ -676,6 +682,8 @@ mod tests {
         assert_eq!(column_count("3*,2"), Some(4));
         assert_eq!(column_count("1, 2 ,3"), Some(3));
         assert_eq!(column_count(">.^1,.>3,^~,2*<.>20%"), Some(5));
+        assert_eq!(column_count("<.,^.2,2*>.,1"), Some(5));
+        assert_eq!(column_count("1,<.,2"), Some(3));
         assert_eq!(
             column_count("1,2a"),
             None,
@@ -683,6 +691,97 @@ mod tests {
         );
         assert_eq!(column_count("3*a"), None);
         assert_eq!(column_count("<1,^.^2l"), None);
+        assert_eq!(column_count("1,<.a"), None);
+    }
+
+    #[test]
+    fn a_column_specification_is_what_the_pattern_of_asciidoctor_matches() {
+        let pattern = regex::Regex::new(
+            r"^(?:(\d+)\*)?([<^>](?:\.[<^>]?)?|(?:[<^>]?\.)?[<^>])?(\d+%?|~)?([a-z])?$",
+        )
+        .expect("the pattern of a column specification");
+        let alphabet = ['0', '2', '*', '<', '^', '>', '.', '%', '~', 'a', 'A'];
+        let mut records = vec![String::new()];
+        let mut longest = records.clone();
+        for _ in 0..5 {
+            longest = longest
+                .iter()
+                .flat_map(|record| alphabet.iter().map(move |c| format!("{record}{c}")))
+                .collect();
+            records.extend(longest.iter().cloned());
+        }
+        for record in &records {
+            let matched = pattern.captures(record).map(|specifier| ColumnSpec {
+                columns: Some(
+                    specifier
+                        .get(1)
+                        .map_or(1, |count| count.as_str().parse().expect("a small count")),
+                ),
+                styled: specifier.get(4).is_some(),
+            });
+            assert_eq!(column_spec(record), matched, "{record:?}");
+        }
+    }
+
+    #[test]
+    fn more_columns_than_can_be_counted_refuse_the_table() {
+        for cols in [
+            "99999999999999999999999999",
+            "99999999999999999999999999*",
+            "1,99999999999999999999999999*,2",
+            "1,99999999999999999999999999*a",
+            "18446744073709551615*,1",
+        ] {
+            assert_eq!(column_count(cols), None, "{cols:?}");
+            let text = format!("[cols=\"{cols}\"]\n|===\n|a |b\n|===");
+            assert_eq!(read(&text), None, "{cols:?}");
+        }
+        assert_eq!(column_count("1,99999999999999999999999999,2"), Some(3));
+    }
+
+    #[test]
+    fn without_column_widths_the_first_row_ends_where_a_line_starts_with_a_cell() {
+        let rows = |content: &[&str]| {
+            let mut text = vec!["|==="];
+            text.extend(content);
+            text.push("|===");
+            table(&text).rows
+        };
+        assert_eq!(
+            rows(&["|a |b", "x |c", "|d |e |f"]),
+            vec![
+                vec![lines(&["a"]), lines(&["b\nx"]), lines(&["c"])],
+                row(&["d", "e", "f"])
+            ]
+        );
+        assert_eq!(
+            rows(&["|a |b", "x |c |d", "|e |f |g |h"]),
+            vec![
+                vec![
+                    lines(&["a"]),
+                    lines(&["b\nx"]),
+                    lines(&["c"]),
+                    lines(&["d"])
+                ],
+                row(&["e", "f", "g", "h"])
+            ]
+        );
+        assert_eq!(
+            rows(&["|a |b", "more of b", "  |c |d"]),
+            vec![
+                vec![lines(&["a"]), lines(&["b\nmore of b"])],
+                row(&["c", "d"])
+            ]
+        );
+        assert_eq!(
+            rows(&["|a", "|b", "m|c"]),
+            vec![row(&["a"]), row(&["b"]), vec![Cell::Unsupported]]
+        );
+        assert_eq!(
+            rows(&["", "|a |b", "|c |d"]),
+            vec![row(&["a", "b"]), row(&["c", "d"])]
+        );
+        assert_eq!(read("|===\n|a |b\nx |c\n|d |e\n|==="), None);
     }
 
     #[test]
@@ -707,14 +806,14 @@ mod tests {
             ("1,1.5,2", 2),
             ("1,%,2", 2),
             ("1,.,2", 2),
-            ("1,<.,2", 2),
+            ("1,..,2", 2),
+            ("1,<..,2", 2),
             ("1,2*3*,2", 2),
             ("1,2A,2", 2),
             ("1,2ab,2", 2),
             ("1,-1,2", 2),
             ("1,+2*,2", 2),
             ("1,-2*,2", 2),
-            ("1,99999999999999999999999999*,2", 2),
         ] {
             assert_eq!(column_count(cols), Some(columns), "{cols:?}");
         }
