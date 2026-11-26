@@ -3,8 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use vulkan_codegen::{
-    GENERATED_SRC, GENERATED_TESTS, assert_aligned_memory_exists, assert_listed_members_exist,
-    generate, required_features,
+    GENERATED_SRC, GENERATED_TESTS, assert_aligned_memory_exists,
+    assert_listed_legacy_macros_are_marked, assert_listed_members_exist, generate,
+    required_features,
 };
 use vulkan_registry::{Docs, Registry};
 
@@ -206,4 +207,12 @@ fn a_registry_without_the_listed_structures_fails_the_check_of_the_unmarked_arra
 #[should_panic(expected = "the registry has no command ")]
 fn a_registry_without_the_listed_commands_fails_the_check_of_the_aligned_memory() {
     assert_aligned_memory_exists(&Registry::default());
+}
+
+#[test]
+#[should_panic(
+    expected = "`VK_API_VERSION` is in MACROS_THAT_THE_BINDINGS_LEAVE_OUT, but the registry does not mark it as legacy"
+)]
+fn a_registry_without_the_listed_legacy_macros_fails_the_check_of_the_macros_left_out() {
+    assert_listed_legacy_macros_are_marked(&Registry::default());
 }

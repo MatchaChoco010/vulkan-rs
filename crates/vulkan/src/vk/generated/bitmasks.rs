@@ -140,6 +140,10 @@ impl core::ops::BitAnd<AccelerationStructureCreateFlagBitsKHR>
 /// C enumeration of flag bits
 /// [`VkAccessFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccessFlagBits.html).
 ///
+/// Legacy functionality, superseded by [`VkAccessFlagBits2`](AccessFlagBits2): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
+///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`AccessFlags`], which the API takes wherever several bits can be set.
 #[doc(alias = "VkAccessFlagBits")]
@@ -1535,6 +1539,10 @@ impl core::ops::BitAnd<AddressCopyFlagBitsKHR> for AddressCopyFlagsKHR {
 /// C enumeration of flag bits
 /// [`VkAttachmentDescriptionFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAttachmentDescriptionFlagBits.html).
 ///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
+///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`AttachmentDescriptionFlags`], which the API takes wherever several bits can be set.
 #[doc(alias = "VkAttachmentDescriptionFlagBits")]
@@ -1803,6 +1811,11 @@ impl core::ops::BitAnd<BufferCreateFlagBits> for BufferCreateFlags {
 ///
 /// C enumeration of flag bits
 /// [`VkBufferUsageFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferUsageFlagBits.html).
+///
+/// Legacy functionality, superseded by [`VkBufferUsageFlagBits2`](BufferUsageFlagBits2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-flagbits)
+/// in the Vulkan specification.
 ///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`BufferUsageFlags`], which the API takes wherever several bits can be set.
@@ -8648,6 +8661,11 @@ pub type FenceImportFlagBitsKHR = FenceImportFlagBits;
 /// C enumeration of flag bits
 /// [`VkFormatFeatureFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlagBits.html).
 ///
+/// Legacy functionality, superseded by [`VkFormatFeatureFlagBits2`](FormatFeatureFlagBits2):
+/// see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-flagbits)
+/// in the Vulkan specification.
+///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`FormatFeatureFlags`], which the API takes wherever several bits can be set.
 #[doc(alias = "VkFormatFeatureFlagBits")]
@@ -9962,6 +9980,10 @@ impl core::ops::BitAnd<FrameBoundaryFlagBitsEXT> for FrameBoundaryFlagsEXT {
 ///
 /// C enumeration of flag bits
 /// [`VkFramebufferCreateFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFramebufferCreateFlagBits.html).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 ///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`FramebufferCreateFlags`], which the API takes wherever several bits can be set.
@@ -15506,6 +15528,11 @@ impl core::ops::BitAnd<PipelineCompilerControlFlagBitsAMD> for PipelineCompilerC
 /// C enumeration of flag bits
 /// [`VkPipelineCreateFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineCreateFlagBits.html).
 ///
+/// Legacy functionality, superseded by [`VkPipelineCreateFlagBits2`](PipelineCreateFlagBits2):
+/// see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-flagbits)
+/// in the Vulkan specification.
+///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`PipelineCreateFlags`], which the API takes wherever several bits can be set.
 #[doc(alias = "VkPipelineCreateFlagBits")]
@@ -16841,6 +16868,11 @@ impl core::ops::BitAnd<PipelineShaderStageCreateFlagBits> for PipelineShaderStag
 ///
 /// C enumeration of flag bits
 /// [`VkPipelineStageFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits.html).
+///
+/// Legacy functionality, superseded by [`VkPipelineStageFlagBits2`](PipelineStageFlagBits2):
+/// see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
 ///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`PipelineStageFlags`], which the API takes wherever several bits can be set.
@@ -19003,6 +19035,10 @@ impl core::ops::BitAnd<QueueFlagBits> for QueueFlags {
 ///
 /// C enumeration of flag bits
 /// [`VkRenderPassCreateFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassCreateFlagBits.html).
+///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 ///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`RenderPassCreateFlags`], which the API takes wherever several bits can be set.
@@ -21436,6 +21472,10 @@ pub type SubmitFlagBitsKHR = SubmitFlagBits;
 ///
 /// C enumeration of flag bits
 /// [`VkSubpassDescriptionFlagBits`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassDescriptionFlagBits.html).
+///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 ///
 /// A value of this type is one of the constants. Combining values with `|` gives a
 /// [`SubpassDescriptionFlags`], which the API takes wherever several bits can be set.
@@ -27684,6 +27724,10 @@ impl core::ops::Not for AccelerationStructureMotionInstanceFlagsNV {
 /// C bitmask type
 /// [`VkAccessFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccessFlags.html).
 ///
+/// Legacy functionality, superseded by [`VkAccessFlags2`](AccessFlags2): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
+///
 /// The bits are the constants of [`VkAccessFlagBits`](AccessFlagBits), which this type has as
 /// well. Values combine with `|`, `&`, `^` and `!`.
 #[doc(alias = "VkAccessFlags")]
@@ -29446,6 +29490,10 @@ impl core::ops::Not for AndroidSurfaceCreateFlagsKHR {
 /// C bitmask type
 /// [`VkAttachmentDescriptionFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAttachmentDescriptionFlags.html).
 ///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
+///
 /// The bits are the constants of
 /// [`VkAttachmentDescriptionFlagBits`](AttachmentDescriptionFlagBits), which this type has as
 /// well. Values combine with `|`, `&`, `^` and `!`.
@@ -29789,6 +29837,10 @@ impl core::ops::Not for BufferCreateFlags {
 ///
 /// C bitmask type
 /// [`VkBufferUsageFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferUsageFlags.html).
+///
+/// Legacy functionality, superseded by [`VkBufferUsageFlags2`](BufferUsageFlags2): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-flagbits)
+/// in the Vulkan specification.
 ///
 /// The bits are the constants of [`VkBufferUsageFlagBits`](BufferUsageFlagBits), which this
 /// type has as well. Values combine with `|`, `&`, `^` and `!`.
@@ -39973,6 +40025,11 @@ pub type FenceImportFlagsKHR = FenceImportFlags;
 /// C bitmask type
 /// [`VkFormatFeatureFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFormatFeatureFlags.html).
 ///
+/// Legacy functionality, superseded by [`VkFormatFeatureFlags2`](FormatFeatureFlags2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-flagbits)
+/// in the Vulkan specification.
+///
 /// The bits are the constants of [`VkFormatFeatureFlagBits`](FormatFeatureFlagBits), which this
 /// type has as well. Values combine with `|`, `&`, `^` and `!`.
 #[doc(alias = "VkFormatFeatureFlags")]
@@ -41435,6 +41492,10 @@ impl core::ops::Not for FrameBoundaryFlagsEXT {
 ///
 /// C bitmask type
 /// [`VkFramebufferCreateFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFramebufferCreateFlags.html).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 ///
 /// The bits are the constants of [`VkFramebufferCreateFlagBits`](FramebufferCreateFlagBits),
 /// which this type has as well. Values combine with `|`, `&`, `^` and `!`.
@@ -50017,6 +50078,11 @@ impl core::ops::Not for PipelineCoverageToColorStateCreateFlagsNV {
 /// C bitmask type
 /// [`VkPipelineCreateFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineCreateFlags.html).
 ///
+/// Legacy functionality, superseded by [`VkPipelineCreateFlags2`](PipelineCreateFlags2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-flagbits)
+/// in the Vulkan specification.
+///
 /// The bits are the constants of [`VkPipelineCreateFlagBits`](PipelineCreateFlagBits), which
 /// this type has as well. Values combine with `|`, `&`, `^` and `!`.
 #[doc(alias = "VkPipelineCreateFlags")]
@@ -52637,6 +52703,11 @@ impl core::ops::Not for PipelineShaderStageCreateFlags {
 ///
 /// C bitmask type
 /// [`VkPipelineStageFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlags.html).
+///
+/// Legacy functionality, superseded by [`VkPipelineStageFlags2`](PipelineStageFlags2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
 ///
 /// The bits are the constants of [`VkPipelineStageFlagBits`](PipelineStageFlagBits), which this
 /// type has as well. Values combine with `|`, `&`, `^` and `!`.
@@ -55782,6 +55853,10 @@ impl core::ops::Not for QueueFlags {
 ///
 /// C bitmask type
 /// [`VkRenderPassCreateFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassCreateFlags.html).
+///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 ///
 /// The bits are the constants of [`VkRenderPassCreateFlagBits`](RenderPassCreateFlagBits),
 /// which this type has as well. Values combine with `|`, `&`, `^` and `!`.
@@ -59574,6 +59649,10 @@ pub type SubmitFlagsKHR = SubmitFlags;
 ///
 /// C bitmask type
 /// [`VkSubpassDescriptionFlags`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassDescriptionFlags.html).
+///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 ///
 /// The bits are the constants of [`VkSubpassDescriptionFlagBits`](SubpassDescriptionFlagBits),
 /// which this type has as well. Values combine with `|`, `&`, `^` and `!`.

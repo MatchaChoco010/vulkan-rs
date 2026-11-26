@@ -1,9 +1,9 @@
-use super::{bitmasks, commands, constants, doc_of, enums, extensions, handles, structs};
+use super::{bitmasks, commands, constants, doc_of, enums, extensions, handles, structs, version};
 use crate::model::Model;
 use crate::test_support::{counted, field, registry, result_command, tagged};
 use vulkan_registry::{
     Bitmask, Constant, DocItem, DocPage, DocTable, Docs, Enum, EnumField, Extension, Flags, Handle,
-    Registry,
+    Legacy, LegacyKind, Registry, Version,
 };
 
 fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
@@ -649,4 +649,354 @@ fn constants_carry_their_summary() {
             alias("VK_MAX_QUEUES"),
         ]
     );
+}
+
+const LEGACY: &str = "https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-queues";
+
+fn legacy(successor: &str) -> String {
+    format!(
+        "Legacy functionality, superseded by {successor}: see [Legacy Functionality]({LEGACY}) in the Vulkan specification."
+    )
+}
+
+fn legacy_as_of(marked_by: &str) -> String {
+    format!(
+        "Legacy functionality as of {marked_by}: see [Legacy Functionality]({LEGACY}) in the Vulkan specification."
+    )
+}
+
+fn legacy_ir() -> Registry {
+    let mark = |kind, name: &str, marked_by: &[&str], superseded_by: Option<&str>| Legacy {
+        kind,
+        name: name.to_string(),
+        structure: None,
+        link: "legacy-queues".to_string(),
+        marked_by: marked_by.iter().map(|by| by.to_string()).collect(),
+        superseded_by: superseded_by.map(str::to_string),
+    };
+    let feature = |name: &str| Legacy {
+        structure: Some("VkQueueInfo".to_string()),
+        ..mark(
+            LegacyKind::Feature,
+            name,
+            &["VK_VERSION_1_2", "VK_KHR_queue"],
+            None,
+        )
+    };
+    let mut ir = ir();
+    let device_info = &mut ir.structs[0];
+    assert_eq!(device_info.name, "VkDeviceInfo");
+    device_info.aliases = vec!["VkDeviceInfoKHR".to_string()];
+    let queue_info = &mut ir.structs[1];
+    assert_eq!(queue_info.name, "VkQueueInfo");
+    let mut label = field("label", "char");
+    label.fixed_size_array = vec!["8".to_string()];
+    queue_info.members.push(label);
+    ir.structs.push(tagged(
+        "VkOtherInfoKHR",
+        "VK_STRUCTURE_TYPE_QUEUE_INFO",
+        vec![],
+    ));
+    ir.versions.push(Version {
+        name: "VK_VERSION_1_1".to_string(),
+        name_api: "VK_API_VERSION_1_1".to_string(),
+    });
+    let v1_1 = ["VK_VERSION_1_1"];
+    ir.legacy = vec![
+        mark(LegacyKind::Type, "VkQueueInfo", &v1_1, Some("VkDeviceInfo")),
+        mark(
+            LegacyKind::Type,
+            "VkOtherInfoKHR",
+            &["VK_VERSION_1_1", "VK_KHR_queue", "VK_KHR_other"],
+            None,
+        ),
+        mark(
+            LegacyKind::Type,
+            "VkDeviceInfoKHR",
+            &["VK_VERSION_1_1", "VK_KHR_queue"],
+            Some("VkQueueInfo"),
+        ),
+        mark(LegacyKind::Type, "VkDevice", &["VK_KHR_queue"], None),
+        mark(
+            LegacyKind::Type,
+            "VkDeviceInfo",
+            &["VK_KHR_queue", "VK_KHR_other"],
+            Some("VkQueueInfo"),
+        ),
+        mark(
+            LegacyKind::Type,
+            "VkColor",
+            &["VK_KHR_queue", "VK_VERSION_1_3"],
+            None,
+        ),
+        mark(
+            LegacyKind::Type,
+            "VkQueueFlagBits",
+            &["VK_VERSION_1_1", "VK_KHR_queue"],
+            None,
+        ),
+        mark(
+            LegacyKind::Type,
+            "VkQueueFlags",
+            &["VK_VERSION_1_0", "VK_KHR_queue", "VK_KHR_other"],
+            None,
+        ),
+        mark(LegacyKind::Type, "VkQueue", &v1_1, Some("VkDevice")),
+        mark(LegacyKind::Type, "VK_HEADER_VERSION", &v1_1, None),
+        mark(
+            LegacyKind::Type,
+            "VK_HEADER_VERSION_COMPLETE",
+            &v1_1,
+            Some("VK_HEADER_VERSION"),
+        ),
+        mark(LegacyKind::Type, "VK_API_VERSION_1_0", &v1_1, None),
+        mark(
+            LegacyKind::Type,
+            "VK_API_VERSION_1_1",
+            &v1_1,
+            Some("VK_API_VERSION_1_0"),
+        ),
+        mark(LegacyKind::Command, "vkGetQueue", &v1_1, Some("VkQueue")),
+        feature("queueCount"),
+        feature("pPriorities"),
+        feature("reserved"),
+        feature("label"),
+    ];
+    ir
+}
+
+fn legacy_docs() -> Docs {
+    let mut docs = docs();
+    docs.anchors = [(
+        "legacy-queues".to_string(),
+        "appendices/legacy.adoc".to_string(),
+    )]
+    .into();
+    docs
+}
+
+#[test]
+fn types_and_their_aliases_state_that_the_registry_marks_them_as_legacy() {
+    let (ir, docs) = (legacy_ir(), legacy_docs());
+    let model = Model::with_docs(&ir, &docs);
+    let structs = structs::emit(&model);
+    assert_eq!(
+        doc_of(&structs, "pub struct QueueInfo<'a>"),
+        [
+            "Structure describing queues.".to_string(),
+            format!(
+                "C structure [`VkQueueInfo`]({PAGES}/VkQueueInfo.html), provided by Vulkan 1.1 or [`VK_KHR_queue`](KHR_QUEUE_NAME)."
+            ),
+            legacy("[`VkDeviceInfo`](DeviceInfo)"),
+            "Extends [`VkDeviceInfo`](DeviceInfo): their `push_next` accepts this structure."
+                .to_string(),
+            alias("VkQueueInfo"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&structs, "pub struct DeviceInfo<'a>"),
+        [
+            "C structure `VkDeviceInfo`, provided by Vulkan 1.0.".to_string(),
+            alias("VkDeviceInfo")
+        ],
+        "only extensions mark the structure, which is core"
+    );
+    assert_eq!(
+        doc_of(&structs, "pub type DeviceInfoKHR<'a>"),
+        [
+            "Alias of [`DeviceInfo`], the C name `VkDeviceInfoKHR`.".to_string(),
+            alias("VkDeviceInfoKHR"),
+        ],
+        "the specification shows no mark of a type alias"
+    );
+    assert_eq!(
+        doc_of(&structs, "pub struct OtherInfoKHR<'a>"),
+        [
+            "C structure `VkOtherInfoKHR`, provided by Vulkan 1.0.".to_string(),
+            legacy_as_of(
+                "Vulkan 1.1, [`VK_KHR_queue`](KHR_QUEUE_NAME) and [`VK_KHR_other`](KHR_OTHER_NAME)"
+            ),
+            alias("VkOtherInfoKHR"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&enums::emit(&model), "pub struct Color("),
+        [
+            "Colors of a queue.".to_string(),
+            format!("C enumeration [`VkColor`]({PAGES}/VkColor.html)."),
+            legacy_as_of("Vulkan 1.3"),
+            alias("VkColor"),
+        ]
+    );
+    let bitmasks = bitmasks::emit(&model);
+    assert_eq!(
+        doc_of(&bitmasks, "pub struct QueueFlagBits(")[..3],
+        [
+            "Bitmask specifying capabilities of queues.".to_string(),
+            format!(
+                "C enumeration of flag bits [`VkQueueFlagBits`]({PAGES}/VkQueueFlagBits.html)."
+            ),
+            legacy_as_of("Vulkan 1.1"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&bitmasks, "pub struct QueueFlags(")[..3],
+        [
+            "Bitmask of VkQueueFlagBits.".to_string(),
+            format!("C bitmask type [`VkQueueFlags`]({PAGES}/VkQueueFlags.html)."),
+            legacy_as_of("Vulkan 1.0"),
+        ]
+    );
+    let handles = handles::emit(&model);
+    assert_eq!(
+        doc_of(&handles, "pub struct Queue(")[..3],
+        [
+            "Opaque handle to a queue object.".to_string(),
+            format!("C dispatchable handle [`VkQueue`]({PAGES}/VkQueue.html)."),
+            legacy("[`VkDevice`](Device)"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&handles, "pub struct Device(").len(),
+        3,
+        "only an extension marks the handle, which is core"
+    );
+}
+
+#[test]
+fn commands_state_that_the_registry_marks_them_as_legacy_before_their_sections() {
+    let (ir, docs) = (legacy_ir(), legacy_docs());
+    let out = commands::emit(&Model::with_docs(&ir, &docs));
+    let raw = doc_of(&out, "pub unsafe fn get_queue_raw(");
+    assert_eq!(
+        raw[1..4],
+        [
+            format!(
+                "Calls the C command [`vkGetQueue`]({PAGES}/vkGetQueue.html) with the arguments as they are. The command is provided by Vulkan 1.0."
+            ),
+            legacy("[`VkQueue`](Queue)"),
+            "# Parameters".to_string(),
+        ]
+    );
+    let wrapper = doc_of(&out, "pub unsafe fn get_queue(");
+    assert_eq!(
+        wrapper[1..4],
+        [
+            format!(
+                "Calls the C command [`vkGetQueue`]({PAGES}/vkGetQueue.html) through [`Self::get_queue_raw`], which describes the parameters. Returns what the command writes to `pQueue`. The command is provided by Vulkan 1.0."
+            ),
+            legacy("[`VkQueue`](Queue)"),
+            "# Errors".to_string(),
+        ]
+    );
+    assert_eq!(out.matches("Legacy functionality").count(), 2);
+}
+
+#[test]
+fn members_and_their_setters_state_that_the_registry_marks_them_as_legacy() {
+    let (ir, docs) = (legacy_ir(), legacy_docs());
+    let out = structs::emit(&Model::with_docs(&ir, &docs));
+    let marked_by = legacy_as_of("Vulkan 1.2");
+    assert_eq!(
+        doc_of(&out, "pub queue_count:"),
+        [
+            "`queueCount` is the number of queues, at most [`VK_MAX_QUEUES`](MAX_QUEUES).",
+            marked_by.as_str()
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub reserved:"),
+        ["The C member `uint32_t reserved`.", marked_by.as_str()]
+    );
+    assert_eq!(
+        doc_of(&out, "pub label:"),
+        ["The C member `char label[8]`.", marked_by.as_str()]
+    );
+    assert_eq!(
+        doc_of(&out, "pub fn queue_count("),
+        [
+            "Sets [`queue_count`](Self::queue_count).",
+            marked_by.as_str()
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub fn label("),
+        ["Sets [`label`](Self::label).", marked_by.as_str()]
+    );
+    assert_eq!(
+        doc_of(&out, "pub fn priorities("),
+        [
+            "Sets [`p_priorities`](Self::p_priorities) to the start of a slice of elements and [`queue_count`](Self::queue_count) to its length.",
+            "An empty slice sets [`p_priorities`](Self::p_priorities) to a null pointer.",
+            marked_by.as_str(),
+            "# Panics",
+            "Panics if the slice has more elements than `queueCount`, a `uint32_t`, can count."
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub fn label_as_c_str(")[0],
+        "Reads [`label`](Self::label) as a C string that ends at its first NUL."
+    );
+    assert_eq!(
+        out.matches("Legacy functionality").count(),
+        10,
+        "two structures, and the member and the setter of four features"
+    );
+}
+
+#[test]
+fn version_macros_state_that_the_registry_marks_them_as_legacy() {
+    let (ir, docs) = (legacy_ir(), legacy_docs());
+    let out = version::emit(&Model::with_docs(&ir, &docs));
+    assert_eq!(
+        doc_of(&out, "pub const HEADER_VERSION:"),
+        [
+            "C macro `VK_HEADER_VERSION`.".to_string(),
+            legacy_as_of("Vulkan 1.1"),
+            alias("VK_HEADER_VERSION"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const HEADER_VERSION_COMPLETE:"),
+        [
+            "C macro `VK_HEADER_VERSION_COMPLETE`.".to_string(),
+            legacy("[`VK_HEADER_VERSION`](HEADER_VERSION)"),
+            alias("VK_HEADER_VERSION_COMPLETE"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const API_VERSION_1_0:"),
+        [
+            "C macro `VK_API_VERSION_1_0`.".to_string(),
+            legacy_as_of("Vulkan 1.1"),
+            alias("VK_API_VERSION_1_0"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const API_VERSION_1_1:"),
+        [
+            "C macro `VK_API_VERSION_1_1`.".to_string(),
+            legacy("[`VK_API_VERSION_1_0`](API_VERSION_1_0)"),
+            alias("VK_API_VERSION_1_1"),
+        ]
+    );
+    crate::docs::assert_every_legacy_mark_has_an_item(&Model::with_docs(&ir, &docs));
+}
+
+#[test]
+fn documentation_without_legacy_marks_has_no_legacy_statement() {
+    let (ir, docs) = (ir(), legacy_docs());
+    let model = Model::with_docs(&ir, &docs);
+    for emit in [
+        bitmasks::emit,
+        commands::emit,
+        constants::emit,
+        enums::emit,
+        extensions::emit,
+        handles::emit,
+        structs::emit,
+        version::emit,
+    ] {
+        assert!(!emit(&model).contains("Legacy"));
+    }
 }

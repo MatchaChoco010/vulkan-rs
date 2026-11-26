@@ -29792,6 +29792,10 @@ impl core::fmt::Debug for StructureType {
 ///
 /// C enumeration
 /// [`VkSubpassContents`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassContents.html).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassContents")]
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]

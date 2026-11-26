@@ -48,10 +48,11 @@ fn c_declaration(m: &Field) -> String {
 }
 
 pub(super) fn member_doc(model: &Model<'_>, cfg: &Cfg, s: &Struct, m: &Field) -> Doc {
-    match model.described(cfg, &s.name, &m.name) {
+    let doc = match model.described(cfg, &s.name, &m.name) {
         Some(described) => Doc::new().blocks(described),
         None => Doc::new().text(format!("The C member `{}`.", c_declaration(m))),
-    }
+    };
+    doc.text(model.legacy_member(cfg, &s.name, &m.name))
 }
 
 pub(super) fn type_doc(model: &Model<'_>, cfg: &Cfg, s: &Struct) -> Doc {

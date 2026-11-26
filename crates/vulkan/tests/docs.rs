@@ -7,6 +7,15 @@ use regex::{Captures, Regex};
 use syn::{Attribute, Expr, FnArg, ImplItem, Item, Lit, Meta, Pat, Type};
 
 const REFERENCE_PAGES: &str = "https://docs.vulkan.org/refpages/latest/refpages/source/";
+const SPECIFICATION: &str = "https://docs.vulkan.org/spec/latest/";
+
+const LEGACY_MACROS_WITHOUT_AN_ITEM: &[&str] = &[
+    "VK_API_VERSION",
+    "VK_MAKE_VERSION",
+    "VK_VERSION_MAJOR",
+    "VK_VERSION_MINOR",
+    "VK_VERSION_PATCH",
+];
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -217,12 +226,161 @@ impl TableSyntax {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LegacyMark {
+    link: String,
+    marked_by: Vec<String>,
+    superseded_by: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct LegacyRegistry {
+    marks: BTreeMap<(String, String, String), LegacyMark>,
+    entries: BTreeMap<String, usize>,
+    entries_of_other_apis: usize,
+    vendor_tags: Vec<String>,
+    enumerations: BTreeSet<String>,
+    type_aliases: BTreeSet<String>,
+}
+
+fn promotion(author: Option<&str>) -> u32 {
+    match author {
+        None => 0,
+        Some("KHR") => 1,
+        Some("EXT") => 2,
+        Some(_) => 3,
+    }
+}
+
+impl LegacyRegistry {
+    fn read(registry: &str) -> Self {
+        let child = regex(r"^<(\w+)\s[^>]*/>$");
+        let mut legacy = Self::default();
+        let mut interface = None::<(String, bool)>;
+        let mut block = None::<(String, bool)>;
+        for line in registry.lines().map(str::trim) {
+            let names_vulkan = |apis: &str| apis.split(',').any(|api| api == "vulkan");
+            let api_matches =
+                |element: &str| xml_attribute(element, "api").is_none_or(names_vulkan);
+            if line.starts_with("<type ")
+                && let Some(_) = xml_attribute(line, "alias")
+            {
+                let name = xml_attribute(line, "name").expect("a type alias has a name");
+                if api_matches(line) {
+                    legacy.type_aliases.insert(name.to_string());
+                }
+            } else if line.starts_with("<tag ") {
+                let tag = xml_attribute(line, "name").expect("a vendor tag has a name");
+                legacy.vendor_tags.push(tag.to_string());
+            } else if line.starts_with("<enums ")
+                && let Some("enum" | "bitmask") = xml_attribute(line, "type")
+            {
+                let name = xml_attribute(line, "name").expect("an enumeration has a name");
+                legacy.enumerations.insert(name.to_string());
+            } else if line.starts_with("<feature ")
+                && let Some(number) = xml_attribute(line, "number")
+            {
+                let version = format!("VK_VERSION_{}", number.replace('.', "_"));
+                interface = Some((version, api_matches(line)));
+            } else if line.starts_with("<extension ") {
+                let name = xml_attribute(line, "name").expect("an extension has a name");
+                let supported = xml_attribute(line, "supported").is_some_and(names_vulkan);
+                interface = Some((name.to_string(), supported && api_matches(line)));
+            } else if line == "</feature>" || line == "</extension>" {
+                interface = None;
+            } else if line.starts_with("<deprecate") {
+                assert!(
+                    interface.is_some(),
+                    "`{line}` is in no version or extension"
+                );
+                let link = xml_attribute(line, "explanationlink")
+                    .unwrap_or_else(|| panic!("`{line}` has no explanationlink"));
+                block = Some((link.to_string(), api_matches(line)));
+            } else if line == "</deprecate>" {
+                block = None;
+            } else if let (Some((link, block_matches)), Some((marked_by, interface_matches))) =
+                (&block, &interface)
+            {
+                let kind = child
+                    .captures(line)
+                    .map(|child| child[1].to_string())
+                    .filter(|kind| ["type", "command", "feature"].contains(&kind.as_str()))
+                    .unwrap_or_else(|| panic!("the <deprecate> block of {marked_by} has `{line}`"));
+                if !(*interface_matches && *block_matches && api_matches(line)) {
+                    legacy.entries_of_other_apis += 1;
+                    continue;
+                }
+                *legacy.entries.entry(kind.clone()).or_default() += 1;
+                let name = xml_attribute(line, "name").expect("a marked name");
+                let structure = xml_attribute(line, "struct").unwrap_or_default();
+                let superseded_by = xml_attribute(line, "supersededby").map(str::to_string);
+                let mark = legacy
+                    .marks
+                    .entry((kind, structure.to_string(), name.to_string()))
+                    .or_insert_with(|| LegacyMark {
+                        link: link.clone(),
+                        marked_by: Vec::new(),
+                        superseded_by: superseded_by.clone(),
+                    });
+                assert!(
+                    mark.link == *link && mark.superseded_by == superseded_by,
+                    "{marked_by} marks {name} with `{link}` and {superseded_by:?}, and another block with `{}` and {:?}",
+                    mark.link,
+                    mark.superseded_by
+                );
+                if !mark.marked_by.contains(marked_by) {
+                    mark.marked_by.push(marked_by.clone());
+                }
+            }
+        }
+        legacy
+    }
+
+    fn names(&self, kind: &str) -> usize {
+        self.marks.keys().filter(|(k, _, _)| k == kind).count()
+    }
+
+    fn vendor_tag(&self, c_name: &str) -> Option<&str> {
+        let mut tags = self.vendor_tags.iter().map(String::as_str);
+        tags.find(|tag| c_name.ends_with(tag))
+    }
+
+    fn is_type_alias(&self, kind: &str, name: &str) -> bool {
+        kind == "type" && self.type_aliases.contains(name)
+    }
+
+    fn shown<'a>(
+        &self,
+        kind: &str,
+        structure: &str,
+        name: &str,
+        mark: &'a LegacyMark,
+    ) -> Vec<&'a str> {
+        if self.is_type_alias(kind, name) {
+            return Vec::new();
+        }
+        let marked = if structure.is_empty() {
+            name
+        } else {
+            structure
+        };
+        let marked = promotion(self.vendor_tag(marked));
+        let counts =
+            |by: &&str| by.starts_with("VK_VERSION_") || promotion(by.split('_').nth(1)) <= marked;
+        let marked_by = mark.marked_by.iter().map(String::as_str);
+        marked_by.filter(counts).collect()
+    }
+}
+
 struct Specification {
     pages: BTreeMap<String, Page>,
     tables: Vec<Table>,
     extensions: BTreeSet<String>,
     attributes: BTreeMap<String, String>,
     titles: BTreeMap<String, String>,
+    anchors: BTreeMap<String, BTreeSet<String>>,
+    published: BTreeSet<String>,
+    legacy: LegacyRegistry,
     markup: Markup,
 }
 
@@ -516,12 +674,15 @@ impl Specification {
         let open = regex(r"^\[open,(refpage=.*)\]\s*$");
         let page_attribute = regex(r"(\w+)='((?:[^'\\]|\\.)*)'");
         let anchor_line = regex(r"^\[\[([\w.-]+)\]\]\s*$");
+        let anchor_definition = regex(r"\[\[([\w.-]+)\]\]");
         let title_line = regex(r#"^(?:=+ +|\.|image::.*\btitle=")([^\s.="][^"]*?)\s*(?:".*)?$"#);
         let table_syntax = TableSyntax::new();
 
         let mut pages = BTreeMap::new();
         let mut tables = Vec::new();
         let mut titles = BTreeMap::new();
+        let mut defined_anchors = BTreeMap::new();
+        let mut published = BTreeSet::new();
         for file in sources.files() {
             let mut anchors = Vec::<String>::new();
             for line in fs::read_to_string(&file).expect("read a chapter").lines() {
@@ -548,8 +709,22 @@ impl Specification {
                 .expect("a source of the specification")
                 .display()
                 .to_string();
+            let file_name = file.file_name().and_then(|name| name.to_str());
+            let text = fs::read_to_string(&file).expect("read a chapter");
+            if is_published_page(file_name.expect("a file name"), &text) {
+                published.insert(relative.clone());
+            }
             let mut lines = Vec::new();
             sources.lines(&file, None, &mut BTreeMap::new(), &mut lines);
+            for anchor in lines
+                .iter()
+                .flat_map(|line| anchor_definition.captures_iter(line))
+            {
+                defined_anchors
+                    .entry(anchor[1].to_string())
+                    .or_insert_with(BTreeSet::new)
+                    .insert(relative.clone());
+            }
             let mut blocks = Vec::<(usize, usize, String)>::new();
             let mut index = 0;
             while index + 1 < lines.len() {
@@ -650,6 +825,11 @@ impl Specification {
             extensions,
             attributes,
             titles,
+            anchors: defined_anchors,
+            published,
+            legacy: LegacyRegistry::read(
+                &fs::read_to_string(root.join("xml/vk.xml")).expect("read xml/vk.xml"),
+            ),
             markup: Markup::new(),
         };
         for page in pages.values_mut() {
@@ -1218,6 +1398,359 @@ fn first_paragraph(doc: &str) -> &str {
     doc.split("\n\n").next().unwrap_or_default()
 }
 
+fn is_legacy_statement(paragraph: &str) -> bool {
+    paragraph.starts_with("Legacy functionality")
+        || paragraph.contains("[Legacy Functionality](")
+        || paragraph.contains(SPECIFICATION)
+}
+
+fn legacy_statements(doc: &str) -> Vec<String> {
+    doc.split("\n\n")
+        .map(flat)
+        .filter(|paragraph| is_legacy_statement(paragraph))
+        .collect()
+}
+
+fn without_legacy_statements(doc: &str) -> String {
+    doc.split("\n\n")
+        .filter(|paragraph| !is_legacy_statement(&flat(paragraph)))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn join_and(mut items: Vec<String>) -> String {
+    match items.len() {
+        0 | 1 => items.pop().unwrap_or_default(),
+        _ => {
+            let last = items.pop().expect("more than one item");
+            format!("{} and {last}", items.join(", "))
+        }
+    }
+}
+
+struct Documented {
+    kind: &'static str,
+    name: String,
+    features: BTreeSet<String>,
+    doc: String,
+    link_target: Option<(String, String)>,
+}
+
+impl Documented {
+    fn key(&self) -> (&'static str, &str) {
+        (self.kind, &self.name)
+    }
+}
+
+fn features_of(generated: &Generated, attributes: &[Attribute]) -> BTreeSet<String> {
+    attributes
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("cfg"))
+        .filter_map(|attribute| match &attribute.meta {
+            Meta::List(list) => Some(list.tokens.to_string()),
+            _ => None,
+        })
+        .flat_map(|condition| {
+            generated
+                .cfg_feature
+                .captures_iter(&condition)
+                .map(|feature| feature[1].to_string())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn documented_items(generated: &Generated, items: &[Item], documented: &mut Vec<Documented>) {
+    let named = |ident: &syn::Ident, attributes: &[Attribute]| {
+        let (doc, aliases) = doc_attributes(attributes);
+        let c_name = aliases.first().cloned().unwrap_or(ident.to_string());
+        Documented {
+            kind: "type",
+            name: c_name.clone(),
+            features: features_of(generated, attributes),
+            doc,
+            link_target: Some((c_name, ident.to_string())),
+        }
+    };
+    for item in items {
+        match item {
+            Item::Struct(item) => {
+                let owner = named(&item.ident, &item.attrs);
+                let fields = item.fields.iter().filter(|field| field.ident.is_some());
+                documented.extend(fields.map(|field| documented_field(&owner, &item.ident, field)));
+                documented.push(owner);
+            }
+            Item::Union(item) => {
+                let owner = named(&item.ident, &item.attrs);
+                let fields = item.fields.named.iter();
+                documented.extend(fields.map(|field| documented_field(&owner, &item.ident, field)));
+                documented.push(owner);
+            }
+            Item::Type(item) => documented.push(named(&item.ident, &item.attrs)),
+            Item::Const(item) => documented.push(named(&item.ident, &item.attrs)),
+            Item::Mod(item) => {
+                if let Some((_, nested)) = &item.content {
+                    documented_items(generated, nested, documented);
+                }
+            }
+            Item::Impl(item) if item.trait_.is_none() => {
+                let owner = type_name(&item.self_ty);
+                let owner_features = features_of(generated, &item.attrs);
+                for member in &item.items {
+                    let (ident, attributes) = match member {
+                        ImplItem::Const(constant) => (&constant.ident, &constant.attrs),
+                        ImplItem::Fn(function) => (&function.sig.ident, &function.attrs),
+                        _ => continue,
+                    };
+                    let (doc, aliases) = doc_attributes(attributes);
+                    let mut features = features_of(generated, attributes);
+                    features.extend(owner_features.iter().cloned());
+                    let method = format!("{owner}::{ident}");
+                    let called = generated
+                        .called_command
+                        .captures(&flat(&doc))
+                        .and_then(|called| called.get(1).or(called.get(2)))
+                        .map(|called| called.as_str().to_string());
+                    let is_function = matches!(member, ImplItem::Fn(_));
+                    let (kind, name, link_target) = match called {
+                        Some(command)
+                            if is_function
+                                && ident.to_string().ends_with("_raw")
+                                && flat(&doc).contains(" with the arguments as they are.") =>
+                        {
+                            ("raw", command, None)
+                        }
+                        Some(command)
+                            if is_function
+                                && flat(&doc).contains(" through [`Self::")
+                                && aliases.first() == Some(&command) =>
+                        {
+                            let path = format!("crate::{method}");
+                            ("wrapper", command.clone(), Some((command, path)))
+                        }
+                        _ if is_function => ("method", method, None),
+                        _ => ("value", method, None),
+                    };
+                    documented.push(Documented {
+                        kind,
+                        name,
+                        features,
+                        doc,
+                        link_target,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+type LinkTargets<'a> = BTreeMap<&'a str, (&'a str, &'a BTreeSet<String>)>;
+
+fn is_published_page(file_name: &str, text: &str) -> bool {
+    let named_like_a_page = file_name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && file_name.ends_with(".adoc")
+        && file_name != "vulkanscdeviations.adoc";
+    let first_title_level = text.lines().take(30).find_map(|line| {
+        let (marks, title) = line.split_once(' ')?;
+        let is_a_title = !marks.is_empty()
+            && marks.chars().all(|mark| mark == '=' || mark == '#')
+            && title.starts_with(|c: char| c.is_ascii_uppercase());
+        is_a_title.then_some(marks.len())
+    });
+    named_like_a_page && first_title_level == Some(1)
+}
+
+fn expected_legacy_statement(
+    spec: &Specification,
+    targets: &LinkTargets<'_>,
+    from: &BTreeSet<String>,
+    mark: &LegacyMark,
+    shown: &[&str],
+) -> Result<String, String> {
+    let link = |c_name: &str| {
+        let (path, features) = targets
+            .get(c_name)
+            .ok_or_else(|| format!("the bindings have no item for `{c_name}`"))?;
+        Ok::<_, String>(if features.is_subset(from) {
+            format!("[`{c_name}`]({path})")
+        } else {
+            format!("`{c_name}`")
+        })
+    };
+    let what = match &mark.superseded_by {
+        Some(successor) => format!(", superseded by {}", link(successor)?),
+        None => {
+            let marked_by = shown
+                .iter()
+                .map(|by| match by.strip_prefix("VK_VERSION_") {
+                    Some(version) => Ok(format!("Vulkan {}", version.replace('_', "."))),
+                    None => link(by),
+                })
+                .collect::<Result<_, _>>()?;
+            format!(" as of {}", join_and(marked_by))
+        }
+    };
+    Ok(format!(
+        "Legacy functionality{what}: see [Legacy Functionality]({}) in the Vulkan specification.",
+        spec.section_url(&mark.link)?
+    ))
+}
+
+impl Specification {
+    fn section_url(&self, anchor: &str) -> Result<String, String> {
+        let files = self
+            .anchors
+            .get(anchor)
+            .map(|files| files.iter().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let [file] = files.as_slice() else {
+            return Err(format!(
+                "{} source files of the specification define the anchor `{anchor}`",
+                files.len()
+            ));
+        };
+        let page = file
+            .strip_suffix(".adoc")
+            .filter(|_| self.published.contains(*file))
+            .ok_or_else(|| {
+                format!("the anchor `{anchor}` is in `{file}`, which is not published as a page of its own")
+            })?;
+        Ok(format!("{SPECIFICATION}{page}.html#{anchor}"))
+    }
+}
+
+impl Checker {
+    fn legacy(&mut self, spec: &Specification, generated: &Generated, files: &[syn::File]) {
+        let mut documented = Vec::new();
+        for file in files {
+            documented_items(generated, &file.items, &mut documented);
+        }
+        let mut targets = LinkTargets::new();
+        for item in &documented {
+            if let Some((c_name, path)) = &item.link_target {
+                targets
+                    .entry(c_name)
+                    .or_insert((path.as_str(), &item.features));
+            }
+        }
+        let keys = documented
+            .iter()
+            .map(Documented::key)
+            .collect::<BTreeSet<_>>();
+
+        let mut expected = BTreeMap::<(&'static str, String), (&LegacyMark, Vec<&str>)>::new();
+        for ((kind, structure, name), mark) in &spec.legacy.marks {
+            if let Err(problem) = spec.section_url(&mark.link) {
+                self.fail(name, format!("is marked as legacy, and {problem}"));
+            }
+            if kind == "type"
+                && spec.legacy.enumerations.contains(name)
+                && spec.legacy.vendor_tag(name).is_some()
+            {
+                self.fail(name, "is a marked enumeration with a vendor tag: the generator of the specification takes every enumeration for core, and the bindings go by the name");
+            }
+            let shown = spec.legacy.shown(kind, structure, name, mark);
+            if shown.is_empty() {
+                let what = match spec.legacy.is_type_alias(kind, name) {
+                    true => "type alias",
+                    false => kind.as_str(),
+                };
+                let not_shown = format!("{what} by {}", mark.marked_by.join(" and "));
+                *self.legacy_not_shown.entry(not_shown).or_default() += 1;
+                continue;
+            }
+            *self.legacy_shown.entry(kind.clone()).or_default() += 1;
+            let mark = (mark, shown);
+            match kind.as_str() {
+                "type" if LEGACY_MACROS_WITHOUT_AN_ITEM.contains(&name.as_str()) => {
+                    if targets.contains_key(name.as_str()) {
+                        self.fail(name, "is in LEGACY_MACROS_WITHOUT_AN_ITEM, but the bindings have an item for it");
+                    }
+                }
+                "type" => {
+                    expected.insert(("type", name.clone()), mark);
+                }
+                "command" => {
+                    if keys.contains(&("wrapper", name.as_str())) {
+                        expected.insert(("wrapper", name.clone()), mark.clone());
+                    }
+                    expected.insert(("raw", name.clone()), mark);
+                }
+                _ => {
+                    let member = targets.get(structure.as_str()).and_then(|(owner, _)| {
+                        keys.iter()
+                            .filter(|(kind, _)| *kind == "member")
+                            .filter_map(|(_, member)| {
+                                member.strip_prefix(owner)?.strip_prefix("::")
+                            })
+                            .find(|member| is_rust_name_of(member, name))
+                            .map(|member| format!("{owner}::{member}"))
+                    });
+                    match member {
+                        Some(member) => {
+                            expected.insert(("method", member.clone()), mark.clone());
+                            expected.insert(("member", member), mark);
+                        }
+                        None => self.fail(
+                            &format!("{structure}::{name}"),
+                            "is marked as legacy, and the bindings have no such member",
+                        ),
+                    }
+                }
+            }
+        }
+
+        let mut found = BTreeSet::new();
+        for item in &documented {
+            let statements = legacy_statements(&item.doc);
+            let key = (item.kind, item.name.clone());
+            let described = format!("the {} `{}`", item.kind, item.name);
+            let Some((mark, shown)) = expected.get(&key) else {
+                if !statements.is_empty() {
+                    self.fail(
+                        &described,
+                        "has a legacy statement, but the registry has no mark for it that the specification shows",
+                    );
+                }
+                continue;
+            };
+            found.insert(key);
+            match expected_legacy_statement(spec, &targets, &item.features, mark, shown) {
+                Ok(expected) if statements == [expected.as_str()] => {
+                    *self.legacy_statements.entry(item.kind).or_default() += 1;
+                }
+                Ok(expected) => self.fail(
+                    &described,
+                    format!("the registry marks it as legacy, so its documentation has the one paragraph `{expected}`, but it has {statements:?}"),
+                ),
+                Err(problem) => self.fail(&described, format!("is marked as legacy, and {problem}")),
+            }
+        }
+        for (kind, name) in expected.keys().filter(|key| !found.contains(key)) {
+            self.fail(
+                &format!("the {kind} `{name}`"),
+                "is marked as legacy, and the bindings document no such item",
+            );
+        }
+    }
+}
+
+fn documented_field(
+    owner: &Documented,
+    owner_ident: &syn::Ident,
+    field: &syn::Field,
+) -> Documented {
+    let ident = field.ident.as_ref().expect("a named field");
+    Documented {
+        kind: "member",
+        name: format!("{owner_ident}::{ident}"),
+        features: owner.features.clone(),
+        doc: doc_attributes(&field.attrs).0,
+        link_target: None,
+    }
+}
+
 fn section_items(doc: &str, title: &str) -> Vec<String> {
     let mut items = Vec::<String>::new();
     let mut in_section = false;
@@ -1261,9 +1794,16 @@ struct Checker {
     ends_where_its_list_item_ends: Vec<String>,
     members_under_another_name: usize,
     descriptions_of_no_member: Vec<String>,
+    specification_links: usize,
+    legacy_statements: BTreeMap<&'static str, usize>,
+    legacy_shown: BTreeMap<String, usize>,
+    legacy_not_shown: BTreeMap<String, usize>,
 }
 
 struct Generated {
+    legacy_link: Regex,
+    called_command: Regex,
+    cfg_feature: Regex,
     reference_link: Regex,
     names_at_start: Regex,
     name: Regex,
@@ -1280,6 +1820,12 @@ struct Generated {
 impl Generated {
     fn new() -> Self {
         Self {
+            legacy_link: regex(&format!(
+                r"\[Legacy Functionality\]\({}[\w/-]+\.html#[\w.-]+\)",
+                regex::escape(SPECIFICATION)
+            )),
+            called_command: regex(r"Calls the C command (?:\[`(\w+)`\]|`(\w+)`)"),
+            cfg_feature: regex(r#"feature\s*=\s*"([^"]+)""#),
             reference_link: regex(&format!(
                 r"\[`([\w-]+)`\]\({}([\w-]+)\.html\)",
                 regex::escape(REFERENCE_PAGES)
@@ -1338,10 +1884,13 @@ impl Checker {
                 self.fail(item, format!("links to the reference page `{page}`, which the specification does not have"));
             }
         }
+        let specification_links = generated.legacy_link.find_iter(&flat(doc)).count();
+        self.specification_links += specification_links;
         let other = doc
             .match_indices("docs.vulkan.org")
             .count()
-            .saturating_sub(generated.reference_link.captures_iter(doc).count());
+            .saturating_sub(generated.reference_link.captures_iter(doc).count())
+            .saturating_sub(specification_links);
         if other != 0 {
             self.fail(item, "has a docs.vulkan.org link of an unexpected form");
         }
@@ -1462,6 +2011,7 @@ impl Checker {
             let name = field.ident.as_ref().expect("named field").to_string();
             let (doc, _) = doc_attributes(&field.attrs);
             self.links(spec, generated, owner, &doc);
+            let doc = without_legacy_statements(&doc);
             self.member(spec, generated, owner_page, owner, &name, doc.trim());
             let doc = flat(&doc);
             if let Some(storage) = doc.strip_prefix("The storage unit of the C bit-fields ") {
@@ -1961,6 +2511,61 @@ fn generated_documentation_matches_the_specification() {
             .collect::<BTreeSet<_>>(),
         "exactly these list items on the reference pages of structures start with a name that no member has, and they are not descriptions of members. An item that describes a member under another name belongs in DESCRIBED_UNDER_ANOTHER_NAME of vulkan-codegen"
     );
+    let entries = |kind: &str| spec.legacy.entries.get(kind).copied().unwrap_or(0);
+    assert_eq!(
+        [
+            entries("type"),
+            entries("command"),
+            entries("feature"),
+            spec.legacy.entries_of_other_apis
+        ],
+        [185, 116, 2, 0],
+        "the <deprecate> blocks of the versions and extensions of the vulkan API list this many types, commands and features, and the last number is what the blocks of the other versions and extensions list, which the bindings leave out with them"
+    );
+    assert_eq!(
+        ["type", "command", "feature"].map(|kind| spec.legacy.names(kind)),
+        [128, 91, 2],
+        "this many different types, commands and features are marked as legacy, some of them by several versions and extensions"
+    );
+    assert_eq!(
+        ["type", "command", "feature"].map(|kind| checker
+            .legacy_shown
+            .get(kind)
+            .copied()
+            .unwrap_or(0)),
+        [83, 61, 2],
+        "the specification shows this many of the marked types, commands and features as legacy: those that a version marks, or an extension that is at least as promoted as they are (core, then KHR, then EXT, then a vendor), and that are not type aliases"
+    );
+    assert_eq!(
+        checker
+            .legacy_not_shown
+            .iter()
+            .map(|(marked, count)| (marked.as_str(), *count))
+            .collect::<Vec<_>>(),
+        [
+            ("command by VK_EXT_descriptor_heap", 18),
+            ("command by VK_KHR_device_address_commands", 12),
+            ("type alias by VK_EXT_descriptor_heap", 4),
+            ("type by VK_EXT_descriptor_heap", 31),
+            ("type by VK_KHR_device_address_commands", 6),
+            ("type by VK_KHR_extended_flags", 4),
+        ],
+        "the registry marks these as legacy and the specification does not show it, so the bindings do not state it either: only an extension that is less promoted than they are marks them, or they are type aliases, which the specification lists as a typedef without a warning"
+    );
+    assert_eq!(
+        ["type", "raw", "wrapper", "member", "method"].map(|kind| checker
+            .legacy_statements
+            .get(kind)
+            .copied()
+            .unwrap_or(0)),
+        [83 - LEGACY_MACROS_WITHOUT_AN_ITEM.len(), 61, 61, 2, 2],
+        "the legacy statement is in the documentation of every type that is shown as legacy except the version macros that the bindings do not have, because they have the macros that supersede them; of the raw method and the wrapper of every such command; and of the member and the setter of every such feature"
+    );
+    assert_eq!(
+        checker.specification_links,
+        checker.legacy_statements.values().sum::<usize>(),
+        "the legacy statements are the only links into the specification"
+    );
     for (what, count, at_least) in [
         (
             "descriptions with the whole of their list item",
@@ -2035,6 +2640,7 @@ fn check_files(
     for item in files.iter().flat_map(|file| &file.items) {
         check_item(spec, generated, checker, &value_pages, &type_values, item);
     }
+    checker.legacy(spec, generated, files);
 }
 
 fn check_item(
@@ -2264,6 +2870,9 @@ fn fixture_specification() -> Specification {
         extensions: BTreeSet::new(),
         attributes: BTreeMap::from([("times".to_string(), "×".to_string())]),
         titles: BTreeMap::new(),
+        anchors: BTreeMap::new(),
+        published: BTreeSet::new(),
+        legacy: LegacyRegistry::default(),
         markup: Markup::new(),
     };
     let limits = [
@@ -4019,5 +4628,930 @@ fn markdown_that_resembles_asciidoc_is_not_reported() {
     ] {
         let found = asciidoc_leftovers(&format!("{doc}\npub struct Thing;\n"));
         assert!(found.is_empty(), "`{doc}` is reported: {found:?}");
+    }
+}
+
+const FIXTURE_LEGACY_SOURCE: &str = r#"
+/// The name of the device extension `VK_KHR_things`.
+#[doc(alias = "VK_KHR_things")]
+#[doc(alias = "VK_KHR_THINGS_EXTENSION_NAME")]
+pub const KHR_THINGS_NAME: &CStr = c"VK_KHR_things";
+
+/// Structure specifying a thing.
+///
+/// C structure [`VkThing`](PAGES/VkThing.html).
+///
+/// Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+#[doc(alias = "VkThing")]
+pub struct Thing {
+    /// `count` is the number of things.
+    pub count: u32,
+    /// `flags` is reserved for future use.
+    ///
+    /// Legacy functionality as of Vulkan 1.1: see [Legacy
+    /// Functionality](SPEC/chapters/things.html#things-flags) in the Vulkan specification.
+    pub flags: u32,
+}
+
+impl Thing {
+    /// Sets [`count`](Self::count).
+    pub fn count(mut self, value: u32) -> Self {
+        self.count = value;
+        self
+    }
+    /// Sets [`flags`](Self::flags).
+    ///
+    /// Legacy functionality as of Vulkan 1.1: see [Legacy
+    /// Functionality](SPEC/chapters/things.html#things-flags) in the Vulkan specification.
+    pub fn flags(mut self, value: u32) -> Self {
+        self.flags = value;
+        self
+    }
+}
+
+/// C structure `VkThing2`.
+#[doc(alias = "VkThing2")]
+pub struct Thing2 {}
+
+/// C structure `VkThing2KHR`.
+///
+/// Legacy functionality as of Vulkan 1.0, Vulkan 1.1 and
+/// [`VK_KHR_things`](KHR_THINGS_NAME): see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+#[doc(alias = "VkThing2KHR")]
+pub struct Thing2KHR {}
+
+/// Alias of [`Thing`], the C name `VkThingKHR`.
+#[doc(alias = "VkThingKHR")]
+pub type ThingKHR = Thing;
+
+impl crate::Device {
+    /// Calls the C command `vkUseThing`, an alias of [`vkUseThing2`](crate::Device::use_thing2),
+    /// with the arguments as they are.
+    ///
+    /// Legacy functionality, superseded by [`vkUseThing2`](crate::Device::use_thing2): see [Legacy
+    /// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+    ///
+    /// # Safety
+    ///
+    /// The call has to satisfy the valid usage.
+    pub unsafe fn use_thing_raw(&self) {}
+
+    /// Calls the C command `vkUseThing2` with the arguments as they are.
+    pub unsafe fn use_thing2_raw(&self) {}
+
+    /// Calls the C command `vkMakeThing` with the arguments as they are.
+    ///
+    /// Legacy functionality as of Vulkan 1.1: see [Legacy
+    /// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+    pub unsafe fn make_thing_raw(&self) {}
+}
+
+impl crate::Device {
+    /// Calls the C command `vkUseThing` through [`Self::use_thing_raw`], which describes the
+    /// parameters.
+    ///
+    /// Legacy functionality, superseded by [`vkUseThing2`](crate::Device::use_thing2): see [Legacy
+    /// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+    #[doc(alias = "vkUseThing")]
+    pub unsafe fn use_thing(&self) {}
+
+    /// Calls the C command `vkUseThing2` through [`Self::use_thing2_raw`], which describes the
+    /// parameters.
+    #[doc(alias = "vkUseThing2")]
+    pub unsafe fn use_thing2(&self) {}
+}
+"#;
+
+fn fixture_legacy_mark(link: &str, marked_by: &[&str], superseded_by: Option<&str>) -> LegacyMark {
+    LegacyMark {
+        link: link.to_string(),
+        marked_by: marked_by.iter().map(|by| by.to_string()).collect(),
+        superseded_by: superseded_by.map(str::to_string),
+    }
+}
+
+fn fixture_legacy_specification() -> Specification {
+    let mut specification = fixture_specification();
+    for (anchor, files) in [
+        ("legacy-things", &["appendices/legacy.adoc"][..]),
+        ("things-flags", &["chapters/things.adoc"]),
+        ("things-nested", &["chapters/things/more.adoc"]),
+        ("things-deep", &["chapters/things/deep.adoc"]),
+        ("things-partial", &["appendices/VK_KHR_things.adoc"]),
+        (
+            "things-twice",
+            &["chapters/things.adoc", "chapters/more.adoc"],
+        ),
+    ] {
+        let files = files.iter().map(|file| file.to_string()).collect();
+        specification.anchors.insert(anchor.to_string(), files);
+    }
+    specification.published = [
+        "appendices/legacy.adoc",
+        "chapters/things.adoc",
+        "chapters/more.adoc",
+        "chapters/things/deep.adoc",
+    ]
+    .map(str::to_string)
+    .into();
+    specification.legacy.vendor_tags = ["KHR", "EXT", "NV"].map(str::to_string).to_vec();
+    specification.legacy.type_aliases = ["VkThingKHR".to_string()].into();
+    let version = ["VK_VERSION_1_1"];
+    let extension = ["VK_KHR_things"];
+    let both = ["VK_VERSION_1_1", "VK_KHR_things"];
+    let marks = [
+        (
+            ("type", "", "VkThing"),
+            fixture_legacy_mark("legacy-things", &version, Some("VkThing2")),
+        ),
+        (
+            ("type", "", "VkThing2"),
+            fixture_legacy_mark("legacy-things", &extension, Some("VkThing")),
+        ),
+        (
+            ("type", "", "VkThingKHR"),
+            fixture_legacy_mark("legacy-things", &both, Some("VkThing2")),
+        ),
+        (
+            ("type", "", "VkThing2KHR"),
+            fixture_legacy_mark(
+                "legacy-things",
+                &["VK_VERSION_1_0", "VK_VERSION_1_1", "VK_KHR_things"],
+                None,
+            ),
+        ),
+        (
+            ("type", "", "VK_MAKE_VERSION"),
+            fixture_legacy_mark("legacy-things", &version, None),
+        ),
+        (
+            ("command", "", "vkUseThing"),
+            fixture_legacy_mark("legacy-things", &both, Some("vkUseThing2")),
+        ),
+        (
+            ("command", "", "vkMakeThing"),
+            fixture_legacy_mark("legacy-things", &version, None),
+        ),
+        (
+            ("feature", "VkThing", "flags"),
+            fixture_legacy_mark("things-flags", &both, None),
+        ),
+    ];
+    for ((kind, structure, name), mark) in marks {
+        let key = (kind.to_string(), structure.to_string(), name.to_string());
+        specification.legacy.marks.insert(key, mark);
+    }
+    specification
+}
+
+fn fixture_legacy_checker(specification: &Specification, source: &str) -> Checker {
+    let source = source
+        .replace("PAGES/", REFERENCE_PAGES)
+        .replace("SPEC/", SPECIFICATION);
+    let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
+    let mut checker = Checker::default();
+    check_files(specification, &Generated::new(), &mut checker, &[file]);
+    checker
+}
+
+fn assert_legacy_reported(defect: &str, replace: &str, with: &str, reports: &[&str]) {
+    assert_eq!(
+        FIXTURE_LEGACY_SOURCE.matches(replace).count(),
+        1,
+        "{defect}: `{replace}` is not exactly once in the fixture"
+    );
+    let source = FIXTURE_LEGACY_SOURCE.replacen(replace, with, 1);
+    let failures = fixture_legacy_checker(&fixture_legacy_specification(), &source).failures;
+    assert_eq!(failures, reports, "{defect}");
+}
+
+#[test]
+fn checker_accepts_the_legacy_statements_of_the_names_that_the_registry_marks() {
+    let checker = fixture_legacy_checker(&fixture_legacy_specification(), FIXTURE_LEGACY_SOURCE);
+    assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
+    assert_eq!(
+        checker.legacy_statements,
+        BTreeMap::from([
+            ("type", 2),
+            ("raw", 2),
+            ("wrapper", 1),
+            ("member", 1),
+            ("method", 1)
+        ])
+    );
+    assert_eq!(checker.specification_links, 7);
+    assert_eq!(checker.described_members, 2);
+    assert_eq!(
+        checker.legacy_shown,
+        BTreeMap::from([
+            ("command".to_string(), 2),
+            ("feature".to_string(), 1),
+            ("type".to_string(), 3)
+        ]),
+        "with the version macro that has no item"
+    );
+    assert_eq!(
+        checker.legacy_not_shown,
+        BTreeMap::from([
+            (
+                "type alias by VK_VERSION_1_1 and VK_KHR_things".to_string(),
+                1
+            ),
+            ("type by VK_KHR_things".to_string(), 1)
+        ]),
+        "a type alias, and a core structure that only a KHR extension marks"
+    );
+}
+
+#[test]
+fn an_extension_marks_only_what_is_not_more_promoted_than_the_extension_is() {
+    let legacy = LegacyRegistry {
+        vendor_tags: ["NVX", "NV", "KHR", "EXT"].map(str::to_string).to_vec(),
+        ..Default::default()
+    };
+    let extensions = [
+        "VK_KHR_things",
+        "VK_EXT_things",
+        "VK_NV_things",
+        "VK_QCOM_things",
+    ];
+    for (structure, name, counted) in [
+        ("", "VkThing", 0),
+        ("", "VkKHRThing", 0),
+        ("", "VkThingKhr", 0),
+        ("", "VkThingKHR", 1),
+        ("", "vkUseThingEXT", 2),
+        ("", "VkThingNV", 4),
+        ("", "VkThingNVX", 4),
+        ("VkThing", "enabledNV", 0),
+        ("VkThingEXT", "enabled", 2),
+    ] {
+        let mark = fixture_legacy_mark("legacy-things", &extensions, None);
+        let kind = match structure {
+            "" => "type",
+            _ => "feature",
+        };
+        assert_eq!(
+            legacy.shown(kind, structure, name, &mark),
+            extensions[..counted],
+            "{structure} {name}"
+        );
+        let reversed = [
+            "VK_QCOM_things",
+            "VK_VERSION_1_1",
+            "VK_EXT_things",
+            "VK_KHR_things",
+        ];
+        let mark = fixture_legacy_mark("legacy-things", &reversed, Some("VkThing2"));
+        let shown = match counted {
+            0 => &reversed[1..2],
+            1 => &["VK_VERSION_1_1", "VK_KHR_things"][..],
+            2 => &reversed[1..],
+            _ => &reversed[..],
+        };
+        assert_eq!(
+            legacy.shown(kind, structure, name, &mark),
+            shown,
+            "{structure} {name}"
+        );
+    }
+    let aliases = LegacyRegistry {
+        type_aliases: ["VkThingNV".to_string(), "vkUseThingEXT".to_string()].into(),
+        vendor_tags: legacy.vendor_tags.clone(),
+        ..Default::default()
+    };
+    let mark = fixture_legacy_mark("legacy-things", &["VK_VERSION_1_1"], Some("VkThing2"));
+    for (kind, structure, name, shown) in [
+        ("type", "", "VkThingNV", false),
+        ("type", "", "VkThing", true),
+        ("command", "", "VkThingNV", true),
+        ("command", "", "vkUseThingEXT", true),
+        ("feature", "VkThingNV", "enabled", true),
+        ("feature", "VkThing", "VkThingNV", true),
+    ] {
+        assert_eq!(
+            aliases.shown(kind, structure, name, &mark),
+            ["VK_VERSION_1_1"][..usize::from(shown)],
+            "{kind} {structure} {name}"
+        );
+        assert_eq!(
+            legacy.shown(kind, structure, name, &mark),
+            ["VK_VERSION_1_1"]
+        );
+    }
+    assert_eq!(legacy.vendor_tag("VkThingNVX"), Some("NVX"));
+    assert_eq!(legacy.vendor_tag("VkThingNV"), Some("NV"));
+    assert_eq!(legacy.vendor_tag("VkThing"), None);
+}
+
+#[test]
+fn a_source_file_is_a_page_if_its_first_title_is_a_top_level_one_in_its_first_thirty_lines() {
+    let blank = |lines: usize| "\n".repeat(lines);
+    for (file_name, text, published) in [
+        ("legacy.adoc", "// Copyright\n\n[appendix]\n[[legacy]]\n= Legacy Functionality\n".to_string(), true),
+        ("generatedcommands.adoc", "[[device-generated-commands]]\n# Device-Generated Commands\n".to_string(), true),
+        ("VK_KHR_surface.adoc", "include::{generated}/meta/VK_KHR_surface.adoc[]\n\n=== Other Extension Metadata\n\n= Title\n".to_string(), false),
+        ("partial.adoc", "== Section\n= Title\n".to_string(), false),
+        ("partial.adoc", "=# Section\n= Title\n".to_string(), false),
+        ("untitled.adoc", "Text = Title\n=Title\n=\n".to_string(), false),
+        ("lowercase.adoc", "= lowercase\n".to_string(), false),
+        ("lowercase.adoc", "= lowercase\n= Title\n".to_string(), true),
+        ("lowercase.adoc", "= lowercase\n== Section\n= Title\n".to_string(), false),
+        ("in_time.adoc", format!("{}= Title\n", blank(29)), true),
+        ("late.adoc", format!("{}= Title\n", blank(30)), false),
+        ("_private.adoc", "= Title\n".to_string(), false),
+        ("1.adoc", "= Title\n".to_string(), false),
+        ("vulkanscdeviations.adoc", "= Title\n".to_string(), false),
+        ("title.txt", "= Title\n".to_string(), false),
+    ] {
+        assert_eq!(is_published_page(file_name, &text), published, "{file_name}: {text}");
+    }
+    let specification = fixture_legacy_specification();
+    assert_eq!(
+        specification.section_url("things-deep").as_deref(),
+        Ok("https://docs.vulkan.org/spec/latest/chapters/things/deep.html#things-deep")
+    );
+}
+
+#[test]
+fn checker_reports_a_marked_enumeration_with_a_vendor_tag() {
+    let mut specification = fixture_legacy_specification();
+    for name in ["VkThing", "VkThing2KHR", "VkOtherKHR"] {
+        specification.legacy.enumerations.insert(name.to_string());
+    }
+    assert_eq!(
+        fixture_legacy_checker(&specification, FIXTURE_LEGACY_SOURCE).failures,
+        [
+            "VkThing2KHR: is a marked enumeration with a vendor tag: the generator of the specification takes every enumeration for core, and the bindings go by the name"
+        ]
+    );
+}
+
+const FIXTURE_LEGACY_THING: &str =
+    "/// Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+";
+
+const FIXTURE_LEGACY_THING_STATEMENT: &str = "Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.";
+
+#[test]
+fn checker_reports_a_marked_item_without_its_legacy_statement() {
+    assert_legacy_reported(
+        "a structure without the statement",
+        &format!("///\n{FIXTURE_LEGACY_THING}"),
+        "",
+        &[&format!(
+            "the type `VkThing`: the registry marks it as legacy, so its documentation has the one paragraph `{FIXTURE_LEGACY_THING_STATEMENT}`, but it has []"
+        )],
+    );
+    let flags = "Legacy functionality as of Vulkan 1.1: see [Legacy Functionality](https://docs.vulkan.org/spec/latest/chapters/things.html#things-flags) in the Vulkan specification.";
+    assert_legacy_reported(
+        "a setter without the statement",
+        "    /// Sets [`flags`](Self::flags).
+    ///
+    /// Legacy functionality as of Vulkan 1.1: see [Legacy
+    /// Functionality](SPEC/chapters/things.html#things-flags) in the Vulkan specification.
+",
+        "    /// Sets [`flags`](Self::flags).\n",
+        &[&format!(
+            "the method `Thing::flags`: the registry marks it as legacy, so its documentation has the one paragraph `{flags}`, but it has []"
+        )],
+    );
+    assert_legacy_reported(
+        "a member without the statement",
+        "    /// `flags` is reserved for future use.
+    ///
+    /// Legacy functionality as of Vulkan 1.1: see [Legacy
+    /// Functionality](SPEC/chapters/things.html#things-flags) in the Vulkan specification.
+",
+        "    /// `flags` is reserved for future use.\n",
+        &[&format!(
+            "the member `Thing::flags`: the registry marks it as legacy, so its documentation has the one paragraph `{flags}`, but it has []"
+        )],
+    );
+    let use_thing = "Legacy functionality, superseded by [`vkUseThing2`](crate::Device::use_thing2): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.";
+    assert_legacy_reported(
+        "a wrapper without the statement",
+        "    /// parameters.
+    ///
+    /// Legacy functionality, superseded by [`vkUseThing2`](crate::Device::use_thing2): see [Legacy
+    /// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+    #[doc(alias = \"vkUseThing\")]
+",
+        "    /// parameters.\n    #[doc(alias = \"vkUseThing\")]\n",
+        &[&format!(
+            "the wrapper `vkUseThing`: the registry marks it as legacy, so its documentation has the one paragraph `{use_thing}`, but it has []"
+        )],
+    );
+    assert_legacy_reported(
+        "a marked command without a raw method",
+        "    /// Calls the C command `vkMakeThing` with the arguments as they are.",
+        "    /// Calls the C command `vkMakeThings` with the arguments as they are.",
+        &[
+            "the raw `vkMakeThings`: has a legacy statement, but the registry has no mark for it that the specification shows",
+            "the raw `vkMakeThing`: is marked as legacy, and the bindings document no such item",
+        ],
+    );
+    assert_legacy_reported(
+        "a marked feature without a member",
+        "    pub flags: u32,",
+        "    pub flag: u32,",
+        &[
+            "Thing::flag: is documented with the description of `flags`",
+            "VkThing::flags: is marked as legacy, and the bindings have no such member",
+            "the member `Thing::flag`: has a legacy statement, but the registry has no mark for it that the specification shows",
+            "the method `Thing::flags`: has a legacy statement, but the registry has no mark for it that the specification shows",
+        ],
+    );
+}
+
+#[test]
+fn checker_reports_a_legacy_statement_that_differs_from_what_the_registry_states() {
+    let expected = |statements: &str| {
+        format!(
+            "the type `VkThing`: the registry marks it as legacy, so its documentation has the one paragraph `{FIXTURE_LEGACY_THING_STATEMENT}`, but it has {statements}"
+        )
+    };
+    for (defect, with, statements) in [
+        (
+            "another successor",
+            "/// Legacy functionality, superseded by [`VkThing2KHR`](Thing2KHR): see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+",
+            "[\"Legacy functionality, superseded by [`VkThing2KHR`](Thing2KHR): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.\"]",
+        ),
+        (
+            "a link to another item",
+            "/// Legacy functionality, superseded by [`VkThing2`](Thing): see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+",
+            "[\"Legacy functionality, superseded by [`VkThing2`](Thing): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.\"]",
+        ),
+        (
+            "the version that marks it in place of the successor",
+            "/// Legacy functionality as of Vulkan 1.1: see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+",
+            "[\"Legacy functionality as of Vulkan 1.1: see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.\"]",
+        ),
+        (
+            "another section",
+            "/// Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy
+/// Functionality](SPEC/chapters/things.html#things-flags) in the Vulkan specification.
+",
+            "[\"Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/chapters/things.html#things-flags) in the Vulkan specification.\"]",
+        ),
+        (
+            "another page for the anchor",
+            "/// Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy
+/// Functionality](SPEC/chapters/things.html#legacy-things) in the Vulkan specification.
+",
+            "[\"Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/chapters/things.html#legacy-things) in the Vulkan specification.\"]",
+        ),
+        (
+            "the statement twice",
+            &format!("{FIXTURE_LEGACY_THING}///\n{FIXTURE_LEGACY_THING}"),
+            &format!("[{FIXTURE_LEGACY_THING_STATEMENT:?}, {FIXTURE_LEGACY_THING_STATEMENT:?}]"),
+        ),
+        (
+            "a statement that claims more",
+            "/// Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification. It
+/// must not be used.
+",
+            "[\"Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification. It must not be used.\"]",
+        ),
+    ] {
+        assert_legacy_reported(defect, FIXTURE_LEGACY_THING, with, &[&expected(statements)]);
+    }
+    assert_legacy_reported(
+        "a statement in the paragraph before it",
+        &format!("///\n{FIXTURE_LEGACY_THING}"),
+        FIXTURE_LEGACY_THING,
+        &[&expected(
+            "[\"C structure [`VkThing`](https://docs.vulkan.org/refpages/latest/refpages/source/VkThing.html). Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.\"]",
+        )],
+    );
+    assert_legacy_reported(
+        "the versions and extensions in another order",
+        "Vulkan 1.0, Vulkan 1.1 and\n/// [`VK_KHR_things`](KHR_THINGS_NAME)",
+        "Vulkan 1.1, Vulkan 1.0 and\n/// [`VK_KHR_things`](KHR_THINGS_NAME)",
+        &[
+            "the type `VkThing2KHR`: the registry marks it as legacy, so its documentation has the one paragraph `Legacy functionality as of Vulkan 1.0, Vulkan 1.1 and [`VK_KHR_things`](KHR_THINGS_NAME): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.`, but it has [\"Legacy functionality as of Vulkan 1.1, Vulkan 1.0 and [`VK_KHR_things`](KHR_THINGS_NAME): see [Legacy Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-things) in the Vulkan specification.\"]",
+        ],
+    );
+}
+
+#[test]
+fn checker_reports_a_legacy_statement_on_an_item_that_the_registry_does_not_mark() {
+    for (defect, replace, item) in [
+        (
+            "a structure that only a less promoted extension marks",
+            "/// C structure `VkThing2`.\n",
+            "the type `VkThing2`",
+        ),
+        (
+            "an unmarked constant",
+            "/// The name of the device extension `VK_KHR_things`.\n",
+            "the type `VK_KHR_things`",
+        ),
+        (
+            "an unmarked member",
+            "    /// `count` is the number of things.\n",
+            "the member `Thing::count`",
+        ),
+        (
+            "an unmarked setter",
+            "    /// Sets [`count`](Self::count).\n",
+            "the method `Thing::count`",
+        ),
+        (
+            "an unmarked raw method",
+            "    /// Calls the C command `vkUseThing2` with the arguments as they are.\n",
+            "the raw `vkUseThing2`",
+        ),
+    ] {
+        let indent = &replace[..replace.find("///").expect("a doc comment")];
+        let with = format!(
+            "{replace}{indent}///\n{}",
+            FIXTURE_LEGACY_THING.replace("/// ", &format!("{indent}/// "))
+        );
+        assert_legacy_reported(
+            defect,
+            replace,
+            &with,
+            &[&format!(
+                "{item}: has a legacy statement, but the registry has no mark for it that the specification shows"
+            )],
+        );
+    }
+    assert_legacy_reported(
+        "a marked type alias, which the specification lists without a warning",
+        "/// Alias of [`Thing`], the C name `VkThingKHR`.\n",
+        "/// Alias of [`Thing`], the C name `VkThingKHR`.\n///\n/// Legacy functionality, superseded by [`VkThing2`](Thing2): see [Legacy\n/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.\n",
+        &[
+            "the type `VkThingKHR`: has a legacy statement, but the registry has no mark for it that the specification shows",
+        ],
+    );
+    assert_legacy_reported(
+        "an unmarked wrapper",
+        "    /// parameters.\n    #[doc(alias = \"vkUseThing2\")]\n",
+        "    /// parameters.\n    ///\n    /// Legacy functionality.\n    ///\n    /// See [Legacy Functionality](SPEC/appendices/legacy.html#legacy-things).\n    #[doc(alias = \"vkUseThing2\")]\n",
+        &[
+            "the wrapper `vkUseThing2`: has a legacy statement, but the registry has no mark for it that the specification shows",
+        ],
+    );
+}
+
+#[test]
+fn checker_links_a_successor_only_from_an_item_that_exists_whenever_the_successor_does() {
+    let plain = FIXTURE_LEGACY_THING.replace("[`VkThing2`](Thing2)", "`VkThing2`");
+    let gated = "#[cfg(feature = \"wayland\")]\n#[doc(alias = \"VkThing2\")]";
+    let both_gated =
+        "#[cfg(all(feature = \"beta\", feature = \"wayland\"))]\n#[doc(alias = \"VkThing\")]";
+    for (thing, thing2, statement, accepted) in [
+        (
+            "#[doc(alias = \"VkThing\")]",
+            gated,
+            FIXTURE_LEGACY_THING,
+            false,
+        ),
+        ("#[doc(alias = \"VkThing\")]", gated, plain.as_str(), true),
+        (both_gated, gated, FIXTURE_LEGACY_THING, true),
+        (both_gated, gated, plain.as_str(), false),
+        (
+            "#[cfg(feature = \"beta\")]\n#[doc(alias = \"VkThing\")]",
+            gated,
+            FIXTURE_LEGACY_THING,
+            false,
+        ),
+        (
+            both_gated,
+            "#[doc(alias = \"VkThing2\")]",
+            plain.as_str(),
+            false,
+        ),
+    ] {
+        let source = FIXTURE_LEGACY_SOURCE
+            .replacen("#[doc(alias = \"VkThing\")]", thing, 1)
+            .replacen("#[doc(alias = \"VkThing2\")]", thing2, 1)
+            .replacen(FIXTURE_LEGACY_THING, statement, 1)
+            .replacen(
+                "/// Legacy functionality as of Vulkan 1.0, Vulkan 1.1 and
+/// [`VK_KHR_things`](KHR_THINGS_NAME): see [Legacy
+/// Functionality](SPEC/appendices/legacy.html#legacy-things) in the Vulkan specification.
+#[doc(alias = \"VkThing2KHR\")]",
+                "#[doc(alias = \"VkThing2KHR\")]",
+                1,
+            );
+        let mut specification = fixture_legacy_specification();
+        specification
+            .legacy
+            .marks
+            .retain(|(_, _, name), _| name != "VkThing2KHR");
+        let failures = fixture_legacy_checker(&specification, &source).failures;
+        assert_eq!(
+            failures.iter().any(|failure| failure
+                .starts_with("the type `VkThing`: the registry marks it as legacy")),
+            !accepted,
+            "{thing} {thing2} {statement}: {failures:#?}"
+        );
+        assert!(failures.len() <= 1, "{failures:#?}");
+    }
+}
+
+#[test]
+fn checker_reports_a_legacy_mark_that_the_specification_or_the_bindings_cannot_support() {
+    let failures_of = |name: &str, link: &str, superseded_by: Option<&str>, marked_by: &[&str]| {
+        let mut specification = fixture_legacy_specification();
+        let key = ("type".to_string(), String::new(), name.to_string());
+        specification
+            .legacy
+            .marks
+            .insert(key, fixture_legacy_mark(link, marked_by, superseded_by));
+        fixture_legacy_checker(&specification, FIXTURE_LEGACY_SOURCE).failures
+    };
+    let failures_with = |link: &str, superseded_by: Option<&str>, marked_by: &[&str]| {
+        failures_of("VkThing", link, superseded_by, marked_by)
+    };
+    let version = ["VK_VERSION_1_1"];
+    for (link, problem) in [
+        (
+            "things-missing",
+            "0 source files of the specification define the anchor `things-missing`",
+        ),
+        (
+            "things-twice",
+            "2 source files of the specification define the anchor `things-twice`",
+        ),
+        (
+            "things-nested",
+            "the anchor `things-nested` is in `chapters/things/more.adoc`, which is not published as a page of its own",
+        ),
+        (
+            "things-partial",
+            "the anchor `things-partial` is in `appendices/VK_KHR_things.adoc`, which is not published as a page of its own",
+        ),
+    ] {
+        assert_eq!(
+            failures_with(link, Some("VkThing2"), &version),
+            [
+                format!("VkThing: is marked as legacy, and {problem}"),
+                format!("the type `VkThing`: is marked as legacy, and {problem}"),
+            ]
+        );
+    }
+    assert_eq!(
+        failures_with("legacy-things", Some("VkThing3"), &version),
+        ["the type `VkThing`: is marked as legacy, and the bindings have no item for `VkThing3`"]
+    );
+    assert_eq!(
+        failures_of(
+            "VkThing2KHR",
+            "legacy-things",
+            None,
+            &["VK_VERSION_1_1", "VK_KHR_more"]
+        ),
+        [
+            "the type `VkThing2KHR`: is marked as legacy, and the bindings have no item for `VK_KHR_more`"
+        ]
+    );
+    assert_eq!(
+        failures_with(
+            "legacy-things",
+            Some("VkThing2"),
+            &["VK_VERSION_1_1", "VK_KHR_more"]
+        ),
+        Vec::<String>::new(),
+        "an extension that does not count is not named, so it needs no item"
+    );
+    assert_eq!(
+        failures_with("legacy-things", Some("VkThing2"), &["VK_KHR_things"]),
+        [
+            "the type `VkThing`: has a legacy statement, but the registry has no mark for it that the specification shows"
+        ],
+        "a mark that the specification does not show"
+    );
+
+    let mut specification = fixture_legacy_specification();
+    let source = FIXTURE_LEGACY_SOURCE.replacen(
+        "/// C structure `VkThing2`.\n#[doc(alias = \"VkThing2\")]",
+        "/// C structure `VkThing2`.\n#[doc(alias = \"VK_MAKE_VERSION\")]",
+        1,
+    );
+    assert_eq!(
+        fixture_legacy_checker(&specification, &source).failures[0],
+        "VK_MAKE_VERSION: is in LEGACY_MACROS_WITHOUT_AN_ITEM, but the bindings have an item for it"
+    );
+    let key = ("type".to_string(), String::new(), "VkGone".to_string());
+    let gone = fixture_legacy_mark("legacy-things", &version, None);
+    specification.legacy.marks.insert(key, gone);
+    assert_eq!(
+        fixture_legacy_checker(&specification, FIXTURE_LEGACY_SOURCE).failures,
+        ["the type `VkGone`: is marked as legacy, and the bindings document no such item"]
+    );
+}
+
+#[test]
+fn checker_reports_a_link_into_the_specification_that_is_not_a_legacy_statement() {
+    assert_reported(
+        "a link into the specification",
+        "/// Structure specifying a thing.\n",
+        "/// Structure specifying a thing.\n///\n/// See [the chapter](https://docs.vulkan.org/spec/latest/chapters/things.html).\n",
+        "Thing: has a docs.vulkan.org link of an unexpected form",
+    );
+    assert_reported(
+        "a link into the specification on an unmarked item",
+        "/// Structure specifying a thing.\n",
+        "/// Structure specifying a thing.\n///\n/// See [the chapter](https://docs.vulkan.org/spec/latest/chapters/things.html).\n",
+        "the type `VkThing`: has a legacy statement, but the registry has no mark for it that the specification shows",
+    );
+}
+
+const FIXTURE_REGISTRY: &str = r#"
+<registry>
+    <tags comment="Vulkan vendor/author tags for extensions and layers">
+        <tag name="NV" author="NVIDIA Corporation" contact="Somebody @somebody"/>
+        <tag name="KHR" author="Khronos" contact="Somebody @somebody"/>
+    </tags>
+    <enums name="API Constants" type="constants" comment="Vulkan hardcoded constants">
+        <enum type="uint32_t" value="256" name="VK_MAX_THINGS"/>
+    </enums>
+    <enums name="VkOld" type="enum">
+        <enum value="0" name="VK_OLD_ZERO"/>
+    </enums>
+    <enums name="VkOldFlagBits" type="bitmask">
+    </enums>
+    <types comment="Vulkan type definitions">
+        <type category="struct" name="VkOld">
+            <member><type>uint32_t</type> <name>old</name></member>
+        </type>
+        <type category="struct" name="VkOldKHR" alias="VkOld"/>
+        <type api="vulkansc" category="struct" name="VkOldSC" alias="VkOld"/>
+        <type api="vulkan,vulkansc" category="handle" name="VkOldEXT" alias="VkOld"/>
+    </types>
+    <feature api="vulkan,vulkansc" apitype="internal" name="VK_BASE_VERSION_1_1" number="1.1">
+        <require>
+            <type name="VkRequired"/>
+            <feature name="required" struct="VkFeatures"/>
+        </require>
+        <deprecate explanationlink="legacy-one">
+            <type name="VkOld" supersededby="VkNew"/>
+            <command name="vkOld"/>
+        </deprecate>
+    </feature>
+    <feature api="vulkan,vulkansc" apitype="internal" name="VK_GRAPHICS_VERSION_1_1" number="1.1" depends="VK_BASE_VERSION_1_1">
+        <deprecate explanationlink="legacy-one">
+            <command name="vkOld"/>
+        </deprecate>
+        <deprecate explanationlink="legacy-two">
+            <type name="vkOld"/>
+        </deprecate>
+    </feature>
+    <feature api="vulkan,vulkansc" name="VK_VERSION_1_1" number="1.1" depends="VK_GRAPHICS_VERSION_1_1">
+        <require>
+            <feature name="old" struct="VkFeatures"/>
+        </require>
+    </feature>
+    <feature api="vulkansc" name="VKSC_VERSION_1_0" number="1.0">
+        <deprecate explanationlink="legacy-three">
+            <type name="VkOld"/>
+        </deprecate>
+    </feature>
+    <extensions comment="Vulkan extension interface definitions">
+        <extension name="VK_KHR_new" number="1" supported="vulkan,vulkansc">
+            <deprecate explanationlink="legacy-one">
+                <feature name="old" struct="VkFeatures"/>
+                <type name="VkOld" supersededby="VkNew"/>
+                <command name="vkOld"/>
+            </deprecate>
+        </extension>
+        <extension name="VK_KHR_disabled" number="2" supported="disabled">
+            <deprecate explanationlink="legacy-three">
+                <type name="VkOld"/>
+                <command name="vkOther"/>
+            </deprecate>
+        </extension>
+        <extension name="VK_KHR_safety" number="3" supported="vulkansc">
+            <deprecate explanationlink="legacy-three">
+                <command name="vkOld" supersededby="vkNew"/>
+            </deprecate>
+        </extension>
+        <extension name="VK_KHR_apis" number="4" supported="vulkan">
+            <deprecate explanationlink="legacy-three" api="vulkansc">
+                <command name="vkOtherApi"/>
+            </deprecate>
+            <deprecate explanationlink="legacy-two" api="vulkan,vulkansc">
+                <type name="vkOld" api="vulkansc" supersededby="vkNew"/>
+                <type name="vkOld" api="vulkan"/>
+            </deprecate>
+        </extension>
+        <extension name="VK_KHR_other_api" number="5" supported="vulkan" api="vulkansc">
+            <deprecate explanationlink="legacy-three">
+                <type name="VkOld"/>
+            </deprecate>
+        </extension>
+    </extensions>
+</registry>
+"#;
+
+#[test]
+fn the_deprecate_blocks_of_the_registry_are_read_for_the_vulkan_api() {
+    let legacy = LegacyRegistry::read(FIXTURE_REGISTRY);
+    let mark = |link: &str, marked_by: &[&str], superseded_by: Option<&str>| {
+        fixture_legacy_mark(link, marked_by, superseded_by)
+    };
+    let key = |kind: &str, structure: &str, name: &str| {
+        (kind.to_string(), structure.to_string(), name.to_string())
+    };
+    assert_eq!(
+        legacy.marks,
+        BTreeMap::from([
+            (
+                key("command", "", "vkOld"),
+                mark("legacy-one", &["VK_VERSION_1_1", "VK_KHR_new"], None)
+            ),
+            (
+                key("feature", "VkFeatures", "old"),
+                mark("legacy-one", &["VK_KHR_new"], None)
+            ),
+            (
+                key("type", "", "VkOld"),
+                mark(
+                    "legacy-one",
+                    &["VK_VERSION_1_1", "VK_KHR_new"],
+                    Some("VkNew")
+                )
+            ),
+            (
+                key("type", "", "vkOld"),
+                mark("legacy-two", &["VK_VERSION_1_1", "VK_KHR_apis"], None)
+            ),
+        ])
+    );
+    assert_eq!(
+        legacy.entries,
+        BTreeMap::from([
+            ("command".to_string(), 3),
+            ("feature".to_string(), 1),
+            ("type".to_string(), 4)
+        ])
+    );
+    assert_eq!(
+        legacy.entries_of_other_apis, 7,
+        "four in a version or an extension of another API, and three in an extension, a block or an entry with an `api` that does not name vulkan"
+    );
+    assert_eq!(
+        legacy.type_aliases,
+        BTreeSet::from(["VkOldEXT".to_string(), "VkOldKHR".to_string()])
+    );
+    assert_eq!(legacy.vendor_tags, ["NV", "KHR"]);
+    assert_eq!(
+        legacy.enumerations,
+        BTreeSet::from(["VkOld".to_string(), "VkOldFlagBits".to_string()])
+    );
+    assert_eq!(
+        ["type", "command", "feature", "enum"].map(|kind| legacy.names(kind)),
+        [2, 1, 1, 0]
+    );
+}
+
+#[test]
+fn a_deprecate_block_that_the_test_cannot_read_stops_it() {
+    for (replace, with, message) in [
+        (
+            "<command name=\"vkOther\"/>",
+            "<enum name=\"VK_OTHER\"/>",
+            "the <deprecate> block of VK_KHR_disabled has `<enum name=\"VK_OTHER\"/>`",
+        ),
+        (
+            "<command name=\"vkOther\"/>",
+            "<command name=\"vkOther\">",
+            "the <deprecate> block of VK_KHR_disabled has `<command name=\"vkOther\">`",
+        ),
+        (
+            "<deprecate explanationlink=\"legacy-two\">",
+            "<deprecate>",
+            "`<deprecate>` has no explanationlink",
+        ),
+        (
+            "<type name=\"vkOld\"/>",
+            "<type name=\"VkOld\"/>",
+            "VK_VERSION_1_1 marks VkOld with `legacy-two` and None, and another block with `legacy-one` and Some(\"VkNew\")",
+        ),
+        (
+            "<feature name=\"old\" struct=\"VkFeatures\"/>\n                <type name=\"VkOld\" supersededby=\"VkNew\"/>",
+            "<type name=\"VkOld\" supersededby=\"VkNewer\"/>",
+            "VK_KHR_new marks VkOld with `legacy-one` and Some(\"VkNewer\"), and another block with `legacy-one` and Some(\"VkNew\")",
+        ),
+    ] {
+        assert_eq!(FIXTURE_REGISTRY.matches(replace).count(), 1, "{replace}");
+        let registry = FIXTURE_REGISTRY.replacen(replace, with, 1);
+        let panic = std::panic::catch_unwind(|| LegacyRegistry::read(&registry))
+            .expect_err(&format!("`{with}` is read"));
+        let panic = panic.downcast_ref::<String>().expect("a message");
+        assert_eq!(panic, message);
     }
 }

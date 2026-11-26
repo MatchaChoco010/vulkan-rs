@@ -1438,6 +1438,10 @@ impl core::fmt::Debug for Fence {
 /// C non-dispatchable handle
 /// [`VkFramebuffer`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFramebuffer.html).
 ///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Objects of this type are created from a [`VkDevice`](Device). The value is the handle
 /// itself: copying it does not copy the object, and dropping it does not destroy the object.
 #[doc(alias = "VkFramebuffer")]
@@ -2465,6 +2469,10 @@ unsafe impl Sync for Queue {}
 ///
 /// C non-dispatchable handle
 /// [`VkRenderPass`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPass.html).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 ///
 /// Objects of this type are created from a [`VkDevice`](Device). The value is the handle
 /// itself: copying it does not copy the object, and dropping it does not destroy the object.
