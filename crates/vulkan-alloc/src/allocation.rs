@@ -6,8 +6,22 @@ use crate::memory_type::MemoryLocation;
 
 /// What [`Allocator::allocate`](crate::Allocator::allocate) is asked to allocate.
 ///
-/// Every field is public and there is no constructor; struct update syntax
-/// (`..desc`) helps to vary one field of a common description.
+/// Create it with [`AllocationCreateDesc::new`], which takes the fields every
+/// allocation states and gives the others the values most allocations use, then change
+/// only the fields an allocation needs, with struct update syntax or by assigning to
+/// them. Every field is public.
+///
+/// ```
+/// use vulkan::vk;
+/// use vulkan_alloc::{AllocationCreateDesc, MemoryLocation};
+///
+/// fn vertex_buffer(requirements: vk::MemoryRequirements) -> AllocationCreateDesc<'static> {
+///     AllocationCreateDesc {
+///         name: Some("vertices"),
+///         ..AllocationCreateDesc::new(requirements, MemoryLocation::GpuOnly, true)
+///     }
+/// }
+/// ```
 #[derive(Copy, Clone)]
 pub struct AllocationCreateDesc<'a> {
     /// A name for diagnostics, reported by
@@ -88,6 +102,33 @@ pub struct AllocationCreateDesc<'a> {
     pub export_handle_types: vk::ExternalMemoryHandleTypeFlags,
     /// Whether the allocation is suballocated or gets dedicated memory.
     pub allocation_scheme: AllocationScheme,
+}
+
+impl<'a> AllocationCreateDesc<'a> {
+    /// Describes an allocation of `requirements` in `location`, for a linear resource if
+    /// `linear` is `true` (see [`AllocationCreateDesc::linear`]).
+    ///
+    /// The other fields are set to: [`AllocationCreateDesc::name`] `None`, empty
+    /// [`AllocationCreateDesc::memory_allocate_flags`], empty
+    /// [`AllocationCreateDesc::export_handle_types`], and
+    /// [`AllocationCreateDesc::allocation_scheme`]
+    /// [`AllocationScheme::GpuAllocatorManaged`]. Such an allocation is placed in a shared
+    /// block.
+    pub const fn new(
+        requirements: vk::MemoryRequirements,
+        location: MemoryLocation,
+        linear: bool,
+    ) -> Self {
+        Self {
+            name: None,
+            requirements,
+            location,
+            linear,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
+            export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
+            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+        }
+    }
 }
 
 impl fmt::Debug for AllocationCreateDesc<'_> {
@@ -237,4 +278,64 @@ pub enum AllocationResourceClass {
     Linear,
     /// Allocations made with [`AllocationCreateDesc::linear`] set to `false`.
     Optimal,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_new_description_states_its_arguments_and_asks_for_shared_memory_without_extras() {
+        let requirements = vk::MemoryRequirements {
+            size: 4096,
+            alignment: 256,
+            memory_type_bits: 0b1010,
+        };
+        let location = MemoryLocation::custom(
+            vk::MemoryPropertyFlags::HOST_VISIBLE,
+            vk::MemoryPropertyFlags::HOST_CACHED,
+        );
+        for linear in [true, false] {
+            let desc = AllocationCreateDesc::new(requirements, location, linear);
+            assert_eq!(desc.name, None, "name");
+            assert_eq!(desc.requirements.size, 4096, "requirements.size");
+            assert_eq!(desc.requirements.alignment, 256, "requirements.alignment");
+            assert_eq!(
+                desc.requirements.memory_type_bits, 0b1010,
+                "requirements.memory_type_bits"
+            );
+            assert_eq!(desc.location, location, "location");
+            assert_eq!(desc.linear, linear, "linear");
+            assert_eq!(
+                desc.memory_allocate_flags,
+                vk::MemoryAllocateFlags::empty(),
+                "memory_allocate_flags"
+            );
+            assert_eq!(
+                desc.export_handle_types,
+                vk::ExternalMemoryHandleTypeFlags::empty(),
+                "export_handle_types"
+            );
+            assert_eq!(
+                desc.allocation_scheme,
+                AllocationScheme::GpuAllocatorManaged,
+                "allocation_scheme"
+            );
+        }
+    }
+
+    #[test]
+    fn a_new_description_can_be_made_in_a_constant() {
+        const DESC: AllocationCreateDesc<'static> = AllocationCreateDesc::new(
+            vk::MemoryRequirements {
+                size: 64,
+                alignment: 16,
+                memory_type_bits: 1,
+            },
+            MemoryLocation::GpuOnly,
+            true,
+        );
+        assert_eq!(DESC.requirements.size, 64);
+        assert_eq!(DESC.location, MemoryLocation::GpuOnly);
+    }
 }
