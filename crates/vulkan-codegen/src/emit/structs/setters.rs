@@ -57,7 +57,7 @@ impl<'s> CountedArrays<'s> {
         let mut panics = Vec::new();
         if self.shares_its_count(count, m) {
             panics.push(format!(
-                "Panics if another array that shares `{}` is already set and the slice has a different length.",
+                "Panics if another array that shares `{}` is set to a slice that is not empty and the slice has a different length. An array that was set with an empty slice has a null pointer and is not compared.",
                 count.name
             ));
         }

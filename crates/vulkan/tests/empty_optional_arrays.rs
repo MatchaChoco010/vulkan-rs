@@ -238,6 +238,40 @@ fn an_empty_slice_of_an_array_that_is_not_optional_sets_null_and_a_count_of_zero
 }
 
 #[test]
+fn an_array_that_was_set_with_an_empty_slice_is_not_compared_with_the_next_one() {
+    let masks = [vk::PipelineStageFlags::empty(); 2];
+    let submit = vk::SubmitInfo::default()
+        .wait_semaphores(&[])
+        .wait_dst_stage_mask(&masks);
+    assert_eq!(submit.wait_semaphore_count, 2);
+    assert!(
+        submit.p_wait_semaphores.is_null(),
+        "the semaphores look as if they were never set"
+    );
+    assert_eq!(submit.p_wait_dst_stage_mask, masks.as_ptr());
+
+    let submit = vk::SubmitInfo::default()
+        .wait_semaphores(&[])
+        .wait_semaphore_count(3)
+        .wait_dst_stage_mask(&masks);
+    assert_eq!(
+        submit.wait_semaphore_count, 2,
+        "nor is the slice compared with a count that the count setter stored"
+    );
+
+    let other_order = catch_unwind(|| {
+        vk::SubmitInfo::default()
+            .wait_dst_stage_mask(&masks)
+            .wait_semaphores(&[])
+            .wait_semaphore_count
+    });
+    assert!(
+        other_order.is_err(),
+        "an empty slice is compared with the arrays that hold elements"
+    );
+}
+
+#[test]
 fn an_empty_slice_is_null_where_the_specification_gives_null_a_meaning() {
     let locations = vk::RenderingAttachmentLocationInfo::default()
         .color_attachment_locations(&[])

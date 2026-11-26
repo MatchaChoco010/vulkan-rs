@@ -1382,8 +1382,10 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileCols` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileCols` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can
+    /// count.
     pub fn mi_col_starts(mut self, value: &'a [u16]) -> Self {
         if !self.p_width_in_sbs_minus1.is_null() {
             assert_eq!(
@@ -1403,8 +1405,10 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileRows` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileRows` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can
+    /// count.
     pub fn mi_row_starts(mut self, value: &'a [u16]) -> Self {
         if !self.p_height_in_sbs_minus1.is_null() {
             assert_eq!(
@@ -1430,8 +1434,10 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileCols` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileCols` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileCols`, a `uint8_t`, can
+    /// count.
     pub fn width_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
         if value.is_empty() {
             if !self.p_width_in_sbs_minus1.is_null() && self.p_mi_col_starts.is_null() {
@@ -1468,8 +1474,10 @@ impl<'a> StdVideoAV1TileInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `TileRows` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can count.
+    /// Panics if another array that shares `TileRows` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `TileRows`, a `uint8_t`, can
+    /// count.
     pub fn height_in_sbs_minus1(mut self, value: &'a [u16]) -> Self {
         if value.is_empty() {
             if !self.p_height_in_sbs_minus1.is_null() && self.p_mi_row_starts.is_null() {
@@ -10484,9 +10492,10 @@ impl<'a> AccelerationStructureBuildGeometryInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `geometryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `geometryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `geometryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `geometryCount`, a
+    /// `uint32_t`, can count.
     pub fn geometries(mut self, value: &'a [AccelerationStructureGeometryKHR<'a>]) -> Self {
         if value.is_empty() {
             if !self.p_geometries.is_null() && self.pp_geometries.is_null() {
@@ -10523,9 +10532,10 @@ impl<'a> AccelerationStructureBuildGeometryInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `geometryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `geometryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `geometryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `geometryCount`, a
+    /// `uint32_t`, can count.
     pub fn geometries_ptrs(
         mut self,
         value: &'a [&'a AccelerationStructureGeometryKHR<'a>],
@@ -11711,9 +11721,10 @@ impl<'a> AccelerationStructureGeometryMicromapDataKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageKHR]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -11751,9 +11762,10 @@ impl<'a> AccelerationStructureGeometryMicromapDataKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageKHR]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -12956,9 +12968,10 @@ impl<'a> AccelerationStructureTrianglesDisplacementMicromapNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -12996,9 +13009,10 @@ impl<'a> AccelerationStructureTrianglesDisplacementMicromapNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -13147,9 +13161,10 @@ impl<'a> AccelerationStructureTrianglesOpacityMicromapEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -13187,9 +13202,10 @@ impl<'a> AccelerationStructureTrianglesOpacityMicromapEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -50691,9 +50707,10 @@ impl<'a> IndirectCommandsLayoutTokenNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `indexTypeCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `indexTypeCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `indexTypeCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `indexTypeCount`, a
+    /// `uint32_t`, can count.
     pub fn index_types(mut self, value: &'a [IndexType]) -> Self {
         if !self.p_index_type_values.is_null() {
             assert_eq!(
@@ -50717,9 +50734,10 @@ impl<'a> IndirectCommandsLayoutTokenNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `indexTypeCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `indexTypeCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `indexTypeCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `indexTypeCount`, a
+    /// `uint32_t`, can count.
     pub fn index_type_values(mut self, value: &'a [u32]) -> Self {
         if !self.p_index_types.is_null() {
             assert_eq!(
@@ -51197,9 +51215,10 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `shaderCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `shaderCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `shaderCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `shaderCount`, a
+    /// `uint32_t`, can count.
     pub fn initial_shaders(mut self, value: &'a [ShaderEXT]) -> Self {
         if !self.p_set_layout_infos.is_null() {
             assert_eq!(
@@ -51229,9 +51248,10 @@ impl<'a> IndirectExecutionSetShaderInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `shaderCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `shaderCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `shaderCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `shaderCount`, a
+    /// `uint32_t`, can count.
     pub fn set_layout_infos(
         mut self,
         value: &'a [IndirectExecutionSetShaderLayoutInfoEXT<'a>],
@@ -54951,9 +54971,10 @@ impl<'a> MicromapBuildInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts(mut self, value: &'a [MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.p_usage_counts.is_null() && self.pp_usage_counts.is_null() {
@@ -54991,9 +55012,10 @@ impl<'a> MicromapBuildInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `usageCountsCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `usageCountsCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `usageCountsCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `usageCountsCount`,
+    /// a `uint32_t`, can count.
     pub fn usage_counts_ptrs(mut self, value: &'a [&'a MicromapUsageEXT]) -> Self {
         if value.is_empty() {
             if !self.pp_usage_counts.is_null() && self.p_usage_counts.is_null() {
@@ -100566,9 +100588,10 @@ impl<'a> PipelineBinaryKeysAndDataKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `binaryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `binaryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `binaryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `binaryCount`, a
+    /// `uint32_t`, can count.
     pub fn pipeline_binary_keys(mut self, value: &'a [PipelineBinaryKeyKHR<'a>]) -> Self {
         if !self.p_pipeline_binary_data.is_null() {
             assert_eq!(
@@ -100593,9 +100616,10 @@ impl<'a> PipelineBinaryKeysAndDataKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `binaryCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `binaryCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `binaryCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `binaryCount`, a
+    /// `uint32_t`, can count.
     pub fn pipeline_binary_data(mut self, value: &'a [PipelineBinaryDataKHR<'a>]) -> Self {
         if !self.p_pipeline_binary_keys.is_null() {
             assert_eq!(
@@ -106170,9 +106194,10 @@ impl<'a> PresentInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `swapchainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `swapchainCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `swapchainCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `swapchainCount`, a
+    /// `uint32_t`, can count.
     pub fn swapchains(mut self, value: &'a [SwapchainKHR]) -> Self {
         if !self.p_image_indices.is_null() || !self.p_results.is_null() {
             assert_eq!(
@@ -106196,9 +106221,10 @@ impl<'a> PresentInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `swapchainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `swapchainCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `swapchainCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `swapchainCount`, a
+    /// `uint32_t`, can count.
     pub fn image_indices(mut self, value: &'a [u32]) -> Self {
         if !self.p_swapchains.is_null() || !self.p_results.is_null() {
             assert_eq!(
@@ -106227,9 +106253,10 @@ impl<'a> PresentInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `swapchainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `swapchainCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `swapchainCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `swapchainCount`, a
+    /// `uint32_t`, can count.
     pub fn results(mut self, value: &'a mut [VkResult]) -> Self {
         if value.is_empty() {
             if !self.p_results.is_null()
@@ -115037,9 +115064,10 @@ impl<'a> SemaphoreWaitInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `semaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `semaphoreCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `semaphoreCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `semaphoreCount`, a
+    /// `uint32_t`, can count.
     pub fn semaphores(mut self, value: &'a [Semaphore]) -> Self {
         if !self.p_values.is_null() {
             assert_eq!(
@@ -115063,9 +115091,10 @@ impl<'a> SemaphoreWaitInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `semaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `semaphoreCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `semaphoreCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `semaphoreCount`, a
+    /// `uint32_t`, can count.
     pub fn values(mut self, value: &'a [u64]) -> Self {
         if !self.p_semaphores.is_null() {
             assert_eq!(
@@ -115186,8 +115215,10 @@ impl<'a> SetDescriptorBufferOffsetsInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `setCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `setCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `setCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `setCount`, a `uint32_t`,
+    /// can count.
     pub fn buffer_indices(mut self, value: &'a [u32]) -> Self {
         if !self.p_offsets.is_null() {
             assert_eq!(
@@ -115211,8 +115242,10 @@ impl<'a> SetDescriptorBufferOffsetsInfoEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `setCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `setCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `setCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `setCount`, a `uint32_t`,
+    /// can count.
     pub fn offsets(mut self, value: &'a [DeviceSize]) -> Self {
         if !self.p_buffer_indices.is_null() {
             assert_eq!(
@@ -117530,9 +117563,10 @@ impl<'a> SubmitInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `waitSemaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `waitSemaphoreCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `waitSemaphoreCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than
+    /// `waitSemaphoreCount`, a `uint32_t`, can count.
     pub fn wait_semaphores(mut self, value: &'a [Semaphore]) -> Self {
         if !self.p_wait_dst_stage_mask.is_null() {
             assert_eq!(
@@ -117557,9 +117591,10 @@ impl<'a> SubmitInfo<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `waitSemaphoreCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `waitSemaphoreCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `waitSemaphoreCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than
+    /// `waitSemaphoreCount`, a `uint32_t`, can count.
     pub fn wait_dst_stage_mask(mut self, value: &'a [PipelineStageFlags]) -> Self {
         if !self.p_wait_semaphores.is_null() {
             assert_eq!(
@@ -118184,9 +118219,10 @@ impl<'a> SubpassDescription<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn color_attachments(mut self, value: &'a [AttachmentReference]) -> Self {
         if !self.p_resolve_attachments.is_null() {
             assert_eq!(
@@ -118216,9 +118252,10 @@ impl<'a> SubpassDescription<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn resolve_attachments(mut self, value: &'a [AttachmentReference]) -> Self {
         if value.is_empty() {
             if !self.p_resolve_attachments.is_null() && self.p_color_attachments.is_null() {
@@ -118399,9 +118436,10 @@ impl<'a> SubpassDescription2<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn color_attachments(mut self, value: &'a [AttachmentReference2<'a>]) -> Self {
         if !self.p_resolve_attachments.is_null() {
             assert_eq!(
@@ -118431,9 +118469,10 @@ impl<'a> SubpassDescription2<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `colorAttachmentCount` is already set and the slice has
-    /// a different length. Panics if the slice has more elements than `colorAttachmentCount`, a
-    /// `uint32_t`, can count.
+    /// Panics if another array that shares `colorAttachmentCount` is set to a slice that is not
+    /// empty and the slice has a different length. An array that was set with an empty slice has a
+    /// null pointer and is not compared. Panics if the slice has more elements than
+    /// `colorAttachmentCount`, a `uint32_t`, can count.
     pub fn resolve_attachments(mut self, value: &'a [AttachmentReference2<'a>]) -> Self {
         if value.is_empty() {
             if !self.p_resolve_attachments.is_null() && self.p_color_attachments.is_null() {
@@ -121359,8 +121398,9 @@ impl<'a> SwapchainTimeDomainPropertiesEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `timeDomainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `timeDomainCount`, a
+    /// Panics if another array that shares `timeDomainCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `timeDomainCount`, a
     /// `uint32_t`, can count.
     pub fn time_domains(mut self, value: &'a mut [TimeDomainKHR]) -> Self {
         if value.is_empty() {
@@ -121398,8 +121438,9 @@ impl<'a> SwapchainTimeDomainPropertiesEXT<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `timeDomainCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `timeDomainCount`, a
+    /// Panics if another array that shares `timeDomainCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `timeDomainCount`, a
     /// `uint32_t`, can count.
     pub fn time_domain_ids(mut self, value: &'a mut [u64]) -> Self {
         if value.is_empty() {
@@ -121692,9 +121733,10 @@ impl<'a> TensorCopyARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn src_offset(mut self, value: &'a [u64]) -> Self {
         if value.is_empty() {
             if !self.p_src_offset.is_null()
@@ -121731,9 +121773,10 @@ impl<'a> TensorCopyARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn dst_offset(mut self, value: &'a [u64]) -> Self {
         if value.is_empty() {
             if !self.p_dst_offset.is_null()
@@ -121769,9 +121812,10 @@ impl<'a> TensorCopyARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn extent(mut self, value: &'a [u64]) -> Self {
         if value.is_empty() {
             if !self.p_extent.is_null()
@@ -122080,9 +122124,10 @@ impl<'a> TensorDescriptionARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn dimensions(mut self, value: &'a [i64]) -> Self {
         if !self.p_strides.is_null() {
             assert_eq!(
@@ -122111,9 +122156,10 @@ impl<'a> TensorDescriptionARM<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `dimensionCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `dimensionCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `dimensionCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `dimensionCount`, a
+    /// `uint32_t`, can count.
     pub fn strides(mut self, value: &'a [i64]) -> Self {
         if value.is_empty() {
             if !self.p_strides.is_null() && self.p_dimensions.is_null() {
@@ -124859,8 +124905,10 @@ impl<'a> VideoDecodeAV1PictureInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `tileCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `tileCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `tileCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `tileCount`, a `uint32_t`,
+    /// can count.
     pub fn tile_offsets(mut self, value: &'a [u32]) -> Self {
         if !self.p_tile_sizes.is_null() {
             assert_eq!(
@@ -124884,8 +124932,10 @@ impl<'a> VideoDecodeAV1PictureInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `tileCount` is already set and the slice has a different
-    /// length. Panics if the slice has more elements than `tileCount`, a `uint32_t`, can count.
+    /// Panics if another array that shares `tileCount` is set to a slice that is not empty and the
+    /// slice has a different length. An array that was set with an empty slice has a null pointer
+    /// and is not compared. Panics if the slice has more elements than `tileCount`, a `uint32_t`,
+    /// can count.
     pub fn tile_sizes(mut self, value: &'a [u32]) -> Self {
         if !self.p_tile_offsets.is_null() {
             assert_eq!(
@@ -134346,9 +134396,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_acquire_keys.is_null() || !self.p_acquire_timeouts.is_null() {
             assert_eq!(
@@ -134372,9 +134423,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_timeouts.is_null() {
             assert_eq!(
@@ -134398,9 +134450,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_timeouts(mut self, value: &'a [u32]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_keys.is_null() {
             assert_eq!(
@@ -134429,9 +134482,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_release_keys.is_null() {
             assert_eq!(
@@ -134455,9 +134509,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoKHR<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_release_syncs.is_null() {
             assert_eq!(
@@ -134572,9 +134627,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_acquire_keys.is_null() || !self.p_acquire_timeout_milliseconds.is_null() {
             assert_eq!(
@@ -134598,9 +134654,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_timeout_milliseconds.is_null() {
             assert_eq!(
@@ -134625,9 +134682,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `acquireCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `acquireCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `acquireCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `acquireCount`, a
+    /// `uint32_t`, can count.
     pub fn acquire_timeout_milliseconds(mut self, value: &'a [u32]) -> Self {
         if !self.p_acquire_syncs.is_null() || !self.p_acquire_keys.is_null() {
             assert_eq!(
@@ -134656,9 +134714,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_syncs(mut self, value: &'a [DeviceMemory]) -> Self {
         if !self.p_release_keys.is_null() {
             assert_eq!(
@@ -134682,9 +134741,10 @@ impl<'a> Win32KeyedMutexAcquireReleaseInfoNV<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `releaseCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `releaseCount`, a `uint32_t`,
-    /// can count.
+    /// Panics if another array that shares `releaseCount` is set to a slice that is not empty and
+    /// the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `releaseCount`, a
+    /// `uint32_t`, can count.
     pub fn release_keys(mut self, value: &'a [u64]) -> Self {
         if !self.p_release_syncs.is_null() {
             assert_eq!(
@@ -134915,8 +134975,9 @@ impl<'a> WriteDescriptorSet<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `descriptorCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `descriptorCount`, a
+    /// Panics if another array that shares `descriptorCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `descriptorCount`, a
     /// `uint32_t`, can count.
     pub fn image_info(mut self, value: &'a [DescriptorImageInfo]) -> Self {
         if !self.p_buffer_info.is_null() || !self.p_texel_buffer_view.is_null() {
@@ -134941,8 +135002,9 @@ impl<'a> WriteDescriptorSet<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `descriptorCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `descriptorCount`, a
+    /// Panics if another array that shares `descriptorCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `descriptorCount`, a
     /// `uint32_t`, can count.
     pub fn buffer_info(mut self, value: &'a [DescriptorBufferInfo]) -> Self {
         if !self.p_image_info.is_null() || !self.p_texel_buffer_view.is_null() {
@@ -134967,8 +135029,9 @@ impl<'a> WriteDescriptorSet<'a> {
     ///
     /// # Panics
     ///
-    /// Panics if another array that shares `descriptorCount` is already set and the slice has a
-    /// different length. Panics if the slice has more elements than `descriptorCount`, a
+    /// Panics if another array that shares `descriptorCount` is set to a slice that is not empty
+    /// and the slice has a different length. An array that was set with an empty slice has a null
+    /// pointer and is not compared. Panics if the slice has more elements than `descriptorCount`, a
     /// `uint32_t`, can count.
     pub fn texel_buffer_view(mut self, value: &'a [BufferView]) -> Self {
         if !self.p_image_info.is_null() || !self.p_buffer_info.is_null() {

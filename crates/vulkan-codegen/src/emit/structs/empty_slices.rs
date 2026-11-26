@@ -323,6 +323,60 @@ fn the_scan_reads_how_a_setter_treats_an_empty_slice() {
 }
 
 #[test]
+fn a_setter_that_compares_its_slice_says_which_arrays_it_compares_it_with() {
+    let model = Model::new(Registry::get());
+    let mut comparing = 0;
+    for s in model.ir.structs.iter().filter(|s| !s.union) {
+        let generated = definition(&model, s);
+        let out = squash(&generated);
+        for setter in setters(&out, "mut self, ") {
+            let name = format!("{}::{}", s.name, setter.name);
+            let shared = setter
+                .body
+                .split_once(": every array sharing `")
+                .map(|(before, after)| {
+                    let condition = before
+                        .rsplit_once("if ")
+                        .and_then(|(_, after)| after.split_once(" { assert_eq!("))
+                        .map(|(condition, _)| condition)
+                        .unwrap_or_else(|| panic!("{name}: {before}"));
+                    assert!(
+                        condition.split(" || ").all(|array| {
+                            array
+                                .strip_prefix("!self.p")
+                                .is_some_and(|array| array.ends_with(".is_null()"))
+                        }),
+                        "{name} compares its slice with something else than the arrays whose pointer is not null: {condition}"
+                    );
+                    after
+                        .split_once("` must have the same length")
+                        .unwrap_or_else(|| panic!("{name}: {after}"))
+                        .0
+                });
+            let documented = doc_of(&generated, &format!("pub fn {}(", setter.name));
+            let said = documented
+                .iter()
+                .filter(|block| block.contains("another array"))
+                .collect::<Vec<_>>();
+            match shared {
+                Some(count) => {
+                    comparing += 1;
+                    let sentence = format!(
+                        "Panics if another array that shares `{count}` is set to a slice that is not empty and the slice has a different length. An array that was set with an empty slice has a null pointer and is not compared."
+                    );
+                    assert!(
+                        said.len() == 1 && said[0].starts_with(&sentence),
+                        "{name}: {documented:?}"
+                    );
+                }
+                None => assert!(said.is_empty(), "{name}: {documented:?}"),
+            }
+        }
+    }
+    assert_eq!(comparing, 55);
+}
+
+#[test]
 fn every_slice_setter_of_the_registry_stores_a_null_pointer_for_an_empty_slice() {
     let model = Model::new(Registry::get());
     let mut kinds = BTreeMap::<(Empty, &str), usize>::new();

@@ -134,6 +134,20 @@ fn check<S: Copy>(arrays: &[Array<S>], calls: &[Call], mut value: S) -> Result<(
                     array.name,
                     last
                 );
+                if let (Some(stored_length), Some(0), None, false) = (
+                    array.stored_length,
+                    *last,
+                    array.shared_count,
+                    array.absent_when_empty,
+                ) {
+                    prop_assert_eq!(
+                        stored_length(&value),
+                        0,
+                        "call {}: the length stored for `{}` after an empty slice",
+                        step,
+                        array.name
+                    );
+                }
                 continue;
             };
             prop_assert_eq!(
