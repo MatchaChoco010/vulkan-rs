@@ -609,9 +609,9 @@ fn alignments() -> impl Strategy<Value = u64> {
 fn locations() -> impl Strategy<Value = Location> {
     prop_oneof![
         4 => Just(Location::GpuOnly),
-        6 => Just(Location::CpuToGpu),
+        3 => Just(Location::CpuToGpu),
         4 => Just(Location::GpuToCpu),
-        4 => Just(Location::CpuOnly),
+        3 => Just(Location::CpuOnly),
         3 => (
             prop_oneof![
                 6 => Just(0u8),
