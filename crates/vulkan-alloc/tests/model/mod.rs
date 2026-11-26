@@ -841,6 +841,528 @@ pub fn scenarios(longest: usize) -> impl Strategy<Value = Scenario> {
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Aim {
+    FailingSynchronizations,
+    FaultyMaps,
+    MappingOperationsInEveryState,
+    MappingsThatShareABlock,
+    StaleAndForeignHandles,
+    BlocksAndFailedAllocations,
+}
+
+pub const AIMS: [Aim; 6] = [
+    Aim::FailingSynchronizations,
+    Aim::FaultyMaps,
+    Aim::MappingOperationsInEveryState,
+    Aim::MappingsThatShareABlock,
+    Aim::StaleAndForeignHandles,
+    Aim::BlocksAndFailedAllocations,
+];
+
+const AIMED: Pick = Pick::any(0);
+const BESIDE_AIMED: Pick = Pick::any(1);
+
+const MAPPED_STATES: [&[Op]; 5] = [
+    &[Op::MapMemory(AIMED)],
+    &[Op::MapMemory(AIMED), Op::MapMemory(AIMED)],
+    &[Op::MapPersistent(AIMED)],
+    &[Op::MapMemory(AIMED), Op::MapPersistent(AIMED)],
+    &[
+        Op::MapMemory(AIMED),
+        Op::MapMemory(AIMED),
+        Op::MapPersistent(AIMED),
+    ],
+];
+
+fn memory_types_where(world: &World, wanted: impl Fn(&MemoryType) -> bool) -> Vec<u32> {
+    world
+        .memory_types
+        .iter()
+        .enumerate()
+        .filter(|&(index, memory_type)| {
+            index < 32
+                && !world.is_tile_memory(memory_type)
+                && !memory_type.flags.intersects(AMD)
+                && !memory_type.flags.contains(PROTECTED)
+                && wanted(memory_type)
+        })
+        .map(|(index, _)| index as u32)
+        .collect()
+}
+
+fn has_room(world: &World, memory_type: &MemoryType) -> bool {
+    world
+        .heap_of(memory_type)
+        .is_none_or(|heap| heap.size == 0 || heap.size >= 1 << 16)
+}
+
+fn aimed_request(memory_type: u32) -> impl Strategy<Value = Request> {
+    (
+        1..=512u64,
+        (0u32..=8).prop_map(|shift| 1u64 << shift),
+        any::<bool>(),
+        any::<bool>(),
+    )
+        .prop_map(move |(size, alignment, linear, named)| Request {
+            linear,
+            named,
+            ..Request::plain(size, alignment, memory_type)
+        })
+}
+
+fn spans_inside(size: u64) -> impl Strategy<Value = Span> {
+    prop_oneof![
+        5 => (0..size, 1..=size).prop_map(move |(offset, length)| Span::Given {
+            offset,
+            size: length.min(size - offset),
+        }),
+        2 => (0..=size).prop_map(|offset| Span::Given { offset, size: 0 }),
+        1 => Just(Span::Given { offset: 1, size: u64::MAX }),
+        1 => spans(),
+    ]
+}
+
+fn guard_uses_inside(size: u64) -> impl Strategy<Value = GuardUse> {
+    (
+        any::<bool>(),
+        any::<bool>(),
+        any::<bool>(),
+        any::<bool>(),
+        0..size,
+        1..=size,
+    )
+        .prop_map(
+            move |(flush, invalidate, flush_range, invalidate_range, range_offset, range_size)| {
+                GuardUse {
+                    flush,
+                    invalidate,
+                    flush_range,
+                    invalidate_range,
+                    range_offset,
+                    range_size: range_size.min(size - range_offset),
+                }
+            },
+        )
+}
+
+fn synchronizations_of(size: u64) -> impl Strategy<Value = Op> {
+    prop_oneof![
+        2 => Just(Op::Flush(AIMED)),
+        2 => Just(Op::Invalidate(AIMED)),
+        2 => spans_inside(size).prop_map(|span| Op::FlushRange(AIMED, span)),
+        2 => spans_inside(size).prop_map(|span| Op::InvalidateRange(AIMED, span)),
+        1 => guard_uses_inside(size).prop_map(|guard_use| Op::Guard(AIMED, guard_use)),
+    ]
+}
+
+fn failing_synchronizations(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
+    prop::sample::select(memory_types)
+        .prop_flat_map(aimed_request)
+        .prop_flat_map(|request| {
+            (
+                prop::sample::select(MAPPED_STATES.to_vec()),
+                prop::collection::vec(
+                    (
+                        prop::sample::select(SYNCHRONIZATION_FAILURES.to_vec()),
+                        synchronizations_of(request.size),
+                    ),
+                    2..=6,
+                ),
+            )
+                .prop_map(move |(state, failing)| {
+                    let mut ops = vec![Op::Allocate(request)];
+                    ops.extend_from_slice(state);
+                    for (failure, synchronization) in failing {
+                        ops.push(Op::FailNextSynchronization(failure));
+                        ops.push(synchronization);
+                    }
+                    ops
+                })
+        })
+        .boxed()
+}
+
+fn faulty_maps(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
+    let faults = vec![
+        MapFault::ReturnsNull,
+        MapFault::Fails(MAP_FAILURES[0]),
+        MapFault::Fails(MAP_FAILURES[1]),
+        MapFault::Fails(MAP_FAILURES[2]),
+    ];
+    prop::sample::select(memory_types)
+        .prop_flat_map(aimed_request)
+        .prop_flat_map(move |request| {
+            let maps = prop_oneof![
+                Just(Op::MapMemory(AIMED)),
+                Just(Op::MapPersistent(AIMED)),
+                guard_uses_inside(request.size).prop_map(|guard_use| Op::Guard(AIMED, guard_use)),
+            ];
+            prop::collection::vec((prop::sample::select(faults.clone()), maps), 2..=6).prop_map(
+                move |faulty| {
+                    let mut ops = vec![Op::Allocate(request)];
+                    for (fault, map) in faulty {
+                        ops.push(Op::FaultNextMap(fault));
+                        ops.push(map);
+                    }
+                    ops
+                },
+            )
+        })
+        .boxed()
+}
+
+fn steps_that_keep_the_mapping_state(size: u64) -> impl Strategy<Value = Vec<Op>> {
+    prop_oneof![
+        3 => Just(vec![Op::Flush(AIMED)]),
+        3 => Just(vec![Op::Invalidate(AIMED)]),
+        3 => guard_uses_inside(size).prop_map(|guard_use| vec![Op::Guard(AIMED, guard_use)]),
+        3 => Just(vec![Op::MapMemory(AIMED), Op::UnmapMemory(AIMED)]),
+        3 => Just(vec![Op::UnmapMemory(AIMED), Op::MapMemory(AIMED)]),
+        1 => spans_inside(size).prop_map(|span| vec![Op::FlushRange(AIMED, span)]),
+        1 => spans_inside(size).prop_map(|span| vec![Op::InvalidateRange(AIMED, span)]),
+        2 => Just(vec![Op::MapPersistent(AIMED)]),
+        2 => Just(vec![Op::Free(AIMED)]),
+        1 => Just(vec![Op::MapMemory(AIMED)]),
+        1 => Just(vec![Op::UnmapMemory(AIMED)]),
+    ]
+}
+
+fn mapping_operations_in_every_state(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
+    let states = prop_oneof![
+        2 => Just(Vec::new()),
+        2 => Just(vec![Op::MapMemory(AIMED)]),
+        4 => Just(vec![Op::MapMemory(AIMED), Op::MapMemory(AIMED)]),
+        1 => Just(vec![Op::MapMemory(AIMED), Op::MapMemory(AIMED), Op::MapMemory(AIMED)]),
+        2 => Just(vec![Op::MapPersistent(AIMED)]),
+        2 => Just(vec![Op::MapMemory(AIMED), Op::MapPersistent(AIMED)]),
+        1 => Just(MAPPED_STATES[4].to_vec()),
+    ];
+    let neighbours = prop::option::weighted(
+        0.75,
+        (
+            1..=256u64,
+            prop::sample::select(vec![
+                &[][..],
+                &[Op::MapMemory(BESIDE_AIMED)][..],
+                &[Op::MapPersistent(BESIDE_AIMED)][..],
+            ]),
+        ),
+    );
+    prop::sample::select(memory_types)
+        .prop_flat_map(move |memory_type| {
+            (
+                aimed_request(memory_type),
+                neighbours.clone(),
+                states.clone(),
+            )
+                .prop_map(move |(request, neighbour, state)| {
+                    let mut ops = vec![Op::Allocate(request)];
+                    if let Some((size, mapping)) = neighbour {
+                        ops.push(Op::Allocate(Request {
+                            linear: request.linear,
+                            ..Request::plain(size, 1, memory_type)
+                        }));
+                        ops.extend_from_slice(mapping);
+                    }
+                    ops.extend(state);
+                    (request.size, ops)
+                })
+        })
+        .prop_flat_map(|(size, setup)| {
+            prop::collection::vec(steps_that_keep_the_mapping_state(size), 2..=12).prop_map(
+                move |steps| {
+                    let mut ops = setup.clone();
+                    ops.extend(steps.into_iter().flatten());
+                    ops
+                },
+            )
+        })
+        .boxed()
+}
+
+fn mappings_that_share_a_block(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
+    let neighbour_mappings = prop::sample::select(vec![
+        Op::MapMemory(BESIDE_AIMED),
+        Op::MapPersistent(BESIDE_AIMED),
+    ]);
+    let uses = prop_oneof![
+        Just(vec![Op::MapPersistent(AIMED), Op::Free(AIMED)]),
+        neighbour_mappings.clone().prop_map(|mapping| vec![
+            mapping,
+            Op::MapMemory(AIMED),
+            Op::UnmapMemory(AIMED)
+        ]),
+        (
+            neighbour_mappings,
+            prop::sample::select(vec![
+                Op::MapMemory(AIMED),
+                Op::MapPersistent(AIMED),
+                Op::Guard(
+                    AIMED,
+                    GuardUse {
+                        flush: true,
+                        invalidate: true,
+                        flush_range: false,
+                        invalidate_range: false,
+                        range_offset: 0,
+                        range_size: 0,
+                    }
+                ),
+            ]),
+        )
+            .prop_map(|(mapping, map)| vec![mapping, map]),
+    ];
+    (
+        prop::sample::select(memory_types),
+        1..=64u64,
+        1..=64u64,
+        any::<bool>(),
+        uses,
+    )
+        .prop_map(|(memory_type, size, neighbour_size, linear, uses)| {
+            let mut ops = vec![
+                Op::Allocate(Request {
+                    linear,
+                    ..Request::plain(size, 1, memory_type)
+                }),
+                Op::Allocate(Request {
+                    linear,
+                    ..Request::plain(neighbour_size, 1, memory_type)
+                }),
+            ];
+            ops.extend(uses);
+            ops
+        })
+        .boxed()
+}
+
+fn stale_and_foreign_handles(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
+    let releases = prop::sample::select(vec![
+        &[Op::Free(AIMED)][..],
+        &[Op::FreeAll][..],
+        &[Op::FreeAll, Op::FreeAll][..],
+    ]);
+    let uses = prop_oneof![
+        3 => (0..3u16, handle_uses())
+            .prop_map(|(index, handle_use)| Op::UseStale(Pick::any(index), handle_use)),
+        1 => (0..3u16, handle_uses())
+            .prop_map(|(index, handle_use)| Op::UseForeign(Pick::any(index), handle_use)),
+    ];
+    prop::collection::vec(
+        prop::sample::select(memory_types).prop_flat_map(aimed_request),
+        1..=3,
+    )
+    .prop_flat_map(move |requests| {
+        (
+            releases.clone(),
+            any::<bool>(),
+            prop::collection::vec(uses.clone(), 3..=10),
+        )
+            .prop_map(move |(release, again, uses)| {
+                let mut ops = requests
+                    .iter()
+                    .map(|&request| Op::Allocate(request))
+                    .collect::<Vec<_>>();
+                ops.extend_from_slice(release);
+                if again {
+                    ops.push(Op::Allocate(requests[0]));
+                }
+                ops.extend(uses);
+                ops
+            })
+    })
+    .boxed()
+}
+
+fn memory_types_to_try(world: &World, request: &Request) -> usize {
+    let mut left_out = Vec::new();
+    while let Some(memory_type) = documented_memory_type_without(world, request, &left_out) {
+        left_out.push(memory_type);
+    }
+    left_out.len()
+}
+
+fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
+    let any_memory_type = Request {
+        memory_type_bits: u32::MAX,
+        ..Request::plain(1, 1, 0)
+    };
+    let candidates = memory_types_to_try(world, &any_memory_type);
+    let heap_limited = memory_types_where(world, |memory_type| {
+        world
+            .heap_of(memory_type)
+            .is_some_and(|heap| heap.size != 0 && heap.size < u64::MAX)
+    })
+    .into_iter()
+    .map(|memory_type| (memory_type, world.known_heap_size(memory_type).unwrap()))
+    .collect::<Vec<_>>();
+    let world = world.clone();
+    prop::sample::select(memory_types)
+        .prop_flat_map(move |memory_type| {
+            let small = Request::plain(1, 1, memory_type);
+            let big = Request::plain(world.shared_block_size(memory_type) / 2 + 1, 1, memory_type);
+            let out_of_device_memory = vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY;
+            let mut variants: Vec<(u32, BoxedStrategy<Vec<Op>>)> = vec![
+                (
+                    4,
+                    prop_oneof![
+                        Just(None),
+                        Just(Some(out_of_device_memory)),
+                        prop::sample::select(OTHER_ALLOCATION_FAILURES.to_vec()).prop_map(Some),
+                    ]
+                    .prop_map(move |retry| {
+                        let mut ops = vec![
+                            Op::Allocate(small),
+                            Op::Free(AIMED),
+                            Op::FailNextAllocation(out_of_device_memory),
+                        ];
+                        ops.extend(retry.map(Op::FailNextAllocation));
+                        ops.push(Op::Allocate(Request {
+                            scheme: Scheme::DedicatedBuffer,
+                            ..small
+                        }));
+                        ops
+                    })
+                    .boxed(),
+                ),
+                (
+                    2,
+                    prop::sample::select(vec![(candidates - 1).max(1), candidates, candidates])
+                        .prop_map(move |failures| {
+                            let mut ops =
+                                vec![Op::FailNextAllocation(out_of_device_memory); failures];
+                            ops.push(Op::Allocate(any_memory_type));
+                            ops
+                        })
+                        .boxed(),
+                ),
+                (
+                    2,
+                    (prop::bool::weighted(0.3), any::<bool>())
+                        .prop_map(move |(between, free_empty_blocks)| {
+                            let mut ops =
+                                vec![Op::Allocate(big), Op::Allocate(big), Op::Free(AIMED)];
+                            if between {
+                                ops.push(Op::Allocate(small));
+                            }
+                            ops.push(Op::Free(AIMED));
+                            if free_empty_blocks {
+                                ops.push(Op::FreeEmptyBlocks);
+                            }
+                            ops
+                        })
+                        .boxed(),
+                ),
+                (
+                    2,
+                    Just(vec![
+                        Op::Allocate(small),
+                        Op::Allocate(Request {
+                            device_address: true,
+                            ..small
+                        }),
+                        Op::Free(AIMED),
+                        Op::Free(AIMED),
+                    ])
+                    .boxed(),
+                ),
+            ];
+            if !heap_limited.is_empty() {
+                variants.push((
+                    2,
+                    (prop::sample::select(heap_limited.clone()), 1..=2u64)
+                        .prop_map(move |((memory_type, heap_size), times)| {
+                            let larger = Request::plain(heap_size * times + 1, 1, memory_type);
+                            vec![
+                                Op::Allocate(Request {
+                                    alignment: 3,
+                                    ..larger
+                                }),
+                                Op::Allocate(Request {
+                                    device_mask: true,
+                                    ..larger
+                                }),
+                                Op::Allocate(Request {
+                                    memory_type_bits: u32::MAX,
+                                    ..larger
+                                }),
+                            ]
+                        })
+                        .boxed(),
+                ));
+            }
+            prop::collection::vec(Union::new_weighted(variants), 1..=4)
+                .prop_map(|variants| variants.join(&Op::FreeAll))
+        })
+        .boxed()
+}
+
+impl Aim {
+    fn memory_types(self, world: &World) -> Vec<u32> {
+        match self {
+            Aim::FailingSynchronizations => memory_types_where(world, |memory_type| {
+                has_room(world, memory_type)
+                    && memory_type.flags.contains(VISIBLE)
+                    && !memory_type.flags.contains(COHERENT)
+            }),
+            Aim::FaultyMaps | Aim::MappingOperationsInEveryState | Aim::MappingsThatShareABlock => {
+                memory_types_where(world, |memory_type| {
+                    has_room(world, memory_type) && memory_type.flags.contains(VISIBLE)
+                })
+            }
+            Aim::StaleAndForeignHandles | Aim::BlocksAndFailedAllocations => {
+                memory_types_where(world, |memory_type| has_room(world, memory_type))
+            }
+        }
+    }
+
+    fn episodes(self, world: &World) -> Option<BoxedStrategy<Vec<Op>>> {
+        let memory_types = self.memory_types(world);
+        if memory_types.is_empty() {
+            return None;
+        }
+        Some(match self {
+            Aim::FailingSynchronizations => failing_synchronizations(memory_types),
+            Aim::FaultyMaps => faulty_maps(memory_types),
+            Aim::MappingOperationsInEveryState => mapping_operations_in_every_state(memory_types),
+            Aim::MappingsThatShareABlock => mappings_that_share_a_block(memory_types),
+            Aim::StaleAndForeignHandles => stale_and_foreign_handles(memory_types),
+            Aim::BlocksAndFailedAllocations => blocks_and_failed_allocations(world, memory_types),
+        })
+    }
+}
+
+pub fn aimed_scenarios(aims: &[Aim]) -> impl Strategy<Value = Scenario> + use<> {
+    let aims = aims.to_vec();
+    let applicable = aims.clone();
+    worlds()
+        .prop_filter("no aim applies to the world", move |world| {
+            applicable
+                .iter()
+                .any(|aim| !aim.memory_types(world).is_empty())
+        })
+        .prop_flat_map(move |world| {
+            let episodes = Union::new(aims.iter().filter_map(|aim| aim.episodes(&world)));
+            (prop::collection::vec(episodes, 1..=4), mixes(), Just(world))
+        })
+        .prop_flat_map(|(episodes, mix, world)| {
+            prop::collection::vec(ops(&world, mix), 0..=16).prop_map(move |tail| {
+                let mut ops = Vec::new();
+                for episode in &episodes {
+                    ops.extend_from_slice(episode);
+                    ops.push(Op::FreeAll);
+                }
+                ops.extend(tail);
+                Scenario {
+                    world: world.clone(),
+                    mix,
+                    ops,
+                }
+            })
+        })
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Coverage {
     pub events: BTreeMap<String, u64>,
