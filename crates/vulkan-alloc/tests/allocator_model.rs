@@ -2,31 +2,39 @@ mod fake_device;
 mod model;
 
 use model::{
-    Coverage, GuardUse, Harness, Mix, Op, Pick, Request, Scenario, World, config, scenarios,
+    AIMS, Coverage, GuardUse, Harness, Mix, Op, Pick, Request, Scenario, World, aimed_scenarios,
+    config, scenarios,
 };
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
 use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
 
 proptest! {
-    #![proptest_config(config(96))]
+    #![proptest_config(config(128))]
 
     #[test]
-    fn every_sequence_of_operations_behaves_as_the_documentation_says(scenario in scenarios(80)) {
+    fn every_sequence_of_operations_behaves_as_the_documentation_says(
+        scenario in prop_oneof![3 => scenarios(80), 1 => aimed_scenarios(&AIMS)]
+    ) {
         Harness::run(&scenario).map_err(TestCaseError::fail)?;
     }
 }
 
-fn coverage_of(scenario_count: usize, longest: usize) -> Coverage {
+const RANDOM_SCENARIOS: usize = 400;
+const SCENARIOS_OF_EACH_AIM: usize = 60;
+const LEAST_REACHED: u64 = 10;
+
+fn coverage_of(strategy: impl Strategy<Value = Scenario>, scenario_count: usize) -> Coverage {
     let mut runner = TestRunner::new_with_rng(
         ProptestConfig::default(),
         TestRng::deterministic_rng(RngAlgorithm::ChaCha),
     );
-    let strategy = scenarios(longest);
     let mut coverage = Coverage::default();
     for _ in 0..scenario_count {
         let scenario = strategy.new_tree(&mut runner).unwrap().current();
-        coverage.merge(&Harness::run(&scenario).unwrap());
+        let reached =
+            Harness::run(&scenario).unwrap_or_else(|problem| panic!("{scenario:?}: {problem}"));
+        coverage.merge(&reached);
     }
     coverage
 }
@@ -48,32 +56,50 @@ const MAPPING_OPERATIONS: [&str; 7] = [
     "free ",
 ];
 
-fn assert_every_mapping_operation_met_every_mapping_state(coverage: &Coverage) {
+fn mapping_operations_in_mapping_states(coverage: &Coverage) -> Vec<(String, u64)> {
+    let mut reached = Vec::new();
     for state in MAPPING_STATES {
         for operation in MAPPING_OPERATIONS {
-            assert!(
-                coverage.events.keys().any(|event| {
+            let count = coverage
+                .events
+                .iter()
+                .filter(|(event, _)| {
                     event.starts_with(operation) && event.ends_with(&format!(": {state}"))
-                }),
-                "no {operation}on an allocation that is {state}"
-            );
+                })
+                .map(|(_, count)| count)
+                .sum();
+            reached.push((
+                format!("{operation}on an allocation that is {state}"),
+                count,
+            ));
         }
+    }
+    reached
+}
+
+fn assert_every_mapping_operation_met_every_mapping_state(coverage: &Coverage) {
+    for (operation_in_state, count) in mapping_operations_in_mapping_states(coverage) {
+        assert!(count > 0, "no {operation_in_state}");
     }
 }
 
 #[test]
 fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
-    let coverage = coverage_of(1600, 80);
+    let random = coverage_of(scenarios(80), RANDOM_SCENARIOS);
+    let mut coverage = random.clone();
+    for aim in AIMS {
+        coverage.merge(&coverage_of(aimed_scenarios(&[aim]), SCENARIOS_OF_EACH_AIM));
+    }
     for (event, count) in &coverage.events {
         println!("{count:>8}  {event}");
     }
-    println!("{} pairs of consecutive outcomes", coverage.pairs.len());
+    println!("{} pairs of consecutive outcomes", random.pairs.len());
 
-    assert_every_mapping_operation_met_every_mapping_state(&coverage);
+    let mut required = mapping_operations_in_mapping_states(&coverage);
+    let mut require = |event: &str| required.push((event.to_string(), coverage.count(event)));
     for handle_use in model::HANDLE_USES {
         for handle in ["stale", "foreign"] {
-            let event = format!("{handle} handle: {handle_use:?}");
-            assert!(coverage.count(&event) > 0, "never reached: {event}");
+            require(&format!("{handle} handle: {handle_use:?}"));
         }
     }
     for event in [
@@ -148,7 +174,7 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         "Flush through the guard makes no Vulkan call for coherent memory",
         "Invalidate through the guard makes no Vulkan call for coherent memory",
     ] {
-        assert!(coverage.count(event) > 0, "never reached: {event}");
+        require(event);
     }
     for name in ["flush_allocation_range", "invalidate_allocation_range"] {
         for outcome in [
@@ -161,8 +187,7 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
             "fails on the device with ERROR_OUT_OF_HOST_MEMORY",
             "of a part of the allocation",
         ] {
-            let event = format!("{name} {outcome}");
-            assert!(coverage.count(&event) > 0, "never reached: {event}");
+            require(&format!("{name} {outcome}"));
         }
     }
     for name in ["flush_range", "invalidate_range"] {
@@ -172,13 +197,20 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
             " of 0 bytes",
             " of coherent memory",
         ] {
-            let event = format!("{name} through the guard{outcome}");
-            assert!(coverage.count(&event) > 0, "never reached: {event}");
+            require(&format!("{name} through the guard{outcome}"));
         }
     }
+    let seldom = required
+        .iter()
+        .filter(|&&(_, count)| count < LEAST_REACHED)
+        .collect::<Vec<_>>();
+    assert!(
+        seldom.is_empty(),
+        "outcomes reached fewer than {LEAST_REACHED} times: {seldom:?}"
+    );
 
     let count = |prefix: &str| {
-        coverage
+        random
             .events
             .iter()
             .filter(|(event, _)| event.starts_with(prefix))
@@ -205,7 +237,7 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         "few unmap_memory calls release a mapping"
     );
     assert!(
-        coverage.pairs.len() > 1500,
+        random.pairs.len() > 1500,
         "few pairs of consecutive outcomes"
     );
 }
