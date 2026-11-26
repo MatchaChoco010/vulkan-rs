@@ -151,7 +151,8 @@ pub struct Allocation {
 impl Allocation {
     /// The `VkDeviceMemory` that holds the range. Other allocations may share it unless
     /// this one is dedicated, exportable or zero-initialized
-    /// ([`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]).
+    /// ([`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]), which
+    /// [`Allocation::is_dedicated`] tells.
     pub fn memory(&self) -> vk::DeviceMemory {
         self.memory
     }
@@ -202,8 +203,8 @@ impl Allocation {
         self.memory_properties
     }
 
-    /// Whether [`Allocation::memory`] is a `VkDeviceMemory` of this allocation alone: it
-    /// was made with [`AllocationScheme::DedicatedBuffer`] or
+    /// Whether the allocation was given a `VkDeviceMemory` of its own because of how it
+    /// was requested: it was made with [`AllocationScheme::DedicatedBuffer`] or
     /// [`AllocationScheme::DedicatedImage`], with
     /// [`AllocationCreateDesc::export_handle_types`] that are not empty, or with
     /// [`AllocationCreateDesc::memory_allocate_flags`] that contain
