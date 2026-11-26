@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow, ensure};
 use std::ptr::NonNull;
 use vulkan::vk;
-use vulkan_alloc::{Allocation, AllocationCreateDesc, AllocationScheme, MemoryLocation};
+use vulkan_alloc::{Allocation, AllocationCreateDesc, MemoryLocation};
 
 use crate::commands::submit_and_wait;
 use crate::device::{Destroy, Gpu, GpuOwner, Owned};
@@ -62,12 +62,8 @@ pub unsafe fn create_aligned_buffer(
         let allocation = gpu.with_allocator(|allocator| {
             allocator.allocate(AllocationCreateDesc {
                 name: Some(name),
-                requirements,
-                location,
-                linear: true,
                 memory_allocate_flags,
-                export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                ..AllocationCreateDesc::new(requirements, location, true)
             })
         })?;
         // From here the buffer and its memory go together.
@@ -317,12 +313,11 @@ pub unsafe fn create_image(
         let allocation = gpu.with_allocator(|allocator| {
             allocator.allocate(AllocationCreateDesc {
                 name: Some(name),
-                requirements,
-                location: MemoryLocation::GpuOnly,
-                linear: is_linear_image(info.tiling, modifier),
-                memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-                export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-                allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+                ..AllocationCreateDesc::new(
+                    requirements,
+                    MemoryLocation::GpuOnly,
+                    is_linear_image(info.tiling, modifier),
+                )
             })
         })?;
         // From here the image and its memory go together.

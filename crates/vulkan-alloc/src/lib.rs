@@ -15,10 +15,11 @@
 //!    takes the [`vulkan::Device`] and the memory properties and properties of the
 //!    physical device it was created from.
 //! 2. Create a buffer or an image and query its memory requirements.
-//! 3. Describe the memory in an [`AllocationCreateDesc`] and pass it to
-//!    [`Allocator::allocate`]. The [`MemoryLocation`] chooses the memory type; the
-//!    memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is
-//!    host-visible and host-coherent.
+//! 3. Describe the memory in an [`AllocationCreateDesc`], made with
+//!    [`AllocationCreateDesc::new`], and pass it to [`Allocator::allocate`]. The
+//!    [`MemoryLocation`] chooses the memory type; the memory of
+//!    [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is host-visible and
+//!    host-coherent.
 //! 4. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`]. The
 //!    allocator does not bind anything itself.
 //! 5. Access host-visible memory through one of the mapping functions (see
@@ -30,9 +31,7 @@
 //!
 //! ```no_run
 //! use vulkan::{Device, Instance, vk};
-//! use vulkan_alloc::{
-//!     AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc, MemoryLocation,
-//! };
+//! use vulkan_alloc::{AllocationCreateDesc, Allocator, AllocatorCreateDesc, MemoryLocation};
 //!
 //! unsafe fn upload(
 //!     instance: &Instance,
@@ -55,12 +54,11 @@
 //!         )?;
 //!         let allocation = allocator.allocate(AllocationCreateDesc {
 //!             name: Some("uniforms"),
-//!             requirements: device.get_buffer_memory_requirements(buffer),
-//!             location: MemoryLocation::CpuToGpu,
-//!             linear: true,
-//!             memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-//!             export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-//!             allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+//!             ..AllocationCreateDesc::new(
+//!                 device.get_buffer_memory_requirements(buffer),
+//!                 MemoryLocation::CpuToGpu,
+//!                 true,
+//!             )
 //!         })?;
 //!         device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
 //!

@@ -323,15 +323,7 @@ fn desc(
     requirements: vk::MemoryRequirements,
     location: MemoryLocation,
 ) -> AllocationCreateDesc<'static> {
-    AllocationCreateDesc {
-        name: None,
-        requirements,
-        location,
-        linear: true,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }
+    AllocationCreateDesc::new(requirements, location, true)
 }
 
 #[test]
@@ -1119,13 +1111,9 @@ impl<'g> Sequence<'g> {
                 .map(|block| block.memory)
                 .collect::<Vec<_>>();
             let allocation = match self.allocator.allocate(AllocationCreateDesc {
-                name: None,
-                requirements,
-                location,
-                linear,
                 memory_allocate_flags,
-                export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
                 allocation_scheme,
+                ..AllocationCreateDesc::new(requirements, location, linear)
             }) {
                 Ok(allocation) => allocation,
                 Err(e) => {

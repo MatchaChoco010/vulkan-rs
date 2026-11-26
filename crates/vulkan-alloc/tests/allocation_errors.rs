@@ -143,22 +143,18 @@ fn description(
     memory_type_bits: u32,
     linear: bool,
 ) -> AllocationCreateDesc<'static> {
-    AllocationCreateDesc {
-        name: None,
-        requirements: vk::MemoryRequirements {
+    AllocationCreateDesc::new(
+        vk::MemoryRequirements {
             size,
             alignment,
             memory_type_bits,
         },
-        location: MemoryLocation::custom(
+        MemoryLocation::custom(
             vk::MemoryPropertyFlags::empty(),
             vk::MemoryPropertyFlags::empty(),
         ),
         linear,
-        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
-        export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
-        allocation_scheme: AllocationScheme::GpuAllocatorManaged,
-    }
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
