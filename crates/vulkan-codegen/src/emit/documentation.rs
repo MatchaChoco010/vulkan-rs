@@ -322,7 +322,7 @@ fn members_and_parameters_carry_everything_that_the_specification_attaches_to_th
     assert_eq!(
         doc_of(&structs::emit(&model), "pub queue_count:"),
         [
-            "`queueCount` is the number of queues, in the range \\[1,[`VK_MAX_QUEUES`](MAX_QUEUES)\\] .",
+            "`queueCount` is the number of queues, in the range \\[1,[`VK_MAX_QUEUES`](MAX_QUEUES)\\].",
             "The queues are:",
             "- created first - destroyed last",
             "> **Note** > > Queues are cheap.",

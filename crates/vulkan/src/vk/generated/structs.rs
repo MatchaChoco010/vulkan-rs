@@ -12213,7 +12213,7 @@ pub struct AccelerationStructureInstanceKHR {
     /// The storage unit of the C bit-fields `instanceShaderBindingTableRecordOffset` and `flags`.
     /// The methods named after the bit-fields read and write them.
     pub bitfield1: u32,
-    /// `accelerationStructureReference` is either :
+    /// `accelerationStructureReference` is either:
     ///
     /// - a device address containing the value obtained from
     ///   [`vkGetAccelerationStructureDeviceAddressKHR`](crate::Device::get_acceleration_structure_device_address_khr)
@@ -29943,7 +29943,7 @@ pub union DescriptorDataEXT<'a> {
     /// `accelerationStructure` is the address of a
     /// [`VkAccelerationStructureKHR`](AccelerationStructureKHR) specifying the parameters of a
     /// [`VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR`](DescriptorType::ACCELERATION_STRUCTURE_KHR)
-    /// descriptor , or a [`VkAccelerationStructureNV`](AccelerationStructureNV) handle specifying
+    /// descriptor, or a [`VkAccelerationStructureNV`](AccelerationStructureNV) handle specifying
     /// the parameters of a
     /// [`VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV`](DescriptorType::ACCELERATION_STRUCTURE_NV)
     /// descriptor.
@@ -59825,7 +59825,7 @@ pub struct PhysicalDeviceBufferDeviceAddressFeatures<'a> {
     /// reusing buffer and device addresses, e.g. for trace capture and replay.
     pub buffer_device_address_capture_replay: Bool32,
     /// `bufferDeviceAddressMultiDevice` indicates that the implementation supports the
-    /// `bufferDeviceAddress` , `rayTracingPipeline` and `rayQuery` features for logical devices
+    /// `bufferDeviceAddress`, `rayTracingPipeline` and `rayQuery` features for logical devices
     /// created with multiple physical devices. If this feature is not supported, buffer and
     /// acceleration structure addresses must not be queried on a logical device created with more
     /// than one physical device.
@@ -64019,7 +64019,7 @@ pub struct PhysicalDeviceDescriptorBufferPropertiesEXT<'a> {
     /// retrieve descriptor data can be created in relation to command buffer submission. If this
     /// value is [`VK_FALSE`](FALSE), then the application must create any [`VkSampler`](Sampler) or
     /// [`VkImageView`](ImageView) objects whose descriptor data is accessed during the execution of
-    /// a command buffer, before the [`vkQueueSubmit`](crate::Device::queue_submit) , or
+    /// a command buffer, before the [`vkQueueSubmit`](crate::Device::queue_submit), or
     /// [`vkQueueSubmit2`](crate::Device::queue_submit2), call that submits that command buffer.
     pub allow_sampler_image_view_post_submit_creation: Bool32,
     /// `descriptorBufferOffsetAlignment` indicates the required alignment in bytes when setting
@@ -75895,56 +75895,128 @@ pub struct PhysicalDeviceLimits {
     /// member of the [`VkFramebufferCreateInfo`](FramebufferCreateInfo) structure must be less than
     /// or equal to this limit.
     pub max_framebuffer_layers: u32,
-    /// `framebufferColorSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferColorSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the color sample counts that are
     /// supported for all framebuffer color attachments with floating- or fixed-point formats. For
     /// color attachments with integer formats, see `framebufferIntegerColorSampleCounts`.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_color_sample_counts: SampleCountFlags,
-    /// `framebufferDepthSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferDepthSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the supported depth sample counts
     /// for all framebuffer depth/stencil attachments, when the format includes a depth component.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_depth_sample_counts: SampleCountFlags,
-    /// `framebufferStencilSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferStencilSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the supported stencil sample
     /// counts for all framebuffer depth/stencil attachments, when the format includes a stencil
     /// component.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_stencil_sample_counts: SampleCountFlags,
-    /// `framebufferNoAttachmentsSampleCounts` is a bitmask<sup>1</sup> of
+    /// `framebufferNoAttachmentsSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the supported sample counts for a
     /// subpass which uses no attachments.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub framebuffer_no_attachments_sample_counts: SampleCountFlags,
     /// `maxColorAttachments` is the maximum number of color attachments that can be used by a
     /// subpass in a render pass. The `colorAttachmentCount` member of the `VkSubpassDescription` or
     /// `VkSubpassDescription2` structure must be less than or equal to this limit.
     pub max_color_attachments: u32,
-    /// `sampledImageColorSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageColorSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and a
     /// non-integer color format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_color_sample_counts: SampleCountFlags,
-    /// `sampledImageIntegerSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageIntegerSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and an integer
     /// color format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_integer_sample_counts: SampleCountFlags,
-    /// `sampledImageDepthSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageDepthSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and a depth
     /// format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_depth_sample_counts: SampleCountFlags,
-    /// `sampledImageStencilSampleCounts` is a bitmask<sup>1</sup> of
+    /// `sampledImageStencilSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), the
     /// [`VK_IMAGE_USAGE_SAMPLED_BIT`](ImageUsageFlagBits::SAMPLED) usage flag set, and a stencil
     /// format.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub sampled_image_stencil_sample_counts: SampleCountFlags,
-    /// `storageImageSampleCounts` is a bitmask<sup>1</sup> of
+    /// `storageImageSampleCounts` is a bitmask (note 1) of
     /// [`VkSampleCountFlagBits`](SampleCountFlagBits) indicating the sample counts supported for
     /// all 2D images created with [`VK_IMAGE_TILING_OPTIMAL`](ImageTiling::OPTIMAL), and the
     /// [`VK_IMAGE_USAGE_STORAGE_BIT`](ImageUsageFlagBits::STORAGE) usage flag set.
+    ///
+    /// > **Note 1**
+    /// >
+    /// > For all bitmasks of [`VkSampleCountFlagBits`](SampleCountFlagBits), the sample count
+    /// > limits defined above represent the minimum supported sample counts for each image type.
+    /// > Individual images may support additional sample counts, which are queried using
+    /// > [`vkGetPhysicalDeviceImageFormatProperties`](crate::Instance::get_physical_device_image_format_properties)
+    /// > as described in Supported Sample Counts.
     pub storage_image_sample_counts: SampleCountFlags,
     /// `maxSampleMaskWords` is the maximum number of array elements of a variable decorated with
     /// the `SampleMask` built-in decoration.
@@ -78304,7 +78376,7 @@ pub struct PhysicalDeviceMaintenance9PropertiesKHR<'a> {
     /// [`VkVertexInputAttributeDescription2EXT`](VertexInputAttributeDescription2EXT)::`location`
     /// set by the most recent call to
     /// [`vkCmdSetVertexInputEXT`](crate::Device::cmd_set_vertex_input_ext) when the state is
-    /// dynamic .
+    /// dynamic.
     pub default_vertex_attribute_value: DefaultVertexAttributeValueKHR,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -92286,7 +92358,7 @@ pub struct PhysicalDeviceSubgroupSizeControlFeatures<'a> {
     /// structure.
     pub subgroup_size_control: Bool32,
     /// `computeFullSubgroups` indicates whether the implementation supports requiring full
-    /// subgroups in compute , mesh, or task shaders via the
+    /// subgroups in compute, mesh, or task shaders via the
     /// [`VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT`](PipelineShaderStageCreateFlagBits::REQUIRE_FULL_SUBGROUPS)
     /// flag.
     pub compute_full_subgroups: Bool32,
@@ -95599,6 +95671,15 @@ pub struct PhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE<'a> {
     pub p_next: *mut c_void,
     /// `videoEncodeRgbConversion` specifies that the implementation supports video encode RGB
     /// conversion.
+    ///
+    /// If the `VkPhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE` structure is included in the
+    /// `pNext` chain of the [`VkPhysicalDeviceFeatures2`](PhysicalDeviceFeatures2) structure passed
+    /// to [`vkGetPhysicalDeviceFeatures2`](crate::Instance::get_physical_device_features2), it is
+    /// filled in to indicate whether each corresponding feature is supported. If the application
+    /// wishes to use a [`VkDevice`](Device) with any features described by
+    /// `VkPhysicalDeviceVideoEncodeRgbConversionFeaturesVALVE`, it must add an instance of the
+    /// structure, with the desired feature members set to [`VK_TRUE`](TRUE), to the `pNext` chain
+    /// of [`VkDeviceCreateInfo`](DeviceCreateInfo) when creating the [`VkDevice`](Device).
     pub video_encode_rgb_conversion: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -96514,7 +96595,7 @@ pub struct PhysicalDeviceVulkan12Features<'a> {
     /// reusing buffer and device addresses, e.g. for trace capture and replay.
     pub buffer_device_address_capture_replay: Bool32,
     /// `bufferDeviceAddressMultiDevice` indicates that the implementation supports the
-    /// `bufferDeviceAddress` , `rayTracingPipeline` and `rayQuery` features for logical devices
+    /// `bufferDeviceAddress`, `rayTracingPipeline` and `rayQuery` features for logical devices
     /// created with multiple physical devices. If this feature is not supported, buffer and
     /// acceleration structure addresses must not be queried on a logical device created with more
     /// than one physical device.
@@ -97720,7 +97801,7 @@ pub struct PhysicalDeviceVulkan13Features<'a> {
     /// structure.
     pub subgroup_size_control: Bool32,
     /// `computeFullSubgroups` indicates whether the implementation supports requiring full
-    /// subgroups in compute , mesh, or task shaders via the
+    /// subgroups in compute, mesh, or task shaders via the
     /// [`VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT`](PipelineShaderStageCreateFlagBits::REQUIRE_FULL_SUBGROUPS)
     /// flag.
     pub compute_full_subgroups: Bool32,
@@ -120010,9 +120091,9 @@ pub struct SwapchainCreateInfoKHR<'a> {
     /// >
     /// > On some platforms, it is normal that `maxImageExtent` may become `(0, 0)`, for example
     /// > when the window is minimized. In such a case, it is not possible to create a swapchain due
-    /// > to the Valid Usage requirements , unless scaling is selected through
+    /// > to the Valid Usage requirements, unless scaling is selected through
     /// > [`VkSwapchainPresentScalingCreateInfoKHR`](SwapchainPresentScalingCreateInfoKHR), if
-    /// > supported .
+    /// > supported.
     pub image_extent: Extent2D,
     /// `imageArrayLayers` is the number of views in a multiview/stereo surface. For
     /// non-stereoscopic-3D applications, this value is 1.

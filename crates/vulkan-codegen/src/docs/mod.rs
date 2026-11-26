@@ -14,7 +14,7 @@ use crate::model::{Cfg, Model, parse_version};
 use crate::naming::type_name;
 use asciidoc::{Converted, Converter, Link, Unsupported, code_span};
 use items::Part;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use tables::Cell;
 use vulkan_registry::{DocPage, DocTable};
 
@@ -146,14 +146,12 @@ impl<'a> Model<'a> {
     pub(crate) fn described(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
         let page = self.page(owner)?;
         let described = other_names::described(page, item)?;
-        let text = &described.item.text;
-        let parts = match items::read(text) {
-            Ok(parts) => parts,
-            Err(Unsupported::Include) => return None,
-            Err(unsupported) => panic!(
-                "the description of {item} on the page {} cannot be read ({unsupported:?}): {text}",
-                page.name
-            ),
+        let mut parts = item_parts(page, item, &described.item.text);
+        let notes = notes_of(page);
+        items::take_notes(&mut parts);
+        let marks = match notes.is_empty() {
+            true => BTreeSet::new(),
+            false => items::refer_to_notes(&mut parts),
         };
         let mut blocks = self.blocks(from, &page.name, item, parts);
         if let (Some(other), Some(Block::Text(lead))) =
@@ -163,6 +161,11 @@ impl<'a> Model<'a> {
                 "`{item}`, which the specification describes under the name `{other}`: {lead}"
             );
         }
+        for number in marks {
+            let mut note = vec![Block::Text(format!("**Note {number}**"))];
+            note.extend(self.blocks(from, &page.name, item, notes[&number].clone()));
+            blocks.push(Block::Quote(note));
+        }
         Some(blocks)
     }
 
@@ -170,11 +173,23 @@ impl<'a> Model<'a> {
         let mut blocks = Vec::new();
         for part in parts {
             blocks.push(match part {
-                Part::Paragraph(text) => Block::Text(self.markdown(from, page, own, &text)),
+                Part::Paragraph(text) => Block::Text(without_space_before_punctuation(
+                    &self.markdown(from, page, own, &text),
+                )),
                 Part::List(items) => Block::List(
                     items
                         .into_iter()
                         .map(|item| self.blocks(from, page, own, item))
+                        .collect(),
+                ),
+                Part::Terms(items) => Block::List(
+                    items
+                        .into_iter()
+                        .map(|(term, parts)| {
+                            let mut item = vec![Block::Text(self.markdown(from, page, own, &term))];
+                            item.extend(self.blocks(from, page, own, parts));
+                            item
+                        })
                         .collect(),
                 ),
                 Part::Admonition {
@@ -334,6 +349,62 @@ impl<'a> Model<'a> {
             .alias(c_name)
             .of_item(&type_name(c_name))
     }
+}
+
+fn item_parts(page: &DocPage, item: &str, text: &str) -> Vec<Part> {
+    items::read(text).unwrap_or_else(|unsupported| {
+        panic!(
+            "the description of {item} on the page {} cannot be read ({unsupported:?}): {text}",
+            page.name
+        )
+    })
+}
+
+fn notes_of(page: &DocPage) -> BTreeMap<u32, Vec<Part>> {
+    let mut notes = BTreeMap::new();
+    if !page
+        .items
+        .iter()
+        .any(|item| items::may_have_notes(&item.text))
+    {
+        return notes;
+    }
+    let mut marks = BTreeSet::new();
+    for item in &page.items {
+        let mut parts = item_parts(page, &item.name, &item.text);
+        for (number, note) in items::take_notes(&mut parts) {
+            let twice = notes.insert(number, note).is_some();
+            assert!(!twice, "the page {} has two notes {number}", page.name);
+        }
+        marks.extend(items::refer_to_notes(&mut parts));
+    }
+    let numbers = notes.keys().copied().collect::<BTreeSet<_>>();
+    assert!(
+        notes.is_empty() || marks == numbers,
+        "the notes {numbers:?} and the marks {marks:?} on the page {} do not pair up",
+        page.name
+    );
+    notes
+}
+
+const CLOSING_PUNCTUATION: [char; 7] = ['.', ',', ';', ':', '!', '?', ')'];
+
+fn without_space_before_punctuation(markdown: &str) -> String {
+    let mut out = String::with_capacity(markdown.len());
+    for (number, line) in markdown.split('\n').enumerate() {
+        let mark = line.split_whitespace().next().unwrap_or_default();
+        let closes_up = !mark.is_empty() && mark.chars().all(|c| CLOSING_PUNCTUATION.contains(&c));
+        if number > 0 && closes_up {
+            out.truncate(out.trim_end().len());
+            out.push_str(line.trim_start());
+        } else {
+            if number > 0 {
+                out.push('\n');
+            }
+            out.push_str(line);
+        }
+    }
+    out
 }
 
 fn value_named(row: &[Cell]) -> Option<&str> {
@@ -748,16 +819,196 @@ mod tests {
     }
 
     #[test]
-    fn an_item_that_goes_on_in_a_file_outside_the_sources_is_not_described() {
+    #[should_panic(
+        expected = "the description of width on the page VkExtent2D cannot be read (Include): pname:width is equivalent to the logical OR of:"
+    )]
+    fn an_include_that_is_left_in_a_description_aborts_generation() {
         let ir = ir();
         let docs = with_the_width_described_as(&[
             "pname:width is equivalent to the logical OR of:",
             "include::{generated}/sync/flagDefinitions/width.adoc[]",
         ]);
         let model = Model::with_docs(&ir, &docs);
+        model.described(&Cfg::default(), "VkExtent2D", "width");
+    }
+
+    fn with_the_members_described_as(width: &[&str], height: &[&str]) -> Docs {
+        let mut docs = docs();
+        docs.pages[0].items[0].text = width.join("\n");
+        docs.pages[0].items[1].text = height.join("\n");
+        docs
+    }
+
+    #[test]
+    fn a_numbered_note_is_attached_to_the_items_that_carry_its_mark() {
+        let ir = ir();
+        let docs = with_the_members_described_as(
+            &[
+                "pname:width is a bitmask^2^ of 2^pname:width^ values^1^ or 2^1^.",
+                "** It is wide^2^.",
+            ],
+            &[
+                "pname:height is the height.",
+                "",
+                "1::",
+                "For all values of slink:VkExtent2D,",
+                "the first note applies.",
+                "",
+                "2:: The second note applies.",
+                "** In detail.",
+            ],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
         assert_eq!(
             model.described(&Cfg::default(), "VkExtent2D", "width"),
-            None
+            Some(vec![
+                text(
+                    "`width` is a bitmask (note 2) of 2<sup>`width`</sup> values (note 1) or 2<sup>1</sup>."
+                ),
+                Block::list(["It is wide (note 2).".to_string()]),
+                Block::Quote(vec![
+                    text("**Note 1**"),
+                    text("For all values of [`VkExtent2D`](Extent2D),\nthe first note applies."),
+                ]),
+                Block::Quote(vec![
+                    text("**Note 2**"),
+                    text("The second note applies."),
+                    Block::list(["In detail.".to_string()]),
+                ]),
+            ])
+        );
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "height"),
+            Some(vec![text("`height` is the height.")]),
+            "a note is not a part of the item that it is nested in"
+        );
+    }
+
+    #[test]
+    fn a_superscript_is_no_mark_on_a_page_without_notes() {
+        let ir = ir();
+        let docs = with_the_members_described_as(
+            &["pname:width is at most 2^32^-1."],
+            &["pname:height is at most 2^16^."],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            Some(vec![Block::Text(
+                "`width` is at most 2<sup>32</sup>-1.".to_string()
+            )])
+        );
+    }
+
+    #[test]
+    fn notes_and_marks_that_do_not_pair_up_abort_generation() {
+        let ir = ir();
+        for (width, height, message) in [
+            (
+                "pname:width is a bitmask^1^ of 2^1^ values^32^.",
+                "pname:height is the height.\n\n1:: The note.",
+                "the notes {1} and the marks {1, 32} on the page VkExtent2D do not pair up",
+            ),
+            (
+                "pname:width is a bitmask^1^.",
+                "pname:height is the height.\n\n1:: The note.\n\n2:: Another note.",
+                "the notes {1, 2} and the marks {1} on the page VkExtent2D do not pair up",
+            ),
+            (
+                "pname:width is a bitmask.",
+                "pname:height is the height.\n\n1:: The note.",
+                "the notes {1} and the marks {} on the page VkExtent2D do not pair up",
+            ),
+            (
+                "pname:width is a bitmask^1^.\n\n1:: A note.",
+                "pname:height is the height.\n\n1:: The note.",
+                "the page VkExtent2D has two notes 1",
+            ),
+        ] {
+            let docs = with_the_members_described_as(&[width], &[height]);
+            let model = Model::with_docs(&ir, &docs);
+            for member in ["width", "height"] {
+                let panic = crate::test_support::catch_quietly(|| {
+                    model.described(&Cfg::default(), "VkExtent2D", member)
+                })
+                .expect_err(&format!("{member} is described: {width} / {height}"));
+                assert!(panic.contains(message), "{panic}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_description_list_becomes_a_list_of_its_terms_with_what_describes_them() {
+        let ir = ir();
+        let docs = with_the_width_described_as(&[
+            "pname:width is the width.",
+            "",
+            "1::",
+            "For all widths of slink:VkExtent2D,",
+            "the note applies.",
+            "",
+            "pname:width::  Itself.",
+            "** In detail.",
+        ]);
+        let model = Model::with_docs(&ir, &docs);
+        let text = |text: &str| Block::Text(text.to_string());
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            Some(vec![
+                text("`width` is the width."),
+                Block::List(vec![
+                    vec![
+                        text("1"),
+                        text("For all widths of [`VkExtent2D`](Extent2D),\nthe note applies."),
+                    ],
+                    vec![
+                        text("`width`"),
+                        text("Itself."),
+                        Block::list(["In detail.".to_string()]),
+                    ],
+                ]),
+            ])
+        );
+    }
+
+    #[test]
+    fn a_line_that_starts_with_closing_punctuation_closes_up_to_the_line_before_it() {
+        for (markdown, closed_up) in [
+            ("a copy\n.\nIf more", "a copy.\nIf more"),
+            ("is either\n:", "is either:"),
+            ("the command\n, or the other", "the command, or the other"),
+            ("(see the list \n  ) and", "(see the list) and"),
+            ("a\n?! b\n;\nc", "a?! b;\nc"),
+            ("a\n... and more", "a... and more"),
+            (".\na", ".\na"),
+            ("  , a\n. b", "  , a. b"),
+            ("a\n.b\n,c\n...d\n-\n(\n\"", "a\n.b\n,c\n...d\n-\n(\n\""),
+            ("a\n\n.", "a."),
+            ("", ""),
+        ] {
+            assert_eq!(
+                without_space_before_punctuation(markdown),
+                closed_up,
+                "{markdown:?}"
+            );
+        }
+        let ir = ir();
+        let docs = with_the_width_described_as(&[
+            "pname:width is the width",
+            ".",
+            "If so, it is required",
+            ":",
+            "** slink:VkExtent2D",
+            ", or not",
+        ]);
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            Some(vec![
+                Block::Text("`width` is the width.\nIf so, it is required:".to_string()),
+                Block::list(["[`VkExtent2D`](Extent2D), or not".to_string()]),
+            ])
         );
     }
 

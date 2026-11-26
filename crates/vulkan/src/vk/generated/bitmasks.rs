@@ -537,8 +537,12 @@ impl AccessFlagBits2 {
     /// pipeline stage.
     #[doc(alias = "VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT")]
     pub const INPUT_ATTACHMENT_READ: Self = Self(16);
-    /// `VK_ACCESS_2_SHADER_READ_BIT`, a value of
-    /// [`VkAccessFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccessFlagBits2.html).
+    /// `VK_ACCESS_2_SHADER_READ_BIT` is equivalent to the logical OR of:
+    ///
+    /// - [`VK_ACCESS_2_SHADER_SAMPLED_READ_BIT`](AccessFlagBits2::SHADER_SAMPLED_READ)
+    /// - [`VK_ACCESS_2_SHADER_STORAGE_READ_BIT`](AccessFlagBits2::SHADER_STORAGE_READ)
+    /// - [`VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR`](AccessFlagBits2::SHADER_BINDING_TABLE_READ_KHR)
+    /// - [`VK_ACCESS_2_SHADER_TILE_ATTACHMENT_READ_BIT_QCOM`](AccessFlagBits2::SHADER_TILE_ATTACHMENT_READ_QCOM)
     #[doc(alias = "VK_ACCESS_2_SHADER_READ_BIT")]
     pub const SHADER_READ: Self = Self(32);
     /// `VK_ACCESS_2_SHADER_WRITE_BIT` is equivalent to
@@ -2472,7 +2476,7 @@ impl BuildAccelerationStructureFlagBitsKHR {
     /// in
     /// [`VkAccelerationStructureBuildGeometryInfoKHR`](AccelerationStructureBuildGeometryInfoKHR)
     /// or an `update` of [`VK_TRUE`](TRUE) in
-    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv) .
+    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv).
     /// For sphere and LSS primitives, only positions and radii may be updated, the provided index
     /// buffers and flags must remain unchanged from the initial build.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR")]
@@ -16979,7 +16983,7 @@ impl PipelineStageFlagBits {
     #[doc(alias = "VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT")]
     pub const MESH_SHADER_EXT: Self = Self(1048576);
     /// `VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR` specifies the execution of the ray tracing
-    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv) ,
+    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv),
     /// [`vkCmdTraceRaysKHR`](crate::Device::cmd_trace_rays_khr), or
     /// [`vkCmdTraceRaysIndirectKHR`](crate::Device::cmd_trace_rays_indirect_khr)
     #[doc(alias = "VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR")]
@@ -17000,8 +17004,7 @@ impl PipelineStageFlagBits {
     /// `VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR` specifies the execution of
     /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv),
     /// [`vkCmdCopyAccelerationStructureNV`](crate::Device::cmd_copy_acceleration_structure_nv),
-    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv)
-    /// ,
+    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv),
     /// [`vkCmdBuildAccelerationStructuresKHR`](crate::Device::cmd_build_acceleration_structures_khr),
     /// [`vkCmdBuildAccelerationStructuresIndirectKHR`](crate::Device::cmd_build_acceleration_structures_indirect_khr),
     /// [`vkCmdCopyAccelerationStructureKHR`](crate::Device::cmd_copy_acceleration_structure_khr),
@@ -17189,8 +17192,10 @@ impl PipelineStageFlagBits2 {
     /// [`vkCmdPreprocessGeneratedCommandsEXT`](crate::Device::cmd_preprocess_generated_commands_ext).
     #[doc(alias = "VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT")]
     pub const DRAW_INDIRECT: Self = Self(2);
-    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT` is equivalent to the logical OR of:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT`](PipelineStageFlagBits2::INDEX_INPUT)
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT`](PipelineStageFlagBits2::VERTEX_ATTRIBUTE_INPUT)
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT")]
     pub const VERTEX_INPUT: Self = Self(4);
     /// `VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT` specifies the vertex shader stage.
@@ -17232,8 +17237,13 @@ impl PipelineStageFlagBits2 {
     /// `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT` specifies the compute shader stage.
     #[doc(alias = "VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT")]
     pub const COMPUTE_SHADER: Self = Self(2048);
-    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT` is equivalent to specifying all of:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_COPY_BIT`](PipelineStageFlagBits2::COPY)
+    /// - [`VK_PIPELINE_STAGE_2_BLIT_BIT`](PipelineStageFlagBits2::BLIT)
+    /// - [`VK_PIPELINE_STAGE_2_RESOLVE_BIT`](PipelineStageFlagBits2::RESOLVE)
+    /// - [`VK_PIPELINE_STAGE_2_CLEAR_BIT`](PipelineStageFlagBits2::CLEAR)
+    /// - [`VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR`](PipelineStageFlagBits2::ACCELERATION_STRUCTURE_COPY_KHR)
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT")]
     pub const ALL_TRANSFER: Self = Self(4096);
     /// `VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT` is equivalent to
@@ -17248,8 +17258,28 @@ impl PipelineStageFlagBits2 {
     /// command buffer.
     #[doc(alias = "VK_PIPELINE_STAGE_2_HOST_BIT")]
     pub const HOST: Self = Self(16384);
-    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT` specifies the execution of all graphics pipeline
+    /// stages, and is equivalent to the logical OR of:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT`](PipelineStageFlagBits2::DRAW_INDIRECT)
+    /// - [`VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT`](PipelineStageFlagBits2::TASK_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT`](PipelineStageFlagBits2::MESH_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT`](PipelineStageFlagBits2::VERTEX_INPUT)
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT`](PipelineStageFlagBits2::VERTEX_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_CONTROL_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_EVALUATION_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT`](PipelineStageFlagBits2::GEOMETRY_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT`](PipelineStageFlagBits2::FRAGMENT_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT`](PipelineStageFlagBits2::EARLY_FRAGMENT_TESTS)
+    /// - [`VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT`](PipelineStageFlagBits2::LATE_FRAGMENT_TESTS)
+    /// - [`VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT`](PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT)
+    /// - [`VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT`](PipelineStageFlagBits2::CONDITIONAL_RENDERING_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_TRANSFORM_FEEDBACK_BIT_EXT`](PipelineStageFlagBits2::TRANSFORM_FEEDBACK_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR`](PipelineStageFlagBits2::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR)
+    /// - [`VK_PIPELINE_STAGE_2_FRAGMENT_DENSITY_PROCESS_BIT_EXT`](PipelineStageFlagBits2::FRAGMENT_DENSITY_PROCESS_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI`](PipelineStageFlagBits2::SUBPASS_SHADER_HUAWEI)
+    /// - [`VK_PIPELINE_STAGE_2_INVOCATION_MASK_BIT_HUAWEI`](PipelineStageFlagBits2::INVOCATION_MASK_HUAWEI)
+    /// - [`VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI`](PipelineStageFlagBits2::CLUSTER_CULLING_SHADER_HUAWEI)
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT")]
     pub const ALL_GRAPHICS: Self = Self(32768);
     /// `VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT` specifies all operations performed by all commands
@@ -17341,8 +17371,16 @@ impl PipelineStageFlagBits2 {
     /// vertex buffers are consumed.
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT")]
     pub const VERTEX_ATTRIBUTE_INPUT: Self = Self(137438953472);
-    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT` is equivalent to specifying all
+    /// supported pre-rasterization shader stages:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT`](PipelineStageFlagBits2::VERTEX_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_CONTROL_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_EVALUATION_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT`](PipelineStageFlagBits2::GEOMETRY_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT`](PipelineStageFlagBits2::TASK_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT`](PipelineStageFlagBits2::MESH_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI`](PipelineStageFlagBits2::CLUSTER_CULLING_SHADER_HUAWEI)
     #[doc(alias = "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT")]
     pub const PRE_RASTERIZATION_SHADERS: Self = Self(274877906944);
     /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI` specifies the subpass shading shader stage.
@@ -28100,8 +28138,12 @@ impl AccessFlags2 {
     /// pipeline stage.
     #[doc(alias = "VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT")]
     pub const INPUT_ATTACHMENT_READ: Self = Self(16);
-    /// `VK_ACCESS_2_SHADER_READ_BIT`, a value of
-    /// [`VkAccessFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccessFlagBits2.html).
+    /// `VK_ACCESS_2_SHADER_READ_BIT` is equivalent to the logical OR of:
+    ///
+    /// - [`VK_ACCESS_2_SHADER_SAMPLED_READ_BIT`](AccessFlagBits2::SHADER_SAMPLED_READ)
+    /// - [`VK_ACCESS_2_SHADER_STORAGE_READ_BIT`](AccessFlagBits2::SHADER_STORAGE_READ)
+    /// - [`VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR`](AccessFlagBits2::SHADER_BINDING_TABLE_READ_KHR)
+    /// - [`VK_ACCESS_2_SHADER_TILE_ATTACHMENT_READ_BIT_QCOM`](AccessFlagBits2::SHADER_TILE_ATTACHMENT_READ_QCOM)
     #[doc(alias = "VK_ACCESS_2_SHADER_READ_BIT")]
     pub const SHADER_READ: Self = Self(32);
     /// `VK_ACCESS_2_SHADER_WRITE_BIT` is equivalent to
@@ -30648,7 +30690,7 @@ impl BuildAccelerationStructureFlagsKHR {
     /// in
     /// [`VkAccelerationStructureBuildGeometryInfoKHR`](AccelerationStructureBuildGeometryInfoKHR)
     /// or an `update` of [`VK_TRUE`](TRUE) in
-    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv) .
+    /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv).
     /// For sphere and LSS primitives, only positions and radii may be updated, the provided index
     /// buffers and flags must remain unchanged from the initial build.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR")]
@@ -52757,7 +52799,7 @@ impl PipelineStageFlags {
     #[doc(alias = "VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT")]
     pub const MESH_SHADER_EXT: Self = Self(1048576);
     /// `VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR` specifies the execution of the ray tracing
-    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv) ,
+    /// shader stages, via [`vkCmdTraceRaysNV`](crate::Device::cmd_trace_rays_nv),
     /// [`vkCmdTraceRaysKHR`](crate::Device::cmd_trace_rays_khr), or
     /// [`vkCmdTraceRaysIndirectKHR`](crate::Device::cmd_trace_rays_indirect_khr)
     #[doc(alias = "VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR")]
@@ -52778,8 +52820,7 @@ impl PipelineStageFlags {
     /// `VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR` specifies the execution of
     /// [`vkCmdBuildAccelerationStructureNV`](crate::Device::cmd_build_acceleration_structure_nv),
     /// [`vkCmdCopyAccelerationStructureNV`](crate::Device::cmd_copy_acceleration_structure_nv),
-    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv)
-    /// ,
+    /// [`vkCmdWriteAccelerationStructuresPropertiesNV`](crate::Device::cmd_write_acceleration_structures_properties_nv),
     /// [`vkCmdBuildAccelerationStructuresKHR`](crate::Device::cmd_build_acceleration_structures_khr),
     /// [`vkCmdBuildAccelerationStructuresIndirectKHR`](crate::Device::cmd_build_acceleration_structures_indirect_khr),
     /// [`vkCmdCopyAccelerationStructureKHR`](crate::Device::cmd_copy_acceleration_structure_khr),
@@ -53004,8 +53045,10 @@ impl PipelineStageFlags2 {
     /// [`vkCmdPreprocessGeneratedCommandsEXT`](crate::Device::cmd_preprocess_generated_commands_ext).
     #[doc(alias = "VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT")]
     pub const DRAW_INDIRECT: Self = Self(2);
-    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT` is equivalent to the logical OR of:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT`](PipelineStageFlagBits2::INDEX_INPUT)
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT`](PipelineStageFlagBits2::VERTEX_ATTRIBUTE_INPUT)
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT")]
     pub const VERTEX_INPUT: Self = Self(4);
     /// `VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT` specifies the vertex shader stage.
@@ -53047,8 +53090,13 @@ impl PipelineStageFlags2 {
     /// `VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT` specifies the compute shader stage.
     #[doc(alias = "VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT")]
     pub const COMPUTE_SHADER: Self = Self(2048);
-    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT` is equivalent to specifying all of:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_COPY_BIT`](PipelineStageFlagBits2::COPY)
+    /// - [`VK_PIPELINE_STAGE_2_BLIT_BIT`](PipelineStageFlagBits2::BLIT)
+    /// - [`VK_PIPELINE_STAGE_2_RESOLVE_BIT`](PipelineStageFlagBits2::RESOLVE)
+    /// - [`VK_PIPELINE_STAGE_2_CLEAR_BIT`](PipelineStageFlagBits2::CLEAR)
+    /// - [`VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR`](PipelineStageFlagBits2::ACCELERATION_STRUCTURE_COPY_KHR)
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT")]
     pub const ALL_TRANSFER: Self = Self(4096);
     /// `VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT` is equivalent to
@@ -53063,8 +53111,28 @@ impl PipelineStageFlags2 {
     /// command buffer.
     #[doc(alias = "VK_PIPELINE_STAGE_2_HOST_BIT")]
     pub const HOST: Self = Self(16384);
-    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT` specifies the execution of all graphics pipeline
+    /// stages, and is equivalent to the logical OR of:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT`](PipelineStageFlagBits2::DRAW_INDIRECT)
+    /// - [`VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT`](PipelineStageFlagBits2::TASK_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT`](PipelineStageFlagBits2::MESH_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT`](PipelineStageFlagBits2::VERTEX_INPUT)
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT`](PipelineStageFlagBits2::VERTEX_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_CONTROL_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_EVALUATION_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT`](PipelineStageFlagBits2::GEOMETRY_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT`](PipelineStageFlagBits2::FRAGMENT_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT`](PipelineStageFlagBits2::EARLY_FRAGMENT_TESTS)
+    /// - [`VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT`](PipelineStageFlagBits2::LATE_FRAGMENT_TESTS)
+    /// - [`VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT`](PipelineStageFlagBits2::COLOR_ATTACHMENT_OUTPUT)
+    /// - [`VK_PIPELINE_STAGE_2_CONDITIONAL_RENDERING_BIT_EXT`](PipelineStageFlagBits2::CONDITIONAL_RENDERING_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_TRANSFORM_FEEDBACK_BIT_EXT`](PipelineStageFlagBits2::TRANSFORM_FEEDBACK_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR`](PipelineStageFlagBits2::FRAGMENT_SHADING_RATE_ATTACHMENT_KHR)
+    /// - [`VK_PIPELINE_STAGE_2_FRAGMENT_DENSITY_PROCESS_BIT_EXT`](PipelineStageFlagBits2::FRAGMENT_DENSITY_PROCESS_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI`](PipelineStageFlagBits2::SUBPASS_SHADER_HUAWEI)
+    /// - [`VK_PIPELINE_STAGE_2_INVOCATION_MASK_BIT_HUAWEI`](PipelineStageFlagBits2::INVOCATION_MASK_HUAWEI)
+    /// - [`VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI`](PipelineStageFlagBits2::CLUSTER_CULLING_SHADER_HUAWEI)
     #[doc(alias = "VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT")]
     pub const ALL_GRAPHICS: Self = Self(32768);
     /// `VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT` specifies all operations performed by all commands
@@ -53156,8 +53224,16 @@ impl PipelineStageFlags2 {
     /// vertex buffers are consumed.
     #[doc(alias = "VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT")]
     pub const VERTEX_ATTRIBUTE_INPUT: Self = Self(137438953472);
-    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT` is equivalent to specifying all
+    /// supported pre-rasterization shader stages:
+    ///
+    /// - [`VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT`](PipelineStageFlagBits2::VERTEX_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_CONTROL_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT`](PipelineStageFlagBits2::TESSELLATION_EVALUATION_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT`](PipelineStageFlagBits2::GEOMETRY_SHADER)
+    /// - [`VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT`](PipelineStageFlagBits2::TASK_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT`](PipelineStageFlagBits2::MESH_SHADER_EXT)
+    /// - [`VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI`](PipelineStageFlagBits2::CLUSTER_CULLING_SHADER_HUAWEI)
     #[doc(alias = "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT")]
     pub const PRE_RASTERIZATION_SHADERS: Self = Self(274877906944);
     /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI` specifies the subpass shading shader stage.

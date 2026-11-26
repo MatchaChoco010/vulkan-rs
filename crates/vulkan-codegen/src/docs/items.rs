@@ -1,9 +1,11 @@
 use super::asciidoc::Unsupported;
+use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Part {
     Paragraph(String),
     List(Vec<Vec<Part>>),
+    Terms(Vec<(String, Vec<Part>)>),
     Admonition {
         label: &'static str,
         title: Option<String>,
@@ -32,8 +34,15 @@ enum Within {
     Block,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Marker {
+    Stars(usize),
+    Term,
+}
+
 struct OpenList {
-    marker: usize,
+    marker: Marker,
+    terms: Vec<String>,
     items: Vec<Vec<Part>>,
 }
 
@@ -50,6 +59,105 @@ struct Reader<'a> {
 pub(super) fn read(text: &str) -> Result<Vec<Part>, Unsupported> {
     let lines = text.lines().collect::<Vec<_>>();
     read_lines(&lines, Within::ListItem)
+}
+
+fn note_number(term: &str) -> Option<u32> {
+    term.chars()
+        .all(|c| c.is_ascii_digit())
+        .then(|| term.parse().ok())
+        .flatten()
+}
+
+pub(super) fn may_have_notes(text: &str) -> bool {
+    text.lines()
+        .filter_map(|line| term(line.trim()))
+        .any(|(name, _)| note_number(name).is_some())
+}
+
+pub(super) fn take_notes(parts: &mut Vec<Part>) -> Vec<(u32, Vec<Part>)> {
+    let mut notes = Vec::new();
+    for part in std::mem::take(parts) {
+        let mut part = part;
+        match &mut part {
+            Part::Terms(terms) if terms.iter().all(|(term, _)| note_number(term).is_some()) => {
+                notes.extend(
+                    terms
+                        .drain(..)
+                        .filter_map(|(term, note)| Some((note_number(&term)?, note))),
+                );
+                continue;
+            }
+            Part::Terms(terms) => {
+                for (_, described) in terms {
+                    notes.extend(take_notes(described));
+                }
+            }
+            Part::List(items) => {
+                for item in items {
+                    notes.extend(take_notes(item));
+                }
+            }
+            Part::Admonition { parts, .. } => notes.extend(take_notes(parts)),
+            Part::Paragraph(_) | Part::Math(_) | Part::Listing { .. } => {}
+        }
+        parts.push(part);
+    }
+    notes
+}
+
+fn with_marks(text: &str, mut referred: impl FnMut(u32) -> String) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find('^') {
+        let after = &rest[open + 1..];
+        let digits = after
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(after.len());
+        let is_an_exponent = rest[..open].ends_with(|c: char| c.is_ascii_digit());
+        let number = (!is_an_exponent && after[digits..].starts_with('^'))
+            .then(|| note_number(&after[..digits]))
+            .flatten();
+        match number {
+            Some(number) => {
+                out.push_str(&rest[..open]);
+                out.push_str(&referred(number));
+                rest = &after[digits + 1..];
+            }
+            None => {
+                out.push_str(&rest[..=open]);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+pub(super) fn refer_to_notes(parts: &mut [Part]) -> BTreeSet<u32> {
+    let mut marks = BTreeSet::new();
+    for part in parts {
+        match part {
+            Part::Paragraph(text) => {
+                *text = with_marks(text, |number| {
+                    marks.insert(number);
+                    format!(" (note {number})")
+                });
+            }
+            Part::List(items) => {
+                for item in items {
+                    marks.extend(refer_to_notes(item));
+                }
+            }
+            Part::Terms(terms) => {
+                for (_, described) in terms {
+                    marks.extend(refer_to_notes(described));
+                }
+            }
+            Part::Admonition { parts, .. } => marks.extend(refer_to_notes(parts)),
+            Part::Math(_) | Part::Listing { .. } => {}
+        }
+    }
+    marks
 }
 
 fn unread(what: impl Into<String>) -> Unsupported {
@@ -118,6 +226,13 @@ fn names_a_term(line: &str) -> bool {
     })
 }
 
+fn term(line: &str) -> Option<(&str, &str)> {
+    let at = line.find("::").filter(|at| *at > 0)?;
+    let description = &line[at + 2..];
+    (description.is_empty() || description.starts_with([' ', '\t']))
+        .then(|| (line[..at].trim_end(), description.trim_start()))
+}
+
 fn is_attribute_entry(line: &str) -> bool {
     line.strip_prefix(':')
         .and_then(|rest| rest.split_once(':'))
@@ -179,8 +294,27 @@ impl<'a> Reader<'a> {
         self.end_paragraph();
         while self.lists.len() > open {
             let list = self.lists.pop().expect("a list to close");
-            self.target().push(Part::List(list.items));
+            let part = match list.marker {
+                Marker::Stars(_) => Part::List(list.items),
+                Marker::Term => Part::Terms(list.terms.into_iter().zip(list.items).collect()),
+            };
+            self.target().push(part);
         }
+    }
+
+    fn start_item(&mut self, marker: Marker) {
+        self.end_paragraph();
+        match self.lists.iter().position(|list| list.marker == marker) {
+            Some(depth) => self.close_lists(depth + 1),
+            None => self.lists.push(OpenList {
+                marker,
+                terms: Vec::new(),
+                items: Vec::new(),
+            }),
+        }
+        let list = self.lists.last_mut().expect("the list of the item");
+        list.items.push(Vec::new());
+        self.attaching = false;
     }
 
     fn in_a_list_item(&self) -> bool {
@@ -239,18 +373,8 @@ impl<'a> Reader<'a> {
             if in_a_paragraph_of_a_block {
                 return Err(unread("a list item in a paragraph"));
             }
-            self.end_paragraph();
-            match self.lists.iter().position(|list| list.marker == marker) {
-                Some(depth) => self.close_lists(depth + 1),
-                None => self.lists.push(OpenList {
-                    marker,
-                    items: Vec::new(),
-                }),
-            }
-            let list = self.lists.last_mut().expect("the list of the item");
-            list.items.push(Vec::new());
+            self.start_item(Marker::Stars(marker));
             self.paragraph.push(rest);
-            self.attaching = false;
             return Ok(());
         }
         if !self.header.is_empty() {
@@ -270,10 +394,27 @@ impl<'a> Reader<'a> {
             && self.lists.is_empty()
             && self.paragraph.is_empty();
         let could_start_a_list = self.in_a_list_item() && !starts_the_item;
+        let in_a_description_list = self.lists.iter().any(|list| list.marker == Marker::Term);
+        if could_start_a_list
+            && (after_an_empty_line || in_a_description_list)
+            && let Some((name, description)) = term(text)
+        {
+            self.start_item(Marker::Term);
+            let list = self.lists.last_mut().expect("the list of the term");
+            list.terms.push(name.to_string());
+            if !description.is_empty() {
+                self.paragraph.push(description);
+            }
+            return Ok(());
+        }
         if could_start_a_list && (starts_another_kind_of_list(text) || names_a_term(text)) {
             return Err(unread(format!("a list that starts with `{text}`")));
         }
-        if after_an_empty_line && !self.attaching {
+        let describes_a_term = self.paragraph.is_empty()
+            && self.lists.last().is_some_and(|list| {
+                list.marker == Marker::Term && list.items.last().is_some_and(Vec::is_empty)
+            });
+        if after_an_empty_line && !self.attaching && !describes_a_term {
             if self.within == Within::ListItem {
                 return Err(unread("a paragraph after an empty line"));
             }
@@ -604,6 +745,179 @@ mod tests {
         );
     }
 
+    fn terms<const N: usize>(items: [(&str, Vec<Part>); N]) -> Part {
+        Part::Terms(
+            items
+                .into_iter()
+                .map(|(term, parts)| (term.to_string(), parts))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn a_term_after_an_empty_line_starts_a_description_list_in_the_innermost_item() {
+        assert_eq!(
+            parts(&[
+                "pname:a is the size.",
+                "",
+                "1::",
+                "For all sizes, the note",
+                "applies.",
+                "",
+                "2:: The second note.",
+                "** with a detail",
+                "the third of sname:VkThing::\tThe last note.",
+            ]),
+            [
+                paragraph("pname:a is the size."),
+                terms([
+                    ("1", vec![paragraph("For all sizes, the note\napplies.")]),
+                    (
+                        "2",
+                        vec![
+                            paragraph("The second note."),
+                            list([vec![paragraph("with a detail")]]),
+                        ]
+                    ),
+                    (
+                        "the third of sname:VkThing",
+                        vec![paragraph("The last note.")]
+                    ),
+                ]),
+            ]
+        );
+        assert_eq!(
+            parts(&[
+                "pname:a is one of:",
+                "** this",
+                "",
+                "why::",
+                "Because.",
+                "+",
+                "Really.",
+                "** or that",
+                "",
+                "+",
+                "Whichever it is, it stays.",
+            ]),
+            [
+                paragraph("pname:a is one of:"),
+                list([
+                    vec![
+                        paragraph("this"),
+                        terms([("why", vec![paragraph("Because."), paragraph("Really.")])]),
+                    ],
+                    vec![paragraph("or that")],
+                ]),
+                paragraph("Whichever it is, it stays."),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_term_without_a_description_takes_the_text_after_an_empty_line() {
+        assert_eq!(
+            parts(&[
+                "pname:a is:",
+                "",
+                "1::",
+                "",
+                "The note",
+                "goes on.",
+                "",
+                "2::",
+                "",
+                "Another note.",
+                "** in detail",
+            ]),
+            [
+                paragraph("pname:a is:"),
+                terms([
+                    ("1", vec![paragraph("The note\ngoes on.")]),
+                    (
+                        "2",
+                        vec![
+                            paragraph("Another note."),
+                            list([vec![paragraph("in detail")]])
+                        ]
+                    ),
+                ]),
+            ]
+        );
+    }
+
+    #[test]
+    fn numbered_terms_are_notes_and_are_taken_out_of_the_item_that_they_are_nested_in() {
+        let mut item = parts(&[
+            "pname:a is a bitmask^1^ of 2^n^ values^12^, x^^, 2^1^, x2^12^ and ^3",
+            "** nested^1^",
+            "",
+            "1::",
+            "The first note.",
+            "",
+            "12:: The other note.",
+        ]);
+        assert_eq!(
+            take_notes(&mut item),
+            [
+                (1, vec![paragraph("The first note.")]),
+                (12, vec![paragraph("The other note.")]),
+            ]
+        );
+        assert_eq!(
+            item,
+            [
+                paragraph("pname:a is a bitmask^1^ of 2^n^ values^12^, x^^, 2^1^, x2^12^ and ^3"),
+                list([vec![paragraph("nested^1^")]]),
+            ]
+        );
+        assert_eq!(refer_to_notes(&mut item), BTreeSet::from([1, 12]));
+        assert_eq!(
+            item,
+            [
+                paragraph(
+                    "pname:a is a bitmask (note 1) of 2^n^ values (note 12), x^^, 2^1^, x2^12^ and ^3"
+                ),
+                list([vec![paragraph("nested (note 1)")]]),
+            ]
+        );
+        let mut described = parts(&["pname:a is:", "", "1::", "A step.", "", "then:: Another."]);
+        let before = described.clone();
+        assert!(take_notes(&mut described).is_empty());
+        assert_eq!(
+            described, before,
+            "a list with a term that is no number is no list of notes"
+        );
+        for (text, notes) in [
+            ("pname:a is:\n\n1::\nThe note.", true),
+            ("pname:a is:\n\n  12:: The note.", true),
+            ("pname:a is:\n\nterm:: The note.", false),
+            ("pname:a is 1::2 and\n1: or 1::: x", false),
+            ("pname:a is:", false),
+        ] {
+            assert_eq!(may_have_notes(text), notes, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_term_names_what_is_before_two_colons_at_the_end_of_a_word() {
+        for (line, named) in [
+            ("1::", Some(("1", ""))),
+            ("1:: x", Some(("1", "x"))),
+            ("a b ::\t x:: y", Some(("a b", "x:: y"))),
+            ("sname:VkThing:: x", Some(("sname:VkThing", "x"))),
+            ("::", None),
+            (":: x", None),
+            ("1:", None),
+            ("1::x", None),
+            ("1::: x", None),
+            ("1;; x", None),
+            ("sname:VkThing::pname:a is:: x", None),
+        ] {
+            assert_eq!(term(line), named, "{line:?}");
+        }
+    }
+
     #[test]
     fn attached_blocks_are_read_with_what_is_in_them() {
         assert_eq!(
@@ -823,6 +1137,44 @@ mod tests {
                 vec!["pname:a is a member", "of sname:VkThing::"],
                 "a list that starts with `of sname:VkThing::`",
             ),
+            (
+                vec!["pname:a is:", "+", "term:: attached"],
+                "a list that starts with `term:: attached`",
+            ),
+            (
+                vec!["pname:a is:", "** one", "term:: in the item"],
+                "a list that starts with `term:: in the item`",
+            ),
+            (
+                vec!["pname:a is:", "", "term::: deeper"],
+                "a list that starts with `term::: deeper`",
+            ),
+            (
+                vec!["pname:a is:", "", "term;; other"],
+                "a list that starts with `term;; other`",
+            ),
+            (
+                vec![
+                    "pname:a is:",
+                    "",
+                    "1::",
+                    "",
+                    "The note.",
+                    "",
+                    "A second paragraph.",
+                ],
+                "a paragraph after an empty line",
+            ),
+            (
+                vec![
+                    "pname:a is:",
+                    "",
+                    "1:: The note.",
+                    "",
+                    "A second paragraph.",
+                ],
+                "a paragraph after an empty line",
+            ),
         ] {
             let text = lines.join("\n");
             assert_eq!(
@@ -874,24 +1226,17 @@ mod tests {
         );
     }
 
-    fn dumped(source: &[&str]) -> Option<Result<Vec<(String, String)>, String>> {
+    fn run_with_the_tool(steps: &[&str], input: &str) -> Option<Result<String, String>> {
         let tool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/generate-vulkan");
-        let script = [
-            "import importlib.machinery, importlib.util, json, pathlib, sys, tempfile",
+        let mut script = vec![
+            "import importlib.machinery, importlib.util, json, pathlib, sys, tempfile, types",
             "loader = importlib.machinery.SourceFileLoader('generate_vulkan', sys.argv[1])",
             "specification = importlib.util.spec_from_loader('generate_vulkan', loader)",
             "tool = importlib.util.module_from_spec(specification)",
             "loader.exec_module(tool)",
-            "with tempfile.TemporaryDirectory() as directory:",
-            "    source = pathlib.Path(directory) / 'page.adoc'",
-            "    source.write_text(sys.stdin.read())",
-            "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}))",
-            "items = tool.spec_described_items(body, 'VkPage')",
-            "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
-            "docs = {'commit': '', 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
-            "print(json.dumps(docs))",
-        ]
-        .join("\n");
+        ];
+        script.extend(steps);
+        let script = script.join("\n");
         let spawned = Command::new("python3")
             .args(["-B", "-c", &script])
             .arg(&tool)
@@ -914,19 +1259,93 @@ mod tests {
             .stdin
             .take()
             .expect("the input of python3")
-            .write_all(source.join("\n").as_bytes())
-            .expect("write the source");
+            .write_all(input.as_bytes())
+            .expect("write the input");
         let output = child.wait_with_output().expect("run python3");
         if !output.status.success() {
             return Some(Err(String::from_utf8_lossy(&output.stderr).into_owned()));
         }
-        let json = String::from_utf8(output.stdout).expect("a dump in UTF-8");
+        Some(Ok(
+            String::from_utf8(output.stdout).expect("output in UTF-8")
+        ))
+    }
+
+    fn dumped(source: &[&str]) -> Option<Result<Vec<(String, String)>, String>> {
+        let steps = [
+            "with tempfile.TemporaryDirectory() as directory:",
+            "    source = pathlib.Path(directory) / 'page.adoc'",
+            "    source.write_text(sys.stdin.read())",
+            "    generated = {'sync/flagDefinitions/VK_PAGE.adoc': ['  ** ename:VK_A', '  ** ename:VK_B']}",
+            "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}, generated=generated))",
+            "items = tool.spec_described_items(body, 'VkPage')",
+            "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
+            "docs = {'commit': '', 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
+            "print(json.dumps(docs))",
+        ];
+        let json = match run_with_the_tool(&steps, &source.join("\n"))? {
+            Ok(json) => json,
+            Err(error) => return Some(Err(error)),
+        };
         let docs = Docs::from_json(&json).unwrap_or_else(|error| panic!("{error}: {json}"));
         Some(Ok(docs.pages[0]
             .items
             .iter()
             .map(|item| (item.name.clone(), item.text.clone()))
             .collect()))
+    }
+
+    fn generated_files(registry: &[&str]) -> Option<Result<String, String>> {
+        let steps = [
+            "flags = lambda *names: types.SimpleNamespace(flags=[types.SimpleNamespace(name=name) for name in names])",
+            "stages = flags('VK_STAGE_A', 'VK_STAGE_B')",
+            "vk = types.SimpleNamespace(bitmasks={'VkPipelineStageFlagBits2': stages, 'VkAccessFlagBits2': flags('VK_ACCESS_A')})",
+            "with tempfile.TemporaryDirectory() as directory:",
+            "    tool.REGISTRY = pathlib.Path(directory)",
+            "    (tool.REGISTRY / 'vk.xml').write_text(sys.stdin.read())",
+            "    print(json.dumps(tool.spec_generated_files(vk), sort_keys=True))",
+        ];
+        run_with_the_tool(&steps, &registry.join("\n"))
+    }
+
+    #[test]
+    fn the_tool_writes_the_equivalent_flags_of_the_registry_and_stops_without_their_attribute() {
+        let Some(files) = generated_files(&[
+            "<registry><sync>",
+            "<syncstage name=\"VK_STAGE_ALL\">",
+            "<syncequivalent stage=\"VK_STAGE_B,VK_STAGE_GONE,VK_STAGE_A\"/>",
+            "</syncstage>",
+            "<syncstage name=\"VK_STAGE_A\"><syncsupport queues=\"VK_QUEUE\"/></syncstage>",
+            "<syncaccess name=\"VK_ACCESS_ALL\"><syncequivalent access=\"VK_ACCESS_A\"/></syncaccess>",
+            "</sync></registry>",
+        ]) else {
+            return;
+        };
+        assert_eq!(
+            files.as_deref().map(str::trim),
+            Ok(
+                "{\"sync/flagDefinitions/VK_ACCESS_ALL.adoc\": [\"  ** ename:VK_ACCESS_A\"], \
+                 \"sync/flagDefinitions/VK_STAGE_ALL.adoc\": [\"  ** ename:VK_STAGE_B\", \"  ** ename:VK_STAGE_A\"]}"
+            )
+        );
+        for (element, attribute, missing) in [
+            ("syncstage", "access", "stage"),
+            ("syncaccess", "stage", "access"),
+            ("syncstage", "stages", "stage"),
+        ] {
+            let registry = format!(
+                "<registry><sync><{element} name=\"VK_ALL\"><syncequivalent {attribute}=\"VK_A\"/></{element}></sync></registry>"
+            );
+            let Some(files) = generated_files(&[&registry]) else {
+                return;
+            };
+            let error = files.expect_err(&registry);
+            assert!(
+                error.contains(&format!(
+                    "vk.xml: <syncequivalent> of VK_ALL has no `{missing}` attribute"
+                )),
+                "{error}"
+            );
+        }
     }
 
     fn assert_dumped(source: &[&str], expected: &[(&str, &[&str])]) {
@@ -1137,8 +1556,6 @@ mod tests {
                 "  * pname:paragraph comes before a paragraph.",
                 "",
                 "pname:paragraph is described here as well.",
-                "  * pname:generated is equivalent to the logical OR of:",
-                "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[]",
                 "  * pname:next is the next member.",
             ],
             &[
@@ -1149,14 +1566,315 @@ mod tests {
                     &["pname:validity comes before the valid usage."],
                 ),
                 ("paragraph", &["pname:paragraph comes before a paragraph."]),
+                NEXT,
+            ],
+        );
+    }
+
+    #[test]
+    fn the_dump_has_the_generated_items_in_place_of_their_include() {
+        assert_dumped(
+            &[
+                "  * pname:generated is equivalent to the logical OR of:",
+                "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[]",
+                "  * pname:next is the next member.",
+            ],
+            &[
                 (
                     "generated",
                     &[
                         "pname:generated is equivalent to the logical OR of:",
-                        "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[]",
+                        "** ename:VK_A",
+                        "** ename:VK_B",
                     ],
                 ),
                 NEXT,
+            ],
+        );
+        for include in [
+            "include::{generated}/sync/flagDefinitions/VK_OTHER.adoc[]",
+            "include::{generated}/sync/flagDefinitions/VK_PAGE.adoc[tag=x]",
+            "include::{chapters}/other.adoc[]",
+        ] {
+            let source = ["  * pname:a is equivalent to the logical OR of:", include];
+            let Some(dumped) = dumped(&source) else {
+                return;
+            };
+            let error = dumped.expect_err(include);
+            assert!(
+                error.contains(&format!(
+                    "VkPage: the list item of a goes on in a file that is not read: {include}"
+                )),
+                "{error}"
+            );
+        }
+        assert_dumped(
+            &[
+                "  * Otherwise, the flags are:",
+                "include::{generated}/sync/flagDefinitions/VK_OTHER.adoc[]",
+                "  * pname:next is the next member.",
+            ],
+            &[NEXT],
+        );
+    }
+
+    #[test]
+    fn the_dump_keeps_a_list_of_another_kind_that_follows_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:last is the last member.",
+                "",
+                "1::",
+                "    For all members, the",
+                "    note applies.",
+                "",
+                "",
+                "2:: The second note.",
+                "",
+                "Not a part of the list.",
+                "  * pname:numbered has steps:",
+                "",
+                ". the first",
+                "  .. in detail",
+                "  * pname:dashed has parts:",
+                "",
+                "  - one",
+                "  * pname:lettered has cases:",
+                "",
+                "a. the first",
+                "  * pname:counted has cases:",
+                "",
+                "    iv) the fourth",
+                "  * pname:defined has terms:",
+                "",
+                "term;; its description",
+                "  * pname:next is the next member.",
+                "",
+                "sname:VkPage::pname:next is not a term.",
+            ],
+            &[
+                (
+                    "last",
+                    &[
+                        "pname:last is the last member.",
+                        "",
+                        "1::",
+                        "For all members, the",
+                        "note applies.",
+                        "",
+                        "2:: The second note.",
+                    ],
+                ),
+                (
+                    "numbered",
+                    &[
+                        "pname:numbered has steps:",
+                        "",
+                        ". the first",
+                        ".. in detail",
+                    ],
+                ),
+                ("dashed", &["pname:dashed has parts:", "", "- one"]),
+                (
+                    "lettered",
+                    &["pname:lettered has cases:", "", "a. the first"],
+                ),
+                (
+                    "counted",
+                    &["pname:counted has cases:", "", "iv) the fourth"],
+                ),
+                (
+                    "defined",
+                    &["pname:defined has terms:", "", "term;; its description"],
+                ),
+                NEXT,
+            ],
+        );
+    }
+
+    #[test]
+    fn the_dump_gives_a_term_without_a_description_the_text_after_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:last is the last member.",
+                "",
+                "1::",
+                "",
+                "    The note after an empty line",
+                "    goes on.",
+                "",
+                "2::",
+                "",
+                "",
+                "The second note.",
+                "",
+                "Not a part of the list.",
+                "  * pname:lists has notes:",
+                "",
+                "1::",
+                "",
+                "  ** a nested item, not the description",
+                "",
+                "2:: with a description",
+                "",
+                "Not a part of the list either.",
+                "  * pname:next is the next member.",
+                "+",
+                "  ** attached",
+                "  ** and nested",
+                "",
+                "  * pname:end is the last member.",
+            ],
+            &[
+                (
+                    "last",
+                    &[
+                        "pname:last is the last member.",
+                        "",
+                        "1::",
+                        "",
+                        "The note after an empty line",
+                        "goes on.",
+                        "",
+                        "2::",
+                        "",
+                        "The second note.",
+                    ],
+                ),
+                (
+                    "lists",
+                    &[
+                        "pname:lists has notes:",
+                        "",
+                        "1::",
+                        "",
+                        "** a nested item, not the description",
+                        "",
+                        "2:: with a description",
+                    ],
+                ),
+                (
+                    "next",
+                    &[
+                        "pname:next is the next member.",
+                        "+",
+                        "** attached",
+                        "** and nested",
+                    ],
+                ),
+                ("end", &["pname:end is the last member."]),
+            ],
+        );
+    }
+
+    #[test]
+    fn the_dump_ends_an_item_at_a_comment_that_follows_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:a is one of:",
+                "",
+                "// a comment",
+                "  ** not a part of the item",
+                "  * pname:b is one of:",
+                "// a comment",
+                "",
+                "  ** a part of the item",
+                "  * pname:next is the next member.",
+            ],
+            &[
+                ("a", &["pname:a is one of:"]),
+                ("b", &["pname:b is one of:", "", "** a part of the item"]),
+                NEXT,
+            ],
+        );
+    }
+
+    #[test]
+    fn the_dump_gives_a_term_that_a_comment_follows_no_text_after_an_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:a is the size.",
+                "",
+                "1::",
+                "// a comment",
+                "",
+                "Not in the list.",
+                "  * pname:next is the next member.",
+            ],
+            &[("a", &["pname:a is the size.", "", "1::"]), NEXT],
+        );
+    }
+
+    #[test]
+    fn the_dump_attaches_a_block_that_follows_a_list_continuation_after_one_empty_line() {
+        assert_dumped(
+            &[
+                "  * pname:feature specifies the feature.",
+                "+",
+                "",
+                ":refpage: VkPage",
+                "",
+                "If the sname:{refpage} structure is included, it is filled in.",
+                "",
+                "Not a part of the list.",
+                "  * pname:note has a note.",
+                "+",
+                "",
+                "[NOTE]",
+                "====",
+                "It is attached.",
+                "====",
+                "  * pname:twice is followed by two empty lines.",
+                "+",
+                "",
+                "",
+                "Not attached.",
+                "  * pname:commented has a comment in the way.",
+                "+",
+                "// a comment",
+                "",
+                "Not attached either.",
+                "  * pname:skipped has a comment before its block.",
+                "+",
+                "// a comment",
+                "It is attached.",
+                "  * pname:next is the next member.",
+                "+",
+                "",
+                "  * pname:last is the last member.",
+            ],
+            &[
+                (
+                    "feature",
+                    &[
+                        "pname:feature specifies the feature.",
+                        "+",
+                        "If the sname:VkPage structure is included, it is filled in.",
+                    ],
+                ),
+                (
+                    "note",
+                    &[
+                        "pname:note has a note.",
+                        "+",
+                        "[NOTE]",
+                        "====",
+                        "It is attached.",
+                        "====",
+                    ],
+                ),
+                ("twice", &["pname:twice is followed by two empty lines."]),
+                ("commented", &["pname:commented has a comment in the way."]),
+                (
+                    "skipped",
+                    &[
+                        "pname:skipped has a comment before its block.",
+                        "+",
+                        "It is attached.",
+                    ],
+                ),
+                NEXT,
+                ("last", &["pname:last is the last member."]),
             ],
         );
     }
@@ -1179,6 +1897,94 @@ mod tests {
             (
                 vec!["  * pname:a is:", "", "    An indented paragraph."],
                 "an indented paragraph after an empty line",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "// a comment", "More."],
+                "a comment after a list continuation and an empty line",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "", "// a comment", "More."],
+                "a comment after a list continuation and an empty line",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "+",
+                    "[NOTE]",
+                    "",
+                    "====",
+                    "A note.",
+                    "====",
+                ],
+                "an empty line between the attributes of a block and the block",
+            ),
+            (
+                vec!["  * pname:a is:", "+", ".Title", "", "", "  ** nested"],
+                "a list continuation that attaches nothing",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "", "  ** nested"],
+                "a list continuation that attaches nothing",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "    An indented paragraph."],
+                "an indented line after a list continuation",
+            ),
+            (
+                vec!["  * pname:a is:", "+", "", "    An indented paragraph."],
+                "an indented line after a list continuation",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "+",
+                    "  ** nested",
+                    "  * pname:b is next.",
+                ],
+                "a first-level item in the indented lines after a list continuation",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "+",
+                    "",
+                    "  ** nested",
+                    "more of it",
+                    "  * pname:b is next.",
+                ],
+                "a first-level item in the indented lines after a list continuation",
+            ),
+            (
+                vec!["  * pname:a is:", "    // not a comment", "    more"],
+                "an indented line that starts with `//`",
+            ),
+            (
+                vec!["  * pname:a is:", "", "    // not a comment"],
+                "an indented line that starts with `//`",
+            ),
+            (
+                vec![
+                    "  * pname:a is:",
+                    "",
+                    "1::",
+                    "",
+                    "[NOTE]",
+                    "====",
+                    "A note.",
+                    "====",
+                ],
+                "a term whose description after an empty line is not text",
+            ),
+            (
+                vec![
+                    "  * pname:a is the size.",
+                    "",
+                    "1::",
+                    "",
+                    "// a comment",
+                    "The note.",
+                ],
+                "a comment between a term and its description",
             ),
         ] {
             let Some(dumped) = dumped(&source) else {
