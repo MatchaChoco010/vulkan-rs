@@ -63,7 +63,7 @@ fn assert_every_mapping_operation_met_every_mapping_state(coverage: &Coverage) {
 
 #[test]
 fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
-    let coverage = coverage_of(800, 80);
+    let coverage = coverage_of(1600, 80);
     for (event, count) in &coverage.events {
         println!("{count:>8}  {event}");
     }
