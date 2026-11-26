@@ -22,6 +22,7 @@ fn main() {
     assert_manifest_declares_features(&root, ir);
 
     vulkan_codegen::assert_aligned_memory_exists(ir);
+    vulkan_codegen::assert_listed_legacy_macros_are_marked(ir);
     let files = generate(ir, Docs::get());
     remove_files_no_longer_generated(&root, &files);
     for GeneratedFile { path, contents } in &files {

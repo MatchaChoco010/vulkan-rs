@@ -257,6 +257,11 @@ impl SlicePointer {
 }
 
 impl Setter {
+    fn with_legacy(mut self, statement: String) -> Self {
+        self.doc = self.doc.text_after_the_first_block(statement);
+        self
+    }
+
     fn render(&self) -> String {
         let Setter {
             doc,
@@ -290,8 +295,9 @@ pub(super) fn member_methods(
 ) -> String {
     let ty = CType::of(m);
     let field = field_name(&m.name);
+    let legacy = model.legacy_member(&model.cfg(s.protect.as_deref()), &s.name, &m.name);
     if ty.is_array() {
-        let setter = value_setter(model, m, names).render();
+        let setter = value_setter(model, m, names).with_legacy(legacy).render();
         return setter + &fixed_array_reader(model, s, m, &ty, names);
     }
     let setter = match ty.depth() {
@@ -307,7 +313,9 @@ pub(super) fn member_methods(
         _ => pointer_array_setter(model, s, m, &ty, counted, names)
             .unwrap_or_else(|| value_setter(model, m, names)),
     };
-    counted.null_when_empty(m, &ty, setter).render()
+    counted
+        .null_when_empty(m, &ty, setter.with_legacy(legacy))
+        .render()
 }
 
 fn value_setter(model: &Model<'_>, m: &Field, names: &mut MethodNames<'_>) -> Setter {

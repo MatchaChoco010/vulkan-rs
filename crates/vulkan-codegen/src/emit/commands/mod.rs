@@ -140,7 +140,8 @@ fn raw_doc(model: &Model<'_>, cfg: &Cfg, c: &Command, params: &[Field]) -> Doc {
             "Calls {} with the arguments as they are. {}",
             called(model, cfg, c),
             provided(model, cfg, c)
-        ));
+        ))
+        .text(model.legacy_command(cfg, &c.name));
     if !parameters.is_empty() {
         doc = doc.blocks([Block::Heading("Parameters"), Block::List(parameters)]);
     }
@@ -1898,6 +1899,12 @@ mod tests {
             rename(&mut c.name);
             if let Some(alias) = &mut c.alias {
                 rename(alias);
+            }
+        }
+        for mark in &mut renamed_ir.legacy {
+            rename(&mut mark.name);
+            if let Some(successor) = &mut mark.superseded_by {
+                rename(successor);
             }
         }
         let mut renamed_docs = docs.clone();

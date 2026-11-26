@@ -93812,6 +93812,2300 @@
  "header_version_complete": "1.4.363",
  "headers_commit": "6802bb4733b6",
  "headers_tag": "vulkan-sdk-1.4.363.0",
+ "legacy": [
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkAllocateDescriptorSets",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_KHR_acceleration_structure"
+   ],
+   "name": "vkBuildAccelerationStructuresKHR",
+   "structure": null,
+   "superseded_by": "vkCmdBuildAccelerationStructuresKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_EXT_opacity_micromap"
+   ],
+   "name": "vkBuildMicromapsEXT",
+   "structure": null,
+   "superseded_by": "vkCmdBuildMicromapsEXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdBeginConditionalRenderingEXT",
+   "structure": null,
+   "superseded_by": "vkCmdBeginConditionalRendering2EXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "vkCmdBeginRenderPass",
+   "structure": null,
+   "superseded_by": "vkCmdBeginRenderPass2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkCmdBeginRenderPass2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdBeginTransformFeedbackEXT",
+   "structure": null,
+   "superseded_by": "vkCmdBeginTransformFeedback2EXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdBindDescriptorBufferEmbeddedSamplers2EXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdBindDescriptorBufferEmbeddedSamplersEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdBindDescriptorBuffersEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdBindDescriptorSets",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdBindDescriptorSets2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdBindIndexBuffer2",
+   "structure": null,
+   "superseded_by": "vkCmdBindIndexBuffer3KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdBindTransformFeedbackBuffersEXT",
+   "structure": null,
+   "superseded_by": "vkCmdBindTransformFeedbackBuffers2EXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdBindVertexBuffers2EXT",
+   "structure": null,
+   "superseded_by": "vkCmdBindVertexBuffers3KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdCopyBuffer2",
+   "structure": null,
+   "superseded_by": "vkCmdCopyMemoryKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdCopyBufferToImage2",
+   "structure": null,
+   "superseded_by": "vkCmdCopyMemoryToImageKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdCopyImageToBuffer2",
+   "structure": null,
+   "superseded_by": "vkCmdCopyImageToMemoryKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdCopyQueryPoolResults",
+   "structure": null,
+   "superseded_by": "vkCmdCopyQueryPoolResultsToMemoryKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDispatchIndirect",
+   "structure": null,
+   "superseded_by": "vkCmdDispatchIndirect2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDrawIndexedIndirect",
+   "structure": null,
+   "superseded_by": "vkCmdDrawIndexedIndirect2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDrawIndexedIndirectCount",
+   "structure": null,
+   "superseded_by": "vkCmdDrawIndexedIndirectCount2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDrawIndirect",
+   "structure": null,
+   "superseded_by": "vkCmdDrawIndirect2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDrawIndirectByteCountEXT",
+   "structure": null,
+   "superseded_by": "vkCmdDrawIndirectByteCount2EXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDrawIndirectCount",
+   "structure": null,
+   "superseded_by": "vkCmdDrawIndirectCount2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDrawMeshTasksIndirectCountEXT",
+   "structure": null,
+   "superseded_by": "vkCmdDrawMeshTasksIndirectCount2EXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdDrawMeshTasksIndirectEXT",
+   "structure": null,
+   "superseded_by": "vkCmdDrawMeshTasksIndirect2EXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "vkCmdEndRenderPass",
+   "structure": null,
+   "superseded_by": "vkCmdEndRenderPass2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkCmdEndRenderPass2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdEndTransformFeedbackEXT",
+   "structure": null,
+   "superseded_by": "vkCmdEndTransformFeedback2EXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdFillBuffer",
+   "structure": null,
+   "superseded_by": "vkCmdFillMemoryKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "vkCmdNextSubpass",
+   "structure": null,
+   "superseded_by": "vkCmdNextSubpass2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkCmdNextSubpass2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "vkCmdPipelineBarrier",
+   "structure": null,
+   "superseded_by": "vkCmdPipelineBarrier2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdPushConstants",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdPushConstants2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "vkCmdResetEvent",
+   "structure": null,
+   "superseded_by": "vkCmdResetEvent2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdSetDescriptorBufferOffsets2EXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCmdSetDescriptorBufferOffsetsEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "vkCmdSetEvent",
+   "structure": null,
+   "superseded_by": "vkCmdSetEvent2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdUpdateBuffer",
+   "structure": null,
+   "superseded_by": "vkCmdUpdateMemoryKHR"
+  },
+  {
+   "kind": "command",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "vkCmdWaitEvents",
+   "structure": null,
+   "superseded_by": "vkCmdWaitEvents2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCmdWriteBufferMarker2AMD",
+   "structure": null,
+   "superseded_by": "vkCmdWriteMarkerToMemoryAMD"
+  },
+  {
+   "kind": "command",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "vkCmdWriteTimestamp",
+   "structure": null,
+   "superseded_by": "vkCmdWriteTimestamp2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_KHR_acceleration_structure"
+   ],
+   "name": "vkCopyAccelerationStructureKHR",
+   "structure": null,
+   "superseded_by": "vkCmdCopyAccelerationStructureKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_KHR_acceleration_structure"
+   ],
+   "name": "vkCopyAccelerationStructureToMemoryKHR",
+   "structure": null,
+   "superseded_by": "vkCmdCopyAccelerationStructureToMemoryKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_KHR_acceleration_structure"
+   ],
+   "name": "vkCopyMemoryToAccelerationStructureKHR",
+   "structure": null,
+   "superseded_by": "vkCmdCopyMemoryToAccelerationStructureKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_EXT_opacity_micromap"
+   ],
+   "name": "vkCopyMemoryToMicromapEXT",
+   "structure": null,
+   "superseded_by": "vkCmdCopyMemoryToMicromapEXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_EXT_opacity_micromap"
+   ],
+   "name": "vkCopyMicromapEXT",
+   "structure": null,
+   "superseded_by": "vkCmdCopyMicromapEXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_EXT_opacity_micromap"
+   ],
+   "name": "vkCopyMicromapToMemoryEXT",
+   "structure": null,
+   "superseded_by": "vkCmdCopyMicromapToMemoryEXT"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "vkCreateAccelerationStructureKHR",
+   "structure": null,
+   "superseded_by": "vkCreateAccelerationStructure2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-resource-objects",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCreateBufferView",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCreateDescriptorPool",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCreateDescriptorSetLayout",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkCreateFramebuffer",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCreatePipelineLayout",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "vkCreateRenderPass",
+   "structure": null,
+   "superseded_by": "vkCreateRenderPass2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkCreateRenderPass2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-resource-objects",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkCreateSampler",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-resource-objects",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkDestroyBufferView",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkDestroyDescriptorPool",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkDestroyDescriptorSetLayout",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkDestroyFramebuffer",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkDestroyPipelineLayout",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkDestroyRenderPass",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-resource-objects",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkDestroySampler",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-devicelayers",
+   "marked_by": [
+    "VK_VERSION_1_0"
+   ],
+   "name": "vkEnumerateDeviceLayerProperties",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkFreeDescriptorSets",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetAccelerationStructureOpaqueCaptureDescriptorDataEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetBufferOpaqueCaptureDescriptorDataEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetDescriptorEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetDescriptorSetLayoutBindingOffsetEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetDescriptorSetLayoutSizeEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetImageOpaqueCaptureDescriptorDataEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetImageViewOpaqueCaptureDescriptorDataEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdp2",
+   "marked_by": [
+    "VK_VERSION_1_1",
+    "VK_KHR_get_physical_device_properties2"
+   ],
+   "name": "vkGetPhysicalDeviceFeatures",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceFeatures2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdp2",
+   "marked_by": [
+    "VK_VERSION_1_1",
+    "VK_KHR_get_physical_device_properties2"
+   ],
+   "name": "vkGetPhysicalDeviceFormatProperties",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceFormatProperties2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdp2",
+   "marked_by": [
+    "VK_VERSION_1_1",
+    "VK_KHR_get_physical_device_properties2"
+   ],
+   "name": "vkGetPhysicalDeviceImageFormatProperties",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceImageFormatProperties2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdp2",
+   "marked_by": [
+    "VK_VERSION_1_1",
+    "VK_KHR_get_physical_device_properties2"
+   ],
+   "name": "vkGetPhysicalDeviceMemoryProperties",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceMemoryProperties2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdp2",
+   "marked_by": [
+    "VK_VERSION_1_1",
+    "VK_KHR_get_physical_device_properties2"
+   ],
+   "name": "vkGetPhysicalDeviceProperties",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceProperties2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdp2",
+   "marked_by": [
+    "VK_VERSION_1_1",
+    "VK_KHR_get_physical_device_properties2"
+   ],
+   "name": "vkGetPhysicalDeviceQueueFamilyProperties",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceQueueFamilyProperties2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdp2",
+   "marked_by": [
+    "VK_VERSION_1_1",
+    "VK_KHR_get_physical_device_properties2"
+   ],
+   "name": "vkGetPhysicalDeviceSparseImageFormatProperties",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceSparseImageFormatProperties2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdsc2",
+   "marked_by": [
+    "VK_KHR_get_surface_capabilities2"
+   ],
+   "name": "vkGetPhysicalDeviceSurfaceCapabilitiesKHR",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceSurfaceCapabilities2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-gpdsc2",
+   "marked_by": [
+    "VK_KHR_get_surface_capabilities2"
+   ],
+   "name": "vkGetPhysicalDeviceSurfaceFormatsKHR",
+   "structure": null,
+   "superseded_by": "vkGetPhysicalDeviceSurfaceFormats2KHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "vkGetRenderAreaGranularity",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkGetSamplerOpaqueCaptureDescriptorDataEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "vkQueueSubmit",
+   "structure": null,
+   "superseded_by": "vkQueueSubmit2"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkResetDescriptorPool",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "vkUpdateDescriptorSets",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_KHR_acceleration_structure"
+   ],
+   "name": "vkWriteAccelerationStructuresPropertiesKHR",
+   "structure": null,
+   "superseded_by": "vkCmdWriteAccelerationStructuresPropertiesKHR"
+  },
+  {
+   "kind": "command",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_EXT_opacity_micromap"
+   ],
+   "name": "vkWriteMicromapsPropertiesEXT",
+   "structure": null,
+   "superseded_by": "vkCmdWriteMicromapsPropertiesEXT"
+  },
+  {
+   "kind": "feature",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_KHR_acceleration_structure"
+   ],
+   "name": "accelerationStructureHostCommands",
+   "structure": "VkPhysicalDeviceAccelerationStructureFeaturesKHR",
+   "superseded_by": null
+  },
+  {
+   "kind": "feature",
+   "link": "legacy-host-builds",
+   "marked_by": [
+    "VK_EXT_opacity_micromap"
+   ],
+   "name": "micromapHostCommands",
+   "structure": "VkPhysicalDeviceOpacityMicromapFeaturesEXT",
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-version-macros",
+   "marked_by": [
+    "VK_VERSION_1_0"
+   ],
+   "name": "VK_API_VERSION",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-version-macros",
+   "marked_by": [
+    "VK_VERSION_1_0"
+   ],
+   "name": "VK_MAKE_VERSION",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-version-macros",
+   "marked_by": [
+    "VK_VERSION_1_0"
+   ],
+   "name": "VK_VERSION_MAJOR",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-version-macros",
+   "marked_by": [
+    "VK_VERSION_1_0"
+   ],
+   "name": "VK_VERSION_MINOR",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-version-macros",
+   "marked_by": [
+    "VK_VERSION_1_0"
+   ],
+   "name": "VK_VERSION_PATCH",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkAccelerationStructureCaptureDescriptorDataInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkAccelerationStructureCreateInfoKHR",
+   "structure": null,
+   "superseded_by": "VkAccelerationStructureCreateInfo2KHR"
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkAccessFlagBits",
+   "structure": null,
+   "superseded_by": "VkAccessFlagBits2"
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkAccessFlags",
+   "structure": null,
+   "superseded_by": "VkAccessFlags2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkAttachmentDescription",
+   "structure": null,
+   "superseded_by": "VkAttachmentDescription2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkAttachmentDescription2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkAttachmentDescriptionFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkAttachmentDescriptionFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkAttachmentDescriptionStencilLayout",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkAttachmentReference",
+   "structure": null,
+   "superseded_by": "VkAttachmentReference2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkAttachmentReference2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkAttachmentSampleLocationsEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkBufferCaptureDescriptorDataInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkBufferCopy2",
+   "structure": null,
+   "superseded_by": "VkDeviceMemoryCopyKHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkBufferImageCopy2",
+   "structure": null,
+   "superseded_by": "VkDeviceMemoryImageCopyKHR"
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkBufferMemoryBarrier",
+   "structure": null,
+   "superseded_by": "VkBufferMemoryBarrier2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkBufferMemoryBarrier2",
+   "structure": null,
+   "superseded_by": "VkMemoryRangeBarrierKHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_maintenance5"
+   ],
+   "name": "VkBufferUsageFlagBits",
+   "structure": null,
+   "superseded_by": "VkBufferUsageFlagBits2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_maintenance5"
+   ],
+   "name": "VkBufferUsageFlags",
+   "structure": null,
+   "superseded_by": "VkBufferUsageFlags2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-resource-objects",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkBufferView",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkConditionalRenderingBeginInfoEXT",
+   "structure": null,
+   "superseded_by": "VkConditionalRenderingBeginInfo2EXT"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkCopyBufferInfo2",
+   "structure": null,
+   "superseded_by": "VkCopyDeviceMemoryInfoKHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkCopyBufferToImageInfo2",
+   "structure": null,
+   "superseded_by": "VkCopyDeviceMemoryImageInfoKHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkCopyDescriptorSet",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-buffer-commands",
+   "marked_by": [
+    "VK_KHR_device_address_commands"
+   ],
+   "name": "VkCopyImageToBufferInfo2",
+   "structure": null,
+   "superseded_by": "VkCopyDeviceMemoryImageInfoKHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorAddressInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorBindingFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorBindingFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorBufferBindingInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorBufferBindingPushDescriptorBufferHandleEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorBufferInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorDataEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorGetInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorImageInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorPool",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorPoolCreateFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorPoolCreateFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorPoolCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorPoolInlineUniformBlockCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorPoolResetFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorPoolSize",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSet",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetAllocateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetLayout",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetLayoutBinding",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetLayoutBindingFlagsCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetLayoutCreateFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetLayoutCreateFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetLayoutCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkDescriptorSetVariableDescriptorCountAllocateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_format_feature_flags2"
+   ],
+   "name": "VkFormatFeatureFlagBits",
+   "structure": null,
+   "superseded_by": "VkFormatFeatureFlagBits2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_format_feature_flags2"
+   ],
+   "name": "VkFormatFeatureFlags",
+   "structure": null,
+   "superseded_by": "VkFormatFeatureFlags2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkFragmentShadingRateAttachmentInfoKHR",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkFramebuffer",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkFramebufferAttachmentImageInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkFramebufferAttachmentsCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkFramebufferCreateFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkFramebufferCreateFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkFramebufferCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkImageCaptureDescriptorDataInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_KHR_extended_flags"
+   ],
+   "name": "VkImageCreateFlagBits",
+   "structure": null,
+   "superseded_by": "VkImageCreateFlagBits2KHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_KHR_extended_flags"
+   ],
+   "name": "VkImageCreateFlags",
+   "structure": null,
+   "superseded_by": "VkImageCreateFlags2KHR"
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkImageMemoryBarrier",
+   "structure": null,
+   "superseded_by": "VkImageMemoryBarrier2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_KHR_extended_flags"
+   ],
+   "name": "VkImageUsageFlagBits",
+   "structure": null,
+   "superseded_by": "VkImageUsageFlagBits2KHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_KHR_extended_flags"
+   ],
+   "name": "VkImageUsageFlags",
+   "structure": null,
+   "superseded_by": "VkImageUsageFlags2KHR"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkImageViewCaptureDescriptorDataInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkInputAttachmentAspectReference",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkMemoryBarrier",
+   "structure": null,
+   "superseded_by": "VkMemoryBarrier2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkMutableDescriptorTypeCreateInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkMutableDescriptorTypeListEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkOpaqueCaptureDescriptorDataCreateInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceDescriptorBufferFeaturesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceDescriptorBufferPropertiesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceDescriptorIndexingFeaturesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceDescriptorIndexingPropertiesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceInlineUniformBlockFeaturesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceInlineUniformBlockPropertiesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_maintenance5"
+   ],
+   "name": "VkPipelineCreateFlagBits",
+   "structure": null,
+   "superseded_by": "VkPipelineCreateFlagBits2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-flagbits",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_maintenance5"
+   ],
+   "name": "VkPipelineCreateFlags",
+   "structure": null,
+   "superseded_by": "VkPipelineCreateFlags2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPipelineLayout",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPipelineLayoutCreateFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPipelineLayoutCreateFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPipelineLayoutCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkPipelineStageFlagBits",
+   "structure": null,
+   "superseded_by": "VkPipelineStageFlagBits2"
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkPipelineStageFlags",
+   "structure": null,
+   "superseded_by": "VkPipelineStageFlags2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkPushConstantRange",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPass",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassAttachmentBeginInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassBeginInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkRenderPassCreateFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkRenderPassCreateFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkRenderPassCreateInfo",
+   "structure": null,
+   "superseded_by": "VkRenderPassCreateInfo2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassCreateInfo2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassCreationControlEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassCreationFeedbackCreateInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassCreationFeedbackInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassFragmentDensityMapCreateInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkRenderPassInputAttachmentAspectCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkRenderPassMultiviewCreateInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassSampleLocationsBeginInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassSubpassFeedbackCreateInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkRenderPassSubpassFeedbackInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-resource-objects",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkSampler",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkSamplerCaptureDescriptorDataInfoEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "deprecation-sync2",
+   "marked_by": [
+    "VK_VERSION_1_3",
+    "VK_KHR_synchronization2"
+   ],
+   "name": "VkSubmitInfo",
+   "structure": null,
+   "superseded_by": "VkSubmitInfo2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkSubpassBeginInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkSubpassContents",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkSubpassDependency",
+   "structure": null,
+   "superseded_by": "VkSubpassDependency2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkSubpassDependency2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkSubpassDescription",
+   "structure": null,
+   "superseded_by": "VkSubpassDescription2"
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkSubpassDescription2",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkSubpassDescriptionDepthStencilResolve",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkSubpassDescriptionFlagBits",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-renderpass2",
+   "marked_by": [
+    "VK_VERSION_1_2",
+    "VK_KHR_create_renderpass2"
+   ],
+   "name": "VkSubpassDescriptionFlags",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkSubpassEndInfo",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-dynamicrendering",
+   "marked_by": [
+    "VK_VERSION_1_4",
+    "VK_KHR_dynamic_rendering_local_read"
+   ],
+   "name": "VkSubpassSampleLocationsEXT",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-gpdsc2",
+   "marked_by": [
+    "VK_KHR_get_surface_capabilities2"
+   ],
+   "name": "VkSurfaceCapabilitiesKHR",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-gpdsc2",
+   "marked_by": [
+    "VK_KHR_get_surface_capabilities2"
+   ],
+   "name": "VkSurfaceFormatKHR",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkWriteDescriptorSet",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkWriteDescriptorSetAccelerationStructureKHR",
+   "structure": null,
+   "superseded_by": null
+  },
+  {
+   "kind": "type",
+   "link": "legacy-descriptor-sets",
+   "marked_by": [
+    "VK_EXT_descriptor_heap"
+   ],
+   "name": "VkWriteDescriptorSetInlineUniformBlock",
+   "structure": null,
+   "superseded_by": null
+  }
+ ],
  "platforms": {
   "android": "VK_USE_PLATFORM_ANDROID_KHR",
   "directfb": "VK_USE_PLATFORM_DIRECTFB_EXT",

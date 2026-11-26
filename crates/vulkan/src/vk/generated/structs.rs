@@ -10722,6 +10722,10 @@ unsafe impl TaggedStructure for AccelerationStructureBuildSizesInfoKHR<'_> {
 /// C structure
 /// [`VkAccelerationStructureCaptureDescriptorDataInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccelerationStructureCaptureDescriptorDataInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkAccelerationStructureCaptureDescriptorDataInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -10875,6 +10879,11 @@ unsafe impl TaggedStructure for AccelerationStructureCreateInfo2KHR<'_> {
 /// C structure
 /// [`VkAccelerationStructureCreateInfoKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAccelerationStructureCreateInfoKHR.html),
 /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+///
+/// Legacy functionality, superseded by
+/// [`VkAccelerationStructureCreateInfo2KHR`](AccelerationStructureCreateInfo2KHR): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+/// in the Vulkan specification.
 #[doc(alias = "VkAccelerationStructureCreateInfoKHR")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -14504,6 +14513,11 @@ unsafe impl TaggedStructure for ApplicationInfo<'_> {
 /// C structure
 /// [`VkAttachmentDescription`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAttachmentDescription.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkAttachmentDescription2`](AttachmentDescription2):
+/// see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 #[doc(alias = "VkAttachmentDescription")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -14611,6 +14625,10 @@ impl AttachmentDescription {
 /// C structure
 /// [`VkAttachmentDescription2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAttachmentDescription2.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_create_renderpass2`](KHR_CREATE_RENDERPASS_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkAttachmentDescription2")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -14750,6 +14768,10 @@ pub type AttachmentDescription2KHR<'a> = AttachmentDescription2<'a>;
 /// provided by Vulkan 1.2 or
 /// [`VK_KHR_separate_depth_stencil_layouts`](KHR_SEPARATE_DEPTH_STENCIL_LAYOUTS_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Extends [`VkAttachmentDescription2`](AttachmentDescription2): their `push_next` accepts this
 /// structure.
 #[doc(alias = "VkAttachmentDescriptionStencilLayout")]
@@ -14883,6 +14905,11 @@ unsafe impl TaggedStructure for AttachmentFeedbackLoopInfoEXT<'_> {
 /// C structure
 /// [`VkAttachmentReference`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAttachmentReference.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkAttachmentReference2`](AttachmentReference2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 #[doc(alias = "VkAttachmentReference")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -14924,6 +14951,10 @@ impl AttachmentReference {
 /// C structure
 /// [`VkAttachmentReference2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAttachmentReference2.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_create_renderpass2`](KHR_CREATE_RENDERPASS_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkAttachmentReference2")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -15170,6 +15201,11 @@ pub type AttachmentSampleCountInfoNV<'a> = AttachmentSampleCountInfoAMD<'a>;
 /// C structure
 /// [`VkAttachmentSampleLocationsEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkAttachmentSampleLocationsEXT.html),
 /// provided by [`VK_EXT_sample_locations`](EXT_SAMPLE_LOCATIONS_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkAttachmentSampleLocationsEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -17414,6 +17450,10 @@ pub type BlitImageInfo2KHR<'a> = BlitImageInfo2<'a>;
 /// C structure
 /// [`VkBufferCaptureDescriptorDataInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferCaptureDescriptorDataInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkBufferCaptureDescriptorDataInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -18618,6 +18658,11 @@ pub type BufferImageCopy2KHR<'a> = BufferImageCopy2<'a>;
 /// C structure
 /// [`VkBufferMemoryBarrier`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferMemoryBarrier.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkBufferMemoryBarrier2`](BufferMemoryBarrier2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
 #[doc(alias = "VkBufferMemoryBarrier")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -22475,6 +22520,11 @@ unsafe impl TaggedStructure for ConditionalRenderingBeginInfo2EXT<'_> {
 /// C structure
 /// [`VkConditionalRenderingBeginInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkConditionalRenderingBeginInfoEXT.html),
 /// provided by [`VK_EXT_conditional_rendering`](EXT_CONDITIONAL_RENDERING_NAME).
+///
+/// Legacy functionality, superseded by
+/// [`VkConditionalRenderingBeginInfo2EXT`](ConditionalRenderingBeginInfo2EXT): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+/// in the Vulkan specification.
 #[doc(alias = "VkConditionalRenderingBeginInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -29761,6 +29811,10 @@ impl DepthClampRangeEXT {
 /// C structure
 /// [`VkDescriptorAddressInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorAddressInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkDescriptorAddressInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -29834,6 +29888,10 @@ unsafe impl TaggedStructure for DescriptorAddressInfoEXT<'_> {
 /// C structure
 /// [`VkDescriptorBufferBindingInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorBufferBindingInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkDescriptorBufferBindingInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -29906,6 +29964,10 @@ unsafe impl TaggedStructure for DescriptorBufferBindingInfoEXT<'_> {
 /// C structure
 /// [`VkDescriptorBufferBindingPushDescriptorBufferHandleEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorBufferBindingPushDescriptorBufferHandleEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkDescriptorBufferBindingInfoEXT`](DescriptorBufferBindingInfoEXT): their
 /// `push_next` accepts this structure.
@@ -30022,6 +30084,10 @@ impl DescriptorBufferInfo {
 /// C union
 /// [`VkDescriptorDataEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorDataEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkDescriptorDataEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -30175,6 +30241,10 @@ impl<'a> DescriptorDataEXT<'a> {
 /// C structure
 /// [`VkDescriptorGetInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorGetInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkDescriptorGetInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -41501,6 +41571,11 @@ unsafe impl TaggedStructure for FormatProperties4KHR<'_> {
 /// [`VkFragmentShadingRateAttachmentInfoKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFragmentShadingRateAttachmentInfoKHR.html),
 /// provided by [`VK_KHR_fragment_shading_rate`](KHR_FRAGMENT_SHADING_RATE_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Extends [`VkSubpassDescription2`](SubpassDescription2): their `push_next` accepts this
 /// structure.
 #[doc(alias = "VkFragmentShadingRateAttachmentInfoKHR")]
@@ -41832,6 +41907,10 @@ unsafe impl TaggedStructure for FrameBoundaryTensorsARM<'_> {
 /// C structure
 /// [`VkFramebufferAttachmentImageInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFramebufferAttachmentImageInfo.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_imageless_framebuffer`](KHR_IMAGELESS_FRAMEBUFFER_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkFramebufferAttachmentImageInfo")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -41963,6 +42042,10 @@ pub type FramebufferAttachmentImageInfoKHR<'a> = FramebufferAttachmentImageInfo<
 /// [`VkFramebufferAttachmentsCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFramebufferAttachmentsCreateInfo.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_imageless_framebuffer`](KHR_IMAGELESS_FRAMEBUFFER_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Extends [`VkFramebufferCreateInfo`](FramebufferCreateInfo): their `push_next` accepts this
 /// structure.
 #[doc(alias = "VkFramebufferAttachmentsCreateInfo")]
@@ -42055,6 +42138,10 @@ pub type FramebufferAttachmentsCreateInfoKHR<'a> = FramebufferAttachmentsCreateI
 /// C structure
 /// [`VkFramebufferCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkFramebufferCreateInfo.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkFramebufferCreateInfo")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -45239,6 +45326,10 @@ pub type ImageBlit2KHR<'a> = ImageBlit2<'a>;
 /// C structure
 /// [`VkImageCaptureDescriptorDataInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageCaptureDescriptorDataInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkImageCaptureDescriptorDataInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -46660,6 +46751,11 @@ pub type ImageFormatProperties2KHR<'a> = ImageFormatProperties2<'a>;
 /// C structure
 /// [`VkImageMemoryBarrier`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageMemoryBarrier.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkImageMemoryBarrier2`](ImageMemoryBarrier2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
 #[doc(alias = "VkImageMemoryBarrier")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -48121,6 +48217,10 @@ unsafe impl TaggedStructure for ImageViewAddressPropertiesNVX<'_> {
 /// C structure
 /// [`VkImageViewCaptureDescriptorDataInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageViewCaptureDescriptorDataInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkImageViewCaptureDescriptorDataInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -51465,6 +51565,10 @@ unsafe impl TaggedStructure for InitializePerformanceApiInfoINTEL<'_> {
 /// C structure
 /// [`VkInputAttachmentAspectReference`](https://docs.vulkan.org/refpages/latest/refpages/source/VkInputAttachmentAspectReference.html),
 /// provided by Vulkan 1.1 or [`VK_KHR_maintenance2`](KHR_MAINTENANCE_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 #[doc(alias = "VkInputAttachmentAspectReference")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -52664,6 +52768,10 @@ unsafe impl TaggedStructure for MemoryAllocateInfo<'_> {
 /// C structure
 /// [`VkMemoryBarrier`](https://docs.vulkan.org/refpages/latest/refpages/source/VkMemoryBarrier.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkMemoryBarrier2`](MemoryBarrier2): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
 #[doc(alias = "VkMemoryBarrier")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -55842,6 +55950,10 @@ unsafe impl TaggedStructure for MultiviewPerViewRenderAreasRenderPassBeginInfoQC
 /// provided by [`VK_VALVE_mutable_descriptor_type`](VALVE_MUTABLE_DESCRIPTOR_TYPE_NAME) or
 /// [`VK_EXT_mutable_descriptor_type`](EXT_MUTABLE_DESCRIPTOR_TYPE_NAME).
 ///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
+///
 /// Extends [`VkDescriptorPoolCreateInfo`](DescriptorPoolCreateInfo) and
 /// [`VkDescriptorSetLayoutCreateInfo`](DescriptorSetLayoutCreateInfo): their `push_next`
 /// accepts this structure.
@@ -55936,6 +56048,10 @@ pub type MutableDescriptorTypeCreateInfoVALVE<'a> = MutableDescriptorTypeCreateI
 /// [`VkMutableDescriptorTypeListEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkMutableDescriptorTypeListEXT.html),
 /// provided by [`VK_VALVE_mutable_descriptor_type`](VALVE_MUTABLE_DESCRIPTOR_TYPE_NAME) or
 /// [`VK_EXT_mutable_descriptor_type`](EXT_MUTABLE_DESCRIPTOR_TYPE_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkMutableDescriptorTypeListEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -56407,6 +56523,10 @@ unsafe impl TaggedStructure for OpaqueCaptureDataCreateInfoEXT<'_> {
 /// C structure
 /// [`VkOpaqueCaptureDescriptorDataCreateInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkOpaqueCaptureDescriptorDataCreateInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkAccelerationStructureCreateInfo2KHR`](AccelerationStructureCreateInfo2KHR),
 /// [`VkAccelerationStructureCreateInfoKHR`](AccelerationStructureCreateInfoKHR),
@@ -59076,6 +59196,11 @@ pub struct PhysicalDeviceAccelerationStructureFeaturesKHR<'a> {
     /// [`vkCopyAccelerationStructureToMemoryKHR`](crate::Device::copy_acceleration_structure_to_memory_khr),
     /// [`vkCopyMemoryToAccelerationStructureKHR`](crate::Device::copy_memory_to_acceleration_structure_khr),
     /// [`vkWriteAccelerationStructuresPropertiesKHR`](crate::Device::write_acceleration_structures_properties_khr).
+    ///
+    /// Legacy functionality as of
+    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     pub acceleration_structure_host_commands: Bool32,
     /// `descriptorBindingAccelerationStructureUpdateAfterBind` indicates whether the implementation
     /// supports updating acceleration structure descriptors after a set is bound. If this feature
@@ -59126,6 +59251,11 @@ impl<'a> PhysicalDeviceAccelerationStructureFeaturesKHR<'a> {
     }
     /// Sets [`acceleration_structure_host_commands`](Self::acceleration_structure_host_commands) to
     /// `VK_TRUE` or `VK_FALSE`.
+    ///
+    /// Legacy functionality as of
+    /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     pub fn acceleration_structure_host_commands(mut self, value: bool) -> Self {
         self.acceleration_structure_host_commands = value as Bool32;
         self
@@ -64067,6 +64197,10 @@ pub type PhysicalDeviceDepthStencilResolvePropertiesKHR<'a> =
 /// [`VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
 ///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
+///
 /// Extends [`VkPhysicalDeviceProperties2`](PhysicalDeviceProperties2): their `push_next`
 /// accepts this structure.
 #[doc(alias = "VkPhysicalDeviceDescriptorBufferDensityMapPropertiesEXT")]
@@ -64131,6 +64265,10 @@ unsafe impl TaggedStructure for PhysicalDeviceDescriptorBufferDensityMapProperti
 /// C structure
 /// [`VkPhysicalDeviceDescriptorBufferFeaturesEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceDescriptorBufferFeaturesEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkDeviceCreateInfo`](DeviceCreateInfo) and
 /// [`VkPhysicalDeviceFeatures2`](PhysicalDeviceFeatures2): their `push_next` accepts this
@@ -64235,6 +64373,10 @@ unsafe impl TaggedStructure for PhysicalDeviceDescriptorBufferFeaturesEXT<'_> {
 /// C structure
 /// [`VkPhysicalDeviceDescriptorBufferPropertiesEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceDescriptorBufferPropertiesEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkPhysicalDeviceProperties2`](PhysicalDeviceProperties2): their `push_next`
 /// accepts this structure.
@@ -80568,6 +80710,10 @@ pub type PhysicalDeviceMultiviewPropertiesKHR<'a> = PhysicalDeviceMultiviewPrope
 /// provided by [`VK_VALVE_mutable_descriptor_type`](VALVE_MUTABLE_DESCRIPTOR_TYPE_NAME) or
 /// [`VK_EXT_mutable_descriptor_type`](EXT_MUTABLE_DESCRIPTOR_TYPE_NAME).
 ///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
+///
 /// Extends [`VkDeviceCreateInfo`](DeviceCreateInfo) and
 /// [`VkPhysicalDeviceFeatures2`](PhysicalDeviceFeatures2): their `push_next` accepts this
 /// structure.
@@ -80876,6 +81022,11 @@ pub struct PhysicalDeviceOpacityMicromapFeaturesEXT<'a> {
     pub micromap_capture_replay: Bool32,
     /// `micromapHostCommands` indicates whether the implementation supports host side micromap
     /// array commands.
+    ///
+    /// Legacy functionality as of [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     pub micromap_host_commands: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -80909,6 +81060,11 @@ impl<'a> PhysicalDeviceOpacityMicromapFeaturesEXT<'a> {
         self
     }
     /// Sets [`micromap_host_commands`](Self::micromap_host_commands) to `VK_TRUE` or `VK_FALSE`.
+    ///
+    /// Legacy functionality as of [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     pub fn micromap_host_commands(mut self, value: bool) -> Self {
         self.micromap_host_commands = value as Bool32;
         self
@@ -109978,6 +110134,10 @@ pub type ReleaseSwapchainImagesInfoEXT<'a> = ReleaseSwapchainImagesInfoKHR<'a>;
 /// [`VkRenderPassAttachmentBeginInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassAttachmentBeginInfo.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_imageless_framebuffer`](KHR_IMAGELESS_FRAMEBUFFER_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Extends [`VkRenderPassBeginInfo`](RenderPassBeginInfo): their `push_next` accepts this
 /// structure.
 #[doc(alias = "VkRenderPassAttachmentBeginInfo")]
@@ -110061,6 +110221,10 @@ pub type RenderPassAttachmentBeginInfoKHR<'a> = RenderPassAttachmentBeginInfo<'a
 /// C structure
 /// [`VkRenderPassBeginInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassBeginInfo.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkRenderPassBeginInfo")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -110169,6 +110333,11 @@ unsafe impl TaggedStructure for RenderPassBeginInfo<'_> {
 /// C structure
 /// [`VkRenderPassCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassCreateInfo.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkRenderPassCreateInfo2`](RenderPassCreateInfo2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 #[doc(alias = "VkRenderPassCreateInfo")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -110314,6 +110483,10 @@ unsafe impl TaggedStructure for RenderPassCreateInfo<'_> {
 /// C structure
 /// [`VkRenderPassCreateInfo2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassCreateInfo2.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_create_renderpass2`](KHR_CREATE_RENDERPASS_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkRenderPassCreateInfo2")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -110495,6 +110668,11 @@ pub type RenderPassCreateInfo2KHR<'a> = RenderPassCreateInfo2<'a>;
 /// [`VkRenderPassCreationControlEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassCreationControlEXT.html),
 /// provided by [`VK_EXT_subpass_merge_feedback`](EXT_SUBPASS_MERGE_FEEDBACK_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Extends [`VkRenderPassCreateInfo2`](RenderPassCreateInfo2) and
 /// [`VkSubpassDescription2`](SubpassDescription2): their `push_next` accepts this structure.
 #[doc(alias = "VkRenderPassCreationControlEXT")]
@@ -110553,6 +110731,11 @@ unsafe impl TaggedStructure for RenderPassCreationControlEXT<'_> {
 /// C structure
 /// [`VkRenderPassCreationFeedbackCreateInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassCreationFeedbackCreateInfoEXT.html),
 /// provided by [`VK_EXT_subpass_merge_feedback`](EXT_SUBPASS_MERGE_FEEDBACK_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkRenderPassCreateInfo2`](RenderPassCreateInfo2): their `push_next` accepts this
 /// structure.
@@ -110618,6 +110801,11 @@ unsafe impl TaggedStructure for RenderPassCreationFeedbackCreateInfoEXT<'_> {
 /// C structure
 /// [`VkRenderPassCreationFeedbackInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassCreationFeedbackInfoEXT.html),
 /// provided by [`VK_EXT_subpass_merge_feedback`](EXT_SUBPASS_MERGE_FEEDBACK_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkRenderPassCreationFeedbackInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -110648,6 +110836,11 @@ impl RenderPassCreationFeedbackInfoEXT {
 /// C structure
 /// [`VkRenderPassFragmentDensityMapCreateInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassFragmentDensityMapCreateInfoEXT.html),
 /// provided by [`VK_EXT_fragment_density_map`](EXT_FRAGMENT_DENSITY_MAP_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkRenderPassCreateInfo`](RenderPassCreateInfo) and
 /// [`VkRenderPassCreateInfo2`](RenderPassCreateInfo2): their `push_next` accepts this
@@ -110801,6 +110994,10 @@ pub type SubpassFragmentDensityMapOffsetEndInfoQCOM<'a> =
 /// [`VkRenderPassInputAttachmentAspectCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassInputAttachmentAspectCreateInfo.html),
 /// provided by Vulkan 1.1 or [`VK_KHR_maintenance2`](KHR_MAINTENANCE_2_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
+///
 /// Extends [`VkRenderPassCreateInfo`](RenderPassCreateInfo): their `push_next` accepts this
 /// structure.
 #[doc(alias = "VkRenderPassInputAttachmentAspectCreateInfo")]
@@ -110889,6 +111086,10 @@ pub type RenderPassInputAttachmentAspectCreateInfoKHR<'a> =
 /// C structure
 /// [`VkRenderPassMultiviewCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassMultiviewCreateInfo.html),
 /// provided by Vulkan 1.1 or [`VK_KHR_multiview`](KHR_MULTIVIEW_NAME).
+///
+/// Legacy functionality as of Vulkan 1.2: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkRenderPassCreateInfo`](RenderPassCreateInfo): their `push_next` accepts this
 /// structure.
@@ -111160,6 +111361,11 @@ unsafe impl TaggedStructure for RenderPassPerformanceCountersByRegionBeginInfoAR
 /// C structure
 /// [`VkRenderPassSampleLocationsBeginInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassSampleLocationsBeginInfoEXT.html),
 /// provided by [`VK_EXT_sample_locations`](EXT_SAMPLE_LOCATIONS_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 ///
 /// Extends [`VkRenderPassBeginInfo`](RenderPassBeginInfo): their `push_next` accepts this
 /// structure.
@@ -111530,6 +111736,11 @@ unsafe impl TaggedStructure for RenderPassStripeSubmitInfoARM<'_> {
 /// [`VkRenderPassSubpassFeedbackCreateInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassSubpassFeedbackCreateInfoEXT.html),
 /// provided by [`VK_EXT_subpass_merge_feedback`](EXT_SUBPASS_MERGE_FEEDBACK_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Extends [`VkSubpassDescription2`](SubpassDescription2): their `push_next` accepts this
 /// structure.
 #[doc(alias = "VkRenderPassSubpassFeedbackCreateInfoEXT")]
@@ -111591,6 +111802,11 @@ unsafe impl TaggedStructure for RenderPassSubpassFeedbackCreateInfoEXT<'_> {
 /// C structure
 /// [`VkRenderPassSubpassFeedbackInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderPassSubpassFeedbackInfoEXT.html),
 /// provided by [`VK_EXT_subpass_merge_feedback`](EXT_SUBPASS_MERGE_FEEDBACK_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkRenderPassSubpassFeedbackInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -113368,6 +113584,10 @@ unsafe impl TaggedStructure for SamplerBorderColorComponentMappingCreateInfoEXT<
 /// C structure
 /// [`VkSamplerCaptureDescriptorDataInfoEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSamplerCaptureDescriptorDataInfoEXT.html),
 /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+///
+/// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+/// in the Vulkan specification.
 #[doc(alias = "VkSamplerCaptureDescriptorDataInfoEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -117495,6 +117715,10 @@ impl StridedDeviceAddressRegionKHR {
 /// C structure
 /// [`VkSubmitInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubmitInfo.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkSubmitInfo2`](SubmitInfo2): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubmitInfo")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -117833,6 +118057,10 @@ pub type SubmitInfo2KHR<'a> = SubmitInfo2<'a>;
 /// C structure
 /// [`VkSubpassBeginInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassBeginInfo.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_create_renderpass2`](KHR_CREATE_RENDERPASS_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassBeginInfo")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -117894,6 +118122,11 @@ pub type SubpassBeginInfoKHR<'a> = SubpassBeginInfo<'a>;
 /// C structure
 /// [`VkSubpassDependency`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassDependency.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkSubpassDependency2`](SubpassDependency2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassDependency")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -117984,6 +118217,10 @@ impl SubpassDependency {
 /// C structure
 /// [`VkSubpassDependency2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassDependency2.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_create_renderpass2`](KHR_CREATE_RENDERPASS_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassDependency2")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -118113,6 +118350,11 @@ pub type SubpassDependency2KHR<'a> = SubpassDependency2<'a>;
 /// C structure
 /// [`VkSubpassDescription`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassDescription.html),
 /// provided by Vulkan 1.0.
+///
+/// Legacy functionality, superseded by [`VkSubpassDescription2`](SubpassDescription2): see
+/// [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassDescription")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -118315,6 +118557,10 @@ impl<'a> SubpassDescription<'a> {
 /// C structure
 /// [`VkSubpassDescription2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassDescription2.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_create_renderpass2`](KHR_CREATE_RENDERPASS_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassDescription2")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -118551,6 +118797,10 @@ pub type SubpassDescription2KHR<'a> = SubpassDescription2<'a>;
 /// [`VkSubpassDescriptionDepthStencilResolve`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassDescriptionDepthStencilResolve.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_depth_stencil_resolve`](KHR_DEPTH_STENCIL_RESOLVE_NAME).
 ///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
+///
 /// Extends [`VkSubpassDescription2`](SubpassDescription2): their `push_next` accepts this
 /// structure.
 #[doc(alias = "VkSubpassDescriptionDepthStencilResolve")]
@@ -118635,6 +118885,10 @@ pub type SubpassDescriptionDepthStencilResolveKHR<'a> = SubpassDescriptionDepthS
 /// C structure
 /// [`VkSubpassEndInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassEndInfo.html),
 /// provided by Vulkan 1.2 or [`VK_KHR_create_renderpass2`](KHR_CREATE_RENDERPASS_2_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4: see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassEndInfo")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -118748,6 +119002,11 @@ unsafe impl TaggedStructure for SubpassResolvePerformanceQueryEXT<'_> {
 /// C structure
 /// [`VkSubpassSampleLocationsEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubpassSampleLocationsEXT.html),
 /// provided by [`VK_EXT_sample_locations`](EXT_SAMPLE_LOCATIONS_NAME).
+///
+/// Legacy functionality as of Vulkan 1.4 and
+/// [`VK_KHR_dynamic_rendering_local_read`](KHR_DYNAMIC_RENDERING_LOCAL_READ_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+/// in the Vulkan specification.
 #[doc(alias = "VkSubpassSampleLocationsEXT")]
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -119418,6 +119677,11 @@ unsafe impl TaggedStructure for SurfaceCapabilitiesFullScreenExclusiveEXT<'_> {
 /// C structure
 /// [`VkSurfaceCapabilitiesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSurfaceCapabilitiesKHR.html),
 /// provided by [`VK_KHR_surface`](KHR_SURFACE_NAME).
+///
+/// Legacy functionality as of
+/// [`VK_KHR_get_surface_capabilities2`](KHR_GET_SURFACE_CAPABILITIES_2_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdsc2) in
+/// the Vulkan specification.
 #[doc(alias = "VkSurfaceCapabilitiesKHR")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
@@ -119861,6 +120125,11 @@ unsafe impl TaggedStructure for SurfaceFormat2KHR<'_> {
 /// C structure
 /// [`VkSurfaceFormatKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSurfaceFormatKHR.html),
 /// provided by [`VK_KHR_surface`](KHR_SURFACE_NAME).
+///
+/// Legacy functionality as of
+/// [`VK_KHR_get_surface_capabilities2`](KHR_GET_SURFACE_CAPABILITIES_2_NAME): see [Legacy
+/// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdsc2) in
+/// the Vulkan specification.
 #[doc(alias = "VkSurfaceFormatKHR")]
 #[repr(C)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]

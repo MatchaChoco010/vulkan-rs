@@ -1,4 +1,18 @@
 {
+ "anchors": {
+  "deprecation-sync2": "appendices/legacy.adoc",
+  "legacy-buffer-commands": "appendices/legacy.adoc",
+  "legacy-descriptor-sets": "appendices/legacy.adoc",
+  "legacy-devicelayers": "appendices/legacy.adoc",
+  "legacy-dynamicrendering": "appendices/legacy.adoc",
+  "legacy-flagbits": "appendices/legacy.adoc",
+  "legacy-gpdp2": "appendices/legacy.adoc",
+  "legacy-gpdsc2": "appendices/legacy.adoc",
+  "legacy-host-builds": "appendices/legacy.adoc",
+  "legacy-renderpass2": "appendices/legacy.adoc",
+  "legacy-resource-objects": "appendices/legacy.adoc",
+  "legacy-version-macros": "appendices/legacy.adoc"
+ },
  "attributes": {
   "DeltaUpper": "Δ",
   "ExecutionMode": "code:Execution code:Mode",

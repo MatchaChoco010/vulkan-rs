@@ -3,6 +3,12 @@ use crate::docs::Doc;
 use crate::model::{Cfg, Model};
 use crate::naming::const_name;
 
+pub(crate) const MACROS_OF_EVERY_HEADER: [&str; 3] = [
+    "VK_HEADER_VERSION",
+    "VK_HEADER_VERSION_COMPLETE",
+    "VK_API_VERSION_1_0",
+];
+
 fn numbers<const N: usize>(text: &str, separator: char) -> [u32; N] {
     let numbers = text
         .split(separator)
@@ -24,9 +30,15 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
         Doc::new()
             .text(model.summary(&Cfg::default(), c_name).unwrap_or_default())
             .text(format!("C macro {}.", model.reference(c_name)))
+            .text(model.legacy_type(&Cfg::default(), c_name))
             .alias(c_name)
             .render()
     };
+    let [
+        header_version_doc,
+        header_version_complete_doc,
+        api_version_1_0_doc,
+    ] = MACROS_OF_EVERY_HEADER.map(define);
     w!(
         out,
         r#"{header_version_doc}pub const HEADER_VERSION: u32 = {header_version};
@@ -39,9 +51,6 @@ pub const HEADERS_COMMIT: &str = "{commit}";
 /// descriptions in this documentation were taken from.
 pub const DOCS_COMMIT: &str = "{docs_commit}";
 {api_version_1_0_doc}pub const API_VERSION_1_0: u32 = make_api_version(0, 1, 0, 0);"#,
-        header_version_doc = define("VK_HEADER_VERSION"),
-        header_version_complete_doc = define("VK_HEADER_VERSION_COMPLETE"),
-        api_version_1_0_doc = define("VK_API_VERSION_1_0"),
         header_version = ir.header_version,
         tag = ir.headers_tag,
         commit = ir.headers_commit,

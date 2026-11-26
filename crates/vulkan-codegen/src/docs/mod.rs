@@ -1,10 +1,15 @@
 pub(crate) mod asciidoc;
 mod items;
+mod legacy;
 mod links;
 mod other_names;
 mod render;
 mod tables;
 
+pub(crate) use legacy::{
+    LegacyMarks, assert_every_legacy_mark_has_an_item, assert_listed_legacy_macros_are_marked,
+    legacy_marks,
+};
 pub(crate) use links::Links;
 pub(crate) use other_names::assert_every_other_name_is_in_use;
 pub(crate) use render::{Block, Doc};
@@ -346,6 +351,7 @@ impl<'a> Model<'a> {
         Doc::new()
             .text(self.summary(from, c_name).unwrap_or_default())
             .text(origin)
+            .text(self.legacy_type(from, c_name))
             .alias(c_name)
             .of_item(&type_name(c_name))
     }
@@ -447,6 +453,7 @@ mod tests {
     fn docs() -> Docs {
         Docs {
             commit: "000000000000".to_string(),
+            anchors: BTreeMap::new(),
             attributes: [("times".to_string(), "×".to_string())].into(),
             titles: BTreeMap::new(),
             pages: vec![

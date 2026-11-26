@@ -19,7 +19,7 @@ pub(crate) use platform::{is_opaque, is_platform_type};
 pub(crate) use rust_types::Scalar;
 pub(crate) use void_arrays::{TypedValues, VoidArrayLength, void_array_len, void_array_length};
 
-use crate::docs::{Links, Table, read_table};
+use crate::docs::{LegacyMarks, Links, Table, legacy_marks, read_table};
 use crate::naming::enum_variant_name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
@@ -34,6 +34,7 @@ pub(crate) struct Model<'a> {
     pub(crate) tables: Vec<(&'a DocTable, Table)>,
     pub(crate) command_aliases: BTreeMap<&'a str, &'a str>,
     pub(crate) links: Links,
+    pub(crate) legacy: LegacyMarks<'a>,
     structs: BTreeMap<&'a str, &'a Struct>,
     handles: BTreeSet<&'a str>,
     enums: BTreeSet<&'a str>,
@@ -68,7 +69,9 @@ macro_rules! alias_targets {
 impl<'a> Model<'a> {
     pub(crate) fn new(ir: &'a Registry) -> Self {
         static NO_DOCS: OnceLock<Docs> = OnceLock::new();
-        Self::with_docs(ir, NO_DOCS.get_or_init(Docs::default))
+        let mut model = Self::with_docs(ir, NO_DOCS.get_or_init(Docs::default));
+        model.legacy.clear();
+        model
     }
 
     pub(crate) fn with_docs(ir: &'a Registry, docs: &'a Docs) -> Self {
@@ -91,6 +94,7 @@ impl<'a> Model<'a> {
                 .collect(),
             command_aliases: command_aliases.collect(),
             links: Links::default(),
+            legacy: legacy_marks(ir),
             structs: ir.structs.iter().map(|s| (s.name.as_str(), s)).collect(),
             handles: names!(ir.handles),
             enums: names!(ir.enums),

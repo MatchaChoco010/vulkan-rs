@@ -6570,6 +6570,10 @@ impl crate::Instance {
     /// [`vkEnumerateDeviceLayerProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkEnumerateDeviceLayerProperties.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.0: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-devicelayers)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `physicalDevice` is the physical device that will be queried.
@@ -8085,6 +8089,12 @@ impl crate::Instance {
     /// [`vkGetPhysicalDeviceFeatures`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceFeatures.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceFeatures2`](crate::Instance::get_physical_device_features2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `physicalDevice` is the physical device from which to query the supported features.
@@ -8195,6 +8205,12 @@ impl crate::Instance {
     /// Calls the C command
     /// [`vkGetPhysicalDeviceFormatProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceFormatProperties.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceFormatProperties2`](crate::Instance::get_physical_device_format_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -8362,6 +8378,12 @@ impl crate::Instance {
     /// [`vkGetPhysicalDeviceImageFormatProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceImageFormatProperties.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceImageFormatProperties2`](crate::Instance::get_physical_device_image_format_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `physicalDevice` is the physical device from which to query the image capabilities.
@@ -8510,6 +8532,12 @@ impl crate::Instance {
     /// Calls the C command
     /// [`vkGetPhysicalDeviceMemoryProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceMemoryProperties.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceMemoryProperties2`](crate::Instance::get_physical_device_memory_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -8763,6 +8791,12 @@ impl crate::Instance {
     /// Calls the C command
     /// [`vkGetPhysicalDeviceProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceProperties.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceProperties2`](crate::Instance::get_physical_device_properties2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -9087,6 +9121,12 @@ impl crate::Instance {
     /// [`vkGetPhysicalDeviceQueueFamilyProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceQueueFamilyProperties.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceQueueFamilyProperties2`](crate::Instance::get_physical_device_queue_family_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `physicalDevice` is the handle to the physical device whose properties will be queried.
@@ -9255,6 +9295,12 @@ impl crate::Instance {
     /// Calls the C command
     /// [`vkGetPhysicalDeviceSparseImageFormatProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceSparseImageFormatProperties.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceSparseImageFormatProperties2`](crate::Instance::get_physical_device_sparse_image_format_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -9538,6 +9584,12 @@ impl crate::Instance {
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_surface`](KHR_SURFACE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceSurfaceCapabilities2KHR`](crate::Instance::get_physical_device_surface_capabilities2_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdsc2) in
+    /// the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `physicalDevice` is the physical device that will be associated with the swapchain to be
@@ -9630,6 +9682,12 @@ impl crate::Instance {
     /// [`vkGetPhysicalDeviceSurfaceFormatsKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceSurfaceFormatsKHR.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_surface`](KHR_SURFACE_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceSurfaceFormats2KHR`](crate::Instance::get_physical_device_surface_formats2_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdsc2) in
+    /// the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -11580,6 +11638,10 @@ impl crate::Instance {
     /// it reports `VK_INCOMPLETE`, and returns what it writes to `pProperties`. The command is
     /// provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.0: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-devicelayers)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -13327,6 +13389,12 @@ impl crate::Instance {
     /// through [`Self::get_physical_device_features_raw`], which describes the parameters. Returns
     /// what the command writes to `pFeatures`. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceFeatures2`](crate::Instance::get_physical_device_features2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::get_physical_device_features_raw`].
@@ -13412,6 +13480,12 @@ impl crate::Instance {
     /// through [`Self::get_physical_device_format_properties_raw`], which describes the parameters.
     /// Returns what the command writes to `pFormatProperties`. The command is provided by Vulkan
     /// 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceFormatProperties2`](crate::Instance::get_physical_device_format_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -13563,6 +13637,12 @@ impl crate::Instance {
     /// parameters. Returns what the command writes to `pImageFormatProperties`. The command is
     /// provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceImageFormatProperties2`](crate::Instance::get_physical_device_image_format_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -13708,6 +13788,12 @@ impl crate::Instance {
     /// through [`Self::get_physical_device_memory_properties_raw`], which describes the parameters.
     /// Returns what the command writes to `pMemoryProperties`. The command is provided by Vulkan
     /// 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceMemoryProperties2`](crate::Instance::get_physical_device_memory_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -13948,6 +14034,12 @@ impl crate::Instance {
     /// [`vkGetPhysicalDeviceProperties`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceProperties.html)
     /// through [`Self::get_physical_device_properties_raw`], which describes the parameters.
     /// Returns what the command writes to `pProperties`. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceProperties2`](crate::Instance::get_physical_device_properties2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -14279,6 +14371,12 @@ impl crate::Instance {
     /// parameters. Asks the command for the number of elements and then for the elements, and
     /// returns what it writes to `pQueueFamilyProperties`. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceQueueFamilyProperties2`](crate::Instance::get_physical_device_queue_family_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::get_physical_device_queue_family_properties_raw`].
@@ -14527,6 +14625,12 @@ impl crate::Instance {
     /// through [`Self::get_physical_device_sparse_image_format_properties_raw`], which describes
     /// the parameters. Asks the command for the number of elements and then for the elements, and
     /// returns what it writes to `pProperties`. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceSparseImageFormatProperties2`](crate::Instance::get_physical_device_sparse_image_format_properties2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdp2) in
+    /// the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -14816,6 +14920,12 @@ impl crate::Instance {
     /// parameters. Returns what the command writes to `pSurfaceCapabilities`. The command is
     /// provided by [`VK_KHR_surface`](KHR_SURFACE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceSurfaceCapabilities2KHR`](crate::Instance::get_physical_device_surface_capabilities2_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdsc2) in
+    /// the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -14980,6 +15090,12 @@ impl crate::Instance {
     /// parameters. Asks the command for the number of elements and then for the elements, again for
     /// as long as it reports `VK_INCOMPLETE`, and returns what it writes to `pSurfaceFormats`. The
     /// command is provided by [`VK_KHR_surface`](KHR_SURFACE_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkGetPhysicalDeviceSurfaceFormats2KHR`](crate::Instance::get_physical_device_surface_formats2_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-gpdsc2) in
+    /// the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -16674,6 +16790,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBuildAccelerationStructuresKHR`](crate::Device::cmd_build_acceleration_structures_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `deferredOperation` is an optional [`VkDeferredOperationKHR`](DeferredOperationKHR) to
@@ -16733,6 +16855,11 @@ impl crate::Device {
     /// [`vkBuildMicromapsEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkBuildMicromapsEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBuildMicromapsEXT`](crate::Device::cmd_build_micromaps_ext): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -16857,6 +16984,12 @@ impl crate::Device {
     /// [`vkCmdBeginConditionalRenderingEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBeginConditionalRenderingEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_conditional_rendering`](EXT_CONDITIONAL_RENDERING_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBeginConditionalRendering2EXT`](crate::Device::cmd_begin_conditional_rendering2_ext):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -17170,6 +17303,11 @@ impl crate::Device {
     /// [`vkCmdBeginRenderPass`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBeginRenderPass.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBeginRenderPass2`](crate::Device::cmd_begin_render_pass2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer in which to record the command.
@@ -17210,6 +17348,10 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdBeginRenderPass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBeginRenderPass2.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -17455,6 +17597,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBeginTransformFeedback2EXT`](crate::Device::cmd_begin_transform_feedback2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer into which the command is recorded.
@@ -17561,6 +17709,10 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_maintenance6`](KHR_MAINTENANCE_6_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer that the embedded immutable samplers will be bound
@@ -17599,6 +17751,10 @@ impl crate::Device {
     /// [`vkCmdBindDescriptorBufferEmbeddedSamplersEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBindDescriptorBufferEmbeddedSamplersEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -17644,6 +17800,10 @@ impl crate::Device {
     /// [`vkCmdBindDescriptorBuffersEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBindDescriptorBuffersEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -18353,6 +18513,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBindTransformFeedbackBuffers2EXT`](crate::Device::cmd_bind_transform_feedback_buffers2_ext):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer into which the command is recorded.
@@ -18507,6 +18673,11 @@ impl crate::Device {
     /// arguments as they are. The command is provided by
     /// [`VK_EXT_extended_dynamic_state`](EXT_EXTENDED_DYNAMIC_STATE_NAME) or
     /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBindVertexBuffers3KHR`](crate::Device::cmd_bind_vertex_buffers3_khr): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -21878,6 +22049,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdDrawIndirectByteCount2EXT`](crate::Device::cmd_draw_indirect_byte_count2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer into which the command is recorded.
@@ -22246,6 +22423,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_mesh_shader`](EXT_MESH_SHADER_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdDrawMeshTasksIndirectCount2EXT`](crate::Device::cmd_draw_mesh_tasks_indirect_count2_ext):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer into which the command is recorded.
@@ -22351,6 +22534,12 @@ impl crate::Device {
     /// [`vkCmdDrawMeshTasksIndirectEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdDrawMeshTasksIndirectEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_mesh_shader`](EXT_MESH_SHADER_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdDrawMeshTasksIndirect2EXT`](crate::Device::cmd_draw_mesh_tasks_indirect2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -22866,6 +23055,11 @@ impl crate::Device {
     /// [`vkCmdEndRenderPass`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdEndRenderPass.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdEndRenderPass2`](crate::Device::cmd_end_render_pass2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer in which to end the current render pass instance.
@@ -22892,6 +23086,10 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdEndRenderPass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdEndRenderPass2.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -23174,6 +23372,12 @@ impl crate::Device {
     /// [`vkCmdEndTransformFeedbackEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdEndTransformFeedbackEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdEndTransformFeedback2EXT`](crate::Device::cmd_end_transform_feedback2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -23571,6 +23775,11 @@ impl crate::Device {
     /// [`vkCmdNextSubpass`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdNextSubpass.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by [`vkCmdNextSubpass2`](crate::Device::cmd_next_subpass2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer in which to record the command.
@@ -23604,6 +23813,10 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdNextSubpass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdNextSubpass2.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -23726,6 +23939,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdPipelineBarrier`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdPipelineBarrier2`](crate::Device::cmd_pipeline_barrier2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -24456,6 +24674,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdResetEvent`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdResetEvent.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by [`vkCmdResetEvent2`](crate::Device::cmd_reset_event2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -26195,6 +26418,10 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_maintenance6`](KHR_MAINTENANCE_6_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer in which the descriptor buffer offsets will be set.
@@ -26232,6 +26459,10 @@ impl crate::Device {
     /// [`vkCmdSetDescriptorBufferOffsetsEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdSetDescriptorBufferOffsetsEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -26504,6 +26735,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdSetEvent`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdSetEvent.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by [`vkCmdSetEvent2`](crate::Device::cmd_set_event2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -29352,6 +29588,11 @@ impl crate::Device {
     /// [`vkCmdWaitEvents`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWaitEvents.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by [`vkCmdWaitEvents2`](crate::Device::cmd_wait_events2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer into which the command is recorded.
@@ -29614,6 +29855,11 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_AMD_buffer_marker`](AMD_BUFFER_MARKER_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteMarkerToMemoryAMD`](crate::Device::cmd_write_marker_to_memory_amd): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `commandBuffer` is the command buffer into which the command will be recorded.
@@ -29789,6 +30035,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCmdWriteTimestamp`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteTimestamp2`](crate::Device::cmd_write_timestamp2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -29983,6 +30234,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyAccelerationStructureKHR`](crate::Device::cmd_copy_acceleration_structure_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `deferredOperation` is an optional [`VkDeferredOperationKHR`](DeferredOperationKHR) to
@@ -30029,6 +30286,12 @@ impl crate::Device {
     /// [`vkCopyAccelerationStructureToMemoryKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyAccelerationStructureToMemoryKHR.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyAccelerationStructureToMemoryKHR`](crate::Device::cmd_copy_acceleration_structure_to_memory_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -30220,6 +30483,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMemoryToAccelerationStructureKHR`](crate::Device::cmd_copy_memory_to_acceleration_structure_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `deferredOperation` is an optional [`VkDeferredOperationKHR`](DeferredOperationKHR) to
@@ -30340,6 +30609,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMemoryToMicromapEXT`](crate::Device::cmd_copy_memory_to_micromap_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `deferredOperation` is an optional [`VkDeferredOperationKHR`](DeferredOperationKHR) to
@@ -30386,6 +30661,11 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMicromapEXT`](crate::Device::cmd_copy_micromap_ext): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `deferredOperation` is an optional [`VkDeferredOperationKHR`](DeferredOperationKHR) to
@@ -30431,6 +30711,12 @@ impl crate::Device {
     /// [`vkCopyMicromapToMemoryEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCopyMicromapToMemoryEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMicromapToMemoryEXT`](crate::Device::cmd_copy_micromap_to_memory_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -30521,6 +30807,12 @@ impl crate::Device {
     /// [`vkCreateAccelerationStructureKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateAccelerationStructureKHR.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCreateAccelerationStructure2KHR`](crate::Device::create_acceleration_structure2_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -31483,6 +31775,10 @@ impl crate::Device {
     /// [`vkCreateFramebuffer`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateFramebuffer.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `pCreateInfo` is a pointer to a [`VkFramebufferCreateInfo`](FramebufferCreateInfo)
@@ -32288,6 +32584,11 @@ impl crate::Device {
     /// [`vkCreateRenderPass`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateRenderPass.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCreateRenderPass2`](crate::Device::create_render_pass2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `pCreateInfo` is a pointer to a [`VkRenderPassCreateInfo`](RenderPassCreateInfo) structure
@@ -32329,6 +32630,10 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkCreateRenderPass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateRenderPass2.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -33858,6 +34163,10 @@ impl crate::Device {
     /// [`vkDestroyFramebuffer`](https://docs.vulkan.org/refpages/latest/refpages/source/vkDestroyFramebuffer.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `framebuffer` is the handle of the framebuffer to destroy.
@@ -34448,6 +34757,10 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkDestroyRenderPass`](https://docs.vulkan.org/refpages/latest/refpages/source/vkDestroyRenderPass.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -35417,6 +35730,10 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `pInfo` is a pointer to a
@@ -35825,6 +36142,10 @@ impl crate::Device {
     /// [`vkGetBufferOpaqueCaptureDescriptorDataEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetBufferOpaqueCaptureDescriptorDataEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -36292,6 +36613,10 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `pDescriptorInfo` is a pointer to a [`VkDescriptorGetInfoEXT`](DescriptorGetInfoEXT)
@@ -36365,6 +36690,10 @@ impl crate::Device {
     /// [`vkGetDescriptorSetLayoutBindingOffsetEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDescriptorSetLayoutBindingOffsetEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -36440,6 +36769,10 @@ impl crate::Device {
     /// [`vkGetDescriptorSetLayoutSizeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDescriptorSetLayoutSizeEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -38406,6 +38739,10 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `pInfo` is a pointer to a
@@ -38847,6 +39184,10 @@ impl crate::Device {
     /// [`vkGetImageViewOpaqueCaptureDescriptorDataEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetImageViewOpaqueCaptureDescriptorDataEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -40580,6 +40921,10 @@ impl crate::Device {
     /// [`vkGetRenderAreaGranularity`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetRenderAreaGranularity.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `renderPass` is a handle to a render pass.
@@ -40698,6 +41043,10 @@ impl crate::Device {
     /// [`vkGetSamplerOpaqueCaptureDescriptorDataEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetSamplerOpaqueCaptureDescriptorDataEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -42491,6 +42840,11 @@ impl crate::Device {
     /// Calls the C command
     /// [`vkQueueSubmit`](https://docs.vulkan.org/refpages/latest/refpages/source/vkQueueSubmit.html)
     /// with the arguments as they are. The command is provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by [`vkQueueSubmit2`](crate::Device::queue_submit2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -44695,6 +45049,12 @@ impl crate::Device {
     /// with the arguments as they are. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteAccelerationStructuresPropertiesKHR`](crate::Device::cmd_write_acceleration_structures_properties_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Parameters
     ///
     /// - `accelerationStructureCount` is the count of acceleration structures for which to query
@@ -44746,6 +45106,12 @@ impl crate::Device {
     /// [`vkWriteMicromapsPropertiesEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkWriteMicromapsPropertiesEXT.html)
     /// with the arguments as they are. The command is provided by
     /// [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteMicromapsPropertiesEXT`](crate::Device::cmd_write_micromaps_properties_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Parameters
     ///
@@ -45725,6 +46091,12 @@ impl crate::Device {
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBuildAccelerationStructuresKHR`](crate::Device::cmd_build_acceleration_structures_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -45790,6 +46162,11 @@ impl crate::Device {
     /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR) or
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBuildMicromapsEXT`](crate::Device::cmd_build_micromaps_ext): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -45890,6 +46267,12 @@ impl crate::Device {
     /// [`vkCmdBeginConditionalRenderingEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBeginConditionalRenderingEXT.html)
     /// through [`Self::cmd_begin_conditional_rendering_ext_raw`], which describes the parameters.
     /// The command is provided by [`VK_EXT_conditional_rendering`](EXT_CONDITIONAL_RENDERING_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBeginConditionalRendering2EXT`](crate::Device::cmd_begin_conditional_rendering2_ext):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -46133,6 +46516,11 @@ impl crate::Device {
     /// through [`Self::cmd_begin_render_pass_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBeginRenderPass2`](crate::Device::cmd_begin_render_pass2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_begin_render_pass_raw`].
@@ -46162,6 +46550,10 @@ impl crate::Device {
     /// [`vkCmdBeginRenderPass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBeginRenderPass2.html)
     /// through [`Self::cmd_begin_render_pass2_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -46339,6 +46731,12 @@ impl crate::Device {
     /// through [`Self::cmd_begin_transform_feedback_ext_raw`], which describes the parameters. The
     /// command is provided by [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBeginTransformFeedback2EXT`](crate::Device::cmd_begin_transform_feedback2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_begin_transform_feedback_ext_raw`].
@@ -46414,6 +46812,10 @@ impl crate::Device {
     /// through [`Self::cmd_bind_descriptor_buffer_embedded_samplers2_ext_raw`], which describes the
     /// parameters. The command is provided by [`VK_KHR_maintenance6`](KHR_MAINTENANCE_6_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_bind_descriptor_buffer_embedded_samplers2_ext_raw`].
@@ -46445,6 +46847,10 @@ impl crate::Device {
     /// through [`Self::cmd_bind_descriptor_buffer_embedded_samplers_ext_raw`], which describes the
     /// parameters. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -46478,6 +46884,10 @@ impl crate::Device {
     /// [`vkCmdBindDescriptorBuffersEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBindDescriptorBuffersEXT.html)
     /// through [`Self::cmd_bind_descriptor_buffers_ext_raw`], which describes the parameters. The
     /// command is provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -46997,6 +47407,12 @@ impl crate::Device {
     /// parameters. The command is provided by
     /// [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBindTransformFeedbackBuffers2EXT`](crate::Device::cmd_bind_transform_feedback_buffers2_ext):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_bind_transform_feedback_buffers_ext_raw`].
@@ -47158,6 +47574,11 @@ impl crate::Device {
     /// [`Self::cmd_bind_vertex_buffers2_ext_raw`], which describes the parameters. The command is
     /// provided by [`VK_EXT_extended_dynamic_state`](EXT_EXTENDED_DYNAMIC_STATE_NAME) or
     /// [`VK_EXT_shader_object`](EXT_SHADER_OBJECT_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdBindVertexBuffers3KHR`](crate::Device::cmd_bind_vertex_buffers3_khr): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -49685,6 +50106,12 @@ impl crate::Device {
     /// through [`Self::cmd_draw_indirect_byte_count_ext_raw`], which describes the parameters. The
     /// command is provided by [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdDrawIndirectByteCount2EXT`](crate::Device::cmd_draw_indirect_byte_count2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_draw_indirect_byte_count_ext_raw`].
@@ -49949,6 +50376,12 @@ impl crate::Device {
     /// through [`Self::cmd_draw_mesh_tasks_indirect_count_ext_raw`], which describes the
     /// parameters. The command is provided by [`VK_EXT_mesh_shader`](EXT_MESH_SHADER_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdDrawMeshTasksIndirectCount2EXT`](crate::Device::cmd_draw_mesh_tasks_indirect_count2_ext):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_draw_mesh_tasks_indirect_count_ext_raw`].
@@ -50024,6 +50457,12 @@ impl crate::Device {
     /// [`vkCmdDrawMeshTasksIndirectEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdDrawMeshTasksIndirectEXT.html)
     /// through [`Self::cmd_draw_mesh_tasks_indirect_ext_raw`], which describes the parameters. The
     /// command is provided by [`VK_EXT_mesh_shader`](EXT_MESH_SHADER_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdDrawMeshTasksIndirect2EXT`](crate::Device::cmd_draw_mesh_tasks_indirect2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -50389,6 +50828,11 @@ impl crate::Device {
     /// through [`Self::cmd_end_render_pass_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdEndRenderPass2`](crate::Device::cmd_end_render_pass2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_end_render_pass_raw`].
@@ -50407,6 +50851,10 @@ impl crate::Device {
     /// [`vkCmdEndRenderPass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdEndRenderPass2.html)
     /// through [`Self::cmd_end_render_pass2_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -50616,6 +51064,12 @@ impl crate::Device {
     /// [`vkCmdEndTransformFeedbackEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdEndTransformFeedbackEXT.html)
     /// through [`Self::cmd_end_transform_feedback_ext_raw`], which describes the parameters. The
     /// command is provided by [`VK_EXT_transform_feedback`](EXT_TRANSFORM_FEEDBACK_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdEndTransformFeedback2EXT`](crate::Device::cmd_end_transform_feedback2_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -50909,6 +51363,11 @@ impl crate::Device {
     /// through [`Self::cmd_next_subpass_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by [`vkCmdNextSubpass2`](crate::Device::cmd_next_subpass2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_next_subpass_raw`].
@@ -50931,6 +51390,10 @@ impl crate::Device {
     /// [`vkCmdNextSubpass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdNextSubpass2.html)
     /// through [`Self::cmd_next_subpass2_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -51022,6 +51485,11 @@ impl crate::Device {
     /// [`vkCmdPipelineBarrier`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier.html)
     /// through [`Self::cmd_pipeline_barrier_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdPipelineBarrier2`](crate::Device::cmd_pipeline_barrier2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -51581,6 +52049,11 @@ impl crate::Device {
     /// [`vkCmdResetEvent`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdResetEvent.html)
     /// through [`Self::cmd_reset_event_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by [`vkCmdResetEvent2`](crate::Device::cmd_reset_event2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -52872,6 +53345,10 @@ impl crate::Device {
     /// through [`Self::cmd_set_descriptor_buffer_offsets2_ext_raw`], which describes the
     /// parameters. The command is provided by [`VK_KHR_maintenance6`](KHR_MAINTENANCE_6_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_set_descriptor_buffer_offsets2_ext_raw`].
@@ -52900,6 +53377,10 @@ impl crate::Device {
     /// [`vkCmdSetDescriptorBufferOffsetsEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdSetDescriptorBufferOffsetsEXT.html)
     /// through [`Self::cmd_set_descriptor_buffer_offsets_ext_raw`], which describes the parameters.
     /// The command is provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -53109,6 +53590,11 @@ impl crate::Device {
     /// [`vkCmdSetEvent`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdSetEvent.html)
     /// through [`Self::cmd_set_event_raw`], which describes the parameters. The command is provided
     /// by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by [`vkCmdSetEvent2`](crate::Device::cmd_set_event2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -55249,6 +55735,11 @@ impl crate::Device {
     /// through [`Self::cmd_wait_events_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by [`vkCmdWaitEvents2`](crate::Device::cmd_wait_events2):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_wait_events_raw`].
@@ -55480,6 +55971,11 @@ impl crate::Device {
     /// through [`Self::cmd_write_buffer_marker2_amd_raw`], which describes the parameters. The
     /// command is provided by [`VK_AMD_buffer_marker`](AMD_BUFFER_MARKER_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteMarkerToMemoryAMD`](crate::Device::cmd_write_marker_to_memory_amd): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::cmd_write_buffer_marker2_amd_raw`].
@@ -55613,6 +56109,11 @@ impl crate::Device {
     /// [`vkCmdWriteTimestamp`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdWriteTimestamp.html)
     /// through [`Self::cmd_write_timestamp_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteTimestamp2`](crate::Device::cmd_write_timestamp2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -55760,6 +56261,12 @@ impl crate::Device {
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyAccelerationStructureKHR`](crate::Device::cmd_copy_acceleration_structure_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -55806,6 +56313,12 @@ impl crate::Device {
     /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR) or
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyAccelerationStructureToMemoryKHR`](crate::Device::cmd_copy_acceleration_structure_to_memory_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -55999,6 +56512,12 @@ impl crate::Device {
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMemoryToAccelerationStructureKHR`](crate::Device::cmd_copy_memory_to_acceleration_structure_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -56120,6 +56639,12 @@ impl crate::Device {
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMemoryToMicromapEXT`](crate::Device::cmd_copy_memory_to_micromap_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -56167,6 +56692,11 @@ impl crate::Device {
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMicromapEXT`](crate::Device::cmd_copy_micromap_ext): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -56211,6 +56741,12 @@ impl crate::Device {
     /// [`VK_OPERATION_DEFERRED_KHR`](VkResult::OPERATION_DEFERRED_KHR) or
     /// [`VK_OPERATION_NOT_DEFERRED_KHR`](VkResult::OPERATION_NOT_DEFERRED_KHR). The command is
     /// provided by [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdCopyMicromapToMemoryEXT`](crate::Device::cmd_copy_micromap_to_memory_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -56296,6 +56832,12 @@ impl crate::Device {
     /// through [`Self::create_acceleration_structure_khr_raw`], which describes the parameters.
     /// Returns what the command writes to `pAccelerationStructure`. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCreateAccelerationStructure2KHR`](crate::Device::create_acceleration_structure2_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-buffer-commands)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -57253,6 +57795,10 @@ impl crate::Device {
     /// through [`Self::create_framebuffer_raw`], which describes the parameters. Returns what the
     /// command writes to `pFramebuffer`. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -58061,6 +58607,11 @@ impl crate::Device {
     /// through [`Self::create_render_pass_raw`], which describes the parameters. Returns what the
     /// command writes to `pRenderPass`. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCreateRenderPass2`](crate::Device::create_render_pass2): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-renderpass2)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -58100,6 +58651,10 @@ impl crate::Device {
     /// [`vkCreateRenderPass2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateRenderPass2.html)
     /// through [`Self::create_render_pass2_raw`], which describes the parameters. Returns what the
     /// command writes to `pRenderPass`. The command is provided by Vulkan 1.2.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -59450,6 +60005,10 @@ impl crate::Device {
     /// through [`Self::destroy_framebuffer_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::destroy_framebuffer_raw`].
@@ -59897,6 +60456,10 @@ impl crate::Device {
     /// [`vkDestroyRenderPass`](https://docs.vulkan.org/refpages/latest/refpages/source/vkDestroyRenderPass.html)
     /// through [`Self::destroy_render_pass_raw`], which describes the parameters. The command is
     /// provided by Vulkan 1.0.
+    ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -60693,6 +61256,10 @@ impl crate::Device {
     /// describes the parameters. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -61008,6 +61575,10 @@ impl crate::Device {
     /// through [`Self::get_buffer_opaque_capture_descriptor_data_ext_raw`], which describes the
     /// parameters. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -61486,6 +62057,10 @@ impl crate::Device {
     /// through [`Self::get_descriptor_ext_raw`], which describes the parameters. The command is
     /// provided by [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::get_descriptor_ext_raw`].
@@ -61543,6 +62118,10 @@ impl crate::Device {
     /// through [`Self::get_descriptor_set_layout_binding_offset_ext_raw`], which describes the
     /// parameters. Returns what the command writes to `pOffset`. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -61602,6 +62181,10 @@ impl crate::Device {
     /// through [`Self::get_descriptor_set_layout_size_ext_raw`], which describes the parameters.
     /// Returns what the command writes to `pLayoutSizeInBytes`. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Safety
     ///
@@ -63313,6 +63896,10 @@ impl crate::Device {
     /// parameters. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
     ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -63657,6 +64244,10 @@ impl crate::Device {
     /// through [`Self::get_image_view_opaque_capture_descriptor_data_ext_raw`], which describes the
     /// parameters. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -65328,6 +65919,10 @@ impl crate::Device {
     /// through [`Self::get_render_area_granularity_raw`], which describes the parameters. Returns
     /// what the command writes to `pGranularity`. The command is provided by Vulkan 1.0.
     ///
+    /// Legacy functionality as of Vulkan 1.4: see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-dynamicrendering)
+    /// in the Vulkan specification.
+    ///
     /// # Safety
     ///
     /// The same as for [`Self::get_render_area_granularity_raw`].
@@ -65412,6 +66007,10 @@ impl crate::Device {
     /// through [`Self::get_sampler_opaque_capture_descriptor_data_ext_raw`], which describes the
     /// parameters. The command is provided by
     /// [`VK_EXT_descriptor_buffer`](EXT_DESCRIPTOR_BUFFER_NAME).
+    ///
+    /// Legacy functionality as of [`VK_EXT_descriptor_heap`](EXT_DESCRIPTOR_HEAP_NAME): see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-descriptor-sets)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -67173,6 +67772,11 @@ impl crate::Device {
     /// [`vkQueueSubmit`](https://docs.vulkan.org/refpages/latest/refpages/source/vkQueueSubmit.html)
     /// through [`Self::queue_submit_raw`], which describes the parameters. The command is provided
     /// by Vulkan 1.0.
+    ///
+    /// Legacy functionality, superseded by [`vkQueueSubmit2`](crate::Device::queue_submit2): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#deprecation-sync2)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///
@@ -69165,6 +69769,12 @@ impl crate::Device {
     /// parameters. The command is provided by
     /// [`VK_KHR_acceleration_structure`](KHR_ACCELERATION_STRUCTURE_NAME).
     ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteAccelerationStructuresPropertiesKHR`](crate::Device::cmd_write_acceleration_structures_properties_khr):
+    /// see [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
+    ///
     /// # Errors
     ///
     /// Returns the result code of the command if it is an error. The registry lists
@@ -69232,6 +69842,12 @@ impl crate::Device {
     /// [`vkWriteMicromapsPropertiesEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/vkWriteMicromapsPropertiesEXT.html)
     /// through [`Self::write_micromaps_properties_ext_raw`], which describes the parameters. The
     /// command is provided by [`VK_EXT_opacity_micromap`](EXT_OPACITY_MICROMAP_NAME).
+    ///
+    /// Legacy functionality, superseded by
+    /// [`vkCmdWriteMicromapsPropertiesEXT`](crate::Device::cmd_write_micromaps_properties_ext): see
+    /// [Legacy
+    /// Functionality](https://docs.vulkan.org/spec/latest/appendices/legacy.html#legacy-host-builds)
+    /// in the Vulkan specification.
     ///
     /// # Errors
     ///

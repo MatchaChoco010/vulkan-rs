@@ -646,6 +646,7 @@ fn doc(
             called(model, cfg, c),
             provided(model, cfg, c)
         ))
+        .text(model.legacy_command(cfg, &c.name))
         .section("Errors", errors.unwrap_or_default())
         .section(
             "Safety",
