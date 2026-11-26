@@ -93,6 +93,13 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         Some(initial) => format!("{note} {}", initial.listed.note(&initial.argument)),
         None => note,
     };
+    let note = match chained_elements(model, c, dispatch) {
+        Some(_) => format!(
+            "{note} The elements that it returns have no `pNext` chain: [`Self::{}`] fills elements that the caller provides, with what is chained to them.",
+            filling_name(c)
+        ),
+        None => note,
+    };
     let note = if inputs.notes.is_empty() {
         note
     } else {
@@ -133,6 +140,164 @@ pub(super) fn wrapper(model: &Model<'_>, c: &Command, dispatch: Dispatch) -> Str
         arrow = arrow(&ty),
         checks = inputs.checks + &alignment.check,
     )
+}
+
+pub(super) fn filling_name(c: &Command) -> String {
+    format!("{}_into", command_name(&c.name))
+}
+
+pub(super) fn chained_elements(
+    model: &Model<'_>,
+    c: &Command,
+    dispatch: Dispatch,
+) -> Option<(usize, usize)> {
+    let params = dispatch.explicit_params(c);
+    let Shape::Enumerates { count, data } = Shape::detect(model, c, params) else {
+        return None;
+    };
+    let element = model.get_struct(&params[data].ty)?;
+    let extended = model.ir.structs.iter().any(|s| {
+        s.extends
+            .iter()
+            .any(|base| *base == element.name || element.aliases.contains(base))
+    });
+    extended.then_some((count, data))
+}
+
+pub(super) fn filling_wrapper(
+    model: &Model<'_>,
+    c: &Command,
+    dispatch: Dispatch,
+) -> Option<String> {
+    let (count, data) = chained_elements(model, c, dispatch)?;
+    let cfg = model.cfg(c.protect.as_deref());
+    let params = dispatch.explicit_params(c);
+    let shape = Shape::Enumerates { count, data };
+    assert!(
+        nested_bytes(model, c, params, &shape).is_none(),
+        "{}: other structures extend the elements of `{}`, which also point to buffers that the command writes, and the wrapper that fills the caller's elements does not allocate those",
+        c.name,
+        params[data].name
+    );
+    let inputs = Inputs::plan(model, c, params, &[count, data]);
+    let elements = argument_name(&params[data]);
+    assert_distinct_names(
+        &c.name,
+        bound_names(c, params, &shape, &inputs, None, None, None)
+            .into_iter()
+            .chain([(
+                format!(
+                    "the argument that holds the elements of the C parameter `{}`",
+                    params[data].name
+                ),
+                elements.clone(),
+            )]),
+    );
+    let call = Call {
+        model,
+        c,
+        params,
+        inputs: &inputs,
+        absent_before: None,
+        initial: None,
+    };
+    let count_ty = model.base_ty(&params[count].ty, "'_");
+    let narrows = !model.holds_every_slice_len(&params[count].ty);
+    let passed = if narrows {
+        format!(
+            "len_as_count({elements}.len(), \"{}\", \"{}\")",
+            c.name, params[count].name
+        )
+    } else {
+        format!("{elements}.len()")
+    };
+    let written = match count_ty.as_str() {
+        "usize" => "count",
+        _ => "count as usize",
+    };
+    let fill = call.raw(&[
+        (count, "&mut count"),
+        (data, &format!("{elements}.as_mut_ptr()")),
+    ]);
+    let (ty, statements, returns) = if call.returns_result() {
+        (
+            "crate::vk::Result<(usize, VkResult)>",
+            format!(
+                "let mut count: {count_ty} = {passed};
+                let result = {fill};
+                {}result.into_result()?;
+                Ok(({written}, result))",
+                call.listed_errors()
+            ),
+            format!(
+                "returns the number of elements that the command wrote, and {}",
+                call.success_code()
+            ),
+        )
+    } else {
+        (
+            "usize",
+            format!(
+                "let mut count: {count_ty} = {passed};
+                {fill};
+                {written}"
+            ),
+            "returns the number of elements that the command wrote".to_string(),
+        )
+    };
+    let incomplete = if call.success_codes().contains("VK_INCOMPLETE") {
+        " `VK_INCOMPLETE` means that the command has more elements than the slice holds."
+    } else {
+        ""
+    };
+    let note = format!(
+        "Fills the elements that the caller provides in `{elements}`, with what is chained to them: the command writes each element and the structures in its `pNext` chain. Passes the length of `{elements}` as the number of elements, and {returns}.{incomplete} The command leaves the elements after that number as they are. The number of elements that the command can return is the length of what [`Self::{}`] returns.",
+        command_name(&c.name)
+    );
+    let note = if inputs.notes.is_empty() {
+        note
+    } else {
+        format!("{} {note}", inputs.notes.join(" "))
+    };
+    let narrowed = narrows.then(|| {
+        format!(
+            "Also panics if `{elements}` has more elements than `{}`, a `{}`, can count.",
+            params[count].name, params[count].ty
+        )
+    });
+    let doc = doc(
+        model,
+        &cfg,
+        c,
+        &note,
+        call.returns_result().then(|| error_codes(model, &cfg, c)),
+        panics(
+            model,
+            c,
+            inputs.checks.contains("assert_eq!"),
+            &inputs
+                .narrowed_counts
+                .iter()
+                .cloned()
+                .chain(narrowed)
+                .collect::<Vec<_>>(),
+            false,
+        ),
+    );
+    Some(format!(
+        "{doc}{cfg}pub unsafe fn {name}{generics}(&self{signature}, {elements}: &mut [{element}]){arrow} {{
+            unsafe {{
+                {checks}{statements}
+            }}
+        }}\n",
+        doc = doc.render(),
+        name = filling_name(c),
+        generics = inputs.generics(),
+        signature = inputs.signature(),
+        element = model.base_ty(&params[data].ty, "'_"),
+        arrow = arrow(ty),
+        checks = inputs.checks,
+    ))
 }
 
 struct InitialValue {
