@@ -58,7 +58,9 @@ struct TableSyntax {
     delimiter: Regex,
     block_header: Regex,
     cell_specifier: Regex,
+    cell_at_the_start: Regex,
     columns: Regex,
+    column_specifier: Regex,
     header_option: Regex,
     no_header_option: Regex,
     footer_option: Regex,
@@ -72,7 +74,11 @@ impl TableSyntax {
             cell_specifier: regex(
                 r"^((?:\d+(?:\.\d+)?|\.\d+)[+*])?[<^>]?(?:\.[<^>])?([adehlmsv])?$",
             ),
+            cell_at_the_start: regex(
+                r"^[ \t]*(?:(?:\d+(?:\.\d+)?|\.\d+)[+*])?[<^>]?(?:\.[<^>])?[adehlmsv]?\|",
+            ),
             columns: regex(r#"\bcols="([^"]*)""#),
+            column_specifier: regex(r"^(?:(\d+)\*)?(?:[<^>](?:\.[<^>]?)?|\.[<^>])?(?:\d+%?|~)?$"),
             header_option: regex(r#"\b(?:options|opts)="[^"]*\bheader\b|%header\b"#),
             no_header_option: regex(r"\bnoheader\b"),
             footer_option: regex(r#"\b(?:options|opts)="[^"]*\bfooter\b|%footer\b"#),
@@ -162,24 +168,32 @@ impl TableSyntax {
         let cells = self.cells(&content)?;
         let first_line = cells.first()?.0;
         let columns = match self.columns.captures(&attributes) {
-            Some(cols) if cols[1].contains(|c: char| c.is_ascii_alphabetic()) => return None,
             Some(cols) => cols[1]
                 .split(',')
                 .map(|column| {
-                    column
-                        .split_once('*')
-                        .map_or(Some(1), |(count, _)| count.trim().parse::<usize>().ok())
+                    let specifier = self.column_specifier.captures(column.trim())?;
+                    specifier
+                        .get(1)
+                        .map_or(Some(1), |count| count.as_str().parse::<usize>().ok())
                 })
                 .sum::<Option<usize>>()?,
-            None => cells.iter().filter(|(line, _)| *line == first_line).count(),
+            None => {
+                let next_row = (first_line + 1..content.len())
+                    .find(|line| self.cell_at_the_start.is_match(&content[*line]));
+                cells
+                    .iter()
+                    .filter(|(line, _)| next_row.is_none_or(|next_row| *line < next_row))
+                    .count()
+            }
         };
         if columns < 2 || cells.len() % columns != 0 || cells.len() == columns {
             return None;
         }
-        let implicit_header = cells[..columns].iter().all(|(line, _)| *line == first_line)
-            && content
-                .get(first_line + 1)
-                .is_some_and(|line| line.trim().is_empty());
+        let is_blank = |line: &String| line.trim().is_empty();
+        let after_the_gap = content.iter().skip(1).find(|line| !is_blank(line));
+        let implicit_header = first_line == 0
+            && content.get(1).is_some_and(is_blank)
+            && after_the_gap.is_none_or(|line| self.cell_at_the_start.is_match(line));
         let has_header = !self.no_header_option.is_match(&attributes)
             && (self.header_option.is_match(&attributes) || implicit_header);
         if !has_header {
@@ -2980,6 +2994,76 @@ fn table_rows_name_their_value_in_the_first_cell_and_keep_cells_over_several_lin
         1,
         "a titled table outside any page, in the file of the page, whose rows are all values of the type"
     );
+}
+
+#[test]
+fn the_implicit_header_of_a_table_is_its_first_row_when_an_empty_line_follows_the_first_line() {
+    let header_and_rows = |content: &[&str]| {
+        fixture_table(FIXTURE_FILE, None, &["[cols=\"1,1\"]"], content)
+            .map(|table| (table.header.join(" "), table.rows.len()))
+    };
+    for (content, rows) in [
+        (&["|a |b |c |d", "", "|e |f"][..], 2),
+        (&["|a |b |c", "", "|d"][..], 1),
+        (&["|a", "", "|b |e |f"][..], 1),
+        (&["|a |b", "", "", "  |c |d"][..], 1),
+        (&["|a |b", "// a comment", "", "a|c |d"][..], 1),
+    ] {
+        assert_eq!(
+            header_and_rows(content),
+            Some(("a b".to_string(), rows)),
+            "{content:?}"
+        );
+    }
+    for content in [
+        &["|a", "|b", "", "|c |d"][..],
+        &["|a |b", "|c |d", ""][..],
+        &["", "|a |b", "", "|c |d"][..],
+        &["|a |b", "", "more of b", "|c |d"][..],
+        &["|a |b", "", "x |c |d"][..],
+    ] {
+        assert_eq!(header_and_rows(content), None, "{content:?}");
+    }
+}
+
+#[test]
+fn the_columns_of_a_table_are_counted_as_asciidoctor_counts_them_or_the_table_is_not_read() {
+    let columns = |above: &[&str], content: &[&str]| {
+        fixture_table(FIXTURE_FILE, None, above, content).map(|table| table.header.len())
+    };
+    let header = "[options=\"header\"]";
+    for (content, counted) in [
+        (&["|a |b", "|c |d"][..], 2),
+        (&["|a |b", "x |c", "|d |e |f"][..], 3),
+        (&["|a |b", "x |c |d", "|e |f |g |h"][..], 4),
+        (&["|a |b", "more of b", "  |c |d"][..], 2),
+    ] {
+        assert_eq!(columns(&[header], content), Some(counted), "{content:?}");
+    }
+    let content = ["|a |b |c |d |e |f", "|g |h |i |j |k |l"];
+    for (cols, counted) in [
+        ("59%,28%,13%", Some(3)),
+        ("<.,^.2,2*>.,1", None),
+        ("<.,^.2,2*>.,1,~", Some(6)),
+        ("3*,.>2,<.^1", None),
+        ("2*,.>2,<.^1,~,1,<", None),
+        ("2*,.>2,<.^1,~,1", Some(6)),
+        ("1,2a,3", None),
+        ("2;1", None),
+        ("1,,2", Some(3)),
+        ("1,%,2", None),
+        ("1,.,2", None),
+        ("1,+1*,2", None),
+        ("0*", None),
+        ("", None),
+    ] {
+        let attributes = format!("[options=\"header\",cols=\"{cols}\"]");
+        assert_eq!(
+            columns(&[attributes.as_str()], &content),
+            counted,
+            "{cols:?}"
+        );
+    }
 }
 
 #[test]
