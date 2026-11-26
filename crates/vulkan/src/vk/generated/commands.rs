@@ -12006,8 +12006,10 @@ impl crate::Instance {
     /// [`vkGetDisplayModeProperties2KHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDisplayModeProperties2KHR.html)
     /// through [`Self::get_display_mode_properties2_khr_raw`], which describes the parameters. Asks
     /// the command for the number of elements and then for the elements, again for as long as it
-    /// reports `VK_INCOMPLETE`, and returns what it writes to `pProperties`. The command is
-    /// provided by [`VK_KHR_get_display_properties2`](KHR_GET_DISPLAY_PROPERTIES_2_NAME).
+    /// reports `VK_INCOMPLETE`, and returns what it writes to `pProperties`. The elements that it
+    /// returns have no `pNext` chain: [`Self::get_display_mode_properties2_khr_into`] fills
+    /// elements that the caller provides, with what is chained to them. The command is provided by
+    /// [`VK_KHR_get_display_properties2`](KHR_GET_DISPLAY_PROPERTIES_2_NAME).
     ///
     /// # Errors
     ///
@@ -12056,6 +12058,62 @@ impl crate::Instance {
                 values.truncate(count as usize);
                 return Ok(values);
             }
+        }
+    }
+    /// Query information about the available display modes.
+    ///
+    /// Calls the C command
+    /// [`vkGetDisplayModeProperties2KHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetDisplayModeProperties2KHR.html)
+    /// through [`Self::get_display_mode_properties2_khr_raw`], which describes the parameters.
+    /// Fills the elements that the caller provides in `properties`, with what is chained to them:
+    /// the command writes each element and the structures in its `pNext` chain. Passes the length
+    /// of `properties` as the number of elements, and returns the number of elements that the
+    /// command wrote, and the result code of the command when it is not an error, which the
+    /// registry lists as [`VK_SUCCESS`](VkResult::SUCCESS) or
+    /// [`VK_INCOMPLETE`](VkResult::INCOMPLETE). `VK_INCOMPLETE` means that the command has more
+    /// elements than the slice holds. The command leaves the elements after that number as they
+    /// are. The number of elements that the command can return is the length of what
+    /// [`Self::get_display_mode_properties2_khr`] returns. The command is provided by
+    /// [`VK_KHR_get_display_properties2`](KHR_GET_DISPLAY_PROPERTIES_2_NAME).
+    ///
+    /// # Errors
+    ///
+    /// Returns the result code of the command if it is an error. The registry lists
+    /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
+    /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
+    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    ///
+    /// # Safety
+    ///
+    /// The same as for [`Self::get_display_mode_properties2_khr_raw`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vkGetDisplayModeProperties2KHR` is not loaded: the loader returned no pointer for
+    /// it, for example because the version or the extension that provides it is not enabled. Also
+    /// panics if `properties` has more elements than `pPropertyCount`, a `uint32_t`, can count.
+    #[doc(alias = "vkGetDisplayModeProperties2KHR")]
+    pub unsafe fn get_display_mode_properties2_khr_into(
+        &self,
+        physical_device: PhysicalDevice,
+        display: DisplayKHR,
+        properties: &mut [DisplayModeProperties2KHR<'_>],
+    ) -> crate::vk::Result<(usize, VkResult)> {
+        unsafe {
+            let mut count: u32 = len_as_count(
+                properties.len(),
+                "vkGetDisplayModeProperties2KHR",
+                "pPropertyCount",
+            );
+            let result = self.get_display_mode_properties2_khr_raw(
+                physical_device,
+                display,
+                &mut count,
+                properties.as_mut_ptr(),
+            );
+            result.into_result()?;
+            Ok((count as usize, result))
         }
     }
     /// Query the set of mode properties supported by the display.
@@ -14259,7 +14317,10 @@ impl crate::Instance {
     /// [`vkGetPhysicalDeviceQueueFamilyProperties2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceQueueFamilyProperties2.html)
     /// through [`Self::get_physical_device_queue_family_properties2_raw`], which describes the
     /// parameters. Asks the command for the number of elements and then for the elements, and
-    /// returns what it writes to `pQueueFamilyProperties`. The command is provided by Vulkan 1.1.
+    /// returns what it writes to `pQueueFamilyProperties`. The elements that it returns have no
+    /// `pNext` chain: [`Self::get_physical_device_queue_family_properties2_into`] fills elements
+    /// that the caller provides, with what is chained to them. The command is provided by Vulkan
+    /// 1.1.
     ///
     /// # Safety
     ///
@@ -14296,12 +14357,57 @@ impl crate::Instance {
     /// Reports properties of the queues of the specified physical device.
     ///
     /// Calls the C command
+    /// [`vkGetPhysicalDeviceQueueFamilyProperties2`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceQueueFamilyProperties2.html)
+    /// through [`Self::get_physical_device_queue_family_properties2_raw`], which describes the
+    /// parameters. Fills the elements that the caller provides in `queue_family_properties`, with
+    /// what is chained to them: the command writes each element and the structures in its `pNext`
+    /// chain. Passes the length of `queue_family_properties` as the number of elements, and returns
+    /// the number of elements that the command wrote. The command leaves the elements after that
+    /// number as they are. The number of elements that the command can return is the length of what
+    /// [`Self::get_physical_device_queue_family_properties2`] returns. The command is provided by
+    /// Vulkan 1.1.
+    ///
+    /// # Safety
+    ///
+    /// The same as for [`Self::get_physical_device_queue_family_properties2_raw`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vkGetPhysicalDeviceQueueFamilyProperties2` is not loaded: the loader returned no
+    /// pointer for it, for example because the version or the extension that provides it is not
+    /// enabled. Also panics if `queue_family_properties` has more elements than
+    /// `pQueueFamilyPropertyCount`, a `uint32_t`, can count.
+    #[doc(alias = "vkGetPhysicalDeviceQueueFamilyProperties2")]
+    pub unsafe fn get_physical_device_queue_family_properties2_into(
+        &self,
+        physical_device: PhysicalDevice,
+        queue_family_properties: &mut [QueueFamilyProperties2<'_>],
+    ) -> usize {
+        unsafe {
+            let mut count: u32 = len_as_count(
+                queue_family_properties.len(),
+                "vkGetPhysicalDeviceQueueFamilyProperties2",
+                "pQueueFamilyPropertyCount",
+            );
+            self.get_physical_device_queue_family_properties2_raw(
+                physical_device,
+                &mut count,
+                queue_family_properties.as_mut_ptr(),
+            );
+            count as usize
+        }
+    }
+    /// Reports properties of the queues of the specified physical device.
+    ///
+    /// Calls the C command
     /// [`vkGetPhysicalDeviceQueueFamilyProperties2KHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceQueueFamilyProperties2.html),
     /// an alias of
     /// [`vkGetPhysicalDeviceQueueFamilyProperties2`](crate::Instance::get_physical_device_queue_family_properties2),
     /// through [`Self::get_physical_device_queue_family_properties2_khr_raw`], which describes the
     /// parameters. Asks the command for the number of elements and then for the elements, and
-    /// returns what it writes to `pQueueFamilyProperties`. The command is provided by
+    /// returns what it writes to `pQueueFamilyProperties`. The elements that it returns have no
+    /// `pNext` chain: [`Self::get_physical_device_queue_family_properties2_khr_into`] fills
+    /// elements that the caller provides, with what is chained to them. The command is provided by
     /// [`VK_KHR_get_physical_device_properties2`](KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_NAME).
     ///
     /// # Safety
@@ -14334,6 +14440,51 @@ impl crate::Instance {
             );
             values.truncate(count as usize);
             values
+        }
+    }
+    /// Reports properties of the queues of the specified physical device.
+    ///
+    /// Calls the C command
+    /// [`vkGetPhysicalDeviceQueueFamilyProperties2KHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceQueueFamilyProperties2.html),
+    /// an alias of
+    /// [`vkGetPhysicalDeviceQueueFamilyProperties2`](crate::Instance::get_physical_device_queue_family_properties2),
+    /// through [`Self::get_physical_device_queue_family_properties2_khr_raw`], which describes the
+    /// parameters. Fills the elements that the caller provides in `queue_family_properties`, with
+    /// what is chained to them: the command writes each element and the structures in its `pNext`
+    /// chain. Passes the length of `queue_family_properties` as the number of elements, and returns
+    /// the number of elements that the command wrote. The command leaves the elements after that
+    /// number as they are. The number of elements that the command can return is the length of what
+    /// [`Self::get_physical_device_queue_family_properties2_khr`] returns. The command is provided
+    /// by [`VK_KHR_get_physical_device_properties2`](KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_NAME).
+    ///
+    /// # Safety
+    ///
+    /// The same as for [`Self::get_physical_device_queue_family_properties2_khr_raw`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vkGetPhysicalDeviceQueueFamilyProperties2KHR` is not loaded: the loader returned
+    /// no pointer for it, for example because the version or the extension that provides it is not
+    /// enabled. Also panics if `queue_family_properties` has more elements than
+    /// `pQueueFamilyPropertyCount`, a `uint32_t`, can count.
+    #[doc(alias = "vkGetPhysicalDeviceQueueFamilyProperties2KHR")]
+    pub unsafe fn get_physical_device_queue_family_properties2_khr_into(
+        &self,
+        physical_device: PhysicalDevice,
+        queue_family_properties: &mut [QueueFamilyProperties2<'_>],
+    ) -> usize {
+        unsafe {
+            let mut count: u32 = len_as_count(
+                queue_family_properties.len(),
+                "vkGetPhysicalDeviceQueueFamilyProperties2KHR",
+                "pQueueFamilyPropertyCount",
+            );
+            self.get_physical_device_queue_family_properties2_khr_raw(
+                physical_device,
+                &mut count,
+                queue_family_properties.as_mut_ptr(),
+            );
+            count as usize
         }
     }
     /// Query physical device for presentation to QNX Screen.
@@ -14707,7 +14858,9 @@ impl crate::Instance {
     /// through [`Self::get_physical_device_surface_formats2_khr_raw`], which describes the
     /// parameters. Asks the command for the number of elements and then for the elements, again for
     /// as long as it reports `VK_INCOMPLETE`, and returns what it writes to `pSurfaceFormats`. The
-    /// command is provided by
+    /// elements that it returns have no `pNext` chain:
+    /// [`Self::get_physical_device_surface_formats2_khr_into`] fills elements that the caller
+    /// provides, with what is chained to them. The command is provided by
     /// [`VK_KHR_get_surface_capabilities2`](KHR_GET_SURFACE_CAPABILITIES_2_NAME).
     ///
     /// # Errors
@@ -14759,6 +14912,64 @@ impl crate::Instance {
                 values.truncate(count as usize);
                 return Ok(values);
             }
+        }
+    }
+    /// Query color formats supported by surface.
+    ///
+    /// Calls the C command
+    /// [`vkGetPhysicalDeviceSurfaceFormats2KHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceSurfaceFormats2KHR.html)
+    /// through [`Self::get_physical_device_surface_formats2_khr_raw`], which describes the
+    /// parameters. Fills the elements that the caller provides in `surface_formats`, with what is
+    /// chained to them: the command writes each element and the structures in its `pNext` chain.
+    /// Passes the length of `surface_formats` as the number of elements, and returns the number of
+    /// elements that the command wrote, and the result code of the command when it is not an error,
+    /// which the registry lists as [`VK_SUCCESS`](VkResult::SUCCESS) or
+    /// [`VK_INCOMPLETE`](VkResult::INCOMPLETE). `VK_INCOMPLETE` means that the command has more
+    /// elements than the slice holds. The command leaves the elements after that number as they
+    /// are. The number of elements that the command can return is the length of what
+    /// [`Self::get_physical_device_surface_formats2_khr`] returns. The command is provided by
+    /// [`VK_KHR_get_surface_capabilities2`](KHR_GET_SURFACE_CAPABILITIES_2_NAME).
+    ///
+    /// # Errors
+    ///
+    /// Returns the result code of the command if it is an error. The registry lists
+    /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
+    /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
+    /// [`VK_ERROR_SURFACE_LOST_KHR`](VkResult::ERROR_SURFACE_LOST_KHR),
+    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    ///
+    /// # Safety
+    ///
+    /// The same as for [`Self::get_physical_device_surface_formats2_khr_raw`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vkGetPhysicalDeviceSurfaceFormats2KHR` is not loaded: the loader returned no
+    /// pointer for it, for example because the version or the extension that provides it is not
+    /// enabled. Also panics if `surface_formats` has more elements than `pSurfaceFormatCount`, a
+    /// `uint32_t`, can count.
+    #[doc(alias = "vkGetPhysicalDeviceSurfaceFormats2KHR")]
+    pub unsafe fn get_physical_device_surface_formats2_khr_into(
+        &self,
+        physical_device: PhysicalDevice,
+        surface_info: &PhysicalDeviceSurfaceInfo2KHR<'_>,
+        surface_formats: &mut [SurfaceFormat2KHR<'_>],
+    ) -> crate::vk::Result<(usize, VkResult)> {
+        unsafe {
+            let mut count: u32 = len_as_count(
+                surface_formats.len(),
+                "vkGetPhysicalDeviceSurfaceFormats2KHR",
+                "pSurfaceFormatCount",
+            );
+            let result = self.get_physical_device_surface_formats2_khr_raw(
+                physical_device,
+                core::ptr::from_ref(surface_info),
+                &mut count,
+                surface_formats.as_mut_ptr(),
+            );
+            result.into_result()?;
+            Ok((count as usize, result))
         }
     }
     /// Query color formats supported by surface.
@@ -15227,7 +15438,9 @@ impl crate::Instance {
     /// through [`Self::get_physical_device_video_format_properties_khr_raw`], which describes the
     /// parameters. Asks the command for the number of elements and then for the elements, again for
     /// as long as it reports `VK_INCOMPLETE`, and returns what it writes to
-    /// `pVideoFormatProperties`. The command is provided by
+    /// `pVideoFormatProperties`. The elements that it returns have no `pNext` chain:
+    /// [`Self::get_physical_device_video_format_properties_khr_into`] fills elements that the
+    /// caller provides, with what is chained to them. The command is provided by
     /// [`VK_KHR_video_queue`](KHR_VIDEO_QUEUE_NAME).
     ///
     /// # Errors
@@ -15283,6 +15496,68 @@ impl crate::Instance {
                 values.truncate(count as usize);
                 return Ok(values);
             }
+        }
+    }
+    /// Query supported video decode and encode image formats and capabilities.
+    ///
+    /// Calls the C command
+    /// [`vkGetPhysicalDeviceVideoFormatPropertiesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceVideoFormatPropertiesKHR.html)
+    /// through [`Self::get_physical_device_video_format_properties_khr_raw`], which describes the
+    /// parameters. Fills the elements that the caller provides in `video_format_properties`, with
+    /// what is chained to them: the command writes each element and the structures in its `pNext`
+    /// chain. Passes the length of `video_format_properties` as the number of elements, and returns
+    /// the number of elements that the command wrote, and the result code of the command when it is
+    /// not an error, which the registry lists as [`VK_SUCCESS`](VkResult::SUCCESS) or
+    /// [`VK_INCOMPLETE`](VkResult::INCOMPLETE). `VK_INCOMPLETE` means that the command has more
+    /// elements than the slice holds. The command leaves the elements after that number as they
+    /// are. The number of elements that the command can return is the length of what
+    /// [`Self::get_physical_device_video_format_properties_khr`] returns. The command is provided
+    /// by [`VK_KHR_video_queue`](KHR_VIDEO_QUEUE_NAME).
+    ///
+    /// # Errors
+    ///
+    /// Returns the result code of the command if it is an error. The registry lists
+    /// [`VK_ERROR_OUT_OF_HOST_MEMORY`](VkResult::ERROR_OUT_OF_HOST_MEMORY),
+    /// [`VK_ERROR_OUT_OF_DEVICE_MEMORY`](VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
+    /// [`VK_ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR`](VkResult::ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR),
+    /// [`VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR`](VkResult::ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR),
+    /// [`VK_ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR`](VkResult::ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR),
+    /// [`VK_ERROR_VIDEO_PICTURE_LAYOUT_NOT_SUPPORTED_KHR`](VkResult::ERROR_VIDEO_PICTURE_LAYOUT_NOT_SUPPORTED_KHR),
+    /// [`VK_ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR`](VkResult::ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR),
+    /// [`VK_ERROR_UNKNOWN`](VkResult::ERROR_UNKNOWN) or
+    /// [`VK_ERROR_VALIDATION_FAILED`](VkResult::ERROR_VALIDATION_FAILED) for it.
+    ///
+    /// # Safety
+    ///
+    /// The same as for [`Self::get_physical_device_video_format_properties_khr_raw`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vkGetPhysicalDeviceVideoFormatPropertiesKHR` is not loaded: the loader returned
+    /// no pointer for it, for example because the version or the extension that provides it is not
+    /// enabled. Also panics if `video_format_properties` has more elements than
+    /// `pVideoFormatPropertyCount`, a `uint32_t`, can count.
+    #[doc(alias = "vkGetPhysicalDeviceVideoFormatPropertiesKHR")]
+    pub unsafe fn get_physical_device_video_format_properties_khr_into(
+        &self,
+        physical_device: PhysicalDevice,
+        video_format_info: &PhysicalDeviceVideoFormatInfoKHR<'_>,
+        video_format_properties: &mut [VideoFormatPropertiesKHR<'_>],
+    ) -> crate::vk::Result<(usize, VkResult)> {
+        unsafe {
+            let mut count: u32 = len_as_count(
+                video_format_properties.len(),
+                "vkGetPhysicalDeviceVideoFormatPropertiesKHR",
+                "pVideoFormatPropertyCount",
+            );
+            let result = self.get_physical_device_video_format_properties_khr_raw(
+                physical_device,
+                core::ptr::from_ref(video_format_info),
+                &mut count,
+                video_format_properties.as_mut_ptr(),
+            );
+            result.into_result()?;
+            Ok((count as usize, result))
         }
     }
     /// Query physical device for presentation to Wayland.

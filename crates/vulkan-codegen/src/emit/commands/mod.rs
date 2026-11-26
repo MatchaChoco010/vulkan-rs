@@ -41,13 +41,31 @@ pub(crate) fn emit(model: &Model<'_>) -> String {
                     command_name(&c.name),
                 )
             });
-        assert_distinct_names(&dispatch.wrapper(), raw_methods.chain(wrapper_methods));
+        let filling_methods = commands(model, dispatch)
+            .filter(|c| !creates_a_dispatching_handle(c))
+            .filter(|c| wrapper::chained_elements(model, c, dispatch).is_some())
+            .map(|c| {
+                (
+                    format!(
+                        "the wrapper of the C command `{}` that fills the caller's elements",
+                        c.name
+                    ),
+                    wrapper::filling_name(c),
+                )
+            });
+        assert_distinct_names(
+            &dispatch.wrapper(),
+            raw_methods.chain(wrapper_methods).chain(filling_methods),
+        );
         let raw_commands = commands(model, dispatch)
             .map(|c| raw_command(model, c, dispatch))
             .collect::<String>();
         let wrappers = commands(model, dispatch)
             .filter(|c| !creates_a_dispatching_handle(c))
-            .map(|c| wrapper::wrapper(model, c, dispatch))
+            .map(|c| {
+                wrapper::wrapper(model, c, dispatch)
+                    + &wrapper::filling_wrapper(model, c, dispatch).unwrap_or_default()
+            })
             .collect::<String>();
         w!(
             out,
@@ -293,7 +311,7 @@ mod tests {
         command, counted, field, optional, registry, result_command, structure, tagged,
     };
     use std::collections::BTreeMap;
-    use vulkan_registry::{DocItem, DocPage, Docs, EnumField, Handle, Registry};
+    use vulkan_registry::{DocItem, DocPage, Docs, EnumField, Handle, Registry, Struct};
 
     #[derive(Default)]
     struct Bindings(Vec<String>);
@@ -1892,6 +1910,10 @@ mod tests {
             back.insert(new.clone(), old.clone());
             back.insert(format!("PFN_{new}"), format!("PFN_{old}"));
             back.insert(command_name(new), command_name(old));
+            back.insert(
+                format!("{}_into", command_name(new)),
+                format!("{}_into", command_name(old)),
+            );
             back.insert(raw_name_of(new), raw_name_of(old));
         }
         let original = squash(&emit(&Model::with_docs(ir, docs)));
@@ -2890,6 +2912,180 @@ mod tests {
         assert_eq!(
             message,
             "vkGetThingsKHR: the elements of `pThings` point to buffers that the command writes, and the command returns no result that says whether they were large enough"
+        );
+    }
+
+    #[test]
+    fn the_wrappers_of_the_registry_fill_the_callers_elements_exactly_where_structures_extend_them()
+    {
+        let model = Model::with_docs(Registry::get(), Docs::get());
+        let mut filling = Vec::new();
+        for dispatch in Dispatch::ALL {
+            for c in commands(&model, dispatch).filter(|c| !creates_a_dispatching_handle(c)) {
+                let usual = wrapper::wrapper(&model, c, dispatch);
+                let signature = squash(&usual);
+                let returned = signature
+                    .split_once(") -> ")
+                    .and_then(|(_, after)| after.split(" {").next())
+                    .unwrap_or_default();
+                let returns_elements = returned.contains("Vec<");
+                let element = dispatch
+                    .explicit_params(c)
+                    .last()
+                    .filter(|_| returns_elements)
+                    .and_then(|p| model.get_struct(&p.ty));
+                let extended = element.is_some_and(|element| {
+                    model
+                        .ir
+                        .structs
+                        .iter()
+                        .any(|s| s.extends.contains(&element.name))
+                });
+                let generated = wrapper::filling_wrapper(&model, c, dispatch);
+                assert_eq!(
+                    generated.is_some(),
+                    extended,
+                    "{}: the wrapper returns elements, and other structures {} them",
+                    c.name,
+                    if extended { "extend" } else { "do not extend" }
+                );
+                assert_eq!(
+                    words(&usual).contains(&format!(
+                        "The elements that it returns have no `pNext` chain: [`Self::{}`] fills elements that the caller provides, with what is chained to them.",
+                        wrapper::filling_name(c)
+                    )),
+                    extended,
+                    "{}",
+                    c.name
+                );
+                if let Some(generated) = generated {
+                    assert!(
+                        words(&generated).contains(&format!(
+                            "The number of elements that the command can return is the length of what [`Self::{}`] returns.",
+                            command_name(&c.name)
+                        )),
+                        "{generated}"
+                    );
+                    filling.push(c.name.as_str());
+                }
+            }
+        }
+        assert_eq!(
+            filling,
+            [
+                "vkGetDisplayModeProperties2KHR",
+                "vkGetPhysicalDeviceQueueFamilyProperties2",
+                "vkGetPhysicalDeviceQueueFamilyProperties2KHR",
+                "vkGetPhysicalDeviceSurfaceFormats2KHR",
+                "vkGetPhysicalDeviceVideoFormatPropertiesKHR",
+            ]
+        );
+    }
+
+    fn extending_things(element: Vec<Field>) -> Registry {
+        let mut ir = enumerating_things(element);
+        ir.structs.push(Struct {
+            extends: vec!["VkThingKHR".to_string()],
+            ..tagged(
+                "VkThingExtensionKHR",
+                "VK_STRUCTURE_TYPE_THING_EXTENSION_KHR",
+                vec![field("more", "uint32_t")],
+            )
+        });
+        ir
+    }
+
+    #[test]
+    fn an_enumeration_whose_elements_other_structures_extend_also_fills_the_callers_elements() {
+        let ir = extending_things(vec![field("value", "uint32_t")]);
+        let out = generate(&ir);
+        assert!(
+            out.contains(
+                "pub unsafe fn get_things_khr_into(&self, things: &mut [ThingKHR<'_>]) -> crate::vk::Result<(usize, VkResult)> { unsafe { let mut count: u32 = len_as_count(things.len(), \"vkGetThingsKHR\", \"pThingCount\"); let result = self.get_things_khr_raw(&mut count, things.as_mut_ptr()); result.into_result()?; Ok((count as usize, result)) } }"
+            ),
+            "{out}"
+        );
+        let documented = words(&emit(&Model::new(&ir)));
+        for sentence in [
+            "Asks the command for the number of elements and then for the elements, again for as long as it reports `VK_INCOMPLETE`, and returns what it writes to `pThings`. The elements that it returns have no `pNext` chain: [`Self::get_things_khr_into`] fills elements that the caller provides, with what is chained to them.",
+            "Fills the elements that the caller provides in `things`, with what is chained to them: the command writes each element and the structures in its `pNext` chain. Passes the length of `things` as the number of elements, and returns the number of elements that the command wrote, and the result code of the command when it is not an error, which the registry lists as",
+            ". `VK_INCOMPLETE` means that the command has more elements than the slice holds. The command leaves the elements after that number as they are. The number of elements that the command can return is the length of what [`Self::get_things_khr`] returns.",
+            "Also panics if `things` has more elements than `pThingCount`, a `uint32_t`, can count.",
+        ] {
+            assert!(documented.contains(sentence), "{sentence}: {documented}");
+        }
+
+        let mut ir = extending_things(vec![field("value", "uint32_t")]);
+        let c = ir.commands.last_mut().unwrap();
+        c.return_ty = "void".to_string();
+        c.success_codes.clear();
+        c.params[1] = field("pThingCount", "size_t*");
+        c.params.insert(1, field("flags", "uint32_t"));
+        let out = generate(&ir);
+        assert!(
+            out.contains(
+                "pub unsafe fn get_things_khr_into(&self, flags: u32, things: &mut [ThingKHR<'_>]) -> usize { unsafe { let mut count: usize = things.len(); self.get_things_khr_raw(flags, &mut count, things.as_mut_ptr()); count } }"
+            ),
+            "{out}"
+        );
+        let documented = words(&emit(&Model::new(&ir)));
+        assert!(
+            documented.contains(
+                "Passes the length of `things` as the number of elements, and returns the number of elements that the command wrote. The command leaves the elements after that number as they are. The number of elements"
+            ) && !documented.contains("Also panics if `things` has more elements")
+                && !documented.contains("`VK_INCOMPLETE` means"),
+            "{documented}"
+        );
+
+        let out = generate(&enumerating_things(vec![field("value", "uint32_t")]));
+        assert!(!out.contains("_into"), "{out}");
+
+        let mut ir = enumerating_things(vec![field("value", "uint32_t")]);
+        ir.structs[0].aliases = vec!["VkThingEXT".to_string()];
+        ir.structs.push(Struct {
+            extends: vec!["VkThingEXT".to_string()],
+            ..tagged(
+                "VkThingExtensionKHR",
+                "VK_STRUCTURE_TYPE_THING_EXTENSION_KHR",
+                vec![field("more", "uint32_t")],
+            )
+        });
+        let out = generate(&ir);
+        assert!(
+            out.contains("pub unsafe fn get_things_khr_into("),
+            "a structure that extends an alias of the element extends the element: {out}"
+        );
+    }
+
+    #[test]
+    fn extended_elements_that_point_to_buffers_stop_the_generator() {
+        let ir = extending_things(vec![
+            field("dataSize", "size_t"),
+            counted("pData", "void*", "dataSize"),
+        ]);
+        let message = crate::test_support::catch_quietly(|| generate(&ir))
+            .expect_err("the wrapper cannot be generated");
+        assert_eq!(
+            message,
+            "vkGetThingsKHR: other structures extend the elements of `pThings`, which also point to buffers that the command writes, and the wrapper that fills the caller's elements does not allocate those"
+        );
+    }
+
+    #[test]
+    fn a_command_named_like_a_wrapper_that_fills_elements_stops_the_generator() {
+        let mut ir = extending_things(vec![field("value", "uint32_t")]);
+        ir.commands.push(device(command(
+            "vkGetThingsKHRInto",
+            vec![field("device", "VkDevice")],
+        )));
+        let message = crate::test_support::catch_quietly(|| generate(&ir))
+            .expect_err("two methods have one name");
+        assert!(
+            message.contains("get_things_khr_into")
+                && message.contains(
+                    "the wrapper of the C command `vkGetThingsKHR` that fills the caller's elements"
+                ),
+            "{message}"
         );
     }
 }
