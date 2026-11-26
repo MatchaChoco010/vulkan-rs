@@ -153,9 +153,7 @@ impl<'a> Model<'a> {
 
     pub(crate) fn described(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
         let page = self.page(owner)?;
-        let Some(described) = other_names::described(page, item) else {
-            return self.described_outside_the_page(from, item);
-        };
+        let described = other_names::described(page, item)?;
         let mut blocks = self.description(from, Place::Page(page), item, &described.item.text);
         if let (Some(other), Some(Block::Text(lead))) =
             (described.under_the_name, blocks.first_mut())
@@ -167,7 +165,13 @@ impl<'a> Model<'a> {
         Some(blocks)
     }
 
-    fn described_outside_the_page(&self, from: &Cfg, value: &str) -> Option<Vec<Block>> {
+    pub(crate) fn described_outside_the_page(
+        &self,
+        from: &Cfg,
+        owner: &str,
+        value: &str,
+    ) -> Option<Vec<Block>> {
+        self.page(owner)?;
         let descriptions = self.value_descriptions.get(value)?;
         let [description] = descriptions.as_slice() else {
             let places = descriptions
@@ -393,7 +397,8 @@ fn item_parts(place: Place<'_>, item: &str, text: &str) -> Vec<Part> {
 
 fn notes_of(place: Place<'_>, items: &[(&str, &str)]) -> BTreeMap<u32, Vec<Part>> {
     let mut notes = BTreeMap::new();
-    if !items.iter().any(|(_, text)| items::may_have_notes(text)) {
+    let has_all_its_items = matches!(place, Place::Page(_));
+    if has_all_its_items && !items.iter().any(|(_, text)| items::may_have_notes(text)) {
         return notes;
     }
     let mut marks = BTreeSet::new();
@@ -407,7 +412,7 @@ fn notes_of(place: Place<'_>, items: &[(&str, &str)]) -> BTreeMap<u32, Vec<Part>
     }
     let numbers = notes.keys().copied().collect::<BTreeSet<_>>();
     assert!(
-        notes.is_empty() || marks == numbers,
+        (has_all_its_items && notes.is_empty()) || marks == numbers,
         "the notes {numbers:?} and the marks {marks:?} on {place} do not pair up"
     );
     notes
@@ -842,7 +847,10 @@ mod tests {
         );
         let model = Model::with_docs(&ir, &docs);
         let text = |text: &str| Block::Text(text.to_string());
-        let described = |owner: &str, value: &str| model.described(&Cfg::default(), owner, value);
+        let described = |owner: &str, value: &str| {
+            assert_eq!(model.described(&Cfg::default(), owner, value), None);
+            model.described_outside_the_page(&Cfg::default(), owner, value)
+        };
         assert_eq!(
             described("VkShade", "VK_SHADE_DEEP"),
             Some(vec![text(
@@ -873,33 +881,27 @@ mod tests {
     }
 
     #[test]
-    fn an_item_on_the_page_of_the_type_is_preferred_to_the_items_that_describe_a_value_elsewhere() {
+    fn the_items_of_a_page_do_not_take_what_an_item_outside_the_pages_says_under_their_name() {
         let ir = ir();
-        let mut docs = with_items_elsewhere(
-            &[("VK_SHADE_LIGHT", "ename:VK_SHADE_LIGHT specifies a tint.")],
+        let docs = with_items_elsewhere(
+            &[],
             &[
-                (
-                    "VK_SHADE_LIGHT",
-                    "ename:VK_SHADE_LIGHT specifies an extent.",
-                ),
-                ("VK_SHADE_LIGHT", "ename:VK_SHADE_LIGHT specifies it again."),
+                ("depth", "ename:depth specifies a depth."),
+                ("width", "ename:width specifies another width."),
             ],
         );
-        let shades = docs
-            .pages
-            .iter_mut()
-            .find(|page| page.name == "VkShade")
-            .expect("the page of the shades");
-        shades.items.push(DocItem {
-            name: "VK_SHADE_LIGHT".to_string(),
-            text: "ename:VK_SHADE_LIGHT is the lightest shade.".to_string(),
-        });
         let model = Model::with_docs(&ir, &docs);
         assert_eq!(
-            model.described(&Cfg::default(), "VkShade", "VK_SHADE_LIGHT"),
-            Some(vec![Block::Text(
-                "`VK_SHADE_LIGHT` is the lightest shade.".to_string()
-            )])
+            model.described(&Cfg::default(), "VkExtent2D", "depth"),
+            None
+        );
+        let width = model.described(&Cfg::default(), "VkExtent2D", "width");
+        assert!(
+            matches!(
+                width.as_deref(),
+                Some([Block::Text(text), ..]) if text.starts_with("`width` is the width")
+            ),
+            "{width:?}"
         );
     }
 
@@ -912,7 +914,7 @@ mod tests {
         );
         let model = Model::with_docs(&ir, &docs);
         let panic = crate::test_support::catch_quietly(|| {
-            model.described(&Cfg::default(), "VkShade", "VK_SHADE_DEEP")
+            model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_DEEP")
         })
         .expect_err("one of the two items is taken");
         assert_eq!(
@@ -969,13 +971,56 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                model.described(&Cfg::default(), "VkShade", value),
+                model.described_outside_the_page(&Cfg::default(), "VkShade", value),
                 Some(vec![
                     text(&format!("`{value}` specifies {described}")),
                     Block::Quote(vec![text(&format!("**Note {}**", note.0)), text(note.1)]),
                 ])
             );
         }
+    }
+
+    #[test]
+    fn a_mark_outside_the_pages_without_its_note_in_the_same_item_aborts_generation() {
+        let ir = ir();
+        for (pale, deep, message) in [
+            (
+                "ename:VK_SHADE_PALE specifies a pale^1^ shade.",
+                "ename:VK_SHADE_DEEP specifies a deep shade.\n\n1:: Not white.",
+                "the notes {} and the marks {1} on the lines of chapters/extents.adoc outside \
+                 the reference pages do not pair up",
+            ),
+            (
+                "ename:VK_SHADE_PALE specifies a pale^1^ shade^2^.\n\n1:: Not white.",
+                "ename:VK_SHADE_DEEP specifies a deep shade.\n\n2:: Not black.",
+                "the notes {1} and the marks {1, 2} on the lines of chapters/extents.adoc \
+                 outside the reference pages do not pair up",
+            ),
+        ] {
+            let docs =
+                with_items_elsewhere(&[], &[("VK_SHADE_PALE", pale), ("VK_SHADE_DEEP", deep)]);
+            let model = Model::with_docs(&ir, &docs);
+            let panic = crate::test_support::catch_quietly(|| {
+                model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_PALE")
+            })
+            .expect_err(pale);
+            assert_eq!(panic, message);
+        }
+        let docs = with_items_elsewhere(
+            &[],
+            &[(
+                "VK_SHADE_PALE",
+                "ename:VK_SHADE_PALE specifies 2^8^ pale shades.",
+            )],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_PALE"),
+            Some(vec![Block::Text(
+                "`VK_SHADE_PALE` specifies 2<sup>8</sup> pale shades.".to_string()
+            )]),
+            "a superscript after a digit is an exponent"
+        );
     }
 
     #[test]
@@ -989,7 +1034,7 @@ mod tests {
             &[("VK_SHADE_PALE", "ename:VK_SHADE_PALE specifies {unknown}.")],
         );
         let model = Model::with_docs(&ir, &docs);
-        model.described(&Cfg::default(), "VkShade", "VK_SHADE_PALE");
+        model.described_outside_the_page(&Cfg::default(), "VkShade", "VK_SHADE_PALE");
     }
 
     fn with_the_width_described_as(lines: &[&str]) -> Docs {

@@ -427,6 +427,7 @@ struct Markup {
     mark: Regex,
     described_item: Regex,
     value_description: Regex,
+    table_delimiter: Regex,
     block_attributes: Regex,
     block_title: Regex,
     block_delimiter: Regex,
@@ -451,6 +452,7 @@ impl Markup {
             value_description: regex(
                 r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)ename:(\w+)\s+specifies\s+\S",
             ),
+            table_delimiter: regex(r"^\|={3,}\s*$"),
             block_attributes: regex(r#"^\[(?:|[\w.#%{,"'].*)\]$"#),
             block_title: regex(r"^\.\.?[^ \t.]"),
             block_delimiter: regex(r"^(?:--|={4,}|-{4,}|\.{4,}|\*{4,}|_{4,}|\+{4,}|\|={3,})$"),
@@ -900,6 +902,15 @@ impl Specification {
             while index < lines.len() {
                 let start = index;
                 index += 1;
+                if self.markup.table_delimiter.is_match(lines[start]) {
+                    let delimiter = lines[start].trim_end();
+                    let cells = lines[index..]
+                        .iter()
+                        .position(|line| line.trim_end() == delimiter)
+                        .unwrap_or(lines.len() - index);
+                    index += cells + 1;
+                    continue;
+                }
                 if !self.markup.list_item.is_match(lines[start]) {
                     continue;
                 }
@@ -2293,7 +2304,10 @@ impl Checker {
         let elsewhere = spec.described_outside_the_page(owner_page.unwrap_or_default(), c_name);
         match (owner_page, elsewhere) {
             (None, _) => self.fail(item, "is described although its type has no reference page"),
-            (Some(_), [description]) => {
+            (Some(page), [description]) => {
+                if !spec.table_rows(Some(page), values, c_name).is_empty() {
+                    self.fail(item, format!("the specification describes `{c_name}` in a table row, which comes before the list item of {}", description.place()));
+                }
                 self.described_outside_their_page
                     .push(format!("{c_name}: {}", description.place()));
                 let expected = spec.words(&description.text);
@@ -3211,6 +3225,14 @@ Things are drawn in the following colors:
   * ename:VK_COLOR_OCHRE
   * ename:VK_COLOR_OCHRE, which specifies no color
   * ename:VK_COLOR_RED specifies red where things are drawn.
+  * ename:VK_COLOR_BLUE specifies blue where things are drawn.
+
+|====
+|Colors |Use
+a| * ename:VK_COLOR_OCHRE specifies no color in the first item of a cell
+  * ename:VK_COLOR_OCHRE specifies no color in the last item of a cell
+| any
+|====
 
 .Valid Usage
 ****
@@ -4174,6 +4196,13 @@ fn checker_collects_the_values_that_a_list_item_outside_their_page_describes() {
                 )]
             ),
             (
+                "VK_COLOR_BLUE".to_string(),
+                vec![(
+                    outside_pages(),
+                    list_item(&["  * ename:VK_COLOR_BLUE specifies blue where things are drawn."])
+                )]
+            ),
+            (
                 "VK_COLOR_GREEN".to_string(),
                 vec![(
                     on_the_page("VkColor"),
@@ -4206,7 +4235,7 @@ fn checker_collects_the_values_that_a_list_item_outside_their_page_describes() {
                 )]
             ),
         ],
-        "an item that names a value in a list, in valid usage or among other words describes none"
+        "an item that names a value in a list, in valid usage, among other words or in a cell of a table describes none"
     );
 }
 
@@ -4223,6 +4252,16 @@ fn checker_reports_a_value_fallback_when_a_list_item_outside_the_page_describes_
         "/// `VK_COLOR_UMBER` specifies umber, on the page of the things.",
         "/// `VK_COLOR_UMBER`, a value of [`VkColor`](PAGES/VkColor.html).",
         "Color::UMBER: the specification describes `VK_COLOR_UMBER` outside the page `VkColor` (the page VkThing), but the documentation does not use it",
+    );
+}
+
+#[test]
+fn checker_reports_a_list_item_outside_the_page_taken_before_a_table_row() {
+    assert_reported(
+        "a value with a table row documented by an item of the running text",
+        "/// `VK_COLOR_BLUE` in the table “Color Wavelengths” of the specification:\n    ///\n    /// - Wavelength:\n    ///   - short\n    ///   - or very short\n",
+        "/// `VK_COLOR_BLUE` specifies blue where things are drawn.\n",
+        "Color::BLUE: the specification describes `VK_COLOR_BLUE` in a table row, which comes before the list item of chapters/things.adoc outside the reference pages",
     );
 }
 

@@ -303,17 +303,26 @@ mod tests {
                 continue;
             };
             for field in fields {
-                let on_the_page = other_names::described(page, &field.name).is_some();
+                let on_the_page = other_names::described(page, &field.name).is_some()
+                    || model
+                        .tabulated(&Cfg::default(), owner, &field.name)
+                        .is_some();
                 let elsewhere = model.value_descriptions.get(field.name.as_str());
                 let (false, Some(descriptions)) = (on_the_page, elsewhere) else {
                     continue;
                 };
+                assert!(
+                    !["VkStructureType", "VkObjectType"].contains(&owner.as_str()),
+                    "{} names a structure or a handle, which comes first",
+                    field.name
+                );
                 let places = descriptions
                     .iter()
                     .map(|description| description.place.to_string())
                     .collect::<Vec<_>>();
                 taken.push((field.name.clone(), places.join(", ")));
-                let described = model.described(&Cfg::default(), owner, &field.name);
+                let described =
+                    model.described_outside_the_page(&Cfg::default(), owner, &field.name);
                 let starts_with_the_name = described.as_deref().is_some_and(|blocks| {
                     matches!(
                         blocks.first(),
@@ -329,6 +338,17 @@ mod tests {
                 );
             }
         }
+        let outside_pages = &docs.items_outside_pages;
+        let describing = outside_pages
+            .iter()
+            .filter(|item| describes_its_value(&item.name, &item.text))
+            .count();
+        assert_eq!(
+            (outside_pages.len(), describing),
+            (206, 9),
+            "this many list items outside the reference pages start with a value, and this \
+             many of them describe it"
+        );
         taken.sort();
         let pinned = DESCRIBED_OUTSIDE_THE_PAGE_OF_THEIR_TYPE
             .iter()
