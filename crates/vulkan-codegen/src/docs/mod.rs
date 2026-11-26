@@ -447,6 +447,7 @@ mod tests {
     fn docs() -> Docs {
         Docs {
             commit: "000000000000".to_string(),
+            anchors: BTreeMap::new(),
             attributes: [("times".to_string(), "×".to_string())].into(),
             titles: BTreeMap::new(),
             pages: vec![

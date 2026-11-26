@@ -1,6 +1,9 @@
 use proptest::strategy::{Strategy, ValueTree};
 use proptest::test_runner::{Config as ProptestConfig, RngAlgorithm, TestRng, TestRunner};
 use std::cell::Cell;
+use std::io::Write;
+use std::path::Path;
+use std::process::Stdio;
 use std::sync::Once;
 use vulkan_registry::{Command, Enum, Field, Registry, Struct};
 
@@ -74,6 +77,59 @@ pub(crate) fn catch_quietly<T>(f: impl FnOnce() -> T) -> Result<T, String> {
             .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
             .unwrap_or_default()
     })
+}
+
+pub(crate) fn run_with_the_tool(
+    steps: &[&str],
+    arguments: &[&str],
+    input: &str,
+) -> Option<Result<String, String>> {
+    let tool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/generate-vulkan");
+    let load_the_tool = [
+        "import importlib.machinery, importlib.util, json, pathlib, sys, tempfile, types",
+        "loader = importlib.machinery.SourceFileLoader('generate_vulkan', sys.argv[1])",
+        "specification = importlib.util.spec_from_loader('generate_vulkan', loader)",
+        "tool = importlib.util.module_from_spec(specification)",
+        "loader.exec_module(tool)",
+    ];
+    let script = load_the_tool
+        .iter()
+        .chain(steps)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let spawned = std::process::Command::new("python3")
+        .args(["-B", "-c", &script])
+        .arg(&tool)
+        .args(arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let mut child = match spawned {
+        Ok(child) => child,
+        Err(error) => {
+            assert!(
+                std::env::var_os("VULKAN_RS_REQUIRE_DOCS_TEST").is_none(),
+                "the test of the dump is required but python3 does not start: {error}"
+            );
+            eprintln!("skipping the test of the dump: python3 does not start: {error}");
+            return None;
+        }
+    };
+    child
+        .stdin
+        .take()
+        .expect("the input of python3")
+        .write_all(input.as_bytes())
+        .expect("write the input");
+    let output = child.wait_with_output().expect("run python3");
+    if !output.status.success() {
+        return Some(Err(String::from_utf8_lossy(&output.stderr).into_owned()));
+    }
+    Some(Ok(
+        String::from_utf8(output.stdout).expect("a dump in UTF-8")
+    ))
 }
 
 pub(crate) fn registry() -> Registry {

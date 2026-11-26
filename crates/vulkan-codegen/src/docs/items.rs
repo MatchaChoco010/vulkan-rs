@@ -511,9 +511,7 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use std::path::Path;
-    use std::process::{Command, Stdio};
+    use crate::test_support::run_with_the_tool;
     use vulkan_registry::Docs;
 
     fn paragraph(text: &str) -> Part {
@@ -1226,50 +1224,6 @@ mod tests {
         );
     }
 
-    fn run_with_the_tool(steps: &[&str], input: &str) -> Option<Result<String, String>> {
-        let tool = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/generate-vulkan");
-        let mut script = vec![
-            "import importlib.machinery, importlib.util, json, pathlib, sys, tempfile, types",
-            "loader = importlib.machinery.SourceFileLoader('generate_vulkan', sys.argv[1])",
-            "specification = importlib.util.spec_from_loader('generate_vulkan', loader)",
-            "tool = importlib.util.module_from_spec(specification)",
-            "loader.exec_module(tool)",
-        ];
-        script.extend(steps);
-        let script = script.join("\n");
-        let spawned = Command::new("python3")
-            .args(["-B", "-c", &script])
-            .arg(&tool)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        let mut child = match spawned {
-            Ok(child) => child,
-            Err(error) => {
-                assert!(
-                    std::env::var_os("VULKAN_RS_REQUIRE_DOCS_TEST").is_none(),
-                    "the test of the dump is required but python3 does not start: {error}"
-                );
-                eprintln!("skipping the test of the dump: python3 does not start: {error}");
-                return None;
-            }
-        };
-        child
-            .stdin
-            .take()
-            .expect("the input of python3")
-            .write_all(input.as_bytes())
-            .expect("write the input");
-        let output = child.wait_with_output().expect("run python3");
-        if !output.status.success() {
-            return Some(Err(String::from_utf8_lossy(&output.stderr).into_owned()));
-        }
-        Some(Ok(
-            String::from_utf8(output.stdout).expect("output in UTF-8")
-        ))
-    }
-
     fn dumped(source: &[&str]) -> Option<Result<Vec<(String, String)>, String>> {
         let steps = [
             "with tempfile.TemporaryDirectory() as directory:",
@@ -1279,10 +1233,10 @@ mod tests {
             "    body = list(tool.spec_lines(source, {'VK_KHR_defined'}, generated=generated))",
             "items = tool.spec_described_items(body, 'VkPage')",
             "page = {'name': 'VkPage', 'kind': '', 'desc': '', 'aliases': [], 'file': '', 'items': items}",
-            "docs = {'commit': '', 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
+            "docs = {'commit': '', 'anchors': {}, 'attributes': {}, 'titles': {}, 'pages': [page], 'tables': []}",
             "print(json.dumps(docs))",
         ];
-        let json = match run_with_the_tool(&steps, &source.join("\n"))? {
+        let json = match run_with_the_tool(&steps, &[], &source.join("\n"))? {
             Ok(json) => json,
             Err(error) => return Some(Err(error)),
         };
@@ -1304,7 +1258,7 @@ mod tests {
             "    (tool.REGISTRY / 'vk.xml').write_text(sys.stdin.read())",
             "    print(json.dumps(tool.spec_generated_files(vk), sort_keys=True))",
         ];
-        run_with_the_tool(&steps, &registry.join("\n"))
+        run_with_the_tool(&steps, &[], &registry.join("\n"))
     }
 
     #[test]

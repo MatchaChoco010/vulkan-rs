@@ -9,6 +9,8 @@ Pipeline:
    `crates/vulkan-registry/vulkan-ir.json`. All Rust naming and shaping decisions live
    in `vulkan-codegen`, not here. Only attributes that the generator reads are dumped:
    every extra one is one more way for a Vulkan-Headers update to break this script.
+   The `<deprecate>` blocks, which mark functionality as legacy, are read from the
+   registry tree itself, because `VulkanObject` has them for commands only.
 2. Dump the descriptions that the specification gives for the registry's names, as the
    AsciiDoc text of the specification, to `crates/vulkan-registry/vulkan-docs.json`.
    Turning that text into rustdoc is `vulkan-codegen`'s job as well.
@@ -80,10 +82,11 @@ def main() -> int:
             )
             return 1
 
-    vk = load_vulkan_object()
-    ir = build_ir(vk, args.allow_non_sdk_tag)
+    vk, registry_tree = load_vulkan_object()
+    ir = build_ir(vk, registry_tree, args.allow_non_sdk_tag)
     IR_PATH.write_text(json.dumps(ir, indent=1, sort_keys=True) + "\n")
-    docs = build_docs(defined_spec_attributes(vk), spec_generated_files(vk))
+    linked_anchors = {mark["link"] for mark in ir["legacy"]}
+    docs = build_docs(defined_spec_attributes(vk), spec_generated_files(vk), linked_anchors)
     DOCS_PATH.write_text(json.dumps(docs, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
 
     subprocess.run(
@@ -139,7 +142,11 @@ def load_vulkan_object():
     registry = Registry(gen, opts)
     registry.loadElementTree(ElementTree.parse(REGISTRY / "vk.xml"))
     registry.apiGen()
-    return gen.vk
+    # `registry.reg` is the root of vk.xml as Khronos' Registry has reduced it to the
+    # `vulkan` API: without the elements of other APIs, and with the internal
+    # `VK_BASE_VERSION_*`, `VK_COMPUTE_VERSION_*` and `VK_GRAPHICS_VERSION_*` features
+    # merged into the `VK_VERSION_*` feature that they are a part of.
+    return gen.vk, registry.reg
 
 
 def sdk_tag_key(tag: str) -> tuple[int, ...]:
@@ -162,7 +169,68 @@ def headers_tag(allow_non_sdk_tag: bool) -> str:
     )
 
 
-def build_ir(vk, allow_non_sdk_tag: bool):
+LEGACY_KINDS = ("type", "command", "feature")
+
+
+def legacy_ir(vk, registry_tree):
+    """The names that the `<deprecate>` blocks of the registry mark as legacy, each with
+    every version and extension that marks it, in the order of the registry.
+
+    A block belongs to the version or extension that it is in, and names the section of
+    the specification that explains it. It lists types, commands and features (members of
+    features structures, named with their structure), some with the name of what
+    supersedes them. Khronos' reg.py keeps one link and one `supersededby` for a name,
+    however many blocks list it, so a name that two blocks describe differently has no
+    single answer and stops the generation. The blocks of extensions that the registry
+    does not support for the `vulkan` API are left out, as these extensions are."""
+    marks = {}
+    interfaces = [*registry_tree.findall("feature"), *registry_tree.findall("extensions/extension")]
+    for interface in interfaces:
+        marked_by = interface.get("name")
+        if interface.tag == "extension" and marked_by not in vk.extensions:
+            continue
+        for block in interface.findall("deprecate"):
+            link = block.get("explanationlink")
+            if not link:
+                raise RuntimeError(f"{marked_by}: a <deprecate> block without an explanationlink")
+            for marked in block:
+                name = marked.get("name")
+                structure = marked.get("struct")
+                if marked.tag not in LEGACY_KINDS:
+                    raise RuntimeError(
+                        f"{marked_by}: a <deprecate> block lists a <{marked.tag}> ({name}), "
+                        "which this script does not know"
+                    )
+                if not name or (marked.tag == "feature") != (structure is not None):
+                    raise RuntimeError(
+                        f"{marked_by}: a <deprecate> block lists a <{marked.tag}> with the "
+                        f"attributes {dict(marked.attrib)}: it needs a name, and a struct "
+                        "if and only if it is a feature"
+                    )
+                superseded_by = marked.get("supersededby")
+                mark = marks.setdefault(
+                    (marked.tag, structure or "", name),
+                    {
+                        "kind": marked.tag,
+                        "name": name,
+                        "structure": structure,
+                        "link": link,
+                        "superseded_by": superseded_by,
+                        "marked_by": [],
+                    },
+                )
+                for attribute, value in (("link", link), ("superseded_by", superseded_by)):
+                    if mark[attribute] != value:
+                        raise RuntimeError(
+                            f"{name} is marked as legacy by {mark['marked_by'][0]} with the "
+                            f"{attribute} {mark[attribute]} and by {marked_by} with {value}"
+                        )
+                if marked_by not in mark["marked_by"]:
+                    mark["marked_by"].append(marked_by)
+    return [marks[key] for key in sorted(marks)]
+
+
+def build_ir(vk, registry_tree, allow_non_sdk_tag: bool):
     video = attr(vk, "videoStd")
     constants = list(vk.constants.values())
     enums = list(vk.enums.values())
@@ -319,6 +387,7 @@ def build_ir(vk, allow_non_sdk_tag: bool):
             }
             for e in sorted(vk.extensions.values(), key=lambda x: x.name)
         ],
+        "legacy": legacy_ir(vk, registry_tree),
         "formats": [
             {
                 "name": f.name,
@@ -381,6 +450,15 @@ SPEC_DESCRIBED_NAME = re.compile(r"^(?:pname|ename):(\w+)\b")
 SPEC_ATTRIBUTE_ENTRY = re.compile(r"^:([\w-]+)(!?):\s*(.*)$")
 SPEC_ATTRIBUTE_REFERENCE = re.compile(r"\{([\w-]+)\}")
 SPEC_ANCHOR_LINE = re.compile(r"^\[\[([\w.-]+)\]\]\s*$")
+SPEC_ANCHOR_DEFINITION = re.compile(r"\[\[([\w.-]+)\]\]")
+# The four below are the rules of the Antora build of the specification, which publishes
+# it on docs.vulkan.org: `spec_pages` in antora/Makefile and `findTitle` in
+# scripts/antora-prep.py of Vulkan-Docs.
+SPEC_PAGE_FILE_NAME = re.compile(r"[A-Za-z].*\.adoc")
+SPEC_PAGE_TITLE_SEARCH_LINES = 30
+SPEC_TITLE_ANCHOR = re.compile(r"^\[\[[^,]+.*\]\]$")
+SPEC_PAGE_TITLE = re.compile(r"^[=#] [A-Z].*")
+SPEC_PARTIAL_TITLE = re.compile(r"^[=#]{2,} [A-Z].*")
 SPEC_SECTION_TITLE = re.compile(r"^=+ +(\S.*?)\s*$")
 SPEC_BLOCK_TITLE = re.compile(r"^\.([^\s.].*?)\s*$")
 SPEC_IMAGE_TITLE = re.compile(r"^image::.*\btitle=\"([^\"]+)\"")
@@ -789,6 +867,61 @@ def spec_anchor_titles(sources: list[Path]) -> dict[str, str]:
     return titles
 
 
+def spec_defined_anchors(lines: list[str]) -> set[str]:
+    """The anchors (`[[name]]`, on a line of their own or inside one) that the lines of a
+    source file define."""
+    return {
+        anchor
+        for line in lines
+        if not spec_is_comment(line)
+        for anchor in SPEC_ANCHOR_DEFINITION.findall(line)
+    }
+
+
+def spec_is_page(name: str, text: str) -> bool:
+    """Whether the Antora build publishes the source file with this name and text as a
+    page of its own, at the path of the file. It does so for a file whose first title, in
+    its first lines, is a top-level one; every other file is a partial, which the pages
+    include."""
+    if not SPEC_PAGE_FILE_NAME.fullmatch(name) or name == "vulkanscdeviations.adoc":
+        return False
+    for line in text.splitlines()[:SPEC_PAGE_TITLE_SEARCH_LINES]:
+        if SPEC_TITLE_ANCHOR.match(line):
+            continue
+        if SPEC_PAGE_TITLE.match(line):
+            return True
+        if SPEC_PARTIAL_TITLE.match(line):
+            return False
+    return False
+
+
+def spec_anchor_pages(
+    linked_anchors: set[str], defined_anchors: dict[str, set[str]], pages: set[str]
+) -> dict[str, str]:
+    """The page that each of `linked_anchors` is on: the one source file that defines it,
+    given the anchors that each source file defines and the source files that are pages.
+    An anchor in a partial is on every page that includes the partial, and which pages
+    do is not read here, so it stops the generation."""
+    anchor_pages = {}
+    for anchor in sorted(linked_anchors):
+        defining = sorted(file for file, anchors in defined_anchors.items() if anchor in anchors)
+        if len(defining) != 1:
+            raise RuntimeError(
+                f"the registry links to the anchor `{anchor}` of the specification, which "
+                f"{' and '.join(defining) or 'no source file'} defines: exactly one source "
+                "file has to define it"
+            )
+        if defining[0] not in pages:
+            raise RuntimeError(
+                f"the registry links to the anchor `{anchor}` of the specification, which "
+                f"{defining[0]} defines, and that file is not published as a page of its "
+                "own: it has no top-level title in its first "
+                f"{SPEC_PAGE_TITLE_SEARCH_LINES} lines, or not the name of a page"
+            )
+        anchor_pages[anchor] = defining[0]
+    return anchor_pages
+
+
 def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, str]]) -> list[dict]:
     """The tables (`|===` blocks) that name an enumerant, as AsciiDoc text that starts
     with the attribute, anchor and title lines above the table, and the reference page
@@ -813,12 +946,20 @@ def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, s
     return tables
 
 
-def build_docs(defined: set[str], generated: dict[str, list[str]]):
+def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchors: set[str]):
+    """`linked_anchors` are the anchors of the specification that the registry links to.
+    The page that each one is on is dumped, as the path of its source file, because the
+    specification is published as many pages."""
     pages = {}
     tables = []
+    defined_anchors = {}
+    published = set()
     sources = sorted([*DOCS.glob("chapters/**/*.adoc"), *DOCS.glob("appendices/**/*.adoc")])
     for source in sources:
         lines = list(spec_lines(source, defined, generated=generated))
+        defined_anchors[str(source.relative_to(DOCS))] = spec_defined_anchors(lines)
+        if spec_is_page(source.name, source.read_text()):
+            published.add(str(source.relative_to(DOCS)))
         page_blocks = []
         index = 0
         while index < len(lines):
@@ -858,6 +999,7 @@ def build_docs(defined: set[str], generated: dict[str, list[str]]):
         referenced.update(SPEC_BARE_REFERENCE.findall(table["text"]))
     return {
         "commit": git(["-C", str(DOCS), "rev-parse", "--short=12", "HEAD"]),
+        "anchors": spec_anchor_pages(linked_anchors, defined_anchors, published),
         "attributes": dict(sorted(spec_attributes(defined).items())),
         "titles": {name: all_titles[name] for name in sorted(referenced) if name in all_titles},
         "pages": [pages[name] for name in sorted(pages)],

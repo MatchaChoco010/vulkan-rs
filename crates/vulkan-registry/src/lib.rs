@@ -24,6 +24,7 @@ pub struct Registry {
     pub structs: Vec<Struct>,
     pub commands: Vec<Command>,
     pub extensions: Vec<Extension>,
+    pub legacy: Vec<Legacy>,
     pub formats: Vec<Format>,
 }
 
@@ -43,6 +44,7 @@ impl Registry {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Docs {
     pub commit: String,
+    pub anchors: BTreeMap<String, String>,
     pub attributes: BTreeMap<String, String>,
     pub titles: BTreeMap<String, String>,
     pub pages: Vec<DocPage>,
@@ -227,6 +229,25 @@ pub struct Extension {
     pub provisional: bool,
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LegacyKind {
+    #[default]
+    Type,
+    Command,
+    Feature,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Legacy {
+    pub kind: LegacyKind,
+    pub name: String,
+    pub structure: Option<String>,
+    pub link: String,
+    pub marked_by: Vec<String>,
+    pub superseded_by: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Format {
     pub name: String,
@@ -272,6 +293,40 @@ mod tests {
         );
         assert!(!registry.structs.is_empty());
         assert!(!registry.commands.is_empty());
+    }
+
+    #[test]
+    fn embedded_legacy_marks_have_a_kind_a_link_and_what_marks_them() {
+        let registry = Registry::get();
+        for kind in [LegacyKind::Type, LegacyKind::Command, LegacyKind::Feature] {
+            let mut marks = registry.legacy.iter().filter(|mark| mark.kind == kind);
+            assert!(
+                marks.all(|mark| mark.structure.is_some() == (kind == LegacyKind::Feature)),
+                "{kind:?}"
+            );
+            assert!(registry.legacy.iter().any(|mark| mark.kind == kind));
+        }
+        for mark in &registry.legacy {
+            assert!(!mark.name.is_empty() && !mark.link.is_empty());
+            assert!(!mark.marked_by.is_empty(), "{}", mark.name);
+        }
+        let submit = registry
+            .legacy
+            .iter()
+            .find(|mark| mark.name == "vkQueueSubmit")
+            .expect("vkQueueSubmit is legacy");
+        assert_eq!(submit.kind, LegacyKind::Command);
+        assert_eq!(submit.link, "deprecation-sync2");
+        assert_eq!(
+            submit.marked_by,
+            ["VK_VERSION_1_3", "VK_KHR_synchronization2"]
+        );
+        assert_eq!(submit.superseded_by.as_deref(), Some("vkQueueSubmit2"));
+        let docs = Docs::get();
+        assert_eq!(
+            docs.anchors.get("deprecation-sync2").map(String::as_str),
+            Some("appendices/legacy.adoc")
+        );
     }
 
     #[test]
