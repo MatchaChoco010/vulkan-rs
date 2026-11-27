@@ -914,15 +914,16 @@ mod tests {
             .iter()
             .map(|mark| mark.link.as_str())
             .collect::<BTreeSet<_>>();
+        let located = |file: &str| {
+            let anchors = docs.anchors.iter().filter(move |(_, page)| *page == file);
+            anchors.map(|(anchor, _)| anchor.as_str()).collect()
+        };
         assert_eq!(
             links,
-            docs.anchors.keys().map(String::as_str).collect(),
-            "the descriptions locate exactly the anchors that the registry links to"
+            located("appendices/legacy.adoc"),
+            "the descriptions locate the anchors that the registry links to, all of them in the appendix"
         );
         assert_eq!(links.len(), 12);
-        for (anchor, file) in &docs.anchors {
-            assert_eq!(file, "appendices/legacy.adoc", "{anchor}");
-        }
         let left_out = of_kind(LegacyKind::Type)
             .filter(|mark| model.links.get(&mark.name).is_none())
             .map(|mark| mark.name.as_str())
@@ -1190,7 +1191,8 @@ mod tests {
             "name = lambda file: file.rsplit('/', 1)[-1]",
             "text = lambda lines: ''.join(line + chr(10) for line in lines)",
             "pages = {file for file, lines in files.items() if tool.spec_is_page(name(file), text(lines))}",
-            "anchors = tool.spec_anchor_pages(set(sys.argv[2:]), defined, pages)",
+            "linked = {anchor: tool.REGISTRY_LINKS for anchor in sys.argv[2:]}",
+            "anchors = tool.spec_anchor_pages(linked, defined, pages)",
             "docs = {'commit': '', 'anchors': anchors, 'attributes': {}, 'titles': {}, 'pages': [], 'tables': [], 'items_outside_pages': []}",
             "print(json.dumps(docs))",
         ];
@@ -1280,13 +1282,13 @@ mod tests {
     #[test]
     fn the_dump_stops_at_a_linked_anchor_that_no_source_file_or_more_than_one_defines() {
         for (anchor, defined_by) in [
-            ("legacy-missing", "no source file"),
-            ("legacy-commented", "no source file"),
-            ("legacy-referenced", "no source file"),
-            ("legacy", "no source file"),
+            ("legacy-missing", "no source file defines"),
+            ("legacy-commented", "no source file defines"),
+            ("legacy-referenced", "no source file defines"),
+            ("legacy", "no source file defines"),
             (
                 "legacy-twice",
-                "appendices/legacy.adoc and chapters/things/more.adoc",
+                "appendices/legacy.adoc and chapters/things/more.adoc define",
             ),
         ] {
             let Some(located) = located(&["legacy-one", anchor], SOURCES) else {
@@ -1294,7 +1296,7 @@ mod tests {
             };
             let error = located.expect_err(&format!("`{anchor}` is located"));
             let message = format!(
-                "RuntimeError: the registry links to the anchor `{anchor}` of the specification, which {defined_by} defines: exactly one source file has to define it"
+                "RuntimeError: the registry links to the anchor `{anchor}` of the specification, which {defined_by}: exactly one source file has to define it"
             );
             assert!(error.trim_end().ends_with(&message), "{error}");
         }

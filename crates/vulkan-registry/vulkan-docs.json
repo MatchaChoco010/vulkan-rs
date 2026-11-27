@@ -11,7 +11,9 @@
   "legacy-host-builds": "appendices/legacy.adoc",
   "legacy-renderpass2": "appendices/legacy.adoc",
   "legacy-resource-objects": "appendices/legacy.adoc",
-  "legacy-version-macros": "appendices/legacy.adoc"
+  "legacy-version-macros": "appendices/legacy.adoc",
+  "samplers-maxAnisotropy": "chapters/samplers.adoc",
+  "samplers-mipLodBias": "chapters/samplers.adoc"
  },
  "attributes": {
   "DeltaUpper": "Δ",
