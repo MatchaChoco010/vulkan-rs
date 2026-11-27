@@ -10,8 +10,7 @@ pub enum AllocationError {
     /// No memory type allowed by [`vk::MemoryRequirements::memory_type_bits`] has all the
     /// flags that the [`MemoryLocation`](crate::MemoryLocation) requires, such as no
     /// allowed type being both `HOST_VISIBLE` and `HOST_COHERENT` for
-    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
-    /// [`MemoryLocation::CpuOnly`](crate::MemoryLocation::CpuOnly) or
+    /// [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu) or
     /// [`MemoryLocation::GpuToCpu`](crate::MemoryLocation::GpuToCpu).
     NoCompatibleMemoryType,
     /// The device does not have the memory: every memory type the request may use is out

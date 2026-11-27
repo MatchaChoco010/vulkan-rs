@@ -25,7 +25,7 @@ pub unsafe fn create_texture(
             "texture staging buffer",
             bytes.len() as u64,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            MemoryLocation::CpuOnly,
+            MemoryLocation::CpuToGpu,
         )?;
         write_buffer(gpu, &staging, bytes)?;
         let image = create_image(

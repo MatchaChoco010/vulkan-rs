@@ -178,7 +178,6 @@ pub enum Location {
     GpuOnly,
     CpuToGpu,
     GpuToCpu,
-    CpuOnly,
     Custom { required: u8, preferred: u8 },
 }
 
@@ -200,7 +199,6 @@ impl Location {
                 VISIBLE.union(COHERENT),
                 VISIBLE.union(COHERENT).union(LOCAL),
             ),
-            Location::CpuOnly => (VISIBLE.union(COHERENT), VISIBLE.union(COHERENT)),
             Location::GpuToCpu => (
                 VISIBLE.union(COHERENT),
                 VISIBLE.union(COHERENT).union(CACHED),
@@ -212,19 +210,11 @@ impl Location {
         }
     }
 
-    fn documented_avoided_flags(self) -> vk::MemoryPropertyFlags {
-        match self {
-            Location::CpuOnly => LOCAL,
-            _ => vk::MemoryPropertyFlags::empty(),
-        }
-    }
-
     fn memory_location(self) -> MemoryLocation {
         match self {
             Location::GpuOnly => MemoryLocation::GpuOnly,
             Location::CpuToGpu => MemoryLocation::CpuToGpu,
             Location::GpuToCpu => MemoryLocation::GpuToCpu,
-            Location::CpuOnly => MemoryLocation::CpuOnly,
             Location::Custom {
                 required,
                 preferred,
@@ -330,20 +320,13 @@ pub fn documented_memory_type_without(
         })
         .map(|(index, memory_type)| (index as u32, memory_type.flags))
         .collect::<Vec<_>>();
-    let avoided = request.location.documented_avoided_flags();
-    let common = |a: vk::MemoryPropertyFlags, b: vk::MemoryPropertyFlags| {
-        (a.as_raw() & b.as_raw()).count_ones()
-    };
-    let lacking_and_avoided = |flags: vk::MemoryPropertyFlags| {
-        common(preferred, preferred) - common(preferred, flags) + common(avoided, flags)
-    };
-    let fewest = candidates
-        .iter()
-        .map(|&(_, flags)| lacking_and_avoided(flags))
-        .min()?;
+    let shared =
+        |flags: vk::MemoryPropertyFlags| (flags.as_raw() & preferred.as_raw()).count_ones();
+    let most = candidates.iter().map(|&(_, flags)| shared(flags)).max()?;
     candidates
         .iter()
-        .find(|&&(_, flags)| lacking_and_avoided(flags) == fewest)
+        .find(|&&(_, flags)| flags.contains(preferred))
+        .or_else(|| candidates.iter().find(|&&(_, flags)| shared(flags) == most))
         .map(|&(index, _)| index)
 }
 
@@ -638,9 +621,8 @@ fn alignments() -> impl Strategy<Value = u64> {
 fn locations() -> impl Strategy<Value = Location> {
     prop_oneof![
         4 => Just(Location::GpuOnly),
-        3 => Just(Location::CpuToGpu),
+        6 => Just(Location::CpuToGpu),
         4 => Just(Location::GpuToCpu),
-        3 => Just(Location::CpuOnly),
         3 => (
             prop_oneof![
                 6 => Just(0u8),
