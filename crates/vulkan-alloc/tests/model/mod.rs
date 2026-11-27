@@ -167,9 +167,26 @@ impl World {
     fn shared_block_size(&self, memory_type: u32) -> u64 {
         let block_size = self.block_size.max(1);
         match self.known_heap_size(memory_type) {
-            Some(heap_size) => block_size.min(heap_size),
+            Some(heap_size) => block_size.min((heap_size / 8).max(1)),
             None => block_size,
         }
+    }
+
+    fn new_shared_block_size(&self, memory_type: u32, size: u64, largest_block: u64) -> u64 {
+        let shared = self.shared_block_size(memory_type);
+        if size > shared / 2 {
+            return size;
+        }
+        let mut block_size = shared;
+        for _ in 0..3 {
+            let half = block_size / 2;
+            if half > largest_block && half >= 2 * size {
+                block_size = half;
+            } else {
+                break;
+            }
+        }
+        block_size
     }
 }
 
@@ -950,10 +967,10 @@ fn guard_uses_inside(size: u64) -> impl Strategy<Value = GuardUse> {
 
 fn synchronizations_of(size: u64) -> impl Strategy<Value = Op> {
     prop_oneof![
-        2 => Just(Op::Flush(AIMED)),
-        2 => Just(Op::Invalidate(AIMED)),
-        2 => spans_inside(size).prop_map(|span| Op::FlushRange(AIMED, span)),
-        2 => spans_inside(size).prop_map(|span| Op::InvalidateRange(AIMED, span)),
+        3 => Just(Op::Flush(AIMED)),
+        3 => Just(Op::Invalidate(AIMED)),
+        4 => spans_inside(size).prop_map(|span| Op::FlushRange(AIMED, span)),
+        4 => spans_inside(size).prop_map(|span| Op::InvalidateRange(AIMED, span)),
         1 => guard_uses_inside(size).prop_map(|guard_use| Op::Guard(AIMED, guard_use)),
     ]
 }
@@ -964,20 +981,22 @@ fn failing_synchronizations(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
         .prop_flat_map(|request| {
             (
                 prop::sample::select(MAPPED_STATES.to_vec()),
-                prop::collection::vec(
-                    (
-                        prop::sample::select(SYNCHRONIZATION_FAILURES.to_vec()),
-                        synchronizations_of(request.size),
-                    ),
-                    2..=6,
-                ),
+                prop::collection::vec((synchronizations_of(request.size), any::<bool>()), 1..=3),
             )
                 .prop_map(move |(state, failing)| {
                     let mut ops = vec![Op::Allocate(request)];
                     ops.extend_from_slice(state);
-                    for (failure, synchronization) in failing {
-                        ops.push(Op::FailNextSynchronization(failure));
-                        ops.push(synchronization);
+                    for (synchronization, swapped) in failing {
+                        let [first, second] = SYNCHRONIZATION_FAILURES;
+                        let failures = if swapped {
+                            [second, first]
+                        } else {
+                            [first, second]
+                        };
+                        for failure in failures {
+                            ops.push(Op::FailNextSynchronization(failure));
+                            ops.push(synchronization);
+                        }
                     }
                     ops
                 })
@@ -1024,7 +1043,7 @@ fn steps_that_keep_the_mapping_state(size: u64) -> impl Strategy<Value = Vec<Op>
         1 => spans_inside(size).prop_map(|span| vec![Op::FlushRange(AIMED, span)]),
         1 => spans_inside(size).prop_map(|span| vec![Op::InvalidateRange(AIMED, span)]),
         2 => Just(vec![Op::MapPersistent(AIMED)]),
-        2 => Just(vec![Op::Free(AIMED)]),
+        3 => Just(vec![Op::Free(AIMED)]),
         1 => Just(vec![Op::MapMemory(AIMED)]),
         1 => Just(vec![Op::UnmapMemory(AIMED)]),
     ]
@@ -1034,7 +1053,7 @@ fn mapping_operations_in_every_state(memory_types: Vec<u32>) -> BoxedStrategy<Ve
     let states = prop_oneof![
         2 => Just(Vec::new()),
         2 => Just(vec![Op::MapMemory(AIMED)]),
-        4 => Just(vec![Op::MapMemory(AIMED), Op::MapMemory(AIMED)]),
+        6 => Just(vec![Op::MapMemory(AIMED), Op::MapMemory(AIMED)]),
         1 => Just(vec![Op::MapMemory(AIMED), Op::MapMemory(AIMED), Op::MapMemory(AIMED)]),
         2 => Just(vec![Op::MapPersistent(AIMED)]),
         2 => Just(vec![Op::MapMemory(AIMED), Op::MapPersistent(AIMED)]),
@@ -1243,12 +1262,31 @@ fn stale_and_foreign_handles(memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
     .boxed()
 }
 
-fn memory_types_to_try(world: &World, request: &Request) -> usize {
+fn memory_types_to_try(world: &World, request: &Request) -> Vec<u32> {
     let mut left_out = Vec::new();
     while let Some(memory_type) = documented_memory_type_without(world, request, &left_out) {
         left_out.push(memory_type);
     }
-    left_out.len()
+    left_out
+}
+
+fn sizes_asked_for_a_new_block(world: &World, memory_type: u32, size: u64) -> usize {
+    if world
+        .allocator_flags
+        .contains(vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT)
+    {
+        return 1;
+    }
+    let first = world.new_shared_block_size(memory_type, size, 0);
+    let mut last = first;
+    let mut asked = 1;
+    for smaller in [first / 2, first / 4, first / 8, size] {
+        if smaller >= size && smaller < last {
+            last = smaller;
+            asked += 1;
+        }
+    }
+    asked
 }
 
 fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> BoxedStrategy<Vec<Op>> {
@@ -1256,7 +1294,18 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
         memory_type_bits: u32::MAX,
         ..Request::plain(1, 1, 0)
     };
-    let candidates = memory_types_to_try(world, &any_memory_type);
+    let out_of_memory_after = memory_types_to_try(world, &any_memory_type)
+        .into_iter()
+        .scan(0, |failures, memory_type| {
+            *failures += sizes_asked_for_a_new_block(world, memory_type, 1);
+            Some(*failures)
+        })
+        .collect::<Vec<_>>();
+    let every_type_out_of_memory = out_of_memory_after.last().copied().unwrap_or(0);
+    let last_type_tried_first = out_of_memory_after
+        .len()
+        .checked_sub(2)
+        .map_or(0, |index| out_of_memory_after[index]);
     let heap_limited = memory_types_where(world, |memory_type| {
         world
             .heap_of(memory_type)
@@ -1274,20 +1323,23 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
                 && world.memory_types[first as usize].flags.contains(VISIBLE)
                     != world.memory_types[then as usize].flags.contains(VISIBLE)
         })
+        .map(|(first, then)| (first, then, sizes_asked_for_a_new_block(world, first, 1)))
         .collect::<Vec<_>>();
     let world = world.clone();
     prop::sample::select(memory_types)
         .prop_flat_map(move |memory_type| {
             let small = Request::plain(1, 1, memory_type);
             let big = Request::plain(world.shared_block_size(memory_type) / 2 + 1, 1, memory_type);
+            let full = Request::plain(world.shared_block_size(memory_type), 1, memory_type);
             let out_of_device_memory = vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY;
             let mut variants: Vec<(u32, BoxedStrategy<Vec<Op>>)> = vec![
                 (
                     4,
                     prop_oneof![
-                        Just(None),
-                        Just(Some(out_of_device_memory)),
-                        prop::sample::select(OTHER_ALLOCATION_FAILURES.to_vec()).prop_map(Some),
+                        1 => Just(None),
+                        2 => Just(Some(out_of_device_memory)),
+                        1 => prop::sample::select(OTHER_ALLOCATION_FAILURES.to_vec())
+                            .prop_map(Some),
                     ]
                     .prop_map(move |retry| {
                         let mut ops = vec![
@@ -1305,18 +1357,49 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
                     .boxed(),
                 ),
                 (
-                    2,
+                    3,
                     (
-                        prop::sample::select(vec![(candidates - 1).max(1), candidates, candidates]),
+                        prop_oneof![
+                            2 => Just(every_type_out_of_memory),
+                            1 => Just(last_type_tried_first),
+                            3 => 0..=every_type_out_of_memory,
+                        ],
+                        prop::option::weighted(
+                            0.2,
+                            prop::sample::select(OTHER_ALLOCATION_FAILURES.to_vec()),
+                        ),
                         any::<bool>(),
                     )
-                        .prop_map(move |(failures, mapped)| {
+                        .prop_map(move |(failures, other_failure, mapped)| {
                             let mut ops =
                                 vec![Op::FailNextAllocation(out_of_device_memory); failures];
+                            ops.extend(other_failure.map(Op::FailNextAllocation));
                             ops.push(Op::Allocate(Request {
                                 mapped,
                                 ..any_memory_type
                             }));
+                            ops
+                        })
+                        .boxed(),
+                ),
+                (
+                    3,
+                    any::<bool>()
+                        .prop_map(move |larger_emptied_last_again| {
+                            let mut ops = Vec::new();
+                            for larger_emptied_last in [true, larger_emptied_last_again] {
+                                ops.extend([
+                                    Op::Allocate(full),
+                                    Op::FailNextAllocation(out_of_device_memory),
+                                    Op::Allocate(small),
+                                    Op::Free(if larger_emptied_last {
+                                        BESIDE_AIMED
+                                    } else {
+                                        AIMED
+                                    }),
+                                    Op::Free(AIMED),
+                                ]);
+                            }
                             ops
                         })
                         .boxed(),
@@ -1352,19 +1435,74 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
                     .boxed(),
                 ),
             ];
-            if !fallbacks_that_change_host_visibility.is_empty() {
+            variants.push((
+                3,
+                Just(vec![
+                    Op::Allocate(Request {
+                        linear: false,
+                        ..big
+                    }),
+                    Op::Allocate(small),
+                ])
+                .boxed(),
+            ));
+            if out_of_memory_after.len() > 1 {
                 variants.push((
                     2,
+                    any::<bool>()
+                        .prop_map(move |mapped| {
+                            let mut ops = vec![
+                                Op::FailNextAllocation(out_of_device_memory);
+                                every_type_out_of_memory
+                            ];
+                            ops.push(Op::Allocate(Request {
+                                mapped,
+                                ..any_memory_type
+                            }));
+                            ops
+                        })
+                        .boxed(),
+                ));
+            }
+            if !fallbacks_that_change_host_visibility.is_empty() {
+                variants.push((
+                    4,
                     prop::sample::select(fallbacks_that_change_host_visibility.clone())
-                        .prop_map(move |(first, then)| {
-                            vec![
-                                Op::FailNextAllocation(out_of_device_memory),
-                                Op::Allocate(Request {
-                                    memory_type_bits: 1 << first | 1 << then,
-                                    mapped: true,
-                                    ..Request::plain(1, 1, first)
-                                }),
-                            ]
+                        .prop_map(move |(first, then, asked)| {
+                            let mut ops = vec![Op::FailNextAllocation(out_of_device_memory); asked];
+                            ops.push(Op::Allocate(Request {
+                                memory_type_bits: 1 << first | 1 << then,
+                                mapped: true,
+                                ..Request::plain(1, 1, first)
+                            }));
+                            ops
+                        })
+                        .boxed(),
+                ));
+            }
+            let asked = sizes_asked_for_a_new_block(&world, memory_type, 1);
+            if asked > 1 {
+                variants.push((
+                    4,
+                    (
+                        1..asked,
+                        prop::sample::select(OTHER_ALLOCATION_FAILURES.to_vec()),
+                        prop_oneof![1 => 1..asked, 2 => Just(asked - 1)],
+                    )
+                        .prop_map(move |(failing, other_failure, failures)| {
+                            let mut ops =
+                                vec![Op::FailNextAllocation(out_of_device_memory); failing];
+                            ops.extend([
+                                Op::FailNextAllocation(other_failure),
+                                Op::Allocate(small),
+                                Op::FreeAll,
+                            ]);
+                            ops.extend(vec![
+                                Op::FailNextAllocation(out_of_device_memory);
+                                failures
+                            ]);
+                            ops.push(Op::Allocate(small));
+                            ops
                         })
                         .boxed(),
                 ));
@@ -1393,7 +1531,7 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
                         .boxed(),
                 ));
             }
-            prop::collection::vec(Union::new_weighted(variants), 1..=4)
+            prop::collection::vec(Union::new_weighted(variants), 2..=5)
                 .prop_map(|variants| variants.join(&Op::FreeAll))
         })
         .boxed()
@@ -1449,7 +1587,7 @@ pub fn aimed_scenarios(aims: &[Aim]) -> impl Strategy<Value = Scenario> + use<> 
         })
         .prop_flat_map(move |world| {
             let episodes = Union::new(aims.iter().filter_map(|aim| aim.episodes(&world)));
-            (prop::collection::vec(episodes, 1..=4), mixes(), Just(world))
+            (prop::collection::vec(episodes, 2..=5), mixes(), Just(world))
         })
         .prop_flat_map(|(episodes, mix, world)| {
             prop::collection::vec(ops(&world, mix), 0..=16).prop_map(move |tail| {
@@ -1546,6 +1684,7 @@ struct Block {
     allocate_flags: vk::MemoryAllocateFlags,
     requested_flags: vk::MemoryAllocateFlags,
     own: bool,
+    made_for_one_request: bool,
     block_index: usize,
 }
 
@@ -1721,8 +1860,10 @@ impl Harness {
                 self.allocator
                     .free(live.allocation)
                     .map_err(|error| format!("freeing at the end: {error:?}"))?;
-                if self.taken_in(memory).is_empty() && !self.keeps_empty_block(memory) {
-                    self.blocks.remove(&memory);
+                if self.taken_in(memory).is_empty()
+                    && let Some(freed) = self.block_freed_when_emptied(memory)
+                {
+                    self.blocks.remove(&freed);
                 }
                 if let Some(twin) = live.twin {
                     self.twin
@@ -1858,16 +1999,22 @@ impl Harness {
             .collect()
     }
 
-    fn keeps_empty_block(&self, memory: u64) -> bool {
+    fn block_freed_when_emptied(&self, memory: u64) -> Option<u64> {
         let block = self.blocks[&memory];
-        !block.own
-            && block.size == self.world.shared_block_size(block.memory_type)
-            && !self.blocks.iter().any(|(&other, other_block)| {
-                other != memory
-                    && other_block.memory_type == block.memory_type
-                    && other_block.allocate_flags == block.allocate_flags
-                    && self.taken_in(other).is_empty()
-            })
+        if block.own || block.size > self.world.shared_block_size(block.memory_type) {
+            return Some(memory);
+        }
+        let (&other, other_block) = self.blocks.iter().find(|&(&other, other_block)| {
+            other != memory
+                && other_block.memory_type == block.memory_type
+                && other_block.allocate_flags == block.allocate_flags
+                && self.taken_in(other).is_empty()
+        })?;
+        Some(if block.size > other_block.size {
+            other
+        } else {
+            memory
+        })
     }
 
     fn mapping_references_in(&self, memory: u64) -> usize {
@@ -1887,14 +2034,6 @@ impl Harness {
             || self
                 .flags_of_the_allocation(request)
                 .contains(vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT)
-    }
-
-    fn size_of_a_new_block(&self, request: &Request, own: bool, memory_type: u32) -> u64 {
-        if own {
-            request.size
-        } else {
-            self.world.shared_block_size(memory_type).max(request.size)
-        }
     }
 
     fn effective_alignment(&self, memory_type: u32, alignment: u64) -> u64 {
@@ -1996,7 +2135,7 @@ impl Harness {
         let mut consumed = Vec::new();
         let mut freed = Vec::new();
         let mut allocate_calls = 0;
-        let (memory_type, alignment, holding, empty) = loop {
+        let (memory_type, alignment, holding, empty, block_size, made_for_one_request) = loop {
             let Some(memory_type) = documented_memory_type_without(&self.world, request, &left_out)
             else {
                 if left_out.is_empty() {
@@ -2058,8 +2197,56 @@ impl Harness {
             let holding = first_with_room(false);
             let empty = first_with_room(true);
             if holding.is_some() || empty.is_some() {
-                break (memory_type, alignment, holding, empty);
+                break (memory_type, alignment, holding, empty, 0, false);
             }
+            let largest_of = |counted: bool| {
+                self.blocks
+                    .values()
+                    .filter(|block| {
+                        block.memory_type == memory_type
+                            && !block.own
+                            && !(counted && block.made_for_one_request)
+                    })
+                    .map(|block| block.size)
+                    .max()
+                    .unwrap_or(0)
+            };
+            let largest_block = largest_of(true);
+            let first_size = if own {
+                request.size
+            } else {
+                self.world
+                    .new_shared_block_size(memory_type, request.size, largest_block)
+            };
+            let shared = self.world.shared_block_size(memory_type);
+            let mut made_for_one_request = own || request.size > shared / 2;
+            if !own
+                && first_size
+                    != self.world.new_shared_block_size(
+                        memory_type,
+                        request.size,
+                        largest_of(false),
+                    )
+            {
+                self.coverage.note(
+                    "allocate: a block made for one large request does not make the next block \
+                     larger",
+                );
+            }
+            if !own && request.size > shared / 2 && request.size <= shared {
+                self.coverage.note(
+                    "allocate: a request larger than half the block size gets a block of its own \
+                     size",
+                );
+            } else if !own && largest_block == 0 && first_size == shared / 8 {
+                self.coverage.note(
+                    "allocate: the first block of a memory type is an eighth of the block size",
+                );
+            } else if !own && first_size > shared / 8 && first_size < shared {
+                self.coverage
+                    .note("allocate: the new block is smaller than the block size and larger than the largest");
+            }
+            let mut block_size = first_size;
             allocate_calls += 1;
             let mut failure = self.allocation_fails.pop_front();
             consumed.extend(failure);
@@ -2090,8 +2277,44 @@ impl Harness {
                     Some(_) => "allocate: the retry after freeing the empty blocks fails",
                 });
             }
+            let halves = [first_size / 2, first_size / 4, first_size / 8];
+            if failure == Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY) && !own {
+                for (step, smaller) in halves.into_iter().chain([request.size]).enumerate() {
+                    if failure == Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY)
+                        && smaller >= request.size
+                        && smaller < block_size
+                    {
+                        block_size = smaller;
+                        made_for_one_request = step == halves.len();
+                        allocate_calls += 1;
+                        failure = self.allocation_fails.pop_front();
+                        consumed.extend(failure);
+                    }
+                }
+                if block_size < first_size {
+                    self.coverage.note(match failure {
+                        None if halves.contains(&block_size) => {
+                            "allocate: a smaller block succeeds after the block size fails"
+                        }
+                        None => "allocate: a block of the size of the request succeeds",
+                        Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY) => {
+                            "allocate: every smaller block is out of memory too"
+                        }
+                        Some(_) => "allocate: a smaller block fails with another Vulkan error",
+                    });
+                }
+            }
             match failure {
-                None => break (memory_type, alignment, None, None),
+                None => {
+                    break (
+                        memory_type,
+                        alignment,
+                        None,
+                        None,
+                        block_size,
+                        made_for_one_request,
+                    );
+                }
                 Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY) => {
                     left_out.push(memory_type);
                     reasons.push("vkAllocateMemory is out of memory");
@@ -2150,7 +2373,7 @@ impl Harness {
             return self.check_undone_allocation(
                 request,
                 resource,
-                (memory_type, chosen),
+                (memory_type, chosen, block_size, made_for_one_request),
                 (expectation, result),
                 &before,
                 (allocate_calls, &freed, &consumed),
@@ -2200,7 +2423,6 @@ impl Harness {
             self.coverage.step("allocate: into a shared block");
             allocation
         } else {
-            let block_size = self.size_of_a_new_block(request, own, memory_type);
             let allocation =
                 result.map_err(|error| format!("new memory was allocated, but: {error:?}"))?;
             let memory = allocation.memory();
@@ -2241,6 +2463,7 @@ impl Harness {
                     allocate_flags,
                     requested_flags: request.allocate_flags(),
                     own,
+                    made_for_one_request,
                     block_index,
                 },
             );
@@ -2257,9 +2480,9 @@ impl Harness {
                     );
                 }
             }
-            if !own && self.world.shared_block_size(memory_type) < self.world.block_size {
+            if !own && self.world.shared_block_size(memory_type) < self.world.block_size.max(1) {
                 self.coverage
-                    .note("shared block limited by its memory heap");
+                    .note("shared block limited by an eighth of its memory heap");
             }
             self.coverage.step(if own {
                 "allocate: memory of its own"
@@ -2470,7 +2693,7 @@ impl Harness {
         &mut self,
         request: &Request,
         resource: u64,
-        (memory_type, chosen): (u32, Option<u64>),
+        (memory_type, chosen, block_size, made_for_one_request): (u32, Option<u64>, u64, bool),
         (expectation, result): (MapExpectation, Result<Allocation, AllocationError>),
         before: &Observation,
         (allocate_calls, freed, consumed): (usize, &[u64], &[vk::VkResult]),
@@ -2542,23 +2765,33 @@ impl Harness {
         } else {
             let own = self.has_memory_of_its_own(request);
             let block = Block {
-                size: self.size_of_a_new_block(request, own, memory_type),
+                size: block_size,
                 memory_type,
                 linear: request.linear,
                 allocate_flags: self.flags_of_the_allocation(request),
                 requested_flags: request.allocate_flags(),
                 own,
+                made_for_one_request,
                 block_index: 0,
             };
             self.blocks.insert(MEMORY_OF_AN_UNDONE_ALLOCATION, block);
-            let kept = self.keeps_empty_block(MEMORY_OF_AN_UNDONE_ALLOCATION);
+            let freed_when_emptied = self.block_freed_when_emptied(MEMORY_OF_AN_UNDONE_ALLOCATION);
             self.blocks.remove(&MEMORY_OF_AN_UNDONE_ALLOCATION);
+            let kept = freed_when_emptied != Some(MEMORY_OF_AN_UNDONE_ALLOCATION);
+            if let Some(other) = freed_when_emptied.filter(|_| kept) {
+                self.blocks.remove(&other);
+                self.coverage
+                    .note("allocate: mapping fails, and a smaller empty block is freed");
+            }
             ensure_eq!(
                 (
                     calls.allocate - before.calls.allocate,
                     calls.free - before.calls.free
                 ),
-                (allocate_calls, freed.len() + usize::from(!kept)),
+                (
+                    allocate_calls,
+                    freed.len() + usize::from(freed_when_emptied.is_some())
+                ),
                 "vkAllocateMemory and vkFreeMemory calls of an allocation undone in a new block \
                  that is {}, after freeing the empty blocks {freed:?}",
                 if kept { "kept" } else { "not kept" }
@@ -2707,21 +2940,29 @@ impl Harness {
         let calls = self.fake.calls();
         let block_is_empty = !self.live.iter().any(|other| other.memory() == memory);
         if block_is_empty {
-            let kept = self.keeps_empty_block(memory);
+            let freed = self.block_freed_when_emptied(memory);
+            let kept = freed.is_none();
             ensure_eq!(
                 calls.free,
                 before.calls.free + usize::from(!kept),
-                "vkFreeMemory calls after the last allocation of a block was freed, when the \
-                 block is {}",
-                if kept { "kept" } else { "not kept" }
+                "vkFreeMemory calls after the last allocation of a block was freed, when {}",
+                match freed {
+                    None => "the block is kept",
+                    Some(freed) if freed == memory => "the block is freed",
+                    Some(_) => "the block is kept and another empty block is freed",
+                }
             );
             let block = self.blocks[&memory];
-            self.coverage.note(if kept {
-                "free: the empty block is kept"
-            } else if block.own || block.size != self.world.shared_block_size(block.memory_type) {
-                "free: the empty block is freed"
-            } else {
-                "free: a second empty block is freed"
+            self.coverage.note(match freed {
+                None => "free: the empty block is kept",
+                Some(_)
+                    if block.own
+                        || block.size > self.world.shared_block_size(block.memory_type) =>
+                {
+                    "free: the empty block is freed"
+                }
+                Some(freed) if freed == memory => "free: a second empty block is freed",
+                Some(_) => "free: the larger of two empty blocks is kept",
             });
             if kept
                 && self.blocks.iter().any(|(&other, other_block)| {
@@ -2733,8 +2974,8 @@ impl Harness {
                 self.coverage
                     .note("free: the empty block is kept beside one with other flags");
             }
-            if !kept {
-                self.blocks.remove(&memory);
+            if let Some(freed) = freed {
+                self.blocks.remove(&freed);
             }
             ensure!(
                 calls.unmap - before.calls.unmap <= usize::from(was_mapped),
@@ -3724,9 +3965,9 @@ impl Harness {
                         .entry(model.allocate_flags.as_raw())
                         .or_default() += 1;
                     ensure!(
-                        !model.own && model.size == self.world.shared_block_size(index),
-                        "{:?} is kept without allocations, but it is not a shared block of the \
-                         size of a new shared block of its memory type",
+                        !model.own && model.size <= self.world.shared_block_size(index),
+                        "{:?} is kept without allocations, but it is not a shared block of at \
+                         most the size of a new shared block of its memory type",
                         block.memory
                     );
                 }

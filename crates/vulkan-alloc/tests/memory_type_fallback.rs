@@ -54,9 +54,9 @@ const KINDS: [Kind; 6] = [
     Kind::DeviceAddress,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum EarlierBlock {
-    Used(u64),
+    Used(Vec<u64>),
     Empty,
 }
 
@@ -101,7 +101,27 @@ impl Device {
 
     fn shared_block_size(&self, memory_type: usize) -> u64 {
         self.known_heap_size(memory_type)
-            .map_or(BLOCK_SIZE, |heap| heap.min(BLOCK_SIZE))
+            .map_or(BLOCK_SIZE, |heap| BLOCK_SIZE.min((heap / 8).max(1)))
+    }
+
+    fn earlier_size(&self, memory_type: usize) -> u64 {
+        (self.shared_block_size(memory_type) / 2).max(1)
+    }
+
+    fn new_block_size(&self, memory_type: usize, size: u64, largest_block: u64) -> u64 {
+        let shared = self.shared_block_size(memory_type);
+        if size > shared / 2 {
+            return size;
+        }
+        let mut block_size = shared;
+        for _ in 0..3 {
+            if block_size / 2 > largest_block && block_size / 2 >= 2 * size {
+                block_size /= 2;
+            } else {
+                break;
+            }
+        }
+        block_size
     }
 
     fn is_always_left_out(&self, memory_type: usize, named: vk::MemoryPropertyFlags) -> bool {
@@ -181,7 +201,7 @@ fn allocate_memory_results() -> impl Strategy<Value = Vec<vk::VkResult>> {
             1 => Just(vk::VkResult::ERROR_OUT_OF_HOST_MEMORY),
             1 => Just(vk::VkResult::ERROR_TOO_MANY_OBJECTS),
         ],
-        0..=7,
+        0..=14,
     )
 }
 
@@ -288,14 +308,14 @@ fn documented_outcome(
         {
             continue;
         }
-        let used = match earlier_blocks[chosen] {
-            Some(EarlierBlock::Used(used)) => Some(used),
-            Some(EarlierBlock::Empty) => Some(0),
-            None => None,
+        let room = match &earlier_blocks[chosen] {
+            Some(EarlierBlock::Used(used)) => used
+                .iter()
+                .any(|&used| size <= device.shared_block_size(chosen) - used),
+            Some(EarlierBlock::Empty) => size <= device.shared_block_size(chosen),
+            None => false,
         };
-        if kind == Kind::Shared
-            && used.is_some_and(|used| size <= device.shared_block_size(chosen) - used)
-        {
+        if kind == Kind::Shared && room {
             return Expected {
                 result: Ok(chosen as u32),
                 allocated_memory_types,
@@ -303,6 +323,20 @@ fn documented_outcome(
                 freed_empty_blocks,
             };
         }
+        let shared = matches!(kind, Kind::Shared | Kind::DeviceAddress);
+        let earlier_blocks_count =
+            device.earlier_size(chosen) <= device.shared_block_size(chosen) / 2;
+        let largest_block = if earlier_blocks[chosen].is_some() && earlier_blocks_count {
+            device.shared_block_size(chosen)
+        } else {
+            0
+        };
+        let first_size = if shared {
+            device.new_block_size(chosen, size, largest_block)
+        } else {
+            size
+        };
+        let mut new_memory_size = first_size;
         allocated_memory_types.push(chosen as u32);
         let mut result = results.next().unwrap_or(vk::VkResult::SUCCESS);
         let heap = device.types[chosen].1;
@@ -318,13 +352,17 @@ fn documented_outcome(
             allocated_memory_types.push(chosen as u32);
             result = results.next().unwrap_or(vk::VkResult::SUCCESS);
         }
+        if shared {
+            for smaller in [first_size / 2, first_size / 4, first_size / 8, size] {
+                if result == OOM && smaller >= size && smaller < new_memory_size {
+                    new_memory_size = smaller;
+                    allocated_memory_types.push(chosen as u32);
+                    result = results.next().unwrap_or(vk::VkResult::SUCCESS);
+                }
+            }
+        }
         match result {
             vk::VkResult::SUCCESS => {
-                let new_memory_size = if matches!(kind, Kind::Shared | Kind::DeviceAddress) {
-                    device.shared_block_size(chosen).max(size)
-                } else {
-                    size
-                };
                 return Expected {
                     result: Ok(chosen as u32),
                     allocated_memory_types,
@@ -377,7 +415,7 @@ proptest! {
             let memory_type = memory_type % device.types.len();
             emptied[memory_type] |= empty_afterwards;
             let request = description(
-                1,
+                device.earlier_size(memory_type),
                 1 << memory_type,
                 MemoryLocation::custom(
                     vk::MemoryPropertyFlags::empty(),
@@ -397,13 +435,18 @@ proptest! {
             earlier_blocks[allocation.memory_type_index() as usize] = Some(EarlierBlock::Empty);
             unsafe { allocator.free(allocation) }.unwrap();
         }
+        let mut used = std::collections::BTreeMap::<(u32, u64), u64>::new();
         for allocation in &kept {
-            let block = &mut earlier_blocks[allocation.memory_type_index() as usize];
-            let used = match block {
-                Some(EarlierBlock::Used(used)) => *used,
-                _ => 0,
-            };
-            *block = Some(EarlierBlock::Used(used + allocation.size()));
+            *used
+                .entry((allocation.memory_type_index(), allocation.memory().0))
+                .or_default() += allocation.size();
+        }
+        for ((memory_type, _), used) in used {
+            let block = &mut earlier_blocks[memory_type as usize];
+            match block {
+                Some(EarlierBlock::Used(blocks)) => blocks.push(used),
+                _ => *block = Some(EarlierBlock::Used(vec![used])),
+            }
         }
         let earlier_allocations = kept;
         let context = format!(
@@ -538,7 +581,7 @@ fn gpu_to_cpu_takes_coherent_memory_when_the_cached_heap_is_out_of_memory() {
             (VISIBLE | COHERENT | CACHED, 1 << 30),
         ],
     );
-    fake.script_allocations([OOM]);
+    fake.script_allocations([OOM; 2]);
     let allocation = allocate(&mut allocator, 256, MemoryLocation::GpuToCpu)
         .expect("the coherent type that is not cached has memory");
     assert_eq!(
@@ -548,8 +591,14 @@ fn gpu_to_cpu_takes_coherent_memory_when_the_cached_heap_is_out_of_memory() {
     );
     assert_eq!(
         fake.allocated_memory_types(),
-        [2, 1],
-        "the cached type is tried first, then the coherent type"
+        [2, 2, 1],
+        "the cached type is tried first, down to a block of the size of the allocation, then \
+         the coherent type"
+    );
+    assert_eq!(
+        fake.allocated_sizes(),
+        [512, 256, 512],
+        "the first block of each type is an eighth of the block size"
     );
     assert_eq!(allocator.snapshot().memory_types.len(), 1);
     unsafe { allocator.free(allocation) }.unwrap();
@@ -566,14 +615,15 @@ fn cpu_to_gpu_takes_host_memory_when_the_host_visible_device_heap_is_out_of_memo
             (LOCAL | VISIBLE | COHERENT, 256 << 20),
         ],
     );
-    fake.script_allocations([OOM]);
+    fake.script_allocations([OOM; 2]);
     let allocation =
         allocate(&mut allocator, 256, MemoryLocation::CpuToGpu).expect("the host memory has room");
     assert_eq!(allocation.memory_type_index(), 1);
     assert_eq!(
         fake.allocated_memory_types(),
-        [2, 1],
-        "the host-visible device memory is tried first, then the host memory"
+        [2, 2, 1],
+        "the host-visible device memory is tried first, down to a block of the size of the \
+         allocation, then the host memory"
     );
     unsafe { allocator.free(allocation) }.unwrap();
 }
@@ -607,12 +657,17 @@ fn allocate_is_out_of_memory_only_when_every_memory_type_is() {
             (LOCAL, 1 << 30),
         ],
     );
-    fake.script_allocations([OOM, OOM]);
+    fake.script_allocations([OOM; 6]);
     assert_eq!(
         allocate(&mut allocator, 2000, MemoryLocation::GpuOnly),
         Err(AllocationError::OutOfMemory)
     );
-    assert_eq!(fake.allocated_memory_types(), [0, 2]);
+    assert_eq!(
+        fake.allocated_memory_types(),
+        [0, 0, 0, 2, 2, 2],
+        "each type is given the block size, half of it and the size of the allocation"
+    );
+    assert_eq!(fake.allocated_sizes(), [4096, 2048, 2000, 4096, 2048, 2000]);
     assert!(allocator.snapshot().memory_types.is_empty());
     assert!(fake.memory_objects().is_empty());
 }
@@ -641,7 +696,7 @@ fn a_dedicated_allocation_gets_the_memory_of_the_empty_block_of_its_heap() {
     assert_eq!(
         fake.memory_objects().len(),
         1,
-        "the empty block that fills the heap is kept"
+        "the empty block of the heap is kept"
     );
 
     fake.script_allocations([OOM]);

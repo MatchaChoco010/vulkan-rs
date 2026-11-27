@@ -66,6 +66,11 @@ impl Device {
             .collect()
     }
 
+    fn shared_block_size(&self, memory_type: usize) -> u64 {
+        self.known_heap_size(memory_type)
+            .map_or(4096, |heap_size| (heap_size / 8).clamp(1, 4096))
+    }
+
     fn known_heap_size(&self, memory_type: usize) -> Option<u64> {
         let heap_index = self.heap_indices[memory_type];
         let reported = heap_index < self.heap_count && heap_index < vk::MAX_MEMORY_HEAPS as u32;
@@ -171,6 +176,7 @@ fn expected(
     size: u64,
     alignment: u64,
     memory_type_bits: u32,
+    kind: Kind,
     device_mask: bool,
     allocate_memory_result: vk::VkResult,
 ) -> Expected {
@@ -190,11 +196,18 @@ fn expected(
             continue;
         }
         calls += 1;
-        let result = if calls == 1 {
+        let mut result = if calls == 1 {
             allocate_memory_result
         } else {
             vk::VkResult::SUCCESS
         };
+        if result == vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY
+            && matches!(kind, Kind::Shared)
+            && size <= device.shared_block_size(memory_type) / 2
+        {
+            calls += 1;
+            result = vk::VkResult::SUCCESS;
+        }
         match result {
             vk::VkResult::SUCCESS => return Expected::Allocated(calls),
             vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY => {}
@@ -264,6 +277,7 @@ proptest! {
             size,
             alignment,
             memory_type_bits,
+            kind,
             device_mask,
             allocate_memory_result,
         );
@@ -287,7 +301,8 @@ proptest! {
                 prop_assert_eq!(
                     fake.calls().allocate,
                     calls_before.allocate + calls,
-                    "{}: vkAllocateMemory is called once for each memory type tried", context
+                    "{}: vkAllocateMemory is called once for each memory type tried and once more for \
+                     a smaller block", context
                 );
                 prop_assert_eq!(
                     fake.calls().free,
@@ -300,7 +315,8 @@ proptest! {
                 prop_assert_eq!(
                     fake.calls().allocate,
                     calls_before.allocate + calls,
-                    "{}: vkAllocateMemory is called once for each memory type tried", context
+                    "{}: vkAllocateMemory is called once for each memory type tried and once more for \
+                     a smaller block", context
                 );
                 let allocation = result.unwrap();
                 prop_assert!(allocation.size() >= size, "{}", context);
@@ -326,11 +342,7 @@ proptest! {
         prop_assert!(allocator.is_empty(), "{}", context);
         assert_only_kept_empty_blocks(
             &allocator,
-            |memory_type| {
-                device
-                    .known_heap_size(memory_type as usize)
-                    .map_or(4096, |heap_size| heap_size.min(4096))
-            },
+            |memory_type| device.shared_block_size(memory_type as usize),
             &context,
         );
         drop(allocator);

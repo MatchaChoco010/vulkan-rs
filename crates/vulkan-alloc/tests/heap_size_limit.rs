@@ -168,7 +168,7 @@ proptest! {
         prop_assert!(allocator.is_empty(), "{}", context);
         assert_only_kept_empty_blocks(
             &allocator,
-            |_| known.map_or(block_size.max(1), |heap| heap.min(block_size.max(1))),
+            |_| known.map_or(block_size.max(1), |heap| (heap / 8).max(1).min(block_size.max(1))),
             &context,
         );
         drop(allocator);

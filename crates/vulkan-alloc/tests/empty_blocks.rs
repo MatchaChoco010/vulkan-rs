@@ -104,6 +104,7 @@ struct Block {
     linear: bool,
     flags: vk::MemoryAllocateFlags,
     own: bool,
+    made_for_one_request: bool,
     block_index: usize,
 }
 
@@ -176,6 +177,32 @@ impl Model {
             .collect()
     }
 
+    fn new_block_size(&self, request: Request) -> u64 {
+        if request.has_its_own_memory() || request.size > BLOCK_SIZE / 2 {
+            return request.size;
+        }
+        let largest = self
+            .blocks
+            .values()
+            .filter(|block| {
+                block.memory_type == request.memory_type
+                    && !block.own
+                    && !block.made_for_one_request
+            })
+            .map(|block| block.size)
+            .max()
+            .unwrap_or(0);
+        let mut size = BLOCK_SIZE;
+        for _ in 0..3 {
+            if size / 2 > largest && size / 2 >= 2 * request.size {
+                size /= 2;
+            } else {
+                break;
+            }
+        }
+        size
+    }
+
     fn first_with_room(&self, request: Request, empty: bool) -> Option<u64> {
         self.blocks
             .iter()
@@ -216,6 +243,7 @@ impl Model {
     ) -> Result<(), TestCaseError> {
         self.made += 1;
         let before = fake.calls();
+        let new_block_size = self.new_block_size(request);
         let holding = self.first_with_room(request, false);
         let empty = self.first_with_room(request, true);
         let empty_with_other_flags = self.blocks.iter().any(|(&memory, block)| {
@@ -278,19 +306,19 @@ impl Model {
                 memory,
                 Block {
                     memory_type: request.memory_type,
-                    size: if own {
-                        request.size
-                    } else {
-                        BLOCK_SIZE.max(request.size)
-                    },
+                    size: new_block_size,
                     linear: request.linear,
                     flags: request.flags(),
                     own,
+                    made_for_one_request: request.size > BLOCK_SIZE / 2,
                     block_index: block_index.unwrap(),
                 },
             );
             if empty_with_other_flags {
                 self.note("allocate: does not reuse the empty block with other flags");
+            }
+            if !own && new_block_size < BLOCK_SIZE {
+                self.note("allocate: a new block smaller than the block size");
             }
             self.note("allocate: new memory");
         }
@@ -327,20 +355,34 @@ impl Model {
         }
         let block = self.blocks[&memory];
         let another_empty_block = |same_flags: bool| {
-            self.blocks.iter().any(|(&other, other_block)| {
+            self.blocks.iter().find(|&(&other, other_block)| {
                 other != memory
                     && other_block.memory_type == block.memory_type
                     && (other_block.flags == block.flags) == same_flags
                     && self.is_empty_block(other)
             })
         };
-        if !block.own && block.size == BLOCK_SIZE && !another_empty_block(true) {
+        let candidate = !block.own && block.size <= BLOCK_SIZE;
+        if let Some((&other, other_block)) = another_empty_block(true)
+            && candidate
+            && block.size > other_block.size
+        {
+            prop_assert_eq!(
+                calls.free,
+                before.free + 1,
+                "the smaller of two empty blocks must be freed: {:?} and {:?}",
+                block,
+                other_block
+            );
+            self.blocks.remove(&other);
+            self.note("free: the larger of two empty blocks is kept");
+        } else if candidate && another_empty_block(true).is_none() {
             prop_assert_eq!(
                 calls.free,
                 before.free,
                 "the only empty shared block of its memory type and flags must be kept"
             );
-            if another_empty_block(false) {
+            if another_empty_block(false).is_some() {
                 self.note("free: the empty block is kept beside one with other flags");
             }
             self.note("free: the empty block is kept");
@@ -647,11 +689,12 @@ proptest! {
     fn allocating_and_freeing_one_allocation_again_and_again_allocates_memory_once(
         memory_type in select(MEMORY_TYPES.to_vec()),
         device_address in any::<bool>(),
-        rounds in prop::collection::vec((1..=BLOCK_SIZE, any::<bool>(), any::<bool>()), 1..=16),
+        size in 1..=BLOCK_SIZE,
+        rounds in prop::collection::vec((any::<bool>(), any::<bool>()), 1..=16),
     ) {
         let fake = FakeDevice::new();
         let mut allocator = fake.allocator();
-        for (round, &(size, linear, mapped)) in rounds.iter().enumerate() {
+        for (round, &(linear, mapped)) in rounds.iter().enumerate() {
             let request = Request {
                 memory_type,
                 size,
@@ -805,6 +848,8 @@ fn the_generated_sequences_reach_every_rule_of_the_empty_blocks() {
         "free: the empty block is kept beside one with other flags",
         "allocate: tries the empty block after the blocks that hold allocations",
         "free: a second empty block is freed",
+        "free: the larger of two empty blocks is kept",
+        "allocate: a new block smaller than the block size",
         "free: a block larger than the block size is freed",
         "free: memory of its own is freed",
         "map_persistent",

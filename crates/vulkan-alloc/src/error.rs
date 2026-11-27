@@ -16,8 +16,8 @@ pub enum AllocationError {
     /// The device does not have the memory: every memory type the request may use is out
     /// of memory, because the request is larger than the memory heap of the type, or
     /// because `vkAllocateMemory` returned [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`] for
-    /// the type, also after the empty blocks of that heap were freed (see
-    /// [`Allocator::allocate`](crate::Allocator::allocate)).
+    /// the type, also after the empty blocks of that heap were freed and for smaller
+    /// blocks (see [`Allocator::allocate`](crate::Allocator::allocate)).
     OutOfMemory,
     /// The [`AllocationCreateDesc`](crate::AllocationCreateDesc) asks for something the
     /// allocator does not accept: a [`vk::MemoryRequirements::size`] of 0, a

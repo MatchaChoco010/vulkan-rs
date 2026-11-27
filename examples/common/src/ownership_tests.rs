@@ -142,7 +142,8 @@ fn a_setup_that_fails_at_any_call_destroys_everything_it_created_in_order() {
     let entry = fake::entry();
     let mut failing_runs = 0;
     for fail_at in 0.. {
-        fake::reset(Some(fail_at));
+        fake::reset(None);
+        fake::fail_all_from_now(fail_at);
         let result = unsafe { setup(&entry) };
         let report = fake::report();
         assert!(
