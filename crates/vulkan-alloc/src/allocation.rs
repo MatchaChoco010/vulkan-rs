@@ -7,6 +7,12 @@ use crate::memory_type::MemoryLocation;
 
 /// What [`Allocator::allocate`](crate::Allocator::allocate) is asked to allocate.
 ///
+/// For a buffer or an image, [`Allocator::create_buffer`](crate::Allocator::create_buffer)
+/// and [`Allocator::create_image`](crate::Allocator::create_image) make this description
+/// from the create info and the memory requirements of the resource, and take only a
+/// [`ResourceAllocationDesc`](crate::ResourceAllocationDesc). Fill it in yourself for a
+/// resource that you create and bind yourself.
+///
 /// Create it with [`AllocationCreateDesc::new`], which takes the fields every
 /// allocation states and gives the others the values most allocations use, then change
 /// only the fields an allocation needs, with struct update syntax or by assigning to
@@ -67,6 +73,10 @@ pub struct AllocationCreateDesc<'a> {
     /// [`vk::ImageTiling::OPTIMAL`], images with any other DRM format modifier, and
     /// tensors with another tiling.
     ///
+    /// [`Allocator::create_buffer`](crate::Allocator::create_buffer) and
+    /// [`Allocator::create_image`](crate::Allocator::create_image) set it by this rule,
+    /// querying the modifier of an image with a DRM format modifier.
+    ///
     /// Linear and non-linear allocations are never in the same `VkDeviceMemory` at the
     /// same time: a block that holds allocations takes only allocations of their kind.
     /// An empty block that the allocator keeps (see
@@ -79,8 +89,11 @@ pub struct AllocationCreateDesc<'a> {
     pub linear: bool,
     /// Flags for `VkMemoryAllocateFlagsInfo`, chained to the `vkAllocateMemory` call
     /// when not empty. A buffer created with
-    /// [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`] needs
-    /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here, unless the allocator adds it.
+    /// [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`] or
+    /// [`vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT`] needs
+    /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here, unless the allocator adds it;
+    /// [`Allocator::create_buffer`](crate::Allocator::create_buffer) adds it for such a
+    /// buffer.
     ///
     /// The allocator adds [`AllocatorCreateDesc::memory_allocate_flags`][added] to these
     /// flags. What is said here and in [`Allocator::allocate`](crate::Allocator::allocate)
@@ -109,8 +122,18 @@ pub struct AllocationCreateDesc<'a> {
     /// as `DMA_BUF_EXT`. When not empty, the allocation gets a `VkDeviceMemory` of its
     /// own of exactly `requirements.size` bytes, at offset 0, because an exported handle
     /// refers to the whole memory object.
+    ///
+    /// [`Allocator::create_buffer`](crate::Allocator::create_buffer) and
+    /// [`Allocator::create_image`](crate::Allocator::create_image) set them to the handle
+    /// types of the `VkExternalMemoryBufferCreateInfo` or
+    /// `VkExternalMemoryImageCreateInfo` that the resource was created with.
     pub export_handle_types: vk::ExternalMemoryHandleTypeFlags,
     /// Whether the allocation is suballocated or gets dedicated memory.
+    ///
+    /// [`Allocator::create_buffer`](crate::Allocator::create_buffer) and
+    /// [`Allocator::create_image`](crate::Allocator::create_image) ask for dedicated
+    /// memory when `VkMemoryDedicatedRequirements` says that the resource requires or
+    /// prefers it.
     pub allocation_scheme: AllocationScheme,
     /// Whether [`Allocator::allocate`](crate::Allocator::allocate) maps the allocation
     /// before it returns it, if its memory type is `HOST_VISIBLE`.
@@ -195,6 +218,8 @@ pub enum AllocationScheme {
     /// `VkMemoryDedicatedAllocateInfo` that names this buffer. Use it when
     /// `VkMemoryDedicatedRequirements` asks for a dedicated allocation, and bind only
     /// this buffer to the allocation.
+    /// [`Allocator::create_buffer`](crate::Allocator::create_buffer) queries
+    /// `VkMemoryDedicatedRequirements` and uses this scheme by itself.
     DedicatedBuffer(vk::Buffer),
     /// Like [`AllocationScheme::DedicatedBuffer`], for this image.
     DedicatedImage(vk::Image),
