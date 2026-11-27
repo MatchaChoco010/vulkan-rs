@@ -1,5 +1,5 @@
 use super::w;
-use crate::docs::Doc;
+use crate::docs::{Doc, join_and};
 use crate::model::{Cfg, Model};
 use crate::naming::{enum_variant_name, flag_bit_name};
 use std::collections::{BTreeMap, BTreeSet};
@@ -12,6 +12,7 @@ pub(crate) struct Variant<'a> {
     pub(crate) protect: Option<&'a str>,
     pub(crate) cfg: Cfg,
     alias_of: Option<(&'a str, String)>,
+    legacy_names: Vec<&'a str>,
 }
 
 impl Variant<'_> {
@@ -43,27 +44,44 @@ fn variants<'a>(
     });
     let rust_name = &rust_name;
 
-    let mut variants = Vec::new();
-    let mut value_of_name = BTreeMap::<String, &str>::new();
+    let mut variants = Vec::<Variant<'a>>::new();
+    let mut variant_of_name = BTreeMap::<String, usize>::new();
     for (c_name, field, is_alias) in names.chain(aliases) {
         let name = rust_name(c_name);
-        match value_of_name.get(&name) {
-            Some(existing) if *existing == field.value => continue,
-            Some(existing) => panic!(
-                "{owner}: `{c_name}` maps to `{name}` which already has value {existing}, not {}",
-                field.value
-            ),
-            None => {}
+        let Some(&index) = variant_of_name.get(&name) else {
+            variant_of_name.insert(name.clone(), variants.len());
+            variants.push(Variant {
+                name,
+                c_name,
+                value: &field.value,
+                protect: field.protect.as_deref(),
+                cfg: model.cfg(field.protect.as_deref()),
+                alias_of: is_alias.then(|| (field.name.as_str(), rust_name(&field.name))),
+                legacy_names: Vec::new(),
+            });
+            continue;
+        };
+        let shared = &mut variants[index];
+        assert!(
+            shared.value == field.value,
+            "{owner}: `{c_name}` maps to `{name}` which already has value {}, not {}",
+            shared.value,
+            field.value
+        );
+        if model.is_legacy_alias(owner, c_name) {
+            shared.legacy_names.push(c_name);
+            continue;
         }
-        value_of_name.insert(name.clone(), &field.value);
-        variants.push(Variant {
-            name,
-            c_name,
-            value: &field.value,
-            protect: field.protect.as_deref(),
-            cfg: model.cfg(field.protect.as_deref()),
-            alias_of: is_alias.then(|| (field.name.as_str(), rust_name(&field.name))),
-        });
+        assert!(
+            model.is_legacy_alias(owner, shared.c_name),
+            "{owner}: `{}` and `{c_name}` both map to `{name}`, and neither is a legacy alias",
+            shared.c_name
+        );
+        shared.legacy_names.push(shared.c_name);
+        shared.c_name = c_name;
+    }
+    for variant in &mut variants {
+        variant.legacy_names.sort_unstable();
     }
     variants
 }
@@ -84,8 +102,12 @@ fn value_doc(model: &Model<'_>, owner: &str, owner_cfg: &Cfg, v: &Variant<'_>) -
     let from = owner_cfg.clone().and(v.cfg.clone());
     let c_name = v.c_name;
     let doc = if let Some((canonical, constant)) = &v.alias_of {
+        let alias = match model.is_legacy_alias(owner, c_name) {
+            true => "a legacy alias",
+            false => "an alias",
+        };
         Doc::new().text(format!(
-            "`{c_name}` is an alias of [`{canonical}`](Self::{constant})."
+            "`{c_name}` is {alias} of [`{canonical}`](Self::{constant})."
         ))
     } else if let Some(described) = model.described(&from, owner, c_name) {
         Doc::new().blocks(described)
@@ -119,7 +141,31 @@ fn value_doc(model: &Model<'_>, owner: &str, owner_cfg: &Cfg, v: &Variant<'_>) -
             model.reference(owner)
         ))
     };
-    doc.alias(c_name).of_item(&v.name)
+    let value = match &v.alias_of {
+        Some((canonical, constant)) => format!("[`{canonical}`](Self::{constant})"),
+        None => format!("`{c_name}`"),
+    };
+    let legacy_names = join_and(
+        v.legacy_names
+            .iter()
+            .map(|name| format!("`{name}`"))
+            .collect(),
+    );
+    let also = match v.legacy_names.len() {
+        0 => String::new(),
+        1 => format!(
+            "The C header also calls this value {legacy_names}, which is a legacy alias of {value}."
+        ),
+        _ => format!(
+            "The C header also calls this value {legacy_names}, which are legacy aliases of {value}."
+        ),
+    };
+    let doc = doc
+        .text(model.legacy_value(owner, c_name))
+        .text(also)
+        .alias(c_name);
+    let doc = v.legacy_names.iter().fold(doc, |doc, name| doc.alias(name));
+    doc.of_item(&v.name)
 }
 
 pub(crate) fn associated_consts(

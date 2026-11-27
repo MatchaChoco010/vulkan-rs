@@ -20,7 +20,7 @@ pub(crate) use read_only_members::assert_listed_read_only_members_exist;
 pub(crate) use unmarked_arrays::assert_listed_structures_exist;
 
 use super::{assert_distinct_names, header, type_aliases, w};
-use crate::docs::{Doc, join_and};
+use crate::docs::{Block, Doc, join_and};
 use crate::model::{Cfg, Model, has_p_next};
 use crate::naming::{field_name, type_name};
 use std::collections::BTreeMap;
@@ -48,11 +48,22 @@ fn c_declaration(m: &Field) -> String {
 }
 
 pub(super) fn member_doc(model: &Model<'_>, cfg: &Cfg, s: &Struct, m: &Field) -> Doc {
-    let doc = match model.described(cfg, &s.name, &m.name) {
+    let described = model.described(cfg, &s.name, &m.name);
+    let description = described
+        .iter()
+        .flatten()
+        .filter_map(|block| match block {
+            Block::Text(text) => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let doc = match described {
         Some(described) => Doc::new().blocks(described),
         None => Doc::new().text(format!("The C member `{}`.", c_declaration(m))),
     };
     doc.text(model.legacy_member(cfg, &s.name, &m.name))
+        .text(model.unused_member_unless_described(&s.name, &m.name, &description))
 }
 
 pub(super) fn type_doc(model: &Model<'_>, cfg: &Cfg, s: &Struct) -> Doc {

@@ -32791,6 +32791,8 @@ impl<'a> DeviceCreateInfo<'a> {
         self
     }
     /// Sets [`enabled_layer_count`](Self::enabled_layer_count).
+    ///
+    /// Legacy functionality that is not used.
     pub fn enabled_layer_count(mut self, value: u32) -> Self {
         self.enabled_layer_count = value;
         self
@@ -32805,6 +32807,8 @@ impl<'a> DeviceCreateInfo<'a> {
     /// empty slice that takes an array away: if
     /// [`pp_enabled_layer_names`](Self::pp_enabled_layer_names) is not null when the setter is
     /// called, the count is set to 0, whatever stored it.
+    ///
+    /// Legacy functionality that is not used.
     ///
     /// # Panics
     ///

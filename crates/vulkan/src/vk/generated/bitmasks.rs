@@ -2532,12 +2532,22 @@ impl BuildAccelerationStructureFlagBitsKHR {
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT` specifies that
     /// the data of the opacity micromaps associated with the specified acceleration structure may
     /// change with an acceleration structure update.
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT`, which is a legacy
+    /// alias of `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT`.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT")]
     pub const ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT: Self = Self(256);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV` specifies that
     /// the displacement micromaps associated with the specified acceleration structure may change
     /// with an acceleration structure update.
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV`, which is a legacy
+    /// alias of `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV`.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV")]
     #[cfg(feature = "beta")]
     pub const ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV: Self = Self(512);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR` specifies that micromaps can be
@@ -2548,7 +2558,11 @@ impl BuildAccelerationStructureFlagBitsKHR {
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR` specifies that the specified
     /// acceleration structure can be used when fetching the vertex and radius positions of a hit
     /// LSS or sphere primitive, or vertex positions of a hit triangle.
+    ///
+    /// The C header also calls this value `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_KHR`,
+    /// which is a legacy alias of `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR`.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_KHR")]
     pub const ALLOW_DATA_ACCESS: Self = Self(2048);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_CLUSTER_OPACITY_MICROMAPS_BIT_NV` specifies that
     /// opacity micromaps may be associated with the given cluster acceleration structure.
@@ -2576,11 +2590,23 @@ impl BuildAccelerationStructureFlagBitsKHR {
     pub const LOW_MEMORY_NV: Self = Self(16);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT` is an alias of
     /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR`](Self::ALLOW_OPACITY_MICROMAP_UPDATE).
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_EXT`, which is a legacy alias
+    /// of
+    /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR`](Self::ALLOW_OPACITY_MICROMAP_UPDATE).
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_EXT")]
     pub const ALLOW_OPACITY_MICROMAP_UPDATE_EXT: Self = Self(64);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_EXT` is an alias of
     /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::ALLOW_DISABLE_OPACITY_MICROMAPS).
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_EXT`, which is a legacy
+    /// alias of
+    /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::ALLOW_DISABLE_OPACITY_MICROMAPS).
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_EXT")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_EXT")]
     pub const ALLOW_DISABLE_OPACITY_MICROMAPS_EXT: Self = Self(128);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -10283,11 +10309,21 @@ impl GeometryInstanceFlagBitsKHR {
     pub const FORCE_NO_OPAQUE_NV: Self = Self(8);
     /// `VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_EXT` is an alias of
     /// [`VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_KHR`](Self::FORCE_OPACITY_MICROMAP_2_STATE).
+    ///
+    /// The C header also calls this value
+    /// `VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_EXT`, which is a legacy alias of
+    /// [`VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_KHR`](Self::FORCE_OPACITY_MICROMAP_2_STATE).
     #[doc(alias = "VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_EXT")]
+    #[doc(alias = "VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_EXT")]
     pub const FORCE_OPACITY_MICROMAP_2_STATE_EXT: Self = Self(16);
     /// `VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_EXT` is an alias of
     /// [`VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::DISABLE_OPACITY_MICROMAPS).
+    ///
+    /// The C header also calls this value `VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_EXT`,
+    /// which is a legacy alias of
+    /// [`VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::DISABLE_OPACITY_MICROMAPS).
     #[doc(alias = "VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_EXT")]
+    #[doc(alias = "VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_EXT")]
     pub const DISABLE_OPACITY_MICROMAPS_EXT: Self = Self(32);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -10660,11 +10696,19 @@ impl HostImageCopyFlagBits {
     /// this flag indicates that the implementations may use a simple memory copy to transfer the
     /// data between the host memory and the device memory. The format of the swizzled data in host
     /// memory is platform dependent and is not defined in this specification.
+    ///
+    /// The C header also calls this value `VK_HOST_IMAGE_COPY_MEMCPY`, which is a legacy alias of
+    /// `VK_HOST_IMAGE_COPY_MEMCPY_BIT`.
     #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY_BIT")]
+    #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY")]
     pub const MEMCPY: Self = Self(1);
     /// `VK_HOST_IMAGE_COPY_MEMCPY_BIT_EXT` is an alias of
     /// [`VK_HOST_IMAGE_COPY_MEMCPY_BIT`](Self::MEMCPY).
+    ///
+    /// The C header also calls this value `VK_HOST_IMAGE_COPY_MEMCPY_EXT`, which is a legacy alias
+    /// of [`VK_HOST_IMAGE_COPY_MEMCPY_BIT`](Self::MEMCPY).
     #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY_BIT_EXT")]
+    #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY_EXT")]
     pub const MEMCPY_EXT: Self = Self(1);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -14958,12 +15002,22 @@ impl PerformanceCounterDescriptionFlagBitsKHR {
     }
     /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_BIT_KHR` specifies that recording
     /// the counter may have a noticeable performance impact.
+    ///
+    /// The C header also calls this value
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_KHR`, which is a legacy alias of
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_BIT_KHR`.
     #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_BIT_KHR")]
+    #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_KHR")]
     pub const PERFORMANCE_IMPACTING: Self = Self(1);
     /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_BIT_KHR` specifies that
     /// concurrently recording the counter while other submitted command buffers are running may
     /// impact the accuracy of the recording.
+    ///
+    /// The C header also calls this value
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_KHR`, which is a legacy alias of
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_BIT_KHR`.
     #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_BIT_KHR")]
+    #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_KHR")]
     pub const CONCURRENTLY_IMPACTED: Self = Self(2);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -15569,7 +15623,11 @@ impl PipelineCreateFlagBits {
     pub const VIEW_INDEX_FROM_DEVICE_INDEX: Self = Self(8);
     /// `VK_PIPELINE_CREATE_DISPATCH_BASE_BIT` specifies that a compute pipeline can be used with
     /// [`vkCmdDispatchBase`](crate::Device::cmd_dispatch_base) with a non-zero base workgroup.
+    ///
+    /// The C header also calls this value `VK_PIPELINE_CREATE_DISPATCH_BASE`, which is a legacy
+    /// alias of `VK_PIPELINE_CREATE_DISPATCH_BASE_BIT`.
     #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE_BIT")]
+    #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE")]
     pub const DISPATCH_BASE: Self = Self(16);
     /// `VK_PIPELINE_CREATE_DEFER_COMPILE_BIT_NV` specifies that a pipeline is created with all
     /// shaders in the deferred state. Before using the pipeline the application must call
@@ -15720,7 +15778,11 @@ impl PipelineCreateFlagBits {
     pub const VIEW_INDEX_FROM_DEVICE_INDEX_KHR: Self = Self(8);
     /// `VK_PIPELINE_CREATE_DISPATCH_BASE_BIT_KHR` is an alias of
     /// [`VK_PIPELINE_CREATE_DISPATCH_BASE_BIT`](Self::DISPATCH_BASE).
+    ///
+    /// The C header also calls this value `VK_PIPELINE_CREATE_DISPATCH_BASE_KHR`, which is a legacy
+    /// alias of [`VK_PIPELINE_CREATE_DISPATCH_BASE_BIT`](Self::DISPATCH_BASE).
     #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE_BIT_KHR")]
+    #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE_KHR")]
     pub const DISPATCH_BASE_KHR: Self = Self(16);
     /// `VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT` is an alias of
     /// [`VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT`](Self::FAIL_ON_PIPELINE_COMPILE_REQUIRED).
@@ -15730,16 +15792,16 @@ impl PipelineCreateFlagBits {
     /// [`VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT`](Self::EARLY_RETURN_ON_FAILURE).
     #[doc(alias = "VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT_EXT")]
     pub const EARLY_RETURN_ON_FAILURE_EXT: Self = Self(512);
-    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR` is an
-    /// alias of
+    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR` is a
+    /// legacy alias of
     /// [`VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR`](Self::RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_KHR).
     #[doc(
         alias = "VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR"
     )]
     pub const PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_KHR: Self =
         Self(2097152);
-    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT` is an alias
-    /// of
+    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT` is a legacy
+    /// alias of
     /// [`VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT`](Self::RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_EXT).
     #[doc(alias = "VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT")]
     pub const PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_EXT: Self =
@@ -17575,7 +17637,7 @@ impl PipelineStageFlagBits2 {
     /// [`VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT`](Self::PRE_RASTERIZATION_SHADERS).
     #[doc(alias = "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT_KHR")]
     pub const PRE_RASTERIZATION_SHADERS_KHR: Self = Self(274877906944);
-    /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI` is an alias of
+    /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI` is a legacy alias of
     /// [`VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI`](Self::SUBPASS_SHADER_HUAWEI).
     #[doc(alias = "VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI")]
     pub const SUBPASS_SHADING_HUAWEI: Self = Self(549755813888);
@@ -19616,7 +19678,11 @@ impl ResolveModeFlagBits {
     /// `VkPhysicalDeviceExternalFormatResolvePropertiesANDROID`::`externalFormatResolveChromaOffsetX`,
     /// `VkPhysicalDeviceExternalFormatResolvePropertiesANDROID`::`externalFormatResolveChromaOffsetY`,
     /// and the chroma sample rate of the resolved image.
+    ///
+    /// The C header also calls this value `VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID`,
+    /// which is a legacy alias of `VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_BIT_ANDROID`.
     #[doc(alias = "VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_BIT_ANDROID")]
+    #[doc(alias = "VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID")]
     pub const EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID: Self = Self(16);
     /// `VK_RESOLVE_MODE_CUSTOM_BIT_EXT` specifies that the attachment will be resolved by shaders
     /// in the render pass instead of fixed-function operations.
@@ -21106,7 +21172,7 @@ impl StencilFaceFlagBits {
     /// stencil state are updated.
     #[doc(alias = "VK_STENCIL_FACE_FRONT_AND_BACK")]
     pub const FRONT_AND_BACK: Self = Self(3);
-    /// `VK_STENCIL_FRONT_AND_BACK` is an alias of
+    /// `VK_STENCIL_FRONT_AND_BACK` is a legacy alias of
     /// [`VK_STENCIL_FACE_FRONT_AND_BACK`](Self::FRONT_AND_BACK).
     #[doc(alias = "VK_STENCIL_FRONT_AND_BACK")]
     pub const STENCIL_FRONT_AND_BACK: Self = Self(3);
@@ -21682,7 +21748,11 @@ impl SurfaceCounterFlagBitsEXT {
     }
     /// `VK_SURFACE_COUNTER_VBLANK_BIT_EXT` specifies a counter incrementing once every time a
     /// vertical blanking period occurs on the display associated with the surface.
+    ///
+    /// The C header also calls this value `VK_SURFACE_COUNTER_VBLANK_EXT`, which is a legacy alias
+    /// of `VK_SURFACE_COUNTER_VBLANK_BIT_EXT`.
     #[doc(alias = "VK_SURFACE_COUNTER_VBLANK_BIT_EXT")]
+    #[doc(alias = "VK_SURFACE_COUNTER_VBLANK_EXT")]
     pub const VBLANK: Self = Self(1);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -30785,12 +30855,22 @@ impl BuildAccelerationStructureFlagsKHR {
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT` specifies that
     /// the data of the opacity micromaps associated with the specified acceleration structure may
     /// change with an acceleration structure update.
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT`, which is a legacy
+    /// alias of `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT`.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT")]
     pub const ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT: Self = Self(256);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV` specifies that
     /// the displacement micromaps associated with the specified acceleration structure may change
     /// with an acceleration structure update.
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV`, which is a legacy
+    /// alias of `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV`.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV")]
     #[cfg(feature = "beta")]
     pub const ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV: Self = Self(512);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR` specifies that micromaps can be
@@ -30801,7 +30881,11 @@ impl BuildAccelerationStructureFlagsKHR {
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR` specifies that the specified
     /// acceleration structure can be used when fetching the vertex and radius positions of a hit
     /// LSS or sphere primitive, or vertex positions of a hit triangle.
+    ///
+    /// The C header also calls this value `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_KHR`,
+    /// which is a legacy alias of `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR`.
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_KHR")]
     pub const ALLOW_DATA_ACCESS: Self = Self(2048);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_CLUSTER_OPACITY_MICROMAPS_BIT_NV` specifies that
     /// opacity micromaps may be associated with the given cluster acceleration structure.
@@ -30829,11 +30913,23 @@ impl BuildAccelerationStructureFlagsKHR {
     pub const LOW_MEMORY_NV: Self = Self(16);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT` is an alias of
     /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR`](Self::ALLOW_OPACITY_MICROMAP_UPDATE).
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_EXT`, which is a legacy alias
+    /// of
+    /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR`](Self::ALLOW_OPACITY_MICROMAP_UPDATE).
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_EXT")]
     pub const ALLOW_OPACITY_MICROMAP_UPDATE_EXT: Self = Self(64);
     /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_EXT` is an alias of
     /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::ALLOW_DISABLE_OPACITY_MICROMAPS).
+    ///
+    /// The C header also calls this value
+    /// `VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_EXT`, which is a legacy
+    /// alias of
+    /// [`VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::ALLOW_DISABLE_OPACITY_MICROMAPS).
     #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_EXT")]
+    #[doc(alias = "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_EXT")]
     pub const ALLOW_DISABLE_OPACITY_MICROMAPS_EXT: Self = Self(128);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -41890,11 +41986,21 @@ impl GeometryInstanceFlagsKHR {
     pub const FORCE_NO_OPAQUE_NV: Self = Self(8);
     /// `VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_EXT` is an alias of
     /// [`VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_KHR`](Self::FORCE_OPACITY_MICROMAP_2_STATE).
+    ///
+    /// The C header also calls this value
+    /// `VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_EXT`, which is a legacy alias of
+    /// [`VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_KHR`](Self::FORCE_OPACITY_MICROMAP_2_STATE).
     #[doc(alias = "VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_EXT")]
+    #[doc(alias = "VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_EXT")]
     pub const FORCE_OPACITY_MICROMAP_2_STATE_EXT: Self = Self(16);
     /// `VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_EXT` is an alias of
     /// [`VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::DISABLE_OPACITY_MICROMAPS).
+    ///
+    /// The C header also calls this value `VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_EXT`,
+    /// which is a legacy alias of
+    /// [`VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_KHR`](Self::DISABLE_OPACITY_MICROMAPS).
     #[doc(alias = "VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_EXT")]
+    #[doc(alias = "VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_EXT")]
     pub const DISABLE_OPACITY_MICROMAPS_EXT: Self = Self(32);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -42646,11 +42752,19 @@ impl HostImageCopyFlags {
     /// this flag indicates that the implementations may use a simple memory copy to transfer the
     /// data between the host memory and the device memory. The format of the swizzled data in host
     /// memory is platform dependent and is not defined in this specification.
+    ///
+    /// The C header also calls this value `VK_HOST_IMAGE_COPY_MEMCPY`, which is a legacy alias of
+    /// `VK_HOST_IMAGE_COPY_MEMCPY_BIT`.
     #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY_BIT")]
+    #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY")]
     pub const MEMCPY: Self = Self(1);
     /// `VK_HOST_IMAGE_COPY_MEMCPY_BIT_EXT` is an alias of
     /// [`VK_HOST_IMAGE_COPY_MEMCPY_BIT`](Self::MEMCPY).
+    ///
+    /// The C header also calls this value `VK_HOST_IMAGE_COPY_MEMCPY_EXT`, which is a legacy alias
+    /// of [`VK_HOST_IMAGE_COPY_MEMCPY_BIT`](Self::MEMCPY).
     #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY_BIT_EXT")]
+    #[doc(alias = "VK_HOST_IMAGE_COPY_MEMCPY_EXT")]
     pub const MEMCPY_EXT: Self = Self(1);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -48839,12 +48953,22 @@ impl PerformanceCounterDescriptionFlagsKHR {
     }
     /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_BIT_KHR` specifies that recording
     /// the counter may have a noticeable performance impact.
+    ///
+    /// The C header also calls this value
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_KHR`, which is a legacy alias of
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_BIT_KHR`.
     #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_BIT_KHR")]
+    #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_KHR")]
     pub const PERFORMANCE_IMPACTING: Self = Self(1);
     /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_BIT_KHR` specifies that
     /// concurrently recording the counter while other submitted command buffers are running may
     /// impact the accuracy of the recording.
+    ///
+    /// The C header also calls this value
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_KHR`, which is a legacy alias of
+    /// `VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_BIT_KHR`.
     #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_BIT_KHR")]
+    #[doc(alias = "VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_KHR")]
     pub const CONCURRENTLY_IMPACTED: Self = Self(2);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
@@ -50139,7 +50263,11 @@ impl PipelineCreateFlags {
     pub const VIEW_INDEX_FROM_DEVICE_INDEX: Self = Self(8);
     /// `VK_PIPELINE_CREATE_DISPATCH_BASE_BIT` specifies that a compute pipeline can be used with
     /// [`vkCmdDispatchBase`](crate::Device::cmd_dispatch_base) with a non-zero base workgroup.
+    ///
+    /// The C header also calls this value `VK_PIPELINE_CREATE_DISPATCH_BASE`, which is a legacy
+    /// alias of `VK_PIPELINE_CREATE_DISPATCH_BASE_BIT`.
     #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE_BIT")]
+    #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE")]
     pub const DISPATCH_BASE: Self = Self(16);
     /// `VK_PIPELINE_CREATE_DEFER_COMPILE_BIT_NV` specifies that a pipeline is created with all
     /// shaders in the deferred state. Before using the pipeline the application must call
@@ -50290,7 +50418,11 @@ impl PipelineCreateFlags {
     pub const VIEW_INDEX_FROM_DEVICE_INDEX_KHR: Self = Self(8);
     /// `VK_PIPELINE_CREATE_DISPATCH_BASE_BIT_KHR` is an alias of
     /// [`VK_PIPELINE_CREATE_DISPATCH_BASE_BIT`](Self::DISPATCH_BASE).
+    ///
+    /// The C header also calls this value `VK_PIPELINE_CREATE_DISPATCH_BASE_KHR`, which is a legacy
+    /// alias of [`VK_PIPELINE_CREATE_DISPATCH_BASE_BIT`](Self::DISPATCH_BASE).
     #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE_BIT_KHR")]
+    #[doc(alias = "VK_PIPELINE_CREATE_DISPATCH_BASE_KHR")]
     pub const DISPATCH_BASE_KHR: Self = Self(16);
     /// `VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_EXT` is an alias of
     /// [`VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT`](Self::FAIL_ON_PIPELINE_COMPILE_REQUIRED).
@@ -50300,16 +50432,16 @@ impl PipelineCreateFlags {
     /// [`VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT`](Self::EARLY_RETURN_ON_FAILURE).
     #[doc(alias = "VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT_EXT")]
     pub const EARLY_RETURN_ON_FAILURE_EXT: Self = Self(512);
-    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR` is an
-    /// alias of
+    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR` is a
+    /// legacy alias of
     /// [`VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR`](Self::RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_KHR).
     #[doc(
         alias = "VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR"
     )]
     pub const PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_KHR: Self =
         Self(2097152);
-    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT` is an alias
-    /// of
+    /// `VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT` is a legacy
+    /// alias of
     /// [`VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT`](Self::RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_EXT).
     #[doc(alias = "VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT")]
     pub const PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_EXT: Self =
@@ -53467,7 +53599,7 @@ impl PipelineStageFlags2 {
     /// [`VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT`](Self::PRE_RASTERIZATION_SHADERS).
     #[doc(alias = "VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT_KHR")]
     pub const PRE_RASTERIZATION_SHADERS_KHR: Self = Self(274877906944);
-    /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI` is an alias of
+    /// `VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI` is a legacy alias of
     /// [`VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI`](Self::SUBPASS_SHADER_HUAWEI).
     #[doc(alias = "VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI")]
     pub const SUBPASS_SHADING_HUAWEI: Self = Self(549755813888);
@@ -56603,7 +56735,11 @@ impl ResolveModeFlags {
     /// `VkPhysicalDeviceExternalFormatResolvePropertiesANDROID`::`externalFormatResolveChromaOffsetX`,
     /// `VkPhysicalDeviceExternalFormatResolvePropertiesANDROID`::`externalFormatResolveChromaOffsetY`,
     /// and the chroma sample rate of the resolved image.
+    ///
+    /// The C header also calls this value `VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID`,
+    /// which is a legacy alias of `VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_BIT_ANDROID`.
     #[doc(alias = "VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_BIT_ANDROID")]
+    #[doc(alias = "VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID")]
     pub const EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID: Self = Self(16);
     /// `VK_RESOLVE_MODE_CUSTOM_BIT_EXT` specifies that the attachment will be resolved by shaders
     /// in the render pass instead of fixed-function operations.
@@ -59048,7 +59184,7 @@ impl StencilFaceFlags {
     /// stencil state are updated.
     #[doc(alias = "VK_STENCIL_FACE_FRONT_AND_BACK")]
     pub const FRONT_AND_BACK: Self = Self(3);
-    /// `VK_STENCIL_FRONT_AND_BACK` is an alias of
+    /// `VK_STENCIL_FRONT_AND_BACK` is a legacy alias of
     /// [`VK_STENCIL_FACE_FRONT_AND_BACK`](Self::FRONT_AND_BACK).
     #[doc(alias = "VK_STENCIL_FRONT_AND_BACK")]
     pub const STENCIL_FRONT_AND_BACK: Self = Self(3);
@@ -59916,7 +60052,11 @@ impl SurfaceCounterFlagsEXT {
     }
     /// `VK_SURFACE_COUNTER_VBLANK_BIT_EXT` specifies a counter incrementing once every time a
     /// vertical blanking period occurs on the display associated with the surface.
+    ///
+    /// The C header also calls this value `VK_SURFACE_COUNTER_VBLANK_EXT`, which is a legacy alias
+    /// of `VK_SURFACE_COUNTER_VBLANK_BIT_EXT`.
     #[doc(alias = "VK_SURFACE_COUNTER_VBLANK_BIT_EXT")]
+    #[doc(alias = "VK_SURFACE_COUNTER_VBLANK_EXT")]
     pub const VBLANK: Self = Self(1);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.

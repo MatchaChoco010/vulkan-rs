@@ -112,6 +112,7 @@ pub fn generate(ir: &Registry, docs: &Docs) -> Vec<GeneratedFile> {
         docs::assert_every_other_name_is_in_use(&model);
     }
     docs::assert_every_legacy_mark_has_an_item(&model);
+    docs::assert_every_legacy_attribute_is_stated(&model);
     let file = |directory: &str, name: &str, contents: String| GeneratedFile {
         path: format!("{directory}/{name}"),
         contents,
@@ -146,6 +147,10 @@ pub fn required_features(ir: &Registry) -> Vec<String> {
 
 pub fn assert_listed_legacy_macros_are_marked(ir: &Registry) {
     docs::assert_listed_legacy_macros_are_marked(ir);
+}
+
+pub fn assert_listed_legacy_aliases_are_left_out(ir: &Registry) {
+    docs::assert_listed_legacy_aliases_are_left_out(ir);
 }
 
 pub fn assert_listed_members_exist(ir: &Registry) {

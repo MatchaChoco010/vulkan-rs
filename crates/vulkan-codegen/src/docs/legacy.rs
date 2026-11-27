@@ -181,7 +181,7 @@ impl Model<'_> {
             || ir.versions.iter().any(|v| v.name_api == c_name)
     }
 
-    fn documents_the_member(&self, structure: &str, member: &str) -> bool {
+    pub(super) fn documents_the_member(&self, structure: &str, member: &str) -> bool {
         let members = self
             .ir
             .structs

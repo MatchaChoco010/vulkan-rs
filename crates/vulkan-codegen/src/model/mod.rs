@@ -20,7 +20,8 @@ pub(crate) use rust_types::Scalar;
 pub(crate) use void_arrays::{TypedValues, VoidArrayLength, void_array_len, void_array_length};
 
 use crate::docs::{
-    LegacyMarks, Links, Table, ValueDescriptions, legacy_marks, read_table, value_descriptions,
+    LegacyAttributes, LegacyMarks, Links, Table, ValueDescriptions, legacy_attributes,
+    legacy_marks, read_table, value_descriptions,
 };
 use crate::naming::enum_variant_name;
 use std::collections::{BTreeMap, BTreeSet};
@@ -38,6 +39,7 @@ pub(crate) struct Model<'a> {
     pub(crate) command_aliases: BTreeMap<&'a str, &'a str>,
     pub(crate) links: Links,
     pub(crate) legacy: LegacyMarks<'a>,
+    pub(crate) legacy_attributes: LegacyAttributes<'a>,
     structs: BTreeMap<&'a str, &'a Struct>,
     handles: BTreeSet<&'a str>,
     enums: BTreeSet<&'a str>,
@@ -99,6 +101,7 @@ impl<'a> Model<'a> {
             command_aliases: command_aliases.collect(),
             links: Links::default(),
             legacy: legacy_marks(ir),
+            legacy_attributes: legacy_attributes(ir),
             structs: ir.structs.iter().map(|s| (s.name.as_str(), s)).collect(),
             handles: names!(ir.handles),
             enums: names!(ir.enums),
