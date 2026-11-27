@@ -8,6 +8,7 @@ use vulkan_registry::{Bitmask, Enum, EnumField};
 pub(crate) struct Variant<'a> {
     pub(crate) name: String,
     pub(crate) c_name: &'a str,
+    value_name: &'a str,
     pub(crate) value: &'a str,
     pub(crate) protect: Option<&'a str>,
     pub(crate) cfg: Cfg,
@@ -53,6 +54,7 @@ fn variants<'a>(
             variants.push(Variant {
                 name,
                 c_name,
+                value_name: &field.name,
                 value: &field.value,
                 protect: field.protect.as_deref(),
                 cfg: model.cfg(field.protect.as_deref()),
@@ -67,6 +69,12 @@ fn variants<'a>(
             "{owner}: `{c_name}` maps to `{name}` which already has value {}, not {}",
             shared.value,
             field.value
+        );
+        assert!(
+            shared.value_name == field.name,
+            "{owner}: `{c_name}`, a name of `{}`, maps to `{name}`, which stands for `{}`",
+            field.name,
+            shared.value_name
         );
         if model.is_legacy_alias(owner, c_name) {
             shared.legacy_names.push(c_name);

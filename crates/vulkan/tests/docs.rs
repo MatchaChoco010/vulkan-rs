@@ -3110,7 +3110,7 @@ fn generated_documentation_matches_the_specification() {
             ("setter of an unused member", 2),
             ("unused member that its description calls so", 2),
         ],
-        "17 legacy aliases have a constant, 4 of them a second one in the bitmask type of their flag bits; 15 more have the Rust name of another name of their value, whose constant names them, in the type of the flag bits and in its bitmask type. A member that the registry calls unused has the paragraph `Legacy functionality that is not used.` unless its description says `is legacy and not used`: when `unused member` appears here, read the description of that member in the specification, which no longer says so"
+        "17 legacy aliases have a constant, 4 of them a second one in the bitmask type of their flag bits; 15 more have the Rust name of another name of their value, whose constant names them, in the type of the flag bits and in its bitmask type. A member that the registry calls unused has the paragraph `Legacy functionality that is not used.` unless its description says `is legacy and not used`: when `unused member` appears here, read the description of that member in the specification, which does not say so"
     );
     let without_a_constant = |names: &[&str]| names.iter().map(|name| name.to_string()).collect();
     assert_eq!(

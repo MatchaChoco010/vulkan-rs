@@ -1335,6 +1335,23 @@ fn two_names_of_a_value_that_are_not_legacy_and_share_a_constant_abort_generatio
 }
 
 #[test]
+fn a_name_that_shares_the_constant_of_another_value_aborts_generation() {
+    let docs = docs();
+    for legacy in [&["VK_QUEUE_PAINTING"][..], &[]] {
+        let mut ir = queue_flags_with_aliases(&["VK_QUEUE_PAINTING"], legacy);
+        let mut other = ir.bitmasks[0].fields[0].clone();
+        other.name = "VK_QUEUE_PAINTING_BIT".to_string();
+        other.aliases.clear();
+        ir.bitmasks[0].fields.push(other);
+        assert_eq!(
+            catch_quietly(|| bitmasks::emit(&Model::with_docs(&ir, &docs))).map(|_| ()),
+            Err("VkQueueFlagBits: `VK_QUEUE_PAINTING`, a name of `VK_QUEUE_GRAPHICS_BIT`, maps to `PAINTING`, which stands for `VK_QUEUE_PAINTING_BIT`".to_string()),
+            "{legacy:?}"
+        );
+    }
+}
+
+#[test]
 fn members_that_are_not_used_say_so_unless_their_description_does_and_their_setters_say_so() {
     let mut ir = ir();
     let member = |name: &str| {
