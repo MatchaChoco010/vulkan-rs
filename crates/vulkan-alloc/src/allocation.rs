@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ptr::NonNull;
 
 use vulkan::vk;
 
@@ -102,6 +103,24 @@ pub struct AllocationCreateDesc<'a> {
     pub export_handle_types: vk::ExternalMemoryHandleTypeFlags,
     /// Whether the allocation is suballocated or gets dedicated memory.
     pub allocation_scheme: AllocationScheme,
+    /// Whether [`Allocator::allocate`](crate::Allocator::allocate) maps the allocation
+    /// before it returns it, if its memory type is `HOST_VISIBLE`.
+    ///
+    /// The allocation then stays mapped until it is freed, as
+    /// [`Allocator::map_persistent`](crate::Allocator::map_persistent) maps it.
+    /// [`Allocation::mapped_ptr`], [`Allocation::mapped_slice`] and
+    /// [`Allocation::mapped_slice_mut`] give its bytes without borrowing the allocator.
+    /// The memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
+    /// [`MemoryLocation::GpuToCpu`] is always `HOST_VISIBLE`, so their allocations are
+    /// always mapped.
+    ///
+    /// For a memory type that is not `HOST_VISIBLE`, which [`MemoryLocation::GpuOnly`]
+    /// and a [`MemoryLocation::Custom`] location that does not require the flag can give,
+    /// `true` is ignored: the allocation is returned unmapped, without a `vkMapMemory`
+    /// call, and [`Allocation::mapped_ptr`] is `None`. So `true` asks for the memory to be
+    /// mapped if it can be. If mapping fails, the allocation is freed and the error is
+    /// returned (see the errors of [`Allocator::allocate`](crate::Allocator::allocate)).
+    pub mapped: bool,
 }
 
 impl<'a> AllocationCreateDesc<'a> {
@@ -112,8 +131,8 @@ impl<'a> AllocationCreateDesc<'a> {
     /// [`AllocationCreateDesc::memory_allocate_flags`], empty
     /// [`AllocationCreateDesc::export_handle_types`], and
     /// [`AllocationCreateDesc::allocation_scheme`]
-    /// [`AllocationScheme::GpuAllocatorManaged`]. Such an allocation is placed in a shared
-    /// block.
+    /// [`AllocationScheme::GpuAllocatorManaged`], and [`AllocationCreateDesc::mapped`]
+    /// `false`. Such an allocation is placed in a shared block and is not mapped.
     pub const fn new(
         requirements: vk::MemoryRequirements,
         location: MemoryLocation,
@@ -127,6 +146,7 @@ impl<'a> AllocationCreateDesc<'a> {
             memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
             export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
             allocation_scheme: AllocationScheme::GpuAllocatorManaged,
+            mapped: false,
         }
     }
 }
@@ -146,6 +166,7 @@ impl fmt::Debug for AllocationCreateDesc<'_> {
             .field("memory_allocate_flags", &self.memory_allocate_flags)
             .field("export_handle_types", &self.export_handle_types)
             .field("allocation_scheme", &self.allocation_scheme)
+            .field("mapped", &self.mapped)
             .finish()
     }
 }
@@ -176,6 +197,10 @@ pub enum AllocationScheme {
 /// is not [`Clone`]; pass it to [`Allocator::free`](crate::Allocator::free) once the
 /// device no longer uses it. It has no destructor, so dropping it without freeing it
 /// leaks its range (see the [crate documentation](crate#leaks)).
+///
+/// Two values are equal when they are the same allocation and give the same
+/// [`Allocation::mapped_ptr`], so an allocation is not equal to what it was before
+/// [`Allocator::map_persistent`](crate::Allocator::map_persistent) mapped it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Allocation {
     pub(crate) memory_type_index: u32,
@@ -187,7 +212,15 @@ pub struct Allocation {
     pub(crate) memory: vk::DeviceMemory,
     pub(crate) offset: u64,
     pub(crate) size: u64,
+    pub(crate) mapped_ptr: Option<HostPointer>,
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) struct HostPointer(pub(crate) NonNull<u8>);
+
+unsafe impl Send for HostPointer {}
+
+unsafe impl Sync for HostPointer {}
 
 impl Allocation {
     /// The `VkDeviceMemory` that holds the range. Other allocations may share it unless
@@ -263,6 +296,69 @@ impl Allocation {
     pub fn is_dedicated(&self) -> bool {
         self.dedicated
     }
+
+    /// A pointer to the first byte of the allocation if it is persistently mapped: made
+    /// with [`AllocationCreateDesc::mapped`] in `HOST_VISIBLE` memory, or passed to
+    /// [`Allocator::map_persistent`](crate::Allocator::map_persistent). `None` otherwise;
+    /// [`Allocator::map_memory`](crate::Allocator::map_memory) and
+    /// [`Allocator::map`](crate::Allocator::map) do not set it.
+    ///
+    /// The pointer covers the [`Allocation::size`] bytes of the allocation and stays
+    /// valid until the allocation is freed. [`Allocator::free`](crate::Allocator::free)
+    /// takes the allocation, so no pointer can be taken from it afterwards, but after
+    /// [`Allocator::free_all`](crate::Allocator::free_all) or after the allocator is
+    /// dropped, the allocation still returns the pointer, which must not be used any
+    /// more. Host access through it must follow Vulkan's rules for host access to device
+    /// memory: it must not race with device access or with other host access to the same
+    /// bytes.
+    pub fn mapped_ptr(&self) -> Option<NonNull<u8>> {
+        self.mapped_ptr.map(|pointer| pointer.0)
+    }
+
+    /// The [`Allocation::size`] bytes of a persistently mapped allocation (see
+    /// [`Allocation::mapped_ptr`]), or `None` if it is not persistently mapped or is
+    /// larger than [`isize::MAX`] bytes, which no slice can cover.
+    ///
+    /// # Safety
+    ///
+    /// - The pointer of [`Allocation::mapped_ptr`] must be valid for as long as the slice
+    ///   is in use: [`Allocator::free_all`](crate::Allocator::free_all) must not be called
+    ///   on the allocator that made the allocation, and that allocator must not be
+    ///   dropped, from the time the allocation was made until the slice is no longer
+    ///   used. The slice borrows the allocation, not the allocator, so the compiler does
+    ///   not prevent either.
+    /// - While the slice is in use, neither the device nor any other host pointer may
+    ///   write these bytes.
+    pub unsafe fn mapped_slice(&self) -> Option<&[u8]> {
+        let len = self.slice_len()?;
+        let pointer = self.mapped_ptr()?;
+        Some(unsafe { std::slice::from_raw_parts(pointer.as_ptr(), len) })
+    }
+
+    /// The [`Allocation::size`] bytes of a persistently mapped allocation, writable, or
+    /// `None` as for [`Allocation::mapped_slice`].
+    ///
+    /// # Safety
+    ///
+    /// - The pointer of [`Allocation::mapped_ptr`] must be valid for as long as the slice
+    ///   is in use: [`Allocator::free_all`](crate::Allocator::free_all) must not be called
+    ///   on the allocator that made the allocation, and that allocator must not be
+    ///   dropped, from the time the allocation was made until the slice is no longer
+    ///   used. The slice borrows the allocation, not the allocator, so the compiler does
+    ///   not prevent either.
+    /// - While the slice is in use, neither the device nor any other host pointer may
+    ///   read or write these bytes.
+    pub unsafe fn mapped_slice_mut(&mut self) -> Option<&mut [u8]> {
+        let len = self.slice_len()?;
+        let pointer = self.mapped_ptr()?;
+        Some(unsafe { std::slice::from_raw_parts_mut(pointer.as_ptr(), len) })
+    }
+
+    fn slice_len(&self) -> Option<usize> {
+        usize::try_from(self.size)
+            .ok()
+            .filter(|&len| isize::try_from(len).is_ok())
+    }
 }
 
 /// The kind of resource a block holds, as reported by
@@ -323,6 +419,7 @@ mod tests {
                 AllocationScheme::GpuAllocatorManaged,
                 "allocation_scheme"
             );
+            assert!(!desc.mapped, "mapped");
         }
     }
 

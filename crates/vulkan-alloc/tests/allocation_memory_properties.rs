@@ -93,6 +93,7 @@ fn create_desc(request: &Request, resource: u64) -> AllocationCreateDesc<'static
     }
     AllocationCreateDesc {
         name: None,
+        mapped: false,
         requirements: vk::MemoryRequirements {
             size: request.size,
             alignment: 16,

@@ -3,7 +3,7 @@ use std::ptr::NonNull;
 
 use vulkan::{Device, vk};
 
-use crate::allocation::{Allocation, AllocationCreateDesc, AllocationResourceClass};
+use crate::allocation::{Allocation, AllocationCreateDesc, AllocationResourceClass, HostPointer};
 use crate::block::{BlockRequest, MemoryBlock, MemoryTypeAllocator};
 use crate::error::{AllocationError, FreeError};
 use crate::mapping::MappedAllocation;
@@ -248,11 +248,22 @@ impl Allocator {
     ///    applies to every allocation, shared, dedicated, exportable or zero-initialized.
     ///    If the request is larger than the heap of every such type, it is returned
     ///    without a Vulkan call.
+    /// 5. If [`AllocationCreateDesc::mapped`] is `true` and the memory type the allocation
+    ///    was made in is `HOST_VISIBLE`, the errors of mapping it, as for
+    ///    [`Allocator::map_persistent`]: [`AllocationError::Vulkan`] if `vkMapMemory`
+    ///    fails, also with [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`], and
+    ///    [`AllocationError::InvalidAllocation`] if `vkMapMemory` returns a null pointer
+    ///    or if the address of the allocation (the address of the mapped block plus
+    ///    [`Allocation::offset`]) cannot be represented as a non-null pointer. The
+    ///    allocation is freed before the error is returned, as [`Allocator::free`] frees
+    ///    it, so a block allocated for it is freed with `vkFreeMemory` or kept empty. It
+    ///    is returned at once, without trying another memory type.
     ///
-    /// The first two are returned before any Vulkan call. Nothing is allocated when an
+    /// The first two are returned before any Vulkan call. No allocation is left when an
     /// error is returned, but the empty blocks of a heap in which `vkAllocateMemory` ran
     /// out of memory may have been freed. [`AllocationError::InvalidAllocation`] is
-    /// returned only when no identifier is left for a new allocation (see that variant).
+    /// returned only when mapping fails as the fifth describes, or when no identifier is
+    /// left for a new allocation (see that variant).
     ///
     /// # Safety
     ///
@@ -287,10 +298,11 @@ impl Allocator {
     ///   were in the block, so this is no new condition.
     /// - The returned allocation may only be bound to resources whose memory
     ///   requirements it satisfies.
-    /// - On a logical device that represents more than one physical device, the returned
+    /// - On a logical device that represents more than one physical device, the
     ///   allocation must not be mapped if its memory type belongs to a heap with
-    ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` (see the safety sections of the mapping
-    ///   functions).
+    ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`: neither by this call, through
+    ///   [`AllocationCreateDesc::mapped`], nor later (see the safety sections of the
+    ///   mapping functions).
     /// - The resources bound to the returned allocation must be protected resources if
     ///   its memory type has `PROTECTED`, and must not be if it does not
     ///   ([`Allocation::memory_properties`] tells). A location that only prefers
@@ -309,7 +321,8 @@ impl Allocator {
     ///   no block by then ([`Allocator::stats`] gives a `block_count` of 0, for example
     ///   after [`Allocator::free_all`]). When it is dropped, every submitted command that
     ///   refers to memory of the allocator must have completed, and resources bound to
-    ///   that memory, and pointers obtained by mapping it, must not be used afterwards.
+    ///   that memory, and pointers obtained by mapping it, including those that
+    ///   [`Allocation::mapped_ptr`] still returns, must not be used afterwards.
     ///   This applies to a drop during unwinding from a panic as well (see the
     ///   [crate documentation](crate#order-of-destruction)). An allocator that is never
     ///   dropped, for example because it was passed to [`std::mem::forget`], frees
@@ -366,14 +379,14 @@ impl Allocator {
         {
             block.set_name(allocation.allocation_id, name);
         }
-        Ok(allocation)
+        unsafe { self.map_if_asked(allocation, desc.mapped) }
     }
 
     /// Frees an allocation made by [`Allocator::allocate`].
     ///
-    /// If the allocation was mapped with [`Allocator::map_persistent`], that mapping is
-    /// released. If it was the last allocation of its block, the block is not mapped any
-    /// more, and then:
+    /// If the allocation is persistently mapped (made with [`AllocationCreateDesc::mapped`]
+    /// or passed to [`Allocator::map_persistent`]), that mapping is released. If it was the
+    /// last allocation of its block, the block is not mapped any more, and then:
     ///
     /// - A shared block of the size of a new shared block of its memory type (the
     ///   smaller of [`AllocatorCreateDesc::block_size`] and the size of the memory heap
@@ -499,11 +512,11 @@ impl Allocator {
     ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`: such memory has an instance on every
     ///   physical device, and Vulkan does not allow it to be mapped.
     /// - While the guard is alive, neither the device nor a pointer from
-    ///   [`Allocator::map_memory`], [`Allocator::map_persistent`] or
-    ///   [`MappedAllocation::as_ptr`] may access the allocation's bytes in a way that
-    ///   conflicts with the slices the guard hands out, including through its safe
-    ///   methods: no writes while a shared slice is in use, and no access at all while a
-    ///   mutable slice is in use.
+    ///   [`Allocator::map_memory`], [`Allocator::map_persistent`],
+    ///   [`Allocation::mapped_ptr`] or [`MappedAllocation::as_ptr`] may access the
+    ///   allocation's bytes in a way that conflicts with the slices the guard hands out,
+    ///   including through its safe methods: no writes while a shared slice is in use,
+    ///   and no access at all while a mutable slice is in use.
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
@@ -519,16 +532,20 @@ impl Allocator {
     /// Maps the allocation until it is freed and returns a pointer to its first byte. The
     /// allocation has [`Allocation::size`] bytes.
     ///
-    /// The pointer borrows nothing, so it can be stored next to the resource it belongs
-    /// to. It stays valid until [`Allocator::free`] frees the allocation, which
-    /// releases the mapping, until [`Allocator::free_all`] or until the allocator is
-    /// dropped. Calling this again for the same allocation returns the same pointer
-    /// without taking another reference.
+    /// The allocation keeps the pointer: [`Allocation::mapped_ptr`],
+    /// [`Allocation::mapped_slice`] and [`Allocation::mapped_slice_mut`] give it and the
+    /// bytes without borrowing the allocator. This is the state that
+    /// [`AllocationCreateDesc::mapped`] gives an allocation when it is made; this function
+    /// maps an allocation that was made without it. The pointer stays valid until
+    /// [`Allocator::free`] frees the allocation, which releases the mapping, until
+    /// [`Allocator::free_all`] or until the allocator is dropped. Calling this again for
+    /// the same allocation returns the same pointer without taking another reference.
     /// [`Allocator::unmap_memory`] does not release this mapping.
     ///
     /// # Errors
     ///
-    /// The same as [`Allocator::map_memory`].
+    /// The same as [`Allocator::map_memory`]. The allocation is not changed when an error
+    /// is returned.
     ///
     /// # Safety
     ///
@@ -539,25 +556,21 @@ impl Allocator {
     ///   type of the allocation must not belong to a heap with
     ///   `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`: such memory has an instance on every
     ///   physical device, and Vulkan does not allow it to be mapped.
-    /// - The pointer may only be used for the [`Allocation::size`] bytes it points to,
-    ///   and not after the allocation is freed, [`Allocator::free_all`] is called or the
-    ///   allocator is dropped.
+    /// - The pointer, also as [`Allocation::mapped_ptr`] gives it, may only be used for
+    ///   the [`Allocation::size`] bytes it points to, and not after the allocation is
+    ///   freed, [`Allocator::free_all`] is called or the allocator is dropped.
     /// - Host access through the pointer must follow Vulkan's rules for host access to
     ///   device memory: it must not race with device access or with other host access
     ///   to the same bytes.
     pub unsafe fn map_persistent(
         &mut self,
-        allocation: &Allocation,
+        allocation: &mut Allocation,
     ) -> Result<NonNull<u8>, AllocationError> {
         self.ensure_host_visible(allocation)?;
         let block = block_mut(&mut self.memory_types, allocation)?;
-        unsafe { block.map_persistent(&self.device, allocation) }
-    }
-
-    /// The pointer [`Allocator::map_persistent`] returned for this allocation, or `None`
-    /// if the allocation is not persistently mapped or the allocator does not hold it.
-    pub fn persistent_ptr(&self, allocation: &Allocation) -> Option<NonNull<u8>> {
-        self.block(allocation).ok()?.persistent_ptr(allocation)
+        let pointer = unsafe { block.map_persistent(&self.device, allocation) }?;
+        allocation.mapped_ptr = Some(HostPointer(pointer));
+        Ok(pointer)
     }
 
     /// Releases one mapping reference taken with [`Allocator::map_memory`]. When no
@@ -775,7 +788,9 @@ impl Allocator {
     ///
     /// The [`Allocation`] values that were live are not held by the allocator any more:
     /// every function that takes one rejects them, also after new allocations were made
-    /// in memory with the same `VkDeviceMemory` handle, offset and size.
+    /// in memory with the same `VkDeviceMemory` handle, offset and size. The
+    /// [`Allocation::mapped_ptr`] of one that was persistently mapped still returns its
+    /// pointer, which must not be used.
     ///
     /// Dropping the allocator frees the same memory. Call this instead to use the
     /// allocator again, or to make dropping it free nothing, for example when it is
@@ -787,7 +802,9 @@ impl Allocator {
     /// - The device the allocator was created with must not have been destroyed.
     /// - Every submitted command that refers to a resource bound to memory of this
     ///   allocator must have completed, and such resources must not be used afterwards.
-    /// - No pointer obtained by mapping memory of this allocator may be used afterwards.
+    /// - No pointer obtained by mapping memory of this allocator may be used afterwards,
+    ///   including the pointers that [`Allocation::mapped_ptr`] returns and the slices of
+    ///   [`Allocation::mapped_slice`] and [`Allocation::mapped_slice_mut`].
     pub unsafe fn free_all(&mut self) -> usize {
         let live = self.live_allocation_count();
         for memory_type in &mut self.memory_types {
@@ -880,6 +897,27 @@ impl Allocator {
             }
         }
         freed
+    }
+
+    unsafe fn map_if_asked(
+        &mut self,
+        mut allocation: Allocation,
+        mapped: bool,
+    ) -> Result<Allocation, AllocationError> {
+        if !mapped
+            || !allocation
+                .memory_properties()
+                .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
+        {
+            return Ok(allocation);
+        }
+        match unsafe { self.map_persistent(&mut allocation) } {
+            Ok(_) => Ok(allocation),
+            Err(error) => {
+                let _ = unsafe { self.free(allocation) };
+                Err(error)
+            }
+        }
     }
 
     unsafe fn map_host_visible(

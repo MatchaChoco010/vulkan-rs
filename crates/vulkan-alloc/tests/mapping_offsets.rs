@@ -28,7 +28,7 @@ fn pointers_are_the_block_address_plus_the_offset_for_any_offset() {
             let first = allocator
                 .allocate(desc(first_size, 1, HOST_COHERENT))
                 .unwrap();
-            let second = allocator.allocate(desc(4096, 1, HOST_COHERENT)).unwrap();
+            let mut second = allocator.allocate(desc(4096, 1, HOST_COHERENT)).unwrap();
             assert_eq!(first.memory(), second.memory());
             assert_eq!((first.offset(), second.offset()), (0, first_size));
 
@@ -39,13 +39,13 @@ fn pointers_are_the_block_address_plus_the_offset_for_any_offset() {
                 expected,
                 "offset {first_size}"
             );
-            let persistent = allocator.map_persistent(&second).unwrap();
+            let persistent = allocator.map_persistent(&mut second).unwrap();
             assert_eq!(
                 persistent.as_ptr() as usize,
                 expected,
                 "offset {first_size}"
             );
-            assert_eq!(allocator.persistent_ptr(&second), Some(persistent));
+            assert_eq!(second.mapped_ptr(), Some(persistent));
 
             allocator.unmap_memory(&second).unwrap();
             allocator.unmap_memory(&first).unwrap();
@@ -89,7 +89,7 @@ proptest! {
         });
         unsafe {
             let first = allocator.allocate(desc(first_size, 1, HOST_COHERENT)).unwrap();
-            let second = allocator.allocate(desc(4096, 1, HOST_COHERENT)).unwrap();
+            let mut second = allocator.allocate(desc(4096, 1, HOST_COHERENT)).unwrap();
             prop_assert_eq!((first.memory(), second.offset()), (second.memory(), first_size));
 
             let base = usize::MAX - room;
@@ -97,7 +97,7 @@ proptest! {
             let calls = fake.calls();
             fake.fault_next_map(MapFault::ReturnsAddress(base));
             let mapped = if persistent {
-                allocator.map_persistent(&second).map(|pointer| pointer.as_ptr() as usize)
+                allocator.map_persistent(&mut second).map(|pointer| pointer.as_ptr() as usize)
             } else {
                 allocator.map_memory(&second).map(|pointer| pointer as usize)
             };
@@ -109,7 +109,7 @@ proptest! {
                     prop_assert_eq!(after.unmap, calls.unmap);
                     prop_assert!(fake.memory_objects()[&second.memory()].mapped);
                     prop_assert_eq!(
-                        allocator.persistent_ptr(&second).map(|pointer| pointer.as_ptr() as usize),
+                        second.mapped_ptr().map(|pointer| pointer.as_ptr() as usize),
                         persistent.then_some(address)
                     );
                 }
@@ -118,7 +118,7 @@ proptest! {
                     prop_assert_eq!(after.unmap, calls.unmap + 1);
                     prop_assert!(!fake.memory_objects()[&second.memory()].mapped);
                     prop_assert_eq!(allocator.snapshot(), snapshot);
-                    prop_assert_eq!(allocator.persistent_ptr(&second), None);
+                    prop_assert_eq!(second.mapped_ptr(), None);
                     prop_assert!(allocator.map_memory(&first).is_ok());
                     prop_assert!(allocator.map_memory(&second).is_ok());
                 }

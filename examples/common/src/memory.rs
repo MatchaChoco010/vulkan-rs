@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow, ensure};
-use std::ptr::NonNull;
 use vulkan::vk;
 use vulkan_alloc::{Allocation, AllocationCreateDesc, MemoryLocation};
 
@@ -45,6 +44,20 @@ pub unsafe fn create_aligned_buffer(
     location: MemoryLocation,
     alignment: u64,
 ) -> Result<Owned<Buffer>> {
+    unsafe { create_buffer_with_mapping(gpu, name, size, usage, location, alignment, false) }
+}
+
+/// Like [`create_aligned_buffer`], with memory that the allocator maps when it allocates
+/// it if `mapped` is set and the memory is host-visible.
+unsafe fn create_buffer_with_mapping(
+    gpu: &Gpu,
+    name: &str,
+    size: u64,
+    usage: vk::BufferUsageFlags,
+    location: MemoryLocation,
+    alignment: u64,
+    mapped: bool,
+) -> Result<Owned<Buffer>> {
     unsafe {
         let device = &gpu.device;
         let buffer = gpu.own(device.create_buffer(
@@ -63,6 +76,7 @@ pub unsafe fn create_aligned_buffer(
             allocator.allocate(AllocationCreateDesc {
                 name: Some(name),
                 memory_allocate_flags,
+                mapped,
                 ..AllocationCreateDesc::new(requirements, location, true)
             })
         })?;
@@ -212,14 +226,12 @@ pub unsafe fn upload_aligned_buffer(
     }
 }
 
-/// A host-visible buffer that stays mapped until it is destroyed.
+/// A host-visible buffer that stays mapped until it is destroyed: its allocation was
+/// made mapped.
 pub struct MappedBuffer {
     pub buffer: vk::Buffer,
     pub allocation: Allocation,
     pub size: u64,
-    bytes: NonNull<u8>,
-    /// `size` as a host length.
-    len: usize,
 }
 
 impl Owned<MappedBuffer> {
@@ -229,10 +241,14 @@ impl Owned<MappedBuffer> {
     ///
     /// The device must not be accessing the memory.
     pub unsafe fn bytes(&mut self) -> &mut [u8] {
-        let buffer: &MappedBuffer = self;
-        // SAFETY: the mapping lives as long as the buffer, which `self` owns, and the
+        let buffer = self.value_mut();
+        // `create_mapped_buffer` checked that the buffer fits into the mapped slice.
+        let len = buffer.size as usize;
+        // SAFETY: the mapping lives as long as the allocation, which `self` owns, and the
         // exclusive borrow of `self` is the only way to these bytes.
-        unsafe { std::slice::from_raw_parts_mut(buffer.bytes.as_ptr(), buffer.len) }
+        let bytes = unsafe { buffer.allocation.mapped_slice_mut() }
+            .expect("the allocation of a mapped buffer stays mapped");
+        &mut bytes[..len]
     }
 }
 
@@ -258,13 +274,26 @@ pub unsafe fn create_mapped_buffer(
     alignment: u64,
 ) -> Result<Owned<MappedBuffer>> {
     unsafe {
+        // `CpuToGpu` memory is host-visible, so the allocator maps it when it allocates it.
+        let buffer = create_buffer_with_mapping(
+            gpu,
+            name,
+            size,
+            usage,
+            MemoryLocation::CpuToGpu,
+            alignment,
+            true,
+        )?;
         // The host has to be able to address all of it.
-        let len = host_len(size)?;
-        let buffer =
-            create_aligned_buffer(gpu, name, size, usage, MemoryLocation::CpuToGpu, alignment)?;
-        let bytes = gpu
-            .with_allocator(|allocator| allocator.map_persistent(&buffer.allocation))
-            .with_context(|| format!("mapping {name}"))?;
+        let len: usize = host_len(size)?;
+        let mapped = buffer
+            .allocation
+            .mapped_slice()
+            .with_context(|| format!("{name} is not mapped as a whole"))?;
+        ensure!(
+            len <= mapped.len(),
+            "the buffer is larger than its allocation"
+        );
         let Buffer {
             buffer,
             allocation,
@@ -274,8 +303,6 @@ pub unsafe fn create_mapped_buffer(
             buffer,
             allocation,
             size,
-            bytes,
-            len,
         }))
     }
 }

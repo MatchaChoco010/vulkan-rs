@@ -584,10 +584,10 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
         let first = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
         let second = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
         let requirements = gpu.device.get_buffer_memory_requirements(first);
-        let a = allocator
+        let mut a = allocator
             .allocate(desc(requirements, MemoryLocation::CpuOnly))
             .unwrap();
-        let b = allocator
+        let mut b = allocator
             .allocate(desc(requirements, MemoryLocation::CpuOnly))
             .unwrap();
         gpu.device
@@ -597,25 +597,28 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
             .bind_buffer_memory(second, b.memory(), b.offset())
             .unwrap();
 
-        assert!(allocator.persistent_ptr(&a).is_none());
-        let pointer = allocator.map_persistent(&a).unwrap();
-        let other = allocator.map_persistent(&b).unwrap();
+        assert!(a.mapped_ptr().is_none());
+        assert!(a.mapped_slice().is_none());
+        let pointer = allocator.map_persistent(&mut a).unwrap();
+        let other = allocator.map_persistent(&mut b).unwrap();
         assert_ne!(pointer, other);
-        assert_eq!(allocator.map_persistent(&a).unwrap(), pointer);
-        assert_eq!(allocator.persistent_ptr(&a), Some(pointer));
+        assert_eq!(allocator.map_persistent(&mut a).unwrap(), pointer);
+        assert_eq!(a.mapped_ptr(), Some(pointer));
 
-        let bytes = std::slice::from_raw_parts_mut(pointer.as_ptr(), a.size() as usize);
+        let size = a.size();
+        let bytes = a.mapped_slice_mut().unwrap();
+        assert_eq!(bytes.len() as u64, size);
         bytes[..4].copy_from_slice(&[9, 8, 7, 6]);
         {
             let mapped = allocator.map(&a).unwrap();
             assert_eq!(mapped.byte_range(0, 4), Some(&[9, 8, 7, 6][..]));
         }
-        assert_eq!(allocator.persistent_ptr(&a), Some(pointer));
+        assert_eq!(a.mapped_ptr(), Some(pointer));
 
         gpu.device.destroy_buffer(first, None);
         allocator.free(a).unwrap();
-        assert_eq!(allocator.persistent_ptr(&b), Some(other));
-        std::slice::from_raw_parts_mut(other.as_ptr(), 4).copy_from_slice(&[1, 2, 3, 4]);
+        assert_eq!(b.mapped_ptr(), Some(other));
+        b.mapped_slice_mut().unwrap()[..4].copy_from_slice(&[1, 2, 3, 4]);
 
         gpu.device.destroy_buffer(second, None);
         allocator.free(b).unwrap();
@@ -630,26 +633,143 @@ fn unmapping_a_persistent_mapping_is_an_error() {
     let mut allocator = gpu.allocator();
     unsafe {
         let buffer = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
-        let allocation = allocator
+        let mut allocation = allocator
             .allocate(desc(
                 gpu.device.get_buffer_memory_requirements(buffer),
                 MemoryLocation::CpuOnly,
             ))
             .unwrap();
-        let pointer = allocator.map_persistent(&allocation).unwrap();
+        let pointer = allocator.map_persistent(&mut allocation).unwrap();
 
         assert_eq!(
             allocator.unmap_memory(&allocation),
             Err(AllocationError::InvalidAllocation)
         );
-        assert_eq!(allocator.persistent_ptr(&allocation), Some(pointer));
+        assert_eq!(allocation.mapped_ptr(), Some(pointer));
 
         allocator.map_memory(&allocation).unwrap();
         allocator.unmap_memory(&allocation).unwrap();
-        assert_eq!(allocator.persistent_ptr(&allocation), Some(pointer));
+        assert_eq!(allocation.mapped_ptr(), Some(pointer));
 
         gpu.device.destroy_buffer(buffer, None);
         allocator.free(allocation).unwrap();
+    }
+    assert!(allocator.is_empty());
+    gpu.assert_no_validation_messages();
+}
+
+#[test]
+fn allocations_made_mapped_hold_what_the_host_writes_and_the_device_copies() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut allocator = gpu.allocator();
+    unsafe {
+        let source = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
+        let destination = gpu.buffer(vk::BufferUsageFlags::TRANSFER_DST);
+        let mapped = |buffer, location| AllocationCreateDesc {
+            mapped: true,
+            ..desc(gpu.device.get_buffer_memory_requirements(buffer), location)
+        };
+        let mut upload = allocator
+            .allocate(mapped(source, MemoryLocation::CpuToGpu))
+            .unwrap();
+        let mut readback = allocator
+            .allocate(mapped(destination, MemoryLocation::GpuToCpu))
+            .unwrap();
+        gpu.device
+            .bind_buffer_memory(source, upload.memory(), upload.offset())
+            .unwrap();
+        gpu.device
+            .bind_buffer_memory(destination, readback.memory(), readback.offset())
+            .unwrap();
+
+        let written = (0..4096u32)
+            .map(|index| (index * 7 + 3) as u8)
+            .collect::<Vec<_>>();
+        {
+            let host_source = upload
+                .mapped_slice_mut()
+                .expect("CpuToGpu memory is mapped when it is allocated");
+            let host_destination = readback
+                .mapped_slice_mut()
+                .expect("GpuToCpu memory is mapped when it is allocated");
+            host_source[..4096].copy_from_slice(&written);
+            host_destination[..4096].fill(0);
+        }
+        allocator.flush_allocation(&upload).unwrap();
+        allocator.flush_allocation(&readback).unwrap();
+
+        let pool = gpu
+            .device
+            .create_command_pool(
+                &vk::CommandPoolCreateInfo::default().queue_family_index(0),
+                None,
+            )
+            .unwrap();
+        let command_buffer = gpu
+            .device
+            .allocate_command_buffers(
+                &vk::CommandBufferAllocateInfo::default()
+                    .command_pool(pool)
+                    .level(vk::CommandBufferLevel::PRIMARY)
+                    .command_buffer_count(1),
+            )
+            .unwrap()[0];
+        gpu.device
+            .begin_command_buffer(
+                command_buffer,
+                &vk::CommandBufferBeginInfo::default()
+                    .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+            )
+            .unwrap();
+        gpu.device.cmd_copy_buffer(
+            command_buffer,
+            source,
+            destination,
+            &[vk::BufferCopy::default().size(4096)],
+        );
+        gpu.device.cmd_pipeline_barrier(
+            command_buffer,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::HOST,
+            vk::DependencyFlags::empty(),
+            &[vk::MemoryBarrier::default()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::HOST_READ)],
+            &[],
+            &[],
+        );
+        gpu.device.end_command_buffer(command_buffer).unwrap();
+        let fence = gpu
+            .device
+            .create_fence(&vk::FenceCreateInfo::default(), None)
+            .unwrap();
+        let command_buffers = [command_buffer];
+        gpu.device
+            .queue_submit(
+                gpu.device.get_device_queue(0, 0),
+                &[vk::SubmitInfo::default().command_buffers(&command_buffers)],
+                fence,
+            )
+            .unwrap();
+        gpu.device
+            .wait_for_fences(&[fence], true, u64::MAX)
+            .unwrap();
+        gpu.device.destroy_fence(fence, None);
+        gpu.device.destroy_command_pool(pool, None);
+
+        allocator.invalidate_allocation(&readback).unwrap();
+        assert_eq!(
+            &readback
+                .mapped_slice()
+                .expect("the readback memory stays mapped")[..4096],
+            &written[..],
+            "the bytes the device copied from the mapped upload into the mapped readback"
+        );
+
+        gpu.device.destroy_buffer(source, None);
+        gpu.device.destroy_buffer(destination, None);
+        allocator.free(upload).unwrap();
+        allocator.free(readback).unwrap();
     }
     assert!(allocator.is_empty());
     gpu.assert_no_validation_messages();
@@ -692,6 +812,7 @@ enum Op {
         usage: vk::BufferUsageFlags,
         location: MemoryLocation,
         dedicated: bool,
+        mapped: bool,
     },
     Image {
         width: u32,
@@ -699,6 +820,7 @@ enum Op {
         linear: bool,
         location: MemoryLocation,
         dedicated: bool,
+        mapped: bool,
     },
     Fill {
         target: Index,
@@ -761,27 +883,35 @@ fn image_extent() -> impl Strategy<Value = u32> {
 
 fn operation() -> impl Strategy<Value = Op> {
     prop_oneof![
-        8 => (buffer_size(), buffer_usage(), location(), prop::bool::weighted(0.15)).prop_map(
-            |(size, usage, location, dedicated)| Op::Buffer {
+        8 => (
+            buffer_size(),
+            buffer_usage(),
+            location(),
+            prop::bool::weighted(0.15),
+            prop::bool::weighted(0.4),
+        )
+            .prop_map(|(size, usage, location, dedicated, mapped)| Op::Buffer {
                 size,
                 usage,
                 location,
                 dedicated,
-            }
-        ),
+                mapped,
+            }),
         4 => (
             image_extent(),
             image_extent(),
             prop::bool::weighted(0.3),
             location(),
             prop::bool::weighted(0.15),
+            prop::bool::weighted(0.4),
         )
-            .prop_map(|(width, height, linear, location, dedicated)| Op::Image {
+            .prop_map(|(width, height, linear, location, dedicated, mapped)| Op::Image {
                 width,
                 height,
                 linear,
                 location,
                 dedicated,
+                mapped,
             }),
         6 => (any::<Index>(), any::<bool>())
             .prop_map(|(target, persistent)| Op::Fill { target, persistent }),
@@ -805,6 +935,13 @@ fn sequences() -> impl Strategy<Value = (Vec<Op>, Ending)> {
         operations(),
         prop::sample::select(vec![Ending::FreeAllThenDrop, Ending::Drop]),
     )
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Memory {
+    location: MemoryLocation,
+    dedicated: bool,
+    mapped: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -839,6 +976,8 @@ struct Coverage {
     drops_that_free_memory: usize,
     guard_fills: usize,
     persistent_fills: usize,
+    mapped_at_allocation: usize,
+    persistent_fills_of_persistently_mapped_memory: usize,
     refills: usize,
     reads: usize,
     fills_with_nothing_live: usize,
@@ -861,6 +1000,9 @@ impl Coverage {
         self.drops_that_free_memory += other.drops_that_free_memory;
         self.guard_fills += other.guard_fills;
         self.persistent_fills += other.persistent_fills;
+        self.mapped_at_allocation += other.mapped_at_allocation;
+        self.persistent_fills_of_persistently_mapped_memory +=
+            other.persistent_fills_of_persistently_mapped_memory;
         self.refills += other.refills;
         self.reads += other.reads;
         self.fills_with_nothing_live += other.fills_with_nothing_live;
@@ -979,14 +1121,16 @@ impl<'g> Sequence<'g> {
                     usage,
                     location,
                     dedicated,
-                } => self.allocate_buffer(size, usage, location, dedicated),
+                    mapped,
+                } => self.allocate_buffer(size, usage, location, dedicated, mapped),
                 Op::Image {
                     width,
                     height,
                     linear,
                     location,
                     dedicated,
-                } => self.allocate_image(width, height, linear, location, dedicated),
+                    mapped,
+                } => self.allocate_image(width, height, linear, location, dedicated, mapped),
                 Op::Fill { target, persistent } => self.fill(target, persistent),
                 Op::Free { target } => self.free(target),
                 Op::FreeAll => self.free_all(),
@@ -1000,6 +1144,7 @@ impl<'g> Sequence<'g> {
         usage: vk::BufferUsageFlags,
         location: MemoryLocation,
         dedicated: bool,
+        mapped: bool,
     ) -> Result<(), String> {
         unsafe {
             let buffer = self
@@ -1015,10 +1160,13 @@ impl<'g> Sequence<'g> {
             self.allocate_and_bind(
                 Resource::Buffer(buffer),
                 requirements,
-                location,
                 true,
                 usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS),
-                dedicated,
+                Memory {
+                    location,
+                    dedicated,
+                    mapped,
+                },
             )
         }
     }
@@ -1030,6 +1178,7 @@ impl<'g> Sequence<'g> {
         linear: bool,
         location: MemoryLocation,
         dedicated: bool,
+        mapped: bool,
     ) -> Result<(), String> {
         unsafe {
             let (tiling, usage) = if linear {
@@ -1068,10 +1217,13 @@ impl<'g> Sequence<'g> {
             self.allocate_and_bind(
                 Resource::Image(image),
                 requirements,
-                location,
                 linear,
                 false,
-                dedicated,
+                Memory {
+                    location,
+                    dedicated,
+                    mapped,
+                },
             )
         }
     }
@@ -1080,11 +1232,15 @@ impl<'g> Sequence<'g> {
         &mut self,
         resource: Resource,
         requirements: vk::MemoryRequirements,
-        location: MemoryLocation,
         linear: bool,
         device_address: bool,
-        dedicated: bool,
+        memory: Memory,
     ) -> Result<(), String> {
+        let Memory {
+            location,
+            dedicated,
+            mapped,
+        } = memory;
         unsafe {
             let live_bytes: u64 = self.live.iter().map(|live| live.allocation.size()).sum();
             if live_bytes + requirements.size > SEQUENCE_LIVE_BYTES_LIMIT {
@@ -1114,6 +1270,7 @@ impl<'g> Sequence<'g> {
             let allocation = match self.allocator.allocate(AllocationCreateDesc {
                 memory_allocate_flags,
                 allocation_scheme,
+                mapped,
                 ..AllocationCreateDesc::new(requirements, location, linear)
             }) {
                 Ok(allocation) => allocation,
@@ -1156,6 +1313,13 @@ impl<'g> Sequence<'g> {
             if requirements.size > SEQUENCE_BLOCK_SIZE {
                 self.coverage.larger_than_a_block += 1;
             }
+            let host_visible = allocation
+                .memory_properties()
+                .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+            let persistent = allocation.mapped_ptr();
+            if mapped && host_visible {
+                self.coverage.mapped_at_allocation += 1;
+            }
             self.live.push(Live {
                 allocation,
                 resource,
@@ -1165,9 +1329,24 @@ impl<'g> Sequence<'g> {
                 device_address,
                 dedicated,
                 contents: None,
-                persistent: None,
+                persistent,
             });
             bound.map_err(|e| format!("binding the resource: {e}"))?;
+            ensure!(
+                persistent.is_some() == (mapped && host_visible),
+                "an allocation made with mapped {mapped} in memory that is {}host-visible has \
+                 the mapped pointer {persistent:?}",
+                if host_visible { "" } else { "not " }
+            );
+            let made = &self.live.last().unwrap().allocation;
+            if let Some(slice) = made.mapped_slice() {
+                ensure!(
+                    slice.len() as u64 == made.size(),
+                    "the mapped slice has {} bytes, the allocation {}",
+                    slice.len(),
+                    made.size()
+                );
+            }
             self.check_placement(self.live.last().unwrap())
         }
     }
@@ -1215,7 +1394,7 @@ impl<'g> Sequence<'g> {
                 self.coverage.fills_with_nothing_live += 1;
                 return Ok(());
             };
-            let live = &self.live[index];
+            let live = &mut self.live[index];
             let flags = live.allocation.memory_properties();
             if !flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
                 return Ok(());
@@ -1226,10 +1405,13 @@ impl<'g> Sequence<'g> {
             if live.contents.is_some() {
                 self.coverage.refills += 1;
             }
+            if persistent && live.persistent.is_some() {
+                self.coverage.persistent_fills_of_persistently_mapped_memory += 1;
+            }
             if persistent {
                 let pointer = self
                     .allocator
-                    .map_persistent(&live.allocation)
+                    .map_persistent(&mut live.allocation)
                     .map_err(|e| format!("map_persistent: {e}"))?;
                 if let Some(earlier) = live.persistent {
                     ensure!(
@@ -1237,11 +1419,25 @@ impl<'g> Sequence<'g> {
                         "map_persistent moved the mapping from {earlier:?} to {pointer:?}"
                     );
                 }
-                std::ptr::write_bytes(pointer.as_ptr(), byte, len);
+                ensure!(
+                    live.allocation.mapped_ptr() == Some(pointer),
+                    "the allocation holds the pointer {:?}, map_persistent returned {pointer:?}",
+                    live.allocation.mapped_ptr()
+                );
+                let bytes = live
+                    .allocation
+                    .mapped_slice_mut()
+                    .ok_or("a persistently mapped allocation has no mapped slice")?;
+                ensure!(
+                    bytes.len() == len,
+                    "the mapped slice has {} bytes instead of {len}",
+                    bytes.len()
+                );
+                bytes.fill(byte);
                 self.allocator
                     .flush_allocation(&live.allocation)
                     .map_err(|e| format!("flush_allocation: {e}"))?;
-                self.live[index].persistent = Some(pointer);
+                live.persistent = Some(pointer);
                 self.coverage.persistent_fills += 1;
             } else {
                 let mut mapped = self
@@ -1418,6 +1614,12 @@ impl<'g> Sequence<'g> {
                     "{:?} no longer holds only the byte {byte}",
                     live.allocation
                 );
+                ensure!(
+                    live.allocation.mapped_ptr() == live.persistent,
+                    "the allocation holds the pointer {:?}, it was mapped at {:?}",
+                    live.allocation.mapped_ptr(),
+                    live.persistent
+                );
                 if let Some(pointer) = live.persistent {
                     ensure!(
                         pointer.as_ptr() == mapped.as_ptr().cast(),
@@ -1426,6 +1628,13 @@ impl<'g> Sequence<'g> {
                     );
                 }
                 drop(mapped);
+                if let Some(bytes) = live.allocation.mapped_slice() {
+                    ensure!(
+                        holds_only(bytes, byte),
+                        "the mapped slice of {:?} no longer holds only the byte {byte}",
+                        live.allocation
+                    );
+                }
                 self.coverage.reads += 1;
             }
             Ok(())
@@ -1524,6 +1733,14 @@ fn the_generated_sequences_reach_every_kind_of_placement_and_mapping() {
         (
             "fills through the persistent mapping",
             coverage.persistent_fills,
+        ),
+        (
+            "allocations mapped when they are made",
+            coverage.mapped_at_allocation,
+        ),
+        (
+            "persistent fills of memory that is persistently mapped",
+            coverage.persistent_fills_of_persistently_mapped_memory,
         ),
         ("fills of a filled allocation", coverage.refills),
         ("reads", coverage.reads),
