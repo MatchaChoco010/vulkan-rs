@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use vulkan_codegen::{
     GENERATED_SRC, GENERATED_TESTS, assert_aligned_memory_exists,
-    assert_listed_legacy_aliases_are_left_out, assert_listed_legacy_macros_are_marked,
-    assert_listed_members_exist, generate, required_features,
+    assert_listed_legacy_macros_are_marked, assert_listed_members_exist, generate,
+    required_features,
 };
 use vulkan_registry::{Docs, Registry};
 
@@ -215,12 +215,4 @@ fn a_registry_without_the_listed_commands_fails_the_check_of_the_aligned_memory(
 )]
 fn a_registry_without_the_listed_legacy_macros_fails_the_check_of_the_macros_left_out() {
     assert_listed_legacy_macros_are_marked(&Registry::default());
-}
-
-#[test]
-#[should_panic(
-    expected = "`STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED` of `StdVideoAV1ColorPrimaries` is in ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT, but the registry does not call it a legacy alias"
-)]
-fn a_registry_without_the_listed_legacy_aliases_fails_the_check_of_the_aliases_left_out() {
-    assert_listed_legacy_aliases_are_left_out(&Registry::default());
 }

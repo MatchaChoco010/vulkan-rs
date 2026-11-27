@@ -53723,7 +53723,9 @@
      "value": "1"
     },
     {
-     "aliases": [],
+     "aliases": [
+      "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED"
+     ],
      "name": "STD_VIDEO_AV1_COLOR_PRIMARIES_UNSPECIFIED",
      "protect": null,
      "value": "2"

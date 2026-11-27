@@ -14,8 +14,7 @@ pub(crate) use legacy::{
     legacy_marks,
 };
 pub(crate) use legacy_attributes::{
-    LegacyAttributes, assert_every_legacy_attribute_is_stated,
-    assert_listed_legacy_aliases_are_left_out, legacy_attributes,
+    LegacyAttributes, assert_every_legacy_attribute_is_stated, legacy_attributes,
 };
 pub(crate) use links::Links;
 pub(crate) use other_names::assert_every_other_name_is_in_use;

@@ -149,10 +149,6 @@ pub fn assert_listed_legacy_macros_are_marked(ir: &Registry) {
     docs::assert_listed_legacy_macros_are_marked(ir);
 }
 
-pub fn assert_listed_legacy_aliases_are_left_out(ir: &Registry) {
-    docs::assert_listed_legacy_aliases_are_left_out(ir);
-}
-
 pub fn assert_listed_members_exist(ir: &Registry) {
     emit::structs::assert_listed_structures_exist(ir);
     emit::structs::assert_listed_read_only_members_exist(ir);

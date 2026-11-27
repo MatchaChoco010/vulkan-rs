@@ -131,6 +131,10 @@ impl StdVideoAV1ColorPrimaries {
     /// `STD_VIDEO_AV1_COLOR_PRIMARIES_INVALID`, a value of `StdVideoAV1ColorPrimaries`.
     #[doc(alias = "STD_VIDEO_AV1_COLOR_PRIMARIES_INVALID")]
     pub const INVALID: Self = Self(2147483647);
+    /// `STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED` is a legacy alias of
+    /// [`STD_VIDEO_AV1_COLOR_PRIMARIES_UNSPECIFIED`](Self::UNSPECIFIED).
+    #[doc(alias = "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED")]
+    pub const BT_UNSPECIFIED: Self = Self(2);
     /// The values of this type that have a constant, each with the name of its constant,
     /// sorted by value. A value that several constants share is listed once.
     pub const fn variants() -> &'static [(Self, &'static str)] {
@@ -151,7 +155,7 @@ impl StdVideoAV1ColorPrimaries {
         ]
     }
     const fn aliases() -> &'static [(Self, &'static str)] {
-        &[]
+        &[(Self(2), "BT_UNSPECIFIED")]
     }
     /// The name of the constant that has this value, as listed by [`Self::variants`], or
     /// `None` if no constant has it.

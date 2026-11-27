@@ -19805,6 +19805,7 @@ pub const VALUES: &[(&str, i64)] = &[
     ("STD_VIDEO_AV1_COLOR_PRIMARIES_SMPTE_432", vk::StdVideoAV1ColorPrimaries::SMPTE_432.0 as i64),
     ("STD_VIDEO_AV1_COLOR_PRIMARIES_EBU_3213", vk::StdVideoAV1ColorPrimaries::EBU_3213.0 as i64),
     ("STD_VIDEO_AV1_COLOR_PRIMARIES_INVALID", vk::StdVideoAV1ColorPrimaries::INVALID.0 as i64),
+    ("STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED", vk::StdVideoAV1ColorPrimaries::BT_UNSPECIFIED.0 as i64),
     ("STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_NONE", vk::StdVideoAV1FrameRestorationType::NONE.0 as i64),
     ("STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_WIENER", vk::StdVideoAV1FrameRestorationType::WIENER.0 as i64),
     ("STD_VIDEO_AV1_FRAME_RESTORATION_TYPE_SGRPROJ", vk::StdVideoAV1FrameRestorationType::SGRPROJ.0 as i64),

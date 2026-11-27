@@ -23,7 +23,6 @@ fn main() {
 
     vulkan_codegen::assert_aligned_memory_exists(ir);
     vulkan_codegen::assert_listed_legacy_macros_are_marked(ir);
-    vulkan_codegen::assert_listed_legacy_aliases_are_left_out(ir);
     let files = generate(ir, Docs::get());
     remove_files_no_longer_generated(&root, &files);
     for GeneratedFile { path, contents } in &files {

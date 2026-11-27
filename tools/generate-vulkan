@@ -11,7 +11,9 @@ Pipeline:
    every extra one is one more way for a Vulkan-Headers update to break this script.
    The `<deprecate>` blocks, which mark functionality as legacy, are read from the
    registry tree itself, because `VulkanObject` has them for commands only, and so are
-   the `deprecated` attributes, which it does not have.
+   the `deprecated` attributes, which it does not have. The enumerants of the Vulkan
+   Video headers get their aliases by Khronos' rule here, because Khronos' generator
+   of those headers leaves that step out.
 2. Dump the descriptions that the specification gives for the registry's names, as the
    AsciiDoc text of the specification, to `crates/vulkan-registry/vulkan-docs.json`.
    Turning that text into rustdoc is `vulkan-codegen`'s job as well.
@@ -23,6 +25,7 @@ Pipeline:
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import subprocess
@@ -115,8 +118,55 @@ def main() -> int:
     return 0
 
 
-def load_registry(xml: Path):
-    """Khronos' Registry with a registry file loaded, and its generator.
+@functools.cache
+def khronos_scripts():
+    """Khronos' `base_generator` module and `Registry` class.
+
+    `BaseGenerator.beginFile` runs a generator of its own, `_VideoStdGenerator`, on the
+    registry of the Vulkan Video headers. For vk.xml, `BaseGenerator.endFile` calls
+    `applyExtensionDependency`, which gives every enumerant the names that are aliases
+    of it. `_VideoStdGenerator.endFile` does not call `BaseGenerator.endFile`, so its
+    enumerants have no aliases. It is replaced here by one that does that step, as
+    Khronos does it: a name is an alias of the enumerant that its chain of `alias`
+    attributes ends at. A chain that ends at no enumerant of the headers stops the
+    generation.
+
+    The replacement is for Khronos' script as it is. It stops the generation when the
+    enumerant has the alias already, because Khronos' generator then does the step
+    itself, and the generator that `load_registry` runs stops it when Khronos'
+    `beginFile` returns without this class having run."""
+    sys.path.insert(0, str(REGISTRY))
+    import base_generator  # type: ignore
+    from reg import Registry  # type: ignore
+
+    class VideoStdGenerator(base_generator._VideoStdGenerator):
+        ended = 0
+
+        def endFile(self):
+            super().endFile()
+            for name, alias in self.enumFieldAliasMap.items():
+                enumerant = self.dealias(alias, self.enumFieldAliasMap)
+                if enumerant not in self.enumFieldMap:
+                    raise RuntimeError(
+                        f"{name} of the Vulkan Video headers is an alias that ends at "
+                        f"{enumerant}, and the headers have no such enumerant"
+                    )
+                if name in self.enumFieldMap[enumerant].aliases:
+                    raise RuntimeError(
+                        f"Khronos' generator of the Vulkan Video headers has given {enumerant} "
+                        f"its alias {name} itself: the replacement of that generator in "
+                        "khronos_scripts has to go"
+                    )
+                self.enumFieldMap[enumerant].aliases.append(name)
+            VideoStdGenerator.ended += 1
+
+    base_generator._VideoStdGenerator = VideoStdGenerator
+    return base_generator, Registry
+
+
+def load_registry(xml: Path, video: Path = REGISTRY / "video.xml"):
+    """Khronos' Registry with a registry file loaded, and its generator. Generating from
+    it reads the Vulkan Video headers from `video`.
 
     Loading reduces the tree, `registry.reg`, to the `vulkan` API: it drops the elements
     of other APIs and merges the internal `VK_BASE_VERSION_*`, `VK_COMPUTE_VERSION_*` and
@@ -124,15 +174,24 @@ def load_registry(xml: Path):
     of. It also copies every enumerant that a version or an extension adds to a type into
     the `<enums>` group of that type, where the copy of one from an extension names the
     extension as `extname`."""
-    if str(REGISTRY) not in sys.path:
-        sys.path.insert(0, str(REGISTRY))
-    import base_generator  # type: ignore
-    from reg import Registry  # type: ignore
+    base_generator, Registry = khronos_scripts()
 
     scratch = ROOT / "target" / "vulkan-ir"
     scratch.mkdir(parents=True, exist_ok=True)
 
     class IrGenerator(base_generator.BaseGenerator):
+        def beginFile(self, genOpts):
+            replacement = base_generator._VideoStdGenerator
+            ended = getattr(replacement, "ended", None)
+            super().beginFile(genOpts)
+            if ended is None or replacement.ended != ended + 1:
+                raise RuntimeError(
+                    "Khronos' BaseGenerator has read the Vulkan Video headers without the "
+                    "generator that khronos_scripts puts in the place of its own, so their "
+                    "enumerants have no aliases: see how BaseGenerator.beginFile makes its "
+                    "generator of these headers now"
+                )
+
         def generate(self):
             pass
 
@@ -147,7 +206,7 @@ def load_registry(xml: Path):
         customFileName="vulkan-ir",
         customDirectory=str(scratch),
         customApiName="vulkan",
-        videoXmlPath=str(REGISTRY / "video.xml"),
+        videoXmlPath=str(video),
     )
     gen = IrGenerator()
     registry = Registry(gen, opts)
