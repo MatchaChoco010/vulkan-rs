@@ -599,6 +599,18 @@ SPEC_INCLUDES_AFTER_AN_ITEM = (
     "include::{generated}/api/",
     "include::{chapters}/commonvalidity/",
 )
+# The generated files that tables take their rows from and that are not read, each with
+# what its rows are. A table with such rows is not dumped. Every other file that a table
+# includes has to be among the files of `spec_generated_files`.
+SPEC_TABLE_ROWS_NOT_READ = {
+    "include::{generated}/formats/": (
+        "the planes, the compatibility classes and the SPIR-V names of formats, which the "
+        "bindings take from the registry"
+    ),
+    "include::{generated}/spirvcap/": (
+        "SPIR-V capabilities and extensions, which are no names of the API"
+    ),
+}
 
 
 def defined_spec_attributes(vk) -> set[str]:
@@ -615,9 +627,18 @@ def spec_generated_files(vk) -> dict[str, list[str]]:
 
     `sync/flagDefinitions/<flag>.adoc` lists the flags that a synchronization flag stands
     for (`<syncequivalent>` in vk.xml), one nested list item each, in the order of the
-    registry and without the flags that the `vulkan` API does not have. This is what
-    `scripts/syncgenerator.py` of Vulkan-Docs writes for a build with every version and
-    every extension."""
+    registry and without the flags that the `vulkan` API does not have.
+
+    `sync/supportedPipelineStages.adoc` has the rows of the table "Supported Pipeline Stage
+    Flags": each pipeline stage with the queue flags that it requires (`<syncsupport
+    queues>`), or `None required`. `sync/supportedAccessTypes.adoc` has the rows of the table
+    "Supported Access Types": each access flag, with the name that it is an alias of, and
+    the pipeline stages that support it (`<syncsupport stage>`), or `Any`. Both are in the
+    order of the registry and without the stages and access flags that the `vulkan` API
+    does not have.
+
+    This is what `scripts/syncgenerator.py` of Vulkan-Docs writes for a build with every
+    version and every extension."""
     registry = ElementTree.parse(REGISTRY / "vk.xml").getroot()
     files = {}
     for element, attribute, bitmask in (
@@ -637,6 +658,48 @@ def spec_generated_files(vk) -> dict[str, list[str]]:
             files[f"sync/flagDefinitions/{sync.get('name')}.adoc"] = [
                 f"  ** ename:{flag}" for flag in flags.split(",") if flag in defined
             ]
+
+    def supported(sync, attribute):
+        support = sync.find("syncsupport")
+        if support is None:
+            return None
+        names = support.get(attribute)
+        if names is None:
+            raise RuntimeError(
+                f"vk.xml: <syncsupport> of {sync.get('name')} has no `{attribute}` attribute"
+            )
+        return names.split(",")
+
+    stages = {flag.name for flag in vk.bitmasks["VkPipelineStageFlagBits2"].flags}
+    rows = []
+    for sync in registry.findall("sync/syncstage"):
+        if sync.get("name") in stages:
+            queues = supported(sync, "queues")
+            required = " or ".join(f"ename:{queue}" for queue in queues or [])
+            rows.append(f"|ename:{sync.get('name')} | {required or 'None required'}")
+    files["sync/supportedPipelineStages.adoc"] = rows
+
+    access_flags = {flag.name for flag in vk.bitmasks["VkAccessFlagBits2"].flags}
+    rows = []
+    for sync in registry.findall("sync/syncaccess"):
+        name, alias = sync.get("name"), sync.get("alias")
+        if name not in access_flags:
+            continue
+        if alias is None:
+            rows.append(f"|ename:{name} |")
+        else:
+            rows.extend([f"|ename:{name}, +", f" ename:{alias} |"])
+        supporting = supported(sync, "stage")
+        if supporting is None:
+            rows.append("\tAny")
+            continue
+        for index, stage in enumerate(supporting):
+            # The comma is the one of the stage in the list of the registry:
+            # syncgenerator.py leaves it where it leaves a later stage out.
+            separator = "," if index != len(supporting) - 1 else ""
+            if stage in stages:
+                rows.append(f"\tename:{stage}{separator}")
+    files["sync/supportedAccessTypes.adoc"] = rows
     return files
 
 
@@ -1198,10 +1261,16 @@ def spec_table_end(lines: list[str], index: int) -> int:
     return end
 
 
-def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, str]]) -> list[dict]:
+def spec_tables(
+    file: str, lines: list[str], page_blocks: list[tuple[int, int, str]], not_read: set[str]
+) -> list[dict]:
     """The tables (`|===` blocks) that name an enumerant, as AsciiDoc text that starts
     with the attribute, anchor and title lines above the table, and the reference page
-    block that each one is in, if any, and the source file."""
+    block that each one is in, if any, and the source file.
+
+    A table that takes rows from a file of `SPEC_TABLE_ROWS_NOT_READ` is left out, and the
+    prefix of the file is added to `not_read`. Any other include that is left in a table
+    stops the dump: its rows would be missing without a word."""
     tables = []
     index = 0
     while index < len(lines):
@@ -1212,11 +1281,35 @@ def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, s
         start = index
         while start > 0 and SPEC_BLOCK_HEADER.match(lines[start - 1]):
             start -= 1
+        includes = [line for line in lines[index + 1 : end] if line.startswith("include::")]
+        for include in includes:
+            declared = [prefix for prefix in SPEC_TABLE_ROWS_NOT_READ if include.startswith(prefix)]
+            if not declared:
+                raise RuntimeError(
+                    f"{file}: a table takes rows from a file that is not read: {include}. "
+                    "Write the file in spec_generated_files, or declare in "
+                    "SPEC_TABLE_ROWS_NOT_READ what its rows are"
+                )
+            not_read.update(declared)
+        if includes:
+            index = end + 1
+            continue
         if any("ename:" in line for line in lines[index + 1 : end]):
             page = next((name for first, last, name in page_blocks if first < index < last), None)
             tables.append({"file": file, "page": page, "text": "\n".join(lines[start : end + 1])})
         index = end + 1
     return tables
+
+
+def spec_check_table_rows_not_read(not_read: set[str]):
+    """Stops if `SPEC_TABLE_ROWS_NOT_READ` declares files that no table of the specification
+    takes rows from: `not_read` are the declared prefixes that the tables use."""
+    unused = sorted(set(SPEC_TABLE_ROWS_NOT_READ) - not_read)
+    if unused:
+        raise RuntimeError(
+            f"SPEC_TABLE_ROWS_NOT_READ declares {', '.join(unused)}, and no table of the "
+            "specification takes rows from such a file"
+        )
 
 
 def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchors: set[str]):
@@ -1228,6 +1321,7 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
     shows the name of such an anchor as the text of the link."""
     pages = {}
     tables = []
+    table_rows_not_read = set()
     items_outside_pages = []
     defined_anchors = {}
     term_anchors = {}
@@ -1255,10 +1349,11 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
                 "unnamed_items": spec_unnamed_items(lines[index + 2 : end]),
             }
         page_blocks = [(index, end, attributes["refpage"]) for index, end, attributes in blocks]
-        tables.extend(spec_tables(file, lines, page_blocks))
+        tables.extend(spec_tables(file, lines, page_blocks, table_rows_not_read))
         items_outside_pages.extend(spec_items_outside_pages(file, lines, blocks))
     if not pages:
         raise RuntimeError("third_party/vulkan-docs has no reference page blocks")
+    spec_check_table_rows_not_read(table_rows_not_read)
     all_titles = spec_anchor_titles(sources)
     referenced = {}
 

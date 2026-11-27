@@ -392,8 +392,129 @@ pub(crate) fn read(text: &str) -> Option<Table> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::proptest_config;
+    use crate::test_support::{proptest_config, run_with_the_tool};
     use proptest::prelude::*;
+
+    fn dumped_tables(source: &[&str]) -> Option<Result<Vec<String>, String>> {
+        let steps = [
+            "with tempfile.TemporaryDirectory() as directory:",
+            "    source = pathlib.Path(directory) / 'page.adoc'",
+            "    source.write_text(sys.stdin.read())",
+            "    generated = {'sync/rows.adoc': ['|ename:VK_ROW |from the registry']}",
+            "    lines = list(tool.spec_lines(source, set(), generated=generated))",
+            "not_read = set()",
+            "tables = tool.spec_tables('chapters/page.adoc', lines, [], not_read)",
+            "print('\\n'.join(['not read: ' + ' '.join(sorted(not_read)), *(table['text'] for table in tables)]))",
+        ];
+        let dumped = run_with_the_tool(&steps, &[], &source.join("\n"))?;
+        Some(dumped.map(|dumped| dumped.lines().map(str::to_string).collect()))
+    }
+
+    #[test]
+    fn the_dump_has_the_rows_that_a_table_takes_from_a_file_of_the_registry() {
+        let Some(tables) = dumped_tables(&[
+            ".Rows",
+            "|====",
+            "|Value |Use",
+            "include::{generated}/sync/rows.adoc[]",
+            "|====",
+            "",
+            ".Planes",
+            "|====",
+            "|ename:VK_FORMAT |Plane",
+            "include::{generated}/formats/planeformat.adoc[]",
+            "|====",
+            "",
+            "|====",
+            "|Capability",
+            "include::{generated}/spirvcap/captable.adoc[]",
+            "include::{generated}/formats/more.adoc[]",
+            "|====",
+        ]) else {
+            return;
+        };
+        assert_eq!(
+            tables,
+            Ok([
+                "not read: include::{generated}/formats/ include::{generated}/spirvcap/",
+                ".Rows",
+                "|====",
+                "|Value |Use",
+                "|ename:VK_ROW |from the registry",
+                "|====",
+            ]
+            .map(str::to_string)
+            .to_vec()),
+            "a table with rows that are declared as not read is left out"
+        );
+    }
+
+    #[test]
+    fn the_dump_stops_at_a_table_that_takes_rows_from_a_file_that_is_not_read_or_declared() {
+        for include in [
+            "include::{generated}/sync/other.adoc[]",
+            "include::{generated}/format/planeformat.adoc[]",
+            "include::{chapters}/rows.adoc[]",
+        ] {
+            let source = ["|====", "|ename:VK_VALUE |Use", include, "|===="];
+            let Some(tables) = dumped_tables(&source) else {
+                return;
+            };
+            let error = tables.expect_err(include);
+            assert!(
+                error.contains(&format!(
+                    "chapters/page.adoc: a table takes rows from a file that is not read: {include}."
+                )),
+                "{error}"
+            );
+        }
+        let Some(tables) = dumped_tables(&[
+            "include::{generated}/sync/other.adoc[]",
+            "",
+            "|====",
+            "|ename:VK_VALUE |Use",
+            "|====",
+        ]) else {
+            return;
+        };
+        assert_eq!(
+            tables.map(|tables| tables.len()),
+            Ok(4),
+            "an include outside the table does not concern it"
+        );
+    }
+
+    #[test]
+    fn the_dump_stops_when_no_table_takes_the_rows_that_are_declared_as_not_read() {
+        let check = |used: &str| {
+            let steps = ["tool.spec_check_table_rows_not_read(set(sys.stdin.read().split()))"];
+            run_with_the_tool(&steps, &[], used)
+        };
+        let all = "include::{generated}/formats/ include::{generated}/spirvcap/";
+        let Some(checked) = check(all) else {
+            return;
+        };
+        assert_eq!(checked.as_deref(), Ok(""));
+        for (used, unused) in [
+            (
+                "include::{generated}/formats/",
+                "include::{generated}/spirvcap/",
+            ),
+            (
+                "",
+                "include::{generated}/formats/, include::{generated}/spirvcap/",
+            ),
+        ] {
+            let error = check(used).expect("the tool runs").expect_err(used);
+            assert!(
+                error.contains(&format!(
+                    "SPEC_TABLE_ROWS_NOT_READ declares {unused}, and no table of the \
+                     specification takes rows from such a file"
+                )),
+                "{error}"
+            );
+        }
+    }
 
     fn lines(lines: &[&str]) -> Cell {
         Cell::Lines(lines.iter().map(|line| line.to_string()).collect())

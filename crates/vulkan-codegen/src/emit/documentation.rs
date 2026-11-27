@@ -700,6 +700,111 @@ fn a_description_under_an_alias_name_comes_after_everything_under_the_name_of_th
 }
 
 #[test]
+fn a_table_outside_the_pages_comes_after_a_list_item_outside_the_page_of_the_value() {
+    let ir = ir();
+    let mut docs = docs();
+    docs.tables.push(DocTable {
+        file: "chapters/queues.adoc".to_string(),
+        page: None,
+        text: [
+            ".Uses",
+            "[options=\"header\"]",
+            "|====",
+            "|elink:VkColor |Use",
+            "|ename:VK_COLOR_GREEN |grass",
+            "|ename:VK_COLOR_BLUE |sky",
+            "|====",
+        ]
+        .join("\n"),
+    });
+    let table_row = "`VK_COLOR_BLUE` in the table “Uses” of the specification:";
+    assert_eq!(
+        doc_of(
+            &enums::emit(&Model::with_docs(&ir, &docs)),
+            "pub const BLUE:"
+        )[0],
+        table_row
+    );
+    docs.items_outside_pages = ["VK_COLOR_BLUE", "VK_COLOR_GREEN"]
+        .map(|name| DocItemOutsidePages {
+            file: "chapters/queues.adoc".to_string(),
+            name: name.to_string(),
+            text: format!("ename:{name} specifies a color of the running text."),
+        })
+        .to_vec();
+    let values = enums::emit(&Model::with_docs(&ir, &docs));
+    assert_eq!(
+        doc_of(&values, "pub const BLUE:")[0],
+        "`VK_COLOR_BLUE` specifies a color of the running text.",
+        "a list item describes the value, a row of a table outside its page says one thing about it"
+    );
+    assert_eq!(
+        doc_of(&values, "pub const GREEN:")[0],
+        "`VK_COLOR_GREEN` in the table “Wavelengths” of the specification:",
+        "a table of the page of the type comes before both"
+    );
+}
+
+const ROWS_FROM_THE_REGISTRY: [(&str, &[&str]); 2] = [
+    (
+        "Supported Pipeline Stage Flags",
+        &["VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM"],
+    ),
+    ("Supported Access Types", &[]),
+];
+
+#[test]
+fn exactly_these_values_of_the_specification_take_a_row_of_the_tables_that_the_registry_fills() {
+    let (ir, docs) = (Registry::get(), Docs::get());
+    let model = Model::with_docs(ir, docs);
+    for (title, rows) in [
+        ("Supported Pipeline Stage Flags", 46),
+        ("Supported Access Types", 51),
+    ] {
+        let read = model
+            .tables
+            .iter()
+            .filter(|(_, table)| table.title.as_deref() == Some(title))
+            .map(|(_, table)| table.rows.len())
+            .collect::<Vec<_>>();
+        assert_eq!(read, [rows], "the rows read of the table “{title}”");
+    }
+    let emitted = [enums::emit(&model), bitmasks::emit(&model)].concat();
+    for (title, values) in ROWS_FROM_THE_REGISTRY {
+        let lead = format!("in the table “{title}” of the specification:");
+        let mut documented = std::collections::BTreeSet::new();
+        let mut doc = String::new();
+        for line in emitted.lines().map(str::trim) {
+            if let Some(text) = line.strip_prefix("///") {
+                doc.push_str(text);
+            } else if let Some(value) = line
+                .strip_prefix("#[doc(alias = \"")
+                .or_else(|| line.strip_prefix("alias = \""))
+            {
+                if doc
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .contains(&lead)
+                {
+                    documented.extend(value.split('"').next().map(str::to_string));
+                }
+                doc.clear();
+            } else if line != "#[doc(" {
+                doc.clear();
+            }
+        }
+        assert_eq!(
+            documented.iter().map(String::as_str).collect::<Vec<_>>(),
+            values,
+            "exactly these values are documented with their row of the table “{title}”, whose \
+             rows the registry gives: a row is taken for a value that neither its page nor a \
+             list item elsewhere describes"
+        );
+    }
+}
+
+#[test]
 fn flags_take_the_descriptions_of_their_bits() {
     let (ir, docs) = (ir(), docs());
     let out = bitmasks::emit(&Model::with_docs(&ir, &docs));

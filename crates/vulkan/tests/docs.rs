@@ -642,16 +642,23 @@ struct Sources {
     root: PathBuf,
     defined: BTreeSet<String>,
     equivalent_flags: BTreeMap<String, Vec<String>>,
+    sync_table_rows: BTreeMap<String, Vec<String>>,
     value_aliases: BTreeMap<String, BTreeSet<String>>,
     values_of_structures_and_handles: BTreeSet<String>,
     conditional: Regex,
     end_conditional: Regex,
     tagged_include: Regex,
     equivalent_flags_include: Regex,
+    sync_table_rows_include: Regex,
     tag_marker: Regex,
     attribute_entry: Regex,
     attribute_reference: Regex,
 }
+
+const TABLE_ROWS_NOT_READ: [&str; 2] = [
+    "include::{generated}/formats/",
+    "include::{generated}/spirvcap/",
+];
 
 const COMMENT: &str = "//";
 const ATTRIBUTE_ENTRY: &str = "//:";
@@ -662,7 +669,7 @@ fn xml_attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     Some(&tag[start..start + end])
 }
 
-fn equivalent_flags(registry: &str) -> BTreeMap<String, Vec<String>> {
+fn sync_flags_in_the_api(registry: &str) -> BTreeSet<&str> {
     const BITMASKS: [&str; 2] = ["VkPipelineStageFlagBits2", "VkAccessFlagBits2"];
     let enum_tag = regex(r"<enum\s[^>]*>");
     let mut in_the_api = BTreeSet::new();
@@ -692,6 +699,74 @@ fn equivalent_flags(registry: &str) -> BTreeMap<String, Vec<String>> {
             }
         }
     }
+    in_the_api
+}
+
+fn sync_table_rows(registry: &str) -> BTreeMap<String, Vec<String>> {
+    let in_the_api = sync_flags_in_the_api(registry);
+    let element = regex(r"(?s)<sync(stage|access)(\s[^>]*?)(?:/>|>(.*?)</sync(?:stage|access)>)");
+    let support_tag = regex(r"<syncsupport\s[^>]*>");
+    let mut stages = Vec::new();
+    let mut access_flags = Vec::new();
+    for sync in element.captures_iter(registry) {
+        let name = xml_attribute(&sync[2], "name").expect("the name of a sync element");
+        if !in_the_api.contains(name) {
+            continue;
+        }
+        let support = sync
+            .get(3)
+            .and_then(|body| support_tag.find(body.as_str()))
+            .map(|tag| tag.as_str());
+        let supported = |attribute: &str| {
+            support.map(|tag| {
+                xml_attribute(tag, attribute)
+                    .unwrap_or_else(|| panic!("<syncsupport> of {name} has no `{attribute}`"))
+                    .split(',')
+                    .collect::<Vec<_>>()
+            })
+        };
+        if &sync[1] == "stage" {
+            let queues = match supported("queues") {
+                Some(queues) => queues
+                    .iter()
+                    .map(|queue| format!("ename:{queue}"))
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+                None => "None required".to_string(),
+            };
+            stages.push(format!("|ename:{name} | {queues}"));
+            continue;
+        }
+        match xml_attribute(&sync[2], "alias") {
+            Some(alias) => {
+                access_flags.push(format!("|ename:{name}, +"));
+                access_flags.push(format!(" ename:{alias} |"));
+            }
+            None => access_flags.push(format!("|ename:{name} |")),
+        }
+        let Some(supporting) = supported("stage") else {
+            access_flags.push("\tAny".to_string());
+            continue;
+        };
+        for (index, stage) in supporting.iter().enumerate() {
+            let comma = if index + 1 < supporting.len() {
+                ","
+            } else {
+                ""
+            };
+            if in_the_api.contains(stage) {
+                access_flags.push(format!("\tename:{stage}{comma}"));
+            }
+        }
+    }
+    BTreeMap::from([
+        ("supportedPipelineStages".to_string(), stages),
+        ("supportedAccessTypes".to_string(), access_flags),
+    ])
+}
+
+fn equivalent_flags(registry: &str) -> BTreeMap<String, Vec<String>> {
+    let in_the_api = sync_flags_in_the_api(registry);
     let equivalent = regex(r#"<syncequivalent\s+(?:stage|access)="([^"]*)""#);
     let synchronized = regex(
         r#"(?s)<sync(?:stage|access)\s+name="(\w+)"(?:[^>]*[^/>])?>(.*?)</sync(?:stage|access)>"#,
@@ -766,6 +841,7 @@ impl Sources {
             root: root.to_path_buf(),
             defined,
             equivalent_flags: equivalent_flags(&registry),
+            sync_table_rows: sync_table_rows(&registry),
             value_aliases: value_aliases(&registry),
             values_of_structures_and_handles: values_of_structures_and_handles(&registry),
             conditional: regex(r"^(ifdef|ifndef)::([^\[]*)\[(.*)\]\s*$"),
@@ -773,6 +849,9 @@ impl Sources {
             tagged_include: regex(r"^include::\{chapters\}/([^\[]+)\[tags?=([^\],;]+)\]\s*$"),
             equivalent_flags_include: regex(
                 r"^include::\{generated\}/sync/flagDefinitions/(\w+)\.adoc\[\]\s*$",
+            ),
+            sync_table_rows_include: regex(
+                r"^include::\{generated\}/sync/(supportedPipelineStages|supportedAccessTypes)\.adoc\[\]\s*$",
             ),
             tag_marker: regex(r"^// (tag|end)::([^\[]+)\[\]\s*$"),
             attribute_entry: regex(r"^:([\w-]+)(!?):\s*(.*)$"),
@@ -858,6 +937,10 @@ impl Sources {
                     )
                 });
                 out.extend(flags.iter().map(|flag| format!("  ** ename:{flag}")));
+                continue;
+            }
+            if let Some(include) = self.sync_table_rows_include.captures(line) {
+                out.extend(self.sync_table_rows[&include[1]].iter().cloned());
                 continue;
             }
             if let Some(entry) = self.attribute_entry.captures(line) {
@@ -1036,12 +1119,23 @@ impl Specification {
                     .iter()
                     .find(|(first, last, _)| *first < index && index < *last)
                     .map(|(_, _, name)| name.clone());
-                if let Some(table) = table_syntax.read(
-                    &relative,
-                    page,
-                    &lines[start..index],
-                    &lines[index + 1..close],
-                ) {
+                let content = &lines[index + 1..close];
+                let includes = content
+                    .iter()
+                    .filter(|line| line.starts_with("include::"))
+                    .collect::<Vec<_>>();
+                for include in &includes {
+                    assert!(
+                        TABLE_ROWS_NOT_READ
+                            .iter()
+                            .any(|not_read| include.starts_with(not_read)),
+                        "{relative}: a table takes rows from {include}, which the test neither reads nor knows as rows that describe no value"
+                    );
+                }
+                if includes.is_empty()
+                    && let Some(table) =
+                        table_syntax.read(&relative, page, &lines[start..index], content)
+                {
                     tables.push(table);
                 }
                 index = close + 1;
@@ -1516,8 +1610,17 @@ impl Specification {
         values: &BTreeSet<String>,
         value: &str,
     ) -> Vec<(&Table, &[Cell])> {
+        self.table_rows_and_their_place(page, values, value).1
+    }
+
+    fn table_rows_and_their_place(
+        &self,
+        page: Option<&str>,
+        values: &BTreeSet<String>,
+        value: &str,
+    ) -> (bool, Vec<(&Table, &[Cell])>) {
         let Some(page) = page.and_then(|page| self.pages.get(page)) else {
-            return Vec::new();
+            return (true, Vec::new());
         };
         let names = |row: &[Cell], value: &str| row[0].text.strip_prefix("ename:") == Some(value);
         let about_the_type = |table: &Table| {
@@ -1541,14 +1644,15 @@ impl Specification {
                 .collect::<Vec<_>>()
         };
         let mut rows = rows_in(false);
-        if rows.is_empty() {
+        let on_the_page = !rows.is_empty();
+        if !on_the_page {
             rows = rows_in(true);
         }
         rows.retain(|(_, row)| {
             row[1..].iter().any(|cell| !cell.text.is_empty())
                 && row.iter().all(|cell| self.cell_is_readable(cell))
         });
-        rows
+        (on_the_page, rows)
     }
 
     fn describes(&self, page: &str, macro_name: &str, item: &str) -> bool {
@@ -2438,6 +2542,7 @@ struct Checker {
     untitled_anchors: Vec<String>,
     described_without_their_name_first: Vec<String>,
     described_under_an_alias: Vec<String>,
+    rows_taken: Vec<String>,
 }
 
 struct Generated {
@@ -2992,14 +3097,21 @@ impl Checker {
             || rest.starts_with(" in a table of the specification:")
         {
             self.tabulated(spec, generated, owner, item, c_name, raw);
+            let (on_the_page, _) = spec.table_rows_and_their_place(owner_page, values, c_name);
+            let elsewhere = spec.described_outside_the_page(owner_page.unwrap_or_default(), c_name);
+            if let (false, [description]) = (on_the_page, elsewhere) {
+                self.fail(item, format!("the specification describes `{c_name}` in a list item of {}, which comes before the row of a table outside the page of its type", description.place()));
+            }
             return;
         }
         let elsewhere = spec.described_outside_the_page(owner_page.unwrap_or_default(), c_name);
         match (owner_page, elsewhere) {
             (None, _) => self.fail(item, "is described although its type has no reference page"),
             (Some(page), [description]) => {
-                if !spec.table_rows(Some(page), values, c_name).is_empty() {
-                    self.fail(item, format!("the specification describes `{c_name}` in a table row, which comes before the list item of {}", description.place()));
+                let (on_the_page, rows) =
+                    spec.table_rows_and_their_place(Some(page), values, c_name);
+                if on_the_page && !rows.is_empty() {
+                    self.fail(item, format!("the specification describes `{c_name}` in a table row of the page `{page}`, which comes before the list item of {}", description.place()));
                 }
                 self.described_outside_their_page
                     .push(format!("{c_name}: {}", description.place()));
@@ -3096,6 +3208,10 @@ impl Checker {
                 };
                 same_title && Self::row_is_rendered(spec, generated, table, row, pair[1])
             });
+            if let Some(title) = captures.get(2) {
+                self.rows_taken
+                    .push(format!("{c_name}: {}", title.as_str()));
+            }
             if !found {
                 self.fail(
                     item,
@@ -3271,6 +3387,12 @@ const DESCRIBED_BY_AN_ITEM_THAT_STARTS_WITH_NO_NAME: &[&str] = &[
     "VkPipelineCreateFlagBits::VK_PIPELINE_CREATE_EARLY_RETURN_ON_FAILURE_BIT",
     "VkPipelineCreateFlagBits2::VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT",
 ];
+
+const TABLES_WITH_ROWS_FROM_THE_REGISTRY: [&str; 2] =
+    ["Supported Pipeline Stage Flags", "Supported Access Types"];
+
+const ROWS_FROM_THE_REGISTRY: &[&str] =
+    &["VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM: Supported Pipeline Stage Flags"];
 
 const DESCRIBED_UNDER_AN_ALIAS: &[&str] = &[
     "VkImageCreateFlagBits::VK_IMAGE_CREATE_DESCRIPTOR_HEAP_CAPTURE_REPLAY_BIT_EXT under VK_IMAGE_CREATE_DESCRIPTOR_BUFFER_CAPTURE_REPLAY_BIT_EXT",
@@ -3556,6 +3678,34 @@ fn generated_documentation_matches_the_specification() {
             .copied()
             .collect::<BTreeSet<_>>(),
         "exactly these values are documented with the list item that their page has under a name that the registry gives them as an alias"
+    );
+    for title in TABLES_WITH_ROWS_FROM_THE_REGISTRY {
+        let rows = spec
+            .tables
+            .iter()
+            .filter(|table| table.title.as_deref() == Some(title))
+            .map(|table| table.rows.len())
+            .collect::<Vec<_>>();
+        assert!(
+            matches!(rows[..], [rows] if rows >= 40),
+            "the table “{title}” is read {} times, with {rows:?} rows",
+            rows.len()
+        );
+    }
+    assert_eq!(
+        checker
+            .rows_taken
+            .iter()
+            .map(String::as_str)
+            .filter(|row| TABLES_WITH_ROWS_FROM_THE_REGISTRY
+                .iter()
+                .any(|title| row.ends_with(&format!(": {title}"))))
+            .collect::<BTreeSet<_>>(),
+        ROWS_FROM_THE_REGISTRY
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        "exactly these values are documented with their row of a table whose rows the registry gives"
     );
     for (what, count, at_least) in [
         (
@@ -4723,6 +4873,113 @@ fn an_include_of_the_flags_that_a_flag_is_equivalent_to_reads_as_the_registry_li
 }
 
 #[test]
+fn the_rows_of_the_tables_of_stages_and_access_flags_read_as_the_registry_lists_them() {
+    let registry = r#"
+        <enums name="VkAccessFlagBits2" type="bitmask" bitwidth="64">
+            <enum bitpos="0" name="VK_ACCESS_2_A_BIT"/>
+            <enum bitpos="1" name="VK_ACCESS_2_B_BIT"/>
+        </enums>
+        <enums name="VkPipelineStageFlagBits2" type="bitmask" bitwidth="64">
+            <enum value="0" name="VK_PIPELINE_STAGE_2_NONE"/>
+            <enum bitpos="0" name="VK_PIPELINE_STAGE_2_A_BIT"/>
+        </enums>
+        <extension name="VK_KHR_c" number="3" supported="vulkan,vulkansc">
+            <require>
+                <enum bitpos="2" extends="VkAccessFlagBits2" name="VK_ACCESS_2_C_BIT_KHR"/>
+                <enum bitpos="1" extends="VkPipelineStageFlagBits2" name="VK_PIPELINE_STAGE_2_C_BIT_KHR"/>
+            </require>
+        </extension>
+        <extension name="VK_KHR_d" number="4" supported="vulkansc">
+            <require>
+                <enum bitpos="3" extends="VkAccessFlagBits2" name="VK_ACCESS_2_D_BIT_KHR"/>
+                <enum bitpos="3" extends="VkPipelineStageFlagBits2" name="VK_PIPELINE_STAGE_2_D_BIT_KHR"/>
+            </require>
+        </extension>
+        <sync>
+            <syncstage name="VK_PIPELINE_STAGE_2_NONE"/>
+            <syncstage name="VK_PIPELINE_STAGE_2_A_BIT" alias="VK_PIPELINE_STAGE_A_BIT">
+            </syncstage>
+            <syncstage name="VK_PIPELINE_STAGE_2_D_BIT_KHR">
+                <syncsupport queues="VK_QUEUE_X_BIT"/>
+            </syncstage>
+            <syncstage name="VK_PIPELINE_STAGE_2_C_BIT_KHR">
+                <syncsupport queues="VK_QUEUE_X_BIT,VK_QUEUE_Y_BIT" />
+                <syncequivalent stage="VK_PIPELINE_STAGE_2_A_BIT"/>
+            </syncstage>
+            <syncaccess name="VK_ACCESS_2_A_BIT" alias="VK_ACCESS_A_BIT">
+            </syncaccess>
+            <syncaccess name="VK_ACCESS_2_D_BIT_KHR">
+                <syncsupport stage="VK_PIPELINE_STAGE_2_A_BIT"/>
+            </syncaccess>
+            <syncaccess name="VK_ACCESS_2_B_BIT">
+                <syncsupport stage="VK_PIPELINE_STAGE_2_C_BIT_KHR,VK_PIPELINE_STAGE_2_D_BIT_KHR,VK_PIPELINE_STAGE_2_A_BIT"/>
+            </syncaccess>
+            <syncaccess name="VK_ACCESS_2_C_BIT_KHR" alias="VK_ACCESS_C_BIT_KHR">
+                <syncsupport stage="VK_PIPELINE_STAGE_2_A_BIT,VK_PIPELINE_STAGE_2_D_BIT_KHR"/>
+            </syncaccess>
+        </sync>
+    "#;
+    let rows = sync_table_rows(registry);
+    assert_eq!(
+        rows["supportedPipelineStages"],
+        [
+            "|ename:VK_PIPELINE_STAGE_2_NONE | None required",
+            "|ename:VK_PIPELINE_STAGE_2_A_BIT | None required",
+            "|ename:VK_PIPELINE_STAGE_2_C_BIT_KHR | ename:VK_QUEUE_X_BIT or ename:VK_QUEUE_Y_BIT",
+        ]
+    );
+    assert_eq!(
+        rows["supportedAccessTypes"],
+        [
+            "|ename:VK_ACCESS_2_A_BIT, +",
+            " ename:VK_ACCESS_A_BIT |",
+            "\tAny",
+            "|ename:VK_ACCESS_2_B_BIT |",
+            "\tename:VK_PIPELINE_STAGE_2_C_BIT_KHR,",
+            "\tename:VK_PIPELINE_STAGE_2_A_BIT",
+            "|ename:VK_ACCESS_2_C_BIT_KHR, +",
+            " ename:VK_ACCESS_C_BIT_KHR |",
+            "\tename:VK_PIPELINE_STAGE_2_A_BIT,",
+        ],
+        "the comma of a stage stays where the stage after it is not in the API, as in the files of the specification"
+    );
+    assert_eq!(rows.len(), 2);
+}
+
+#[test]
+fn checker_reports_a_row_of_a_table_outside_the_page_taken_before_a_list_item_elsewhere() {
+    let mut specification = fixture_specification();
+    let item = fixture_segment(
+        None,
+        "  * ename:VK_COLOR_TEAL specifies teal where things are drawn.",
+    );
+    specification
+        .value_descriptions
+        .extend(specification.value_descriptions_in(&[item]));
+    let failures = |source: &str| {
+        let source = source.replace("PAGES/", REFERENCE_PAGES);
+        let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
+        let mut checker = Checker::default();
+        check_files(&specification, &Generated::new(), &mut checker, &[file]);
+        checker.failures
+    };
+    assert_eq!(
+        failures(FIXTURE_SOURCE),
+        [
+            "Color::TEAL: the specification describes `VK_COLOR_TEAL` in a list item of chapters/things.adoc outside the reference pages, which comes before the row of a table outside the page of its type"
+        ]
+    );
+    let row = "/// `VK_COLOR_TEAL` in the table “Teal Shades” of the specification:\n    ///\n    /// - Use: sea\n";
+    assert_eq!(FIXTURE_SOURCE.matches(row).count(), 1);
+    let described = FIXTURE_SOURCE.replacen(
+        row,
+        "/// `VK_COLOR_TEAL` specifies teal where things are drawn.\n",
+        1,
+    );
+    assert_eq!(failures(&described), Vec::<String>::new());
+}
+
+#[test]
 fn the_list_items_of_the_specification_are_read_to_their_end() {
     let specification = fixture_specification();
     let item = |page: &str, macro_name: &str, name: &str| {
@@ -5390,7 +5647,7 @@ fn checker_reports_a_list_item_outside_the_page_taken_before_a_table_row() {
         "a value with a table row documented by an item of the running text",
         "/// `VK_COLOR_BLUE` in the table “Color Wavelengths” of the specification:\n    ///\n    /// - Wavelength:\n    ///   - short\n    ///   - or very short\n",
         "/// `VK_COLOR_BLUE` specifies blue where things are drawn.\n",
-        "Color::BLUE: the specification describes `VK_COLOR_BLUE` in a table row, which comes before the list item of chapters/things.adoc outside the reference pages",
+        "Color::BLUE: the specification describes `VK_COLOR_BLUE` in a table row of the page `VkColor`, which comes before the list item of chapters/things.adoc outside the reference pages",
     );
 }
 
