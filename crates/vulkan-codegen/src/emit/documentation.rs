@@ -21,6 +21,7 @@ fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
                 text: text.to_string(),
             })
             .collect(),
+        unnamed_items: Vec::new(),
     }
 }
 
@@ -608,6 +609,93 @@ fn a_list_item_outside_the_pages_describes_only_a_value_that_nothing_else_descri
     assert_eq!(
         parameters[3], "- `pQueue` is a pointer to a [`VkQueue`](Queue) object.",
         "a parameter takes no list item from outside the pages"
+    );
+}
+
+#[test]
+fn a_description_under_an_alias_name_comes_after_everything_under_the_name_of_the_value() {
+    let mut ir = ir();
+    let structure_types = ir
+        .enums
+        .iter_mut()
+        .find(|e| e.name == "VkStructureType")
+        .expect("the structure types");
+    for field in &mut structure_types.fields {
+        field.aliases = vec![format!("{}_KHR", field.name)];
+    }
+    let object_types = ir
+        .enums
+        .iter_mut()
+        .find(|e| e.name == "VkObjectType")
+        .expect("the object types");
+    for field in &mut object_types.fields {
+        field.aliases = vec![format!("{}_KHR", field.name)];
+    }
+    let mut docs = docs();
+    for page in &mut docs.pages {
+        page.items.retain(|item| item.name != "VK_COLOR_RED");
+    }
+    docs.pages.push(page(
+        "VkStructureType",
+        "Structure types",
+        &[(
+            "VK_STRUCTURE_TYPE_QUEUE_INFO_KHR",
+            "ename:VK_STRUCTURE_TYPE_QUEUE_INFO_KHR specifies a structure.",
+        )],
+    ));
+    docs.pages.push(page(
+        "VkObjectType",
+        "Object types",
+        &[(
+            "VK_OBJECT_TYPE_QUEUE_KHR",
+            "ename:VK_OBJECT_TYPE_QUEUE_KHR specifies a handle.",
+        )],
+    ));
+    let colors = docs
+        .pages
+        .iter_mut()
+        .find(|page| page.name == "VkColor")
+        .expect("the page of the colors");
+    colors.items.push(DocItem {
+        name: "VK_COLOR_CRIMSON".to_string(),
+        text: "ename:VK_COLOR_CRIMSON specifies crimson.".to_string(),
+    });
+    let red = |docs: &Docs| doc_of(&enums::emit(&Model::with_docs(&ir, docs)), "pub const RED:");
+    assert_eq!(
+        red(&docs)[0],
+        "`VK_COLOR_RED` in the table “Wavelengths” of the specification:",
+        "a table row under the name of the value comes first"
+    );
+    assert_eq!(
+        doc_of(
+            &enums::emit(&Model::with_docs(&ir, &docs)),
+            "pub const QUEUE_INFO:"
+        )[0],
+        "`VK_STRUCTURE_TYPE_QUEUE_INFO`, the structure type of [`VkDeviceInfo`](DeviceInfo).",
+        "the structure of the registry comes first"
+    );
+    assert_eq!(
+        doc_of(
+            &enums::emit(&Model::with_docs(&ir, &docs)),
+            "pub const QUEUE: Self = Self(4)"
+        )[0],
+        "`VK_OBJECT_TYPE_QUEUE`, the object type of [`VkDevice`](Device).",
+        "the handle of the registry comes first"
+    );
+    docs.tables.clear();
+    assert_eq!(
+        red(&docs)[0],
+        "`VK_COLOR_RED`, which the specification describes under the name `VK_COLOR_CRIMSON`: [`VK_COLOR_CRIMSON`](Color::CRIMSON) specifies crimson."
+    );
+    docs.items_outside_pages = vec![DocItemOutsidePages {
+        file: "chapters/queues.adoc".to_string(),
+        name: "VK_COLOR_RED".to_string(),
+        text: "ename:VK_COLOR_RED specifies red in the running text.".to_string(),
+    }];
+    assert_eq!(
+        red(&docs)[0],
+        "`VK_COLOR_RED` specifies red in the running text.",
+        "a list item under the name of the value comes first, wherever it is"
     );
 }
 

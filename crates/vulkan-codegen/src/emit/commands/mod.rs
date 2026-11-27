@@ -1497,6 +1497,7 @@ mod tests {
             aliases: Vec::new(),
             file: String::new(),
             items,
+            unnamed_items: Vec::new(),
         };
         let docs = Docs {
             pages: vec![

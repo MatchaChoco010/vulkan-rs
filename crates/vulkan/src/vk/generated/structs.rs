@@ -71610,7 +71610,12 @@ pub struct PhysicalDeviceFragmentShaderBarycentricPropertiesKHR<'a> {
     pub s_type: StructureType,
     /// The C member `void* pNext`.
     pub p_next: *mut c_void,
-    /// The C member `VkBool32 triStripVertexOrderIndependentOfProvokingVertex`.
+    /// When the provoking vertex mode is
+    /// [`VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT`](ProvokingVertexModeEXT::LAST_VERTEX), and the
+    /// primitive order is odd in a triangle strip, the ordering of vertices is defined in last
+    /// vertex table. `triStripVertexOrderIndependentOfProvokingVertex` equal to [`VK_TRUE`](TRUE)
+    /// indicates that the implementation ignores this and uses the vertex order defined by
+    /// [`VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT`](ProvokingVertexModeEXT::FIRST_VERTEX) instead.
     pub tri_strip_vertex_order_independent_of_provoking_vertex: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,
@@ -78760,7 +78765,8 @@ pub struct PhysicalDeviceMaintenance9PropertiesKHR<'a> {
     pub s_type: StructureType,
     /// `pNext` is `NULL` or a pointer to a structure extending this structure.
     pub p_next: *mut c_void,
-    /// The C member `VkBool32 image2DViewOf3DSparse`.
+    /// If the `image2DViewOf3D` feature is enabled, `image2DViewOf3DSparse` indicates whether the
+    /// implementation supports binding a slice of a sparse 3D image to a 2D image view.
     pub image2_d_view_of3_d_sparse: Bool32,
     /// `defaultVertexAttributeValue` is a
     /// [`VkDefaultVertexAttributeValueKHR`](DefaultVertexAttributeValueKHR) that indicates what
@@ -97031,7 +97037,10 @@ pub struct PhysicalDeviceVulkan12Features<'a> {
     /// built-in decoration must not be used on outputs in mesh, vertex or tessellation evaluation
     /// shaders.
     pub shader_output_layer: Bool32,
-    /// The C member `VkBool32 subgroupBroadcastDynamicId`.
+    /// If `subgroupBroadcastDynamicId` is [`VK_TRUE`](TRUE), the “Id” operand of
+    /// `OpGroupNonUniformBroadcast` can be dynamically uniform within a subgroup, and the “Index”
+    /// operand of `OpGroupNonUniformQuadBroadcast` can be dynamically uniform within the derivative
+    /// group. If it is [`VK_FALSE`](FALSE), these operands must be constants.
     pub subgroup_broadcast_dynamic_id: Bool32,
     /// Ties the value to the lifetime `'a` of the data that its pointers borrow.
     pub _marker: PhantomData<&'a ()>,

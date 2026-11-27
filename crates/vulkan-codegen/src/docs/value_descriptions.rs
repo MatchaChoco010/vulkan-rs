@@ -32,6 +32,17 @@ impl<'a> Place<'a> {
             Self::OutsidePages(_) => vec![(name, text)],
         }
     }
+
+    pub(super) fn unnamed_items(self) -> Vec<(&'a str, Option<&'a str>)> {
+        match self {
+            Self::Page(page) => page
+                .unnamed_items
+                .iter()
+                .map(|item| (item.text.as_str(), item.problem.as_deref()))
+                .collect(),
+            Self::OutsidePages(_) => Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -74,7 +85,6 @@ pub(crate) fn value_descriptions(docs: &Docs) -> ValueDescriptions<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::docs::other_names;
     use crate::model::{Cfg, Model};
     use crate::test_support::{deterministic_values, proptest_config};
     use proptest::prelude::*;
@@ -299,23 +309,26 @@ mod tests {
         let bitmasks = ir.bitmasks.iter().map(|b| (&b.name, &b.fields));
         let mut taken = Vec::new();
         for (owner, fields) in enums.chain(bitmasks) {
-            let Some(page) = model.page(owner) else {
+            if model.page(owner).is_none() {
                 continue;
-            };
+            }
             for field in fields {
-                let on_the_page = other_names::described(page, &field.name).is_some()
-                    || model
-                        .tabulated(&Cfg::default(), owner, &field.name)
-                        .is_some();
-                let elsewhere = model.value_descriptions.get(field.name.as_str());
-                let (false, Some(descriptions)) = (on_the_page, elsewhere) else {
+                let value = field.name.as_str();
+                let is_the_type_of_a_structure = owner == "VkStructureType"
+                    && ir
+                        .structs
+                        .iter()
+                        .any(|s| s.s_type.as_deref() == Some(value));
+                let is_the_type_of_a_handle =
+                    owner == "VkObjectType" && ir.handles.iter().any(|h| h.object_type == value);
+                let described_before = model.described(&Cfg::default(), owner, value).is_some()
+                    || is_the_type_of_a_structure
+                    || is_the_type_of_a_handle
+                    || model.tabulated(&Cfg::default(), owner, value).is_some();
+                let elsewhere = model.value_descriptions.get(value);
+                let (false, Some(descriptions)) = (described_before, elsewhere) else {
                     continue;
                 };
-                assert!(
-                    !["VkStructureType", "VkObjectType"].contains(&owner.as_str()),
-                    "{} names a structure or a handle, which comes first",
-                    field.name
-                );
                 let places = descriptions
                     .iter()
                     .map(|description| description.place.to_string())
@@ -356,9 +369,11 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             taken, pinned,
-            "exactly these values have no list item on the reference page of their type and one \
-             list item elsewhere that describes them. A value that joins them takes the text of \
-             that item, so read the item before listing the value here"
+            "exactly these values are described by nothing that comes first (a list item or a \
+             table row of the reference page of their type, or the structure or the handle that \
+             the registry has for a structure type or an object type) and by one list item \
+             elsewhere. A value that joins them takes the text of that item, so read the item \
+             before listing the value here"
         );
     }
 }

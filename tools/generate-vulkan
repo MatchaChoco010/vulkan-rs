@@ -553,6 +553,8 @@ SPEC_REFPAGE = re.compile(r"^\[open,(refpage=.*)\]\s*$")
 SPEC_REFPAGE_ATTRIBUTE = re.compile(r"(\w+)='((?:[^'\\]|\\.)*)'")
 SPEC_LIST_ITEM = re.compile(r"^\s*(\*+)\s+(\S.*)$")
 SPEC_ANCHOR = re.compile(r"\[\[[^\]]*\]\]\s*")
+SPEC_ANCHOR_NAME = re.compile(r"\[\[\s*([^\],\s]+)")
+SPEC_LEADING_ANCHORS = re.compile(r"^(?:\[\[[^\]]*\]\]\s*)+")
 SPEC_DESCRIBED_NAME = re.compile(r"^(?:pname|ename):(\w+)\b")
 SPEC_DESCRIBED_VALUE = re.compile(r"^ename:(\w+)\b")
 SPEC_ATTRIBUTE_ENTRY = re.compile(r"^:([\w-]+)(!?):\s*(.*)$")
@@ -902,22 +904,24 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
     return lines, index, problem
 
 
-def spec_described_items(
-    body: list[str], where: str, described_name: re.Pattern = SPEC_DESCRIBED_NAME
-) -> list[dict[str, str]]:
-    """The first-level list items of `body` (the lines of a reference page block, or lines
-    outside the blocks) that start with a name that `described_name` matches, `pname:x` or
-    `ename:x`, in the order of the lines, each with everything that belongs to it: nested
-    items and the blocks that list continuations attach stay part of the item's text.
-    `where` names the lines in an error.
+def spec_leading_anchors(line: str) -> list[str]:
+    """The names of the anchors that `line` starts with."""
+    leading = SPEC_LEADING_ANCHORS.match(line)
+    return SPEC_ANCHOR_NAME.findall(leading.group(0)) if leading else []
 
-    An item is dumped under the first name that it starts with. One name can have several
-    items, and an item can start with several names (`pname:x and pname:y are ...`): the
-    generator picks the item for a name. The items of valid usage, which start with a
-    `[[VUID-...]]` anchor, state a requirement and do not describe what they name, so they
-    are left out. So are the items in the cells of a table, which end where their cell
-    ends and not where a list item does."""
-    described = []
+
+def spec_first_level_items(body: list[str]):
+    """The first-level list items of `body` (the lines of a reference page block, or lines
+    outside the blocks) in the order of the lines, each with everything that belongs to
+    it: nested items and the blocks that list continuations attach stay part of the item's
+    text. An item comes as the names of the anchors that it starts with (`[[name]]`, before
+    any text), its lines without the anchors of its first line, and what keeps it from being
+    read reliably, if anything: what `spec_list_item` found, or a line that goes on in a
+    file that is not read.
+
+    The items of valid usage, which start with a `[[VUID-...]]` anchor, state a requirement
+    and do not describe what they name, so they are left out. So are the items in the cells
+    of a table, which end where their cell ends and not where a list item does."""
     index = 0
     while index < len(body):
         if SPEC_TABLE_DELIMITER.match(body[index]):
@@ -929,25 +933,58 @@ def spec_described_items(
         lines, index, problem = spec_list_item(body, index)
         if lines[0].startswith("[[VUID-"):
             continue
+        anchors = spec_leading_anchors(lines[0])
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
         if not lines[0]:
             lines.pop(0)
         if not lines:
             continue
+        anchors += spec_leading_anchors(lines[0])
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
+        if problem:
+            problem = f"cannot be read reliably: {problem}"
+        for line in lines:
+            if line.startswith("include::"):
+                problem = problem or f"goes on in a file that is not read: {line}"
+        yield anchors, lines, problem
+
+
+def spec_described_items(
+    body: list[str], where: str, described_name: re.Pattern = SPEC_DESCRIBED_NAME
+) -> list[dict[str, str]]:
+    """The first-level list items of `body` that start with a name that `described_name`
+    matches, `pname:x` or `ename:x`. `where` names the lines in an error.
+
+    An item is dumped under the first name that it starts with. One name can have several
+    items, and an item can start with several names (`pname:x and pname:y are ...`): the
+    generator picks the item for a name."""
+    described = []
+    for _, lines, problem in spec_first_level_items(body):
         name = described_name.match(lines[0])
         if name:
             if problem:
-                raise RuntimeError(
-                    f"{where}: the list item of {name.group(1)} cannot be read reliably: {problem}"
-                )
-            for line in lines:
-                if line.startswith("include::"):
-                    raise RuntimeError(
-                        f"{where}: the list item of {name.group(1)} goes on in a file that is not read: {line}"
-                    )
+                raise RuntimeError(f"{where}: the list item of {name.group(1)} {problem}")
             described.append({"name": name.group(1), "text": "\n".join(lines)})
     return described
+
+
+def spec_unnamed_items(body: list[str]) -> list[dict]:
+    """The first-level list items of a reference page block that do not start with `pname:x`
+    or `ename:x`, each with the names of the anchors that it starts with.
+
+    The specification describes a few members and values in an item that starts with other
+    words, or with the name of a value without its macro. Most of these items belong to
+    lists of the running text of the page: the generator tells the two apart. An item that
+    cannot be read reliably is dumped with the reason as its `problem`, which stops the
+    generator only if it takes the item as a description."""
+    unnamed = []
+    for anchors, lines, problem in spec_first_level_items(body):
+        if not SPEC_DESCRIBED_NAME.match(lines[0]):
+            item = {"anchors": anchors, "text": "\n".join(lines)}
+            if problem:
+                item["problem"] = problem
+            unnamed.append(item)
+    return unnamed
 
 
 def spec_page_blocks(lines: list[str]) -> list[tuple[int, int, dict[str, str]]]:
@@ -1215,6 +1252,7 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
                 "aliases": attributes.get("alias", "").split(),
                 "file": file,
                 "items": spec_described_items(lines[index + 2 : end], name),
+                "unnamed_items": spec_unnamed_items(lines[index + 2 : end]),
             }
         page_blocks = [(index, end, attributes["refpage"]) for index, end, attributes in blocks]
         tables.extend(spec_tables(file, lines, page_blocks))
@@ -1232,6 +1270,8 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
         refer(f"the description of the page {page['name']}", page["desc"])
         for item in page["items"]:
             refer(f"the description of {item['name']} on the page {page['name']}", item["text"])
+        for item in page["unnamed_items"]:
+            refer(f"a list item of the page {page['name']} that starts with no name", item["text"])
     for table in tables:
         refer(f"a table of {table['page'] or table['file']}", table["text"])
     for item in items_outside_pages:
