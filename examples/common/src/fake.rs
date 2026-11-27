@@ -320,6 +320,8 @@ unsafe extern "system" fn get_device_proc_addr(
         b"vkGetSwapchainImagesKHR" => get_swapchain_images,
         b"vkGetBufferMemoryRequirements" => get_memory_requirements,
         b"vkGetImageMemoryRequirements" => get_memory_requirements,
+        b"vkGetBufferMemoryRequirements2" => get_memory_requirements2,
+        b"vkGetImageMemoryRequirements2" => get_memory_requirements2,
         b"vkGetImageDrmFormatModifierPropertiesEXT" => get_image_drm_format_modifier_properties,
         b"vkBindBufferMemory" => bind_memory,
         b"vkBindImageMemory" => bind_memory,
@@ -642,6 +644,25 @@ unsafe extern "system" fn get_memory_requirements(
             memory_type_bits: 0b11,
         };
     }
+}
+
+/// The requirements of [`get_memory_requirements`], and no dedicated allocation.
+/// `VkMemoryDedicatedRequirements`, the only structure that the allocator chains, is
+/// left as the caller initialized it: neither required nor preferred.
+unsafe extern "system" fn get_memory_requirements2(
+    device: u64,
+    info: *const vk::BufferMemoryRequirementsInfo2<'_>,
+    requirements: *mut vk::MemoryRequirements2<'_>,
+) {
+    // The resource is the first member after `sType` and `pNext` in both info structs.
+    let resource = unsafe { (*info).buffer.as_raw() };
+    unsafe {
+        get_memory_requirements(
+            device,
+            resource,
+            &raw mut (*requirements).memory_requirements,
+        )
+    };
 }
 
 /// Every DRM-modifier image has `DRM_FORMAT_MOD_LINEAR`.

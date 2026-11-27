@@ -3,13 +3,10 @@
 use anyhow::{Result, bail};
 use std::os::fd::{FromRawFd, OwnedFd};
 use vulkan::{Device, vk};
-use vulkan_alloc::{AllocationCreateDesc, AllocationScheme, MemoryLocation};
 use vulkan_example_common::commands::submit_and_wait;
 use vulkan_example_common::device::{Gpu, Owned};
-use vulkan_example_common::image::{
-    create_image_view, drm_format_modifier, is_linear_image, subresource_range,
-};
-use vulkan_example_common::memory::Image;
+use vulkan_example_common::image::{create_image_view, subresource_range};
+use vulkan_example_common::memory::{Image, create_image};
 
 use crate::{BACKGROUND, DMA_BUF, Dmabuf, FORMAT, HEIGHT, Plane, RECTANGLE, WIDTH};
 
@@ -53,7 +50,6 @@ pub unsafe fn render_and_export(gpu: &Gpu) -> Result<(Owned<Image>, Dmabuf)> {
 /// compositor advertises.
 unsafe fn create_exportable_image(gpu: &Gpu) -> Result<Owned<Image>> {
     unsafe {
-        let device = &gpu.device;
         let needed =
             vk::FormatFeatureFlags::COLOR_ATTACHMENT | vk::FormatFeatureFlags::TRANSFER_SRC;
         let candidates = format_modifiers(gpu, FORMAT)?
@@ -84,37 +80,11 @@ unsafe fn create_exportable_image(gpu: &Gpu) -> Result<Owned<Image>> {
             .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC)
             .push_next(&mut modifier_list)
             .push_next(&mut external);
-        let image = gpu.own(device.create_image(&image_info, None)?);
-        // The driver chose one of the candidates, which may be DRM_FORMAT_MOD_LINEAR;
-        // that makes the image a linear resource.
-        let modifier = drm_format_modifier(device, *image)?;
-
-        // vulkan-alloc gives exportable memory its own VkDeviceMemory, so the exported
-        // fd refers to this image only.
-        let requirements = device.get_image_memory_requirements(*image);
-        let allocation = gpu.with_allocator(|allocator| {
-            allocator.allocate(AllocationCreateDesc {
-                name: Some("exported image"),
-                export_handle_types: DMA_BUF.into(),
-                allocation_scheme: AllocationScheme::DedicatedImage(*image),
-                ..AllocationCreateDesc::new(
-                    requirements,
-                    MemoryLocation::GpuOnly,
-                    is_linear_image(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT, modifier),
-                )
-            })
-        })?;
-        // From here the image and its memory go together.
-        let image = gpu.own(Image {
-            image: image.into_inner(),
-            allocation,
-        });
-        device.bind_image_memory(
-            image.image,
-            image.allocation.memory(),
-            image.allocation.offset(),
-        )?;
-        Ok(image)
+        // The driver chooses one of the candidates, which may be DRM_FORMAT_MOD_LINEAR;
+        // the allocator asks which one it chose to tell whether the image is linear. The
+        // external memory info makes the allocator give the image exportable memory of
+        // its own, so the exported fd refers to this image only.
+        create_image(gpu, "exported image", &image_info)
     }
 }
 
