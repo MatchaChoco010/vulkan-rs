@@ -8,11 +8,6 @@ const NO_REASON: &str = "Legacy functionality, for which the registry gives no r
 const NOT_USED: &str = "Legacy functionality that is not used.";
 const DESCRIBED_AS_NOT_USED: &str = "is legacy and not used";
 
-const ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT: &[(&str, &str)] = &[(
-    "StdVideoAV1ColorPrimaries",
-    "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED",
-)];
-
 pub(crate) type LegacyAttributes<'a> =
     BTreeMap<(LegacyElement, &'a str, &'a str), &'a LegacyAttribute>;
 
@@ -105,10 +100,6 @@ impl<'a> Model<'a> {
     }
 }
 
-fn is_left_out(owner: &str, name: &str) -> bool {
-    ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT.contains(&(owner, name))
-}
-
 pub(crate) fn assert_every_legacy_attribute_is_stated(model: &Model<'_>) {
     for attribute in &model.ir.legacy_attributes {
         let what = described(attribute);
@@ -130,14 +121,6 @@ pub(crate) fn assert_every_legacy_attribute_is_stated(model: &Model<'_>) {
             (LegacyElement::Enum, Some(owner), LegacyReason::Aliased, Some(alias)) => {
                 let mut values = values(owner).iter();
                 let value = values.find(|value| value.aliases.iter().any(|a| a == name));
-                if is_left_out(owner, name) {
-                    assert!(
-                        value.is_none(),
-                        "{what} is in ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT, but the \
-                         registry data has it"
-                    );
-                    continue;
-                }
                 let value = value.unwrap_or_else(|| {
                     panic!(
                         "the registry calls {what} a legacy alias, and the registry data has \
@@ -184,20 +167,6 @@ pub(crate) fn assert_every_legacy_attribute_is_stated(model: &Model<'_>) {
                  with the alias {alias:?}, which the generator does not know how to state"
             ),
         }
-    }
-}
-
-pub(crate) fn assert_listed_legacy_aliases_are_left_out(ir: &Registry) {
-    for (owner, name) in ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT {
-        let mut attributes = ir.legacy_attributes.iter();
-        assert!(
-            attributes.any(|attribute| attribute.element == LegacyElement::Enum
-                && attribute.reason == LegacyReason::Aliased
-                && attribute.owner.as_deref() == Some(owner)
-                && attribute.name == *name),
-            "`{name}` of `{owner}` is in ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT, but the \
-             registry does not call it a legacy alias"
-        );
     }
 }
 
@@ -618,78 +587,9 @@ mod tests {
     }
 
     #[test]
-    fn a_listed_alias_is_passed_over_only_while_the_registry_data_leaves_it_out() {
-        let (owner, name) = ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT[0];
-        let mut ir = ir();
-        ir.enums.push(Enum {
-            name: owner.to_string(),
-            bit_width: 32,
-            fields: vec![value("STD_VIDEO_AV1_COLOR_PRIMARIES_UNSPECIFIED", "2", &[])],
-            ..Default::default()
-        });
-        let listed = attribute(
-            Value,
-            Some(owner),
-            name,
-            Aliased,
-            Some("STD_VIDEO_AV1_COLOR_PRIMARIES_UNSPECIFIED"),
-        );
-        ir.legacy_attributes = vec![listed.clone()];
-        assert_every_legacy_attribute_is_stated(&Model::new(&ir));
-        assert_listed_legacy_aliases_are_left_out(&ir);
-
-        let mut with_the_alias = ir.clone();
-        with_the_alias
-            .enums
-            .last_mut()
-            .expect("the enumeration")
-            .fields[0]
-            .aliases = vec![name.to_string()];
-        assert_eq!(
-            catch_quietly(|| assert_every_legacy_attribute_is_stated(&Model::new(&with_the_alias))),
-            Err(format!(
-                "the value `{name}` of `{owner}` is in ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT, but the registry data has it"
-            ))
-        );
-        let stale = format!(
-            "`{name}` of `{owner}` is in ALIASES_THAT_THE_REGISTRY_DATA_LEAVES_OUT, but the registry does not call it a legacy alias"
-        );
-        for other in [
-            attribute(Value, Some("VkColor"), name, Aliased, None),
-            attribute(Value, Some(owner), "VK_COLOR_CRIMSON", Aliased, None),
-            attribute(Member, Some(owner), name, Unused, None),
-            attribute(Value, Some(owner), name, True, None),
-        ] {
-            let mut ir = ir.clone();
-            ir.legacy_attributes = vec![other];
-            assert_eq!(
-                catch_quietly(|| assert_listed_legacy_aliases_are_left_out(&ir)),
-                Err(stale.clone())
-            );
-        }
-        let mut in_another_enumeration = ir.clone();
-        in_another_enumeration.legacy_attributes = vec![attribute(
-            Value,
-            Some("VkColor"),
-            name,
-            Aliased,
-            Some("VK_COLOR_RED"),
-        )];
-        assert_eq!(
-            catch_quietly(|| assert_every_legacy_attribute_is_stated(&Model::new(
-                &in_another_enumeration
-            ))),
-            Err(format!(
-                "the registry calls the value `{name}` of `VkColor` a legacy alias, and the registry data has no value with this alias"
-            ))
-        );
-    }
-
-    #[test]
     fn every_legacy_attribute_of_the_registry_can_be_stated() {
         let ir = Registry::get();
         assert_every_legacy_attribute_is_stated(&Model::new(ir));
-        assert_listed_legacy_aliases_are_left_out(ir);
         let count = |element, reason, owned: bool| {
             let attributes = ir.legacy_attributes.iter();
             attributes

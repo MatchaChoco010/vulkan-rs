@@ -15,9 +15,6 @@ const LEGACY_AND_NOT_USED: &str = "Legacy functionality that is not used.";
 const DESCRIBED_AS_NOT_USED: &str = "is legacy and not used";
 const ALSO_CALLED: &str = "The C header also calls this value ";
 
-const LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE: &[&str] =
-    &["STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED"];
-
 const LEGACY_MACROS_WITHOUT_AN_ITEM: &[&str] = &[
     "VK_API_VERSION",
     "VK_MAKE_VERSION",
@@ -2254,10 +2251,6 @@ impl Checker {
                     }
                     let reason = if !same_rust_name.is_empty() {
                         "another name of the value differs from it only by `_BIT`, which the Rust names of flag bits leave out, so the two have one constant"
-                    } else if LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE.contains(&name.as_str())
-                        && !values_named(value).is_empty()
-                    {
-                        "LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE"
                     } else {
                         self.fail(name, format!("is a legacy alias of `{value}` in `{owner}`, and the bindings have no constant for it"));
                         continue;
@@ -3480,21 +3473,17 @@ fn generated_documentation_matches_the_specification() {
             .collect::<Vec<_>>(),
         [
             ("constant that legacy aliases share", 30),
-            ("legacy alias", 21),
+            ("legacy alias", 22),
             ("legacy value", 1),
             ("setter of an unused member", 2),
             ("unused member that its description calls so", 2),
         ],
-        "17 legacy aliases have a constant, 4 of them a second one in the bitmask type of their flag bits; 15 more have the Rust name of another name of their value, whose constant names them, in the type of the flag bits and in its bitmask type. A member that the registry calls unused has the paragraph `Legacy functionality that is not used.` unless its description says `is legacy and not used`: when `unused member` appears here, read the description of that member in the specification, which does not say so"
+        "18 legacy aliases have a constant, 4 of them a second one in the bitmask type of their flag bits; 15 more have the Rust name of another name of their value, whose constant names them, in the type of the flag bits and in its bitmask type. A member that the registry calls unused has the paragraph `Legacy functionality that is not used.` unless its description says `is legacy and not used`: when `unused member` appears here, read the description of that member in the specification, which does not say so"
     );
     let without_a_constant = |names: &[&str]| names.iter().map(|name| name.to_string()).collect();
     assert_eq!(
         checker.legacy_aliases_without_a_constant,
         BTreeMap::from([
-            (
-                "LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE",
-                without_a_constant(LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE)
-            ),
             (
                 "another name of the value differs from it only by `_BIT`, which the Rust names of flag bits leave out, so the two have one constant",
                 without_a_constant(&[
@@ -3531,7 +3520,7 @@ fn generated_documentation_matches_the_specification() {
                 ])
             ),
         ]),
-        "the legacy aliases that the bindings have no constant of their own for: the Vulkan Video one because the registry data that the bindings are generated from has no aliases of the values of the Vulkan Video headers; 15 flag bits because the Rust name of the alias is the Rust name of another name of the same value, whose constant names the alias in a paragraph and as a `#[doc(alias)]`; 10 macros of extensions because the bindings have one constant for the name and one for the version of an extension"
+        "the legacy aliases that the bindings have no constant of their own for: 15 flag bits because the Rust name of the alias is the Rust name of another name of the same value, whose constant names the alias in a paragraph and as a `#[doc(alias)]`; 10 macros of extensions because the bindings have one constant for the name and one for the version of an extension"
     );
     assert_eq!(
         checker
@@ -7249,13 +7238,7 @@ fn fixture_deprecated_failures(
 
 #[test]
 fn checker_accepts_what_the_bindings_say_about_the_deprecated_attributes_of_the_registry() {
-    let specification = fixture_deprecated_specification(&[(
-        "enum",
-        "VkShade",
-        "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED",
-        "aliased",
-        Some("VK_SHADE_PALE"),
-    )]);
+    let specification = fixture_deprecated_specification(&[]);
     let checker = fixture_legacy_checker(&specification, FIXTURE_DEPRECATED_SOURCE);
     assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
     assert_eq!(
@@ -7272,10 +7255,6 @@ fn checker_accepts_what_the_bindings_say_about_the_deprecated_attributes_of_the_
     assert_eq!(
         checker.legacy_aliases_without_a_constant,
         BTreeMap::from([
-            (
-                "LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE",
-                names(&["STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED"])
-            ),
             (
                 "another name of the value differs from it only by `_BIT`, which the Rust names of flag bits leave out, so the two have one constant",
                 names(&["VK_SHADE_FAST", "VK_SHADE_QUICK", "VK_SHADE_QUICK_BIT_BIT"])
@@ -7569,16 +7548,6 @@ fn checker_reports_a_deprecated_attribute_that_the_bindings_do_not_reflect() {
                 Some("VK_SHADE_GONE"),
             ),
             "VK_SHADE_DARK_BIT_BIT: is a legacy alias of `VK_SHADE_GONE` in `VkShade`, and the bindings have no constant for it",
-        ),
-        (
-            (
-                "enum",
-                "VkShade",
-                "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED",
-                "aliased",
-                Some("VK_SHADE_GONE"),
-            ),
-            "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED: is a legacy alias of `VK_SHADE_GONE` in `VkShade`, and the bindings have no constant for it",
         ),
         (
             ("enum", "VkShade", "VK_SHADE_GONE", "true", None),
