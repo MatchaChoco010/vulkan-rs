@@ -33,12 +33,12 @@ impl<'a> Place<'a> {
         }
     }
 
-    pub(super) fn unnamed_items(self) -> Vec<&'a str> {
+    pub(super) fn unnamed_items(self) -> Vec<(&'a str, Option<&'a str>)> {
         match self {
             Self::Page(page) => page
                 .unnamed_items
                 .iter()
-                .map(|item| item.text.as_str())
+                .map(|item| (item.text.as_str(), item.problem.as_deref()))
                 .collect(),
             Self::OutsidePages(_) => Vec::new(),
         }

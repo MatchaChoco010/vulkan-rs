@@ -445,20 +445,29 @@ fn item_parts(place: Place<'_>, item: &str, text: &str) -> Vec<Part> {
 fn notes_of(
     place: Place<'_>,
     items: &[(&str, &str)],
-    unnamed_items: &[&str],
+    unnamed_items: &[(&str, Option<&str>)],
 ) -> BTreeMap<u32, Vec<Part>> {
     let mut notes = BTreeMap::new();
     let has_all_its_items = matches!(place, Place::Page(_));
-    let texts = items.iter().map(|(_, text)| text).chain(unnamed_items);
+    let unnamed_texts = unnamed_items.iter().map(|(text, _)| text);
+    let texts = items.iter().map(|(_, text)| text).chain(unnamed_texts);
     if has_all_its_items && !texts.into_iter().any(|text| items::may_have_notes(text)) {
         return notes;
     }
     let named = items
         .iter()
         .map(|(name, text)| item_parts(place, name, text));
-    let unnamed = unnamed_items
-        .iter()
-        .filter_map(|text| items::read(text).ok());
+    let unnamed = unnamed_items.iter().map(|(text, problem)| {
+        let unread = match (problem, items::read(text)) {
+            (None, Ok(parts)) => return parts,
+            (Some(problem), _) => problem.to_string(),
+            (None, Err(unsupported)) => format!("cannot be read ({unsupported:?})"),
+        };
+        panic!(
+            "{place} has numbered notes, and a list item of it that starts with no name \
+             {unread}, so that the notes and their marks cannot be collected: {text}"
+        )
+    });
     let mut marks = BTreeSet::new();
     for mut parts in named.chain(unnamed) {
         for (number, note) in items::take_notes(&mut parts) {
@@ -960,27 +969,90 @@ mod tests {
                 note(1, "The first note.")
             ])
         );
+        let unread = "See:\ninclude::{generated}/more.adoc[]\n\n2:: A note that is not read.";
+        let mut unreliable = unnamed("other", "The rest follows.\n+\n+\n2:: A note.");
+        unreliable.problem =
+            Some("cannot be read reliably: two list continuations in a row".to_string());
         for (items, message) in [
             (
                 vec![unnamed("limits-depth", "If set, pname:depth is deep^4^.")],
-                "the notes {1} and the marks {1, 4} on the page VkExtent2D do not pair up",
+                "the notes {1} and the marks {1, 4} on the page VkExtent2D do not pair up"
+                    .to_string(),
+            ),
+            (
+                vec![
+                    unnamed("limits-depth", "If set, pname:depth is deep^2^."),
+                    unnamed("other", unread),
+                ],
+                format!(
+                    "the page VkExtent2D has numbered notes, and a list item of it that starts \
+                     with no name cannot be read (Include), so that the notes and their marks \
+                     cannot be collected: {unread}"
+                ),
+            ),
+            (
+                vec![
+                    unnamed("limits-depth", "If set, pname:depth is deep^2^."),
+                    unreliable.clone(),
+                ],
+                format!(
+                    "the page VkExtent2D has numbered notes, and a list item of it that starts \
+                     with no name cannot be read reliably: two list continuations in a row, so \
+                     that the notes and their marks cannot be collected: {}",
+                    unreliable.text
+                ),
             ),
             (
                 vec![unnamed(
                     "limits-depth",
                     "If set, pname:depth is deep.\n\n1:: The first note again.",
                 )],
-                "the page VkExtent2D has two notes 1",
+                "the page VkExtent2D has two notes 1".to_string(),
             ),
         ] {
             let docs = with_unnamed_items("pname:height is high.\n\n1:: The first note.", &items);
             let model = Model::with_docs(&ir, &docs);
-            let panic = crate::test_support::catch_quietly(|| {
-                model.described(&Cfg::default(), "VkExtent2D", "depth")
-            })
-            .expect_err(message);
-            assert_eq!(panic, message);
+            for member in ["depth", "width", "height"] {
+                let panic = crate::test_support::catch_quietly(|| {
+                    model.described(&Cfg::default(), "VkExtent2D", member)
+                })
+                .expect_err(&message);
+                assert_eq!(panic, message, "{member}");
+            }
         }
+        let only_note_unread = with_unnamed_items(
+            "pname:height is high.",
+            &[
+                unnamed("limits-depth", "If set, pname:depth is deep^2^."),
+                unnamed("other", unread),
+            ],
+        );
+        let model = Model::with_docs(&ir, &only_note_unread);
+        let panic = crate::test_support::catch_quietly(|| {
+            model.described(&Cfg::default(), "VkExtent2D", "depth")
+        })
+        .expect_err("the mark of a note that is not read becomes a superscript");
+        assert!(
+            panic.starts_with("the page VkExtent2D has numbered notes, and a list item"),
+            "{panic}"
+        );
+        let without_notes = with_unnamed_items(
+            "pname:height is high.",
+            &[
+                unnamed("limits-depth", "If set, pname:depth is 2^8^ deep."),
+                unnamed("other", "See:\ninclude::{generated}/more.adoc[]"),
+                vulkan_registry::DocUnnamedItem {
+                    text: "The rest follows.\n+\n+\nMore.".to_string(),
+                    ..unreliable
+                },
+            ],
+        );
+        let model = Model::with_docs(&ir, &without_notes);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "depth"),
+            Some(vec![text("If set, `depth` is 2<sup>8</sup> deep.")]),
+            "a page without numbered notes is not searched for them"
+        );
     }
 
     #[test]
