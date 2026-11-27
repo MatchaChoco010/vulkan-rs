@@ -164,7 +164,14 @@ fn cases() -> impl Strategy<Value = Case> {
         )
 }
 
-fn documented_result(case: &Case, offset: u64) -> Result<(), AllocationError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Placement {
+    offset: u64,
+    size: u64,
+    in_the_block_of_the_neighbour: bool,
+}
+
+fn documented_result(case: &Case, placement: Placement) -> Result<(), AllocationError> {
     if case.holder != Holder::TheAllocator {
         return Err(AllocationError::InvalidAllocation);
     }
@@ -172,7 +179,7 @@ fn documented_result(case: &Case, offset: u64) -> Result<(), AllocationError> {
     let coherent = case.memory_type == HOST_COHERENT;
     let Mapping { raw, persistent } = case.mapping;
     let mapped = raw > 0 || persistent;
-    let shares_a_block_with_a_mapped_neighbour = case.size <= 600
+    let shares_a_block_with_a_mapped_neighbour = placement.in_the_block_of_the_neighbour
         && case
             .neighbour
             .is_some_and(|(_, neighbour_mapped)| neighbour_mapped);
@@ -181,7 +188,7 @@ fn documented_result(case: &Case, offset: u64) -> Result<(), AllocationError> {
         if !visible {
             return Err(AllocationError::NotHostVisible);
         }
-        if as_a_slice && case.size >= SMALLEST_TOO_LARGE_FOR_A_SLICE {
+        if as_a_slice && placement.size >= SMALLEST_TOO_LARGE_FOR_A_SLICE {
             return Err(AllocationError::MappingFailed);
         }
         if block_is_mapped {
@@ -191,7 +198,10 @@ fn documented_result(case: &Case, offset: u64) -> Result<(), AllocationError> {
             Some(MapFault::Fails(result)) => Err(AllocationError::Vulkan(result)),
             Some(MapFault::ReturnsNull) => Err(AllocationError::MappingFailed),
             Some(MapFault::ReturnsAddress(address))
-                if address.checked_add(offset as usize).is_none() =>
+                if usize::try_from(placement.offset)
+                    .ok()
+                    .and_then(|offset| address.checked_add(offset))
+                    .is_none() =>
             {
                 Err(AllocationError::MappingFailed)
             }
@@ -202,8 +212,11 @@ fn documented_result(case: &Case, offset: u64) -> Result<(), AllocationError> {
         Some(result) if !coherent && bytes > 0 => Err(AllocationError::Vulkan(result)),
         _ => Ok(()),
     };
-    let inside =
-        |offset: u64, size: u64| offset.checked_add(size).is_some_and(|end| end <= case.size);
+    let inside = |offset: u64, size: u64| {
+        offset
+            .checked_add(size)
+            .is_some_and(|end| end <= placement.size)
+    };
     match case.operation {
         Operation::Free if raw > 0 => Err(AllocationError::StillMapped),
         Operation::Free => Ok(()),
@@ -213,7 +226,7 @@ fn documented_result(case: &Case, offset: u64) -> Result<(), AllocationError> {
         Operation::UnmapMemory if raw == 0 => Err(AllocationError::NotMapped),
         Operation::UnmapMemory => Ok(()),
         Operation::Whole(_) if !mapped => Err(AllocationError::NotMapped),
-        Operation::Whole(_) => synchronize(case.size),
+        Operation::Whole(_) => synchronize(placement.size),
         Operation::Range(_, offset, size) if !inside(offset, size) => {
             Err(AllocationError::RangeOutOfBounds)
         }
@@ -223,7 +236,7 @@ fn documented_result(case: &Case, offset: u64) -> Result<(), AllocationError> {
             map(true)?;
             match step {
                 GuardStep::Nothing => Ok(()),
-                GuardStep::Whole(_) => synchronize(case.size),
+                GuardStep::Whole(_) => synchronize(placement.size),
                 GuardStep::Range(_, offset, size) => {
                     let (offset, size) = guard_range(offset, size);
                     if inside(offset as u64, size as u64) {
@@ -326,8 +339,13 @@ fn run(case: &Case) -> Result<Result<(), AllocationError>, TestCaseError> {
     let mut other = other_fake.allocator();
     let expected;
     unsafe {
+        let mut neighbour = None;
         let target = match case.holder {
-            Holder::TheAllocator => prepare(&mut allocator, case).1,
+            Holder::TheAllocator => {
+                let (held_neighbour, target) = prepare(&mut allocator, case);
+                neighbour = held_neighbour;
+                target
+            }
             Holder::NobodyAfterFreeAll => {
                 let (_, target) = prepare(&mut allocator, case);
                 allocator.free_all();
@@ -343,7 +361,14 @@ fn run(case: &Case) -> Result<Result<(), AllocationError>, TestCaseError> {
                 prepare(&mut other, case).1
             }
         };
-        expected = documented_result(case, target.offset());
+        let placement = Placement {
+            offset: target.offset(),
+            size: target.size(),
+            in_the_block_of_the_neighbour: neighbour
+                .as_ref()
+                .is_some_and(|neighbour| neighbour.memory() == target.memory()),
+        };
+        expected = documented_result(case, placement);
         let snapshot = allocator.snapshot();
         let other_snapshot = other.snapshot();
         let memory_objects = fake.memory_objects();
