@@ -122,7 +122,8 @@ impl<'a> Model<'a> {
             Err(
                 unread @ (Unsupported::EscapedSpan
                 | Unsupported::Passthrough
-                | Unsupported::MacroUse(_)),
+                | Unsupported::MacroUse(_)
+                | Unsupported::AnchorWithoutPage(_)),
             ) => panic!(
                 "a table of {} has markup that the generator does not read ({unread:?}): {text}",
                 source.page.as_deref().unwrap_or(&source.file)
@@ -142,9 +143,14 @@ impl<'a> Model<'a> {
             let target = self.links.get(name)?;
             target.cfg.is_implied_by(from).then(|| target.path.clone())
         };
+        let section = |anchor: &str| {
+            let has_a_page = self.docs.anchors.contains_key(anchor);
+            has_a_page.then(|| self.specification_url(anchor))
+        };
         Converter {
             attributes: &self.docs.attributes,
             titles: &self.docs.titles,
+            section: &section,
             resolve: &resolve,
         }
         .inline(text)
@@ -1290,6 +1296,64 @@ mod tests {
                 Block::Text("`width` is the width.\nIf so, it is required:".to_string()),
                 Block::list(["[`VkExtent2D`](Extent2D), or not".to_string()]),
             ])
+        );
+    }
+
+    #[test]
+    fn a_reference_without_a_text_to_an_anchor_without_a_title_links_the_anchor() {
+        let ir = ir();
+        let source = [
+            "pname:width is clamped. See <<extents-width>>,",
+            "<<extents-titled>> and <<extents-width, the width>>.",
+        ];
+        let mut docs = with_the_width_described_as(&source);
+        docs.titles = [("extents-titled".to_string(), "Titled Extents".to_string())].into();
+        docs.anchors = [(
+            "extents-width".to_string(),
+            "chapters/extents/sizes.adoc".to_string(),
+        )]
+        .into();
+        docs.tables[0].text = docs.tables[0].text.replace(
+            "|ename:VK_SHADE_PALE |none |",
+            "|ename:VK_SHADE_PALE |see <<extents-width>> |",
+        );
+        let link = "[\\[extents-width\\]](https://docs.vulkan.org/spec/latest/chapters/extents/sizes.html#extents-width)";
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            Some(vec![Block::Text(format!(
+                "`width` is clamped. See {link},\nTitled Extents and the width."
+            ))])
+        );
+        assert_eq!(
+            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_PALE"),
+            Some(vec![
+                Block::Text(
+                    "`VK_SHADE_PALE` in the table “Shades and Their Extents” of the specification:"
+                        .to_string()
+                ),
+                Block::list([format!("Extent (w × h): see {link}")]),
+            ])
+        );
+
+        docs.anchors.clear();
+        let model = Model::with_docs(&ir, &docs);
+        let described = crate::test_support::catch_quietly(|| {
+            model.described(&Cfg::default(), "VkExtent2D", "width")
+        });
+        assert_eq!(
+            described,
+            Err(format!(
+                "the description of width on the page VkExtent2D has no Markdown form (AnchorWithoutPage(\"extents-width\")): {}",
+                source.join("\n")
+            ))
+        );
+        let tabulated = crate::test_support::catch_quietly(|| {
+            model.tabulated(&Cfg::default(), "VkShade", "VK_SHADE_PALE")
+        });
+        assert_eq!(
+            tabulated,
+            Err("a table of VkShade has markup that the generator does not read (AnchorWithoutPage(\"extents-width\")): see <<extents-width>>".to_string())
         );
     }
 

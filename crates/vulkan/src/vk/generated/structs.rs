@@ -76181,12 +76181,14 @@ pub struct PhysicalDeviceLimits {
     /// member of the [`VkSamplerCreateInfo`](SamplerCreateInfo) structure and the `Bias` operand of
     /// image sampling operations in shader modules (or 0 if no `Bias` operand is provided to an
     /// image sampling operation) are clamped to the range
-    /// \[-`maxSamplerLodBias`,+`maxSamplerLodBias`\]. See \[samplers-mipLodBias\].
+    /// \[-`maxSamplerLodBias`,+`maxSamplerLodBias`\]. See
+    /// [\[samplers-mipLodBias\]](https://docs.vulkan.org/spec/latest/chapters/samplers.html#samplers-mipLodBias).
     pub max_sampler_lod_bias: f32,
     /// `maxSamplerAnisotropy` is the maximum degree of sampler anisotropy. The maximum degree of
     /// anisotropic filtering used for an image sampling operation is the minimum of the
     /// `maxAnisotropy` member of the [`VkSamplerCreateInfo`](SamplerCreateInfo) structure and this
-    /// limit. See \[samplers-maxAnisotropy\].
+    /// limit. See
+    /// [\[samplers-maxAnisotropy\]](https://docs.vulkan.org/spec/latest/chapters/samplers.html#samplers-maxAnisotropy).
     pub max_sampler_anisotropy: f32,
     /// `maxViewports` is the maximum number of active viewports. The `viewportCount` member of the
     /// [`VkPipelineViewportStateCreateInfo`](PipelineViewportStateCreateInfo) structure that is

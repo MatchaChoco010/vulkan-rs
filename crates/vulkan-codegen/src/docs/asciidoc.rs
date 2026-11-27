@@ -21,6 +21,7 @@ pub(crate) enum Unsupported {
     Unterminated(&'static str),
     Block(String),
     Include,
+    AnchorWithoutPage(String),
 }
 
 pub(crate) type Converted = Result<String, Unsupported>;
@@ -86,6 +87,7 @@ const UNSUPPORTED_MACROS: &[&str] = &["footnote", "image", "xref", "stem", "anch
 pub(crate) struct Converter<'a> {
     pub(crate) attributes: &'a BTreeMap<String, String>,
     pub(crate) titles: &'a BTreeMap<String, String>,
+    pub(crate) section: &'a dyn Fn(&str) -> Option<String>,
     pub(crate) resolve: &'a dyn Fn(Link, &str) -> Option<String>,
 }
 
@@ -400,7 +402,11 @@ impl Converter<'_> {
             };
             let label = match (label, self.titles.get(anchor)) {
                 ("", Some(title)) => title,
-                ("", None) => return Ok((close + 2, format!("\\[{anchor}\\]"))),
+                ("", None) => {
+                    let section = (self.section)(anchor)
+                        .ok_or_else(|| Unsupported::AnchorWithoutPage(anchor.to_string()))?;
+                    return Ok((close + 2, format!("[\\[{anchor}\\]]({section})")));
+                }
                 (label, _) => label,
             };
             let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -608,9 +614,13 @@ mod tests {
             (Link::ReferencePage, name) => Some(format!("https://example.org/{name}.html")),
             _ => None,
         };
+        let section = |anchor: &str| {
+            (anchor != "nowhere").then(|| format!("https://example.org/spec.html#{anchor}"))
+        };
         Converter {
             attributes: &attributes,
             titles: &titles,
+            section: &section,
             resolve: &resolve,
         }
         .inline(text)
@@ -765,7 +775,15 @@ mod tests {
             "See Queue Priority and `x` of the page."
         );
         assert_eq!(markdown("as in <<clears-values>>."), "as in Clear Values.");
-        assert_eq!(markdown("See <<fundamentals>>."), "See \\[fundamentals\\].");
+        assert_eq!(
+            markdown("See <<fundamentals>> and <<samplers-mipLodBias>>."),
+            "See [\\[fundamentals\\]](https://example.org/spec.html#fundamentals) and [\\[samplers-mipLodBias\\]](https://example.org/spec.html#samplers-mipLodBias)."
+        );
+        assert_eq!(
+            convert("See <<nowhere>>."),
+            Err(Unsupported::AnchorWithoutPage("nowhere".to_string()))
+        );
+        assert_eq!(markdown("See <<nowhere, somewhere>>."), "See somewhere.");
     }
 
     #[test]
@@ -1277,9 +1295,11 @@ mod tests {
     fn with_every_link_resolved<T>(read: impl FnOnce(&Converter) -> T) -> T {
         let (attributes, titles) = (BTreeMap::new(), BTreeMap::new());
         let resolve = |link: Link, name: &str| Some(format!("{link:?}/{name}"));
+        let section = |anchor: &str| Some(format!("Section/{anchor}"));
         read(&Converter {
             attributes: &attributes,
             titles: &titles,
+            section: &section,
             resolve: &resolve,
         })
     }

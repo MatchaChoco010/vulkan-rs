@@ -553,6 +553,8 @@ struct Markup {
     math_block: Regex,
     asciidoc_block: Regex,
     unsupported_macro: Regex,
+    reference_without_a_text: Regex,
+    link_of_an_untitled_anchor: Regex,
     list_item: Regex,
     nested_item: Regex,
     other_list_item: Regex,
@@ -612,6 +614,11 @@ impl Markup {
                 r"(?m)^\s*(?:[*.!-]|\d+\.|\[[^\[].*\]\s*$|include::|image::|={4,}|-{4,}|\+{4,})",
             ),
             unsupported_macro: regex(r"\b(?:footnote|image|xref|stem|anchor|pass):\S"),
+            reference_without_a_text: regex(r"<<([\w.-]+)>>"),
+            link_of_an_untitled_anchor: regex(&format!(
+                r"\[\\\[([\w.-]+)\\\]\]\({}[\w/-]+\.html#[\w.-]+\)",
+                regex::escape(SPECIFICATION)
+            )),
         }
     }
 }
@@ -1660,7 +1667,6 @@ fn also_called(legacy_names: &[&str], value: &str) -> String {
 fn is_legacy_statement(paragraph: &str) -> bool {
     (paragraph.starts_with("Legacy functionality") && !is_legacy_attribute_statement(paragraph))
         || paragraph.contains("[Legacy Functionality](")
-        || paragraph.contains(SPECIFICATION)
 }
 
 fn legacy_statements(doc: &str) -> Vec<String> {
@@ -1863,6 +1869,40 @@ fn expected_legacy_statement(
 }
 
 impl Specification {
+    fn untitled_references<'a>(&self, text: &'a str) -> Vec<&'a str> {
+        let references = self.markup.reference_without_a_text.captures_iter(text);
+        references
+            .map(|reference| reference.get(1).map_or("", |anchor| anchor.as_str()))
+            .filter(|anchor| !self.titles.contains_key(*anchor))
+            .collect()
+    }
+
+    fn every_untitled_reference(&self) -> BTreeSet<(String, String)> {
+        let mut references = BTreeSet::new();
+        for page in self.pages.values() {
+            for text in [&page.description, &page.body] {
+                for anchor in self.untitled_references(text) {
+                    references.insert((page.name.clone(), anchor.to_string()));
+                }
+            }
+        }
+        for table in &self.tables {
+            let cells = table.rows.iter().flatten().map(|cell| &cell.text);
+            let texts = table.title.iter().chain(&table.header).chain(cells);
+            for anchor in texts.flat_map(|text| self.untitled_references(text)) {
+                let place = table.page.clone().unwrap_or(table.file.clone());
+                references.insert((place, anchor.to_string()));
+            }
+        }
+        let outside = self.value_descriptions.values().flatten();
+        for description in outside.filter(|description| description.page.is_none()) {
+            for anchor in self.untitled_references(&description.text) {
+                references.insert((description.place(), anchor.to_string()));
+            }
+        }
+        references
+    }
+
     fn section_url(&self, anchor: &str) -> Result<String, String> {
         let files = self
             .anchors
@@ -2255,6 +2295,8 @@ struct Checker {
     described_outside_their_page: Vec<String>,
     legacy_attribute_statements: BTreeMap<&'static str, usize>,
     legacy_aliases_without_a_constant: BTreeMap<&'static str, BTreeSet<String>>,
+    links_of_untitled_anchors: usize,
+    untitled_anchors: Vec<String>,
 }
 
 struct Generated {
@@ -2343,11 +2385,18 @@ impl Checker {
         }
         let specification_links = generated.legacy_link.find_iter(&flat(doc)).count();
         self.specification_links += specification_links;
+        let anchor_links = spec
+            .markup
+            .link_of_an_untitled_anchor
+            .find_iter(doc)
+            .count();
+        self.links_of_untitled_anchors += anchor_links;
         let other = doc
             .match_indices("docs.vulkan.org")
             .count()
             .saturating_sub(generated.reference_link.captures_iter(doc).count())
-            .saturating_sub(specification_links);
+            .saturating_sub(specification_links)
+            .saturating_sub(anchor_links);
         if other != 0 {
             self.fail(item, "has a docs.vulkan.org link of an unexpected form");
         }
@@ -2428,6 +2477,33 @@ impl Checker {
         let Some(source) = spec.item(page, macro_name, name) else {
             return;
         };
+        let untitled = spec.untitled_references(&source);
+        for anchor in &untitled {
+            let link = spec
+                .section_url(anchor)
+                .map(|url| format!("[\\[{anchor}\\]]({url})"));
+            match link {
+                Ok(link) if doc.contains(&link) => {
+                    self.untitled_anchors.push(format!("{item}: {anchor}"));
+                }
+                Ok(link) => self.fail(
+                    item,
+                    format!("the description of `{name}` refers to the anchor `{anchor}`, which has no title, so the specification shows the link `[{anchor}]`, but the documentation has no `{link}`"),
+                ),
+                Err(problem) => self.fail(
+                    item,
+                    format!("the description of `{name}` refers to the anchor `{anchor}`, which has no title, and {problem}"),
+                ),
+            }
+        }
+        for link in spec.markup.link_of_an_untitled_anchor.captures_iter(doc) {
+            if !untitled.contains(&&link[1]) {
+                self.fail(
+                    item,
+                    format!("the description of `{name}` links the anchor `{}`, which its list item on the page `{page}` does not refer to without a text, or which has a title", &link[1]),
+                );
+            }
+        }
         self.whole_items += 1;
         let expected = spec.words(&source);
         let actual = generated_words(doc);
@@ -3078,6 +3154,30 @@ fn generated_documentation_matches_the_specification() {
             .copied()
             .collect::<BTreeSet<_>>(),
         "exactly these values are documented with a list item from outside the reference page of their type, which has no item for them. An item out there can be about one use of a value, so read the item before listing a value here"
+    );
+    let untitled = |page: &str, anchor: &str| (page.to_string(), anchor.to_string());
+    assert_eq!(
+        spec.every_untitled_reference(),
+        BTreeSet::from([
+            untitled("Required_Limits", "VK_EXT_descriptor_buffer"),
+            untitled("Required_Limits", "VK_KHR_device_fault"),
+            untitled("VkPhysicalDeviceLimits", "samplers-maxAnisotropy"),
+            untitled("VkPhysicalDeviceLimits", "samplers-mipLodBias"),
+        ]),
+        "the cross-references without a text to an anchor that the sources give no title, in all the reference pages and tables and in the descriptions of values outside the reference pages. The two of `VkPhysicalDeviceLimits` are in the descriptions of members. The two of `Required_Limits` are in a table of required limits that describes no item of the bindings, and name the appendix of an extension, whose title is generated when the specification is built"
+    );
+    assert_eq!(
+        checker.untitled_anchors,
+        [
+            "PhysicalDeviceLimits::max_sampler_lod_bias: samplers-mipLodBias",
+            "PhysicalDeviceLimits::max_sampler_anisotropy: samplers-maxAnisotropy",
+        ],
+        "the descriptions that link such an anchor"
+    );
+    assert_eq!(
+        checker.links_of_untitled_anchors,
+        checker.untitled_anchors.len(),
+        "no other documentation links an anchor by its name"
     );
     let deprecated = &spec.deprecated;
     assert_eq!(
@@ -5237,6 +5337,7 @@ fn checker_reports_each_other_kind_of_defect() {
 
 struct Leftovers {
     code_span: Regex,
+    link_of_an_untitled_anchor: Regex,
     link_target: Regex,
     patterns: Vec<(&'static str, Regex)>,
 }
@@ -5246,6 +5347,7 @@ impl Leftovers {
         let macros = "pname|ptext|sname|stext|fname|ftext|etext|dname|tname|code|slink|elink|tlink|basetype|ename|flink|dlink|apiext|reflink|tag|attr|latexmath|can|cannot|may|must|optional|optionally|required|should|undefined";
         Self {
             code_span: regex(r"``.*?``|`[^`\n]*`"),
+            link_of_an_untitled_anchor: regex(r"\[\\\[([\w.-]+)\\\]\]\([^)\s]*\)"),
             link_target: regex(r"\]\([^)\s]*\)"),
             patterns: vec![
                 ("an unconstrained mark `##`", regex("##")),
@@ -5278,6 +5380,7 @@ impl Leftovers {
 
     fn found(&self, doc: &str) -> Vec<&'static str> {
         let text = self.code_span.replace_all(doc, "");
+        let text = self.link_of_an_untitled_anchor.replace_all(&text, "$1");
         let text = self.link_target.replace_all(&text, "]");
         self.patterns
             .iter()
@@ -5436,6 +5539,9 @@ fn asciidoc_left_in_documentation_is_reported() {
         ("/// it must:be", "a specification macro"),
         ("/// see <<fundamentals>>", "a cross reference"),
         ("/// [[anchor]]text", "an anchor"),
+        ("/// see \\[\\[anchor\\]\\]", "an anchor"),
+        ("/// see [\\[anchor\\]] and (more)", "an anchor"),
+        ("/// see [\\[an anchor\\]](https://a.b/c#d)", "an anchor"),
         ("/// ifdef::VK_KHR_surface[]", "a preprocessor directive"),
         ("/// {maxBlockSize} bytes", "an attribute reference"),
     ] {
@@ -5453,6 +5559,7 @@ fn markdown_that_resembles_asciidoc_is_not_reported() {
         "/// `a ## b` and ``x`##`y``",
         "/// `--flag`, `a -- b` and `pname:x`",
         "/// [`VkExtent2D`](Extent2D) and [the registry](https://a.b/c--d#x)",
+        "/// See [\\[samplers-mipLodBias\\]](https://a.b/samplers.html#samplers-mipLodBias).",
         "/// a set {0, 1} and `{x}`",
         "/// i \\< 2 \\<\\< 3 and a - b and --- and a-- b",
         "/// # Safety\n///\n/// - must be valid",
@@ -6195,9 +6302,9 @@ fn checker_reports_a_link_into_the_specification_that_is_not_a_legacy_statement(
         "Thing: has a docs.vulkan.org link of an unexpected form",
     );
     assert_reported(
-        "a link into the specification on an unmarked item",
+        "the link of the legacy statements on an unmarked item",
         "/// Structure specifying a thing.\n",
-        "/// Structure specifying a thing.\n///\n/// See [the chapter](https://docs.vulkan.org/spec/latest/chapters/things.html).\n",
+        "/// Structure specifying a thing.\n///\n/// See [Legacy Functionality](https://docs.vulkan.org/spec/latest/chapters/things.html#things).\n",
         "the type `VkThing`: has a legacy statement, but the registry has no mark for it that the specification shows",
     );
 }
@@ -7097,5 +7204,157 @@ fn a_deprecated_attribute_that_the_test_cannot_read_stops_it() {
             .expect_err(&format!("`{with}` is read"));
         let panic = panic.downcast_ref::<String>().expect("a message");
         assert_eq!(panic, message);
+    }
+}
+
+const FIXTURE_LIMITS_SOURCE: &str = r#"
+/// Structure of limits.
+///
+/// C structure [`VkLimits`](PAGES/VkLimits.html).
+#[doc(alias = "VkLimits")]
+pub struct Limits {
+    /// `bias` is clamped. See
+    /// [\[things-flags\]](SPEC/chapters/things.html#things-flags).
+    pub bias: f32,
+    /// `size` is small. See A Title and the flags.
+    pub size: f32,
+}
+"#;
+
+const FIXTURE_LIMITS_LINK: &str =
+    "    /// [\\[things-flags\\]](SPEC/chapters/things.html#things-flags).\n";
+
+fn fixture_limits_failures(reference: &str, replace: &str, with: &str) -> Vec<String> {
+    let mut specification = fixture_specification();
+    for (anchor, files) in [
+        ("things-flags", &["chapters/things.adoc"][..]),
+        ("things-partial", &["appendices/VK_KHR_things.adoc"]),
+        (
+            "things-twice",
+            &["chapters/things.adoc", "chapters/more.adoc"],
+        ),
+    ] {
+        let files = files.iter().map(|file| file.to_string()).collect();
+        specification.anchors.insert(anchor.to_string(), files);
+    }
+    specification.published = ["chapters/things.adoc".to_string()].into();
+    let titles = &mut specification.titles;
+    titles.insert("things-titled".to_string(), "A Title".to_string());
+    let body = format!(
+        "
+  * pname:bias is clamped.
+    See {reference}.
+  * pname:size is small.
+    See <<things-titled>> and <<things-flags, the flags>>."
+    );
+    let page = Page {
+        name: "VkLimits".to_string(),
+        file: FIXTURE_FILE.to_string(),
+        description: "Structure of limits".to_string(),
+        body_words: specification.words(&body),
+        body,
+        valid_usage: OnceCell::new(),
+    };
+    specification.pages.insert("VkLimits".to_string(), page);
+    assert_eq!(
+        FIXTURE_LIMITS_SOURCE.matches(replace).count(),
+        1,
+        "{replace}"
+    );
+    let source = FIXTURE_LIMITS_SOURCE.replacen(replace, with, 1);
+    let checker = fixture_legacy_checker(&specification, &source);
+    if checker.failures.is_empty() {
+        assert_eq!(checker.untitled_anchors, ["Limits::bias: things-flags"]);
+        assert_eq!(checker.links_of_untitled_anchors, 1);
+        assert_eq!(
+            specification.every_untitled_reference(),
+            BTreeSet::from([("VkLimits".to_string(), "things-flags".to_string())])
+        );
+    }
+    checker.failures
+}
+
+#[test]
+fn checker_accepts_a_link_for_a_reference_without_a_text_to_an_anchor_without_a_title() {
+    let link = FIXTURE_LIMITS_LINK;
+    assert_eq!(
+        fixture_limits_failures("<<things-flags>>", link, link),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn checker_reports_a_reference_to_an_untitled_anchor_that_is_not_the_link_of_its_page() {
+    let expected = "Limits::bias: the description of `bias` refers to the anchor `things-flags`, which has no title, so the specification shows the link `[things-flags]`, but the documentation has no `[\\[things-flags\\]](https://docs.vulkan.org/spec/latest/chapters/things.html#things-flags)`";
+    let unreferenced = |anchor: &str| {
+        format!(
+            "Limits::bias: the description of `bias` links the anchor `{anchor}`, which its list item on the page `VkLimits` does not refer to without a text, or which has a title"
+        )
+    };
+    for (defect, with, failures) in [
+        (
+            "the name of the anchor without a link",
+            "    /// \\[things-flags\\].\n",
+            vec![expected.to_string()],
+        ),
+        (
+            "a link to another page",
+            "    /// [\\[things-flags\\]](SPEC/chapters/more.html#things-flags).\n",
+            vec![expected.to_string()],
+        ),
+        (
+            "a link to another anchor of the page",
+            "    /// [\\[things-flags\\]](SPEC/chapters/things.html#things).\n",
+            vec![expected.to_string()],
+        ),
+        (
+            "a link without the brackets of the name",
+            "    /// [things-flags](SPEC/chapters/things.html#things-flags).\n",
+            vec![
+                "Limits: has a docs.vulkan.org link of an unexpected form".to_string(),
+                expected.to_string(),
+            ],
+        ),
+    ] {
+        assert_eq!(
+            fixture_limits_failures("<<things-flags>>", FIXTURE_LIMITS_LINK, with),
+            failures,
+            "{defect}"
+        );
+    }
+    let link = FIXTURE_LIMITS_LINK;
+    assert!(
+        fixture_limits_failures("<<things-titled>>", link, link)
+            .contains(&unreferenced("things-flags")),
+        "a link where the anchor has a title"
+    );
+    assert!(
+        fixture_limits_failures("<<things-flags, the flags>>", link, link)
+            .contains(&unreferenced("things-flags")),
+        "a link where the reference has a text"
+    );
+    for (reference, problem) in [
+        (
+            "<<things-partial>>",
+            "the anchor `things-partial` is in `appendices/VK_KHR_things.adoc`, which is not published as a page of its own",
+        ),
+        (
+            "<<things-twice>>",
+            "2 source files of the specification define the anchor `things-twice`",
+        ),
+        (
+            "<<things-missing>>",
+            "0 source files of the specification define the anchor `things-missing`",
+        ),
+    ] {
+        let anchor = reference.trim_matches(['<', '>']);
+        let with = format!("    /// [\\[{anchor}\\]](SPEC/chapters/things.html#{anchor}).\n");
+        assert_eq!(
+            fixture_limits_failures(reference, link, &with),
+            [format!(
+                "Limits::bias: the description of `bias` refers to the anchor `{anchor}`, which has no title, and {problem}"
+            )],
+            "{reference}"
+        );
     }
 }
