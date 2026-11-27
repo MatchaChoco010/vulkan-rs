@@ -614,6 +614,13 @@ impl Allocator {
     /// The same as [`Allocator::map_memory`], in the same order. The allocation is not
     /// changed when an error is returned.
     ///
+    /// For an allocation that is already persistently mapped, only the first two are
+    /// checked, and the second never applies, since only host-visible memory can be
+    /// mapped. Then the same pointer is returned without taking a reference and without
+    /// a Vulkan call, so no other error is returned: not
+    /// [`AllocationError::MappingFailed`] either, whatever the number of mapping
+    /// references the allocation holds.
+    ///
     /// # Safety
     ///
     /// - The device the allocator was created with must not have been destroyed.
