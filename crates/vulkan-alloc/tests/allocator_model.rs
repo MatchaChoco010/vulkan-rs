@@ -135,6 +135,7 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         "allocate: memory of its own",
         "allocate: mapped at once",
         "allocate: mapped at once in a block that is mapped",
+        "allocate: mapped after falling back to another memory type",
         "allocate: mapped is ignored for memory that is not host-visible",
         "allocate: mapping fails and the allocation is undone",
         "allocate: vkMapMemory fails and the allocation is undone",

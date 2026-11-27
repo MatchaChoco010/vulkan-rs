@@ -422,7 +422,6 @@ pub enum HandleUse {
     MapMemory,
     Guard,
     MapPersistent,
-    MappedPtr,
     UnmapMemory,
     Flush,
     Invalidate,
@@ -430,12 +429,11 @@ pub enum HandleUse {
     InvalidateRange,
 }
 
-pub const HANDLE_USES: [HandleUse; 10] = [
+pub const HANDLE_USES: [HandleUse; 9] = [
     HandleUse::Free,
     HandleUse::MapMemory,
     HandleUse::Guard,
     HandleUse::MapPersistent,
-    HandleUse::MappedPtr,
     HandleUse::UnmapMemory,
     HandleUse::Flush,
     HandleUse::Invalidate,
@@ -1848,6 +1846,14 @@ impl Harness {
             .sum()
     }
 
+    fn size_of_a_new_block(&self, request: &Request, memory_type: u32) -> u64 {
+        if request.needs_its_own_memory() {
+            request.size
+        } else {
+            self.world.shared_block_size(memory_type).max(request.size)
+        }
+    }
+
     fn effective_alignment(&self, memory_type: u32, alignment: u64) -> u64 {
         let flags = self.flags_of(memory_type);
         if flags.contains(VISIBLE) && !flags.contains(COHERENT) {
@@ -2061,6 +2067,10 @@ impl Harness {
         if !left_out.is_empty() {
             self.coverage
                 .note("allocate: falls back to another memory type");
+            if request.mapped {
+                self.coverage
+                    .note("allocate: mapped after falling back to another memory type");
+            }
         }
         for reason in &reasons {
             self.coverage.note(match *reason {
@@ -2130,11 +2140,7 @@ impl Harness {
             self.coverage.step("allocate: into a shared block");
             allocation
         } else {
-            let block_size = if own {
-                request.size
-            } else {
-                self.world.shared_block_size(memory_type).max(request.size)
-            };
+            let block_size = self.size_of_a_new_block(request, memory_type);
             let allocation =
                 result.map_err(|error| format!("new memory was allocated, but: {error:?}"))?;
             let memory = allocation.memory();
@@ -2465,11 +2471,7 @@ impl Harness {
         } else {
             let own = request.needs_its_own_memory();
             let block = Block {
-                size: if own {
-                    request.size
-                } else {
-                    self.world.shared_block_size(memory_type).max(request.size)
-                },
+                size: self.size_of_a_new_block(request, memory_type),
                 memory_type,
                 linear: request.linear,
                 allocate_flags: request.allocate_flags(),
@@ -3871,7 +3873,6 @@ fn refuse(
             HandleUse::MapMemory => allocator.map_memory(&allocation).err(),
             HandleUse::Guard => allocator.map(&allocation).err(),
             HandleUse::MapPersistent => allocator.map_persistent(&mut allocation).err(),
-            HandleUse::MappedPtr => invalid.clone(),
             HandleUse::UnmapMemory => allocator.unmap_memory(&allocation).err(),
             HandleUse::Flush => allocator.flush_allocation(&allocation).err(),
             HandleUse::Invalidate => allocator.invalidate_allocation(&allocation).err(),
