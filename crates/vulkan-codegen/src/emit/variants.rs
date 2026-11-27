@@ -139,10 +139,12 @@ fn value_doc(model: &Model<'_>, owner: &str, owner_cfg: &Cfg, v: &Variant<'_>) -
             "`{c_name}`, the object type of {}.",
             model.link(&from, &h.name)
         ))
-    } else if let Some(tabulated) = model.tabulated(&from, owner, c_name) {
+    } else if let Some(tabulated) = model.tabulated_on_the_page(&from, owner, c_name) {
         Doc::new().blocks(tabulated)
     } else if let Some(described) = model.described_outside_the_page(&from, owner, c_name) {
         Doc::new().blocks(described)
+    } else if let Some(tabulated) = model.tabulated_outside_the_pages(&from, owner, c_name) {
+        Doc::new().blocks(tabulated)
     } else if let Some(described) = model.described_under_an_alias(&from, owner, c_name) {
         Doc::new().blocks(described)
     } else {
