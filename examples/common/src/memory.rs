@@ -1,10 +1,9 @@
 use anyhow::{Context, Result, anyhow, ensure};
 use vulkan::vk;
-use vulkan_alloc::{Allocation, AllocationCreateDesc, MemoryLocation};
+use vulkan_alloc::{Allocation, MemoryLocation, ResourceAllocationDesc};
 
 use crate::commands::submit_and_wait;
 use crate::device::{Destroy, Gpu, GpuOwner, Owned};
-use crate::image::{DRM_FORMAT_MOD_LINEAR, drm_format_modifier, is_linear_image};
 
 /// A buffer bound to memory from the allocator of a [`Gpu`].
 pub struct Buffer {
@@ -15,10 +14,7 @@ pub struct Buffer {
 
 impl Destroy for Buffer {
     unsafe fn destroy(self, gpu: &GpuOwner) {
-        unsafe {
-            gpu.device.destroy_buffer(self.buffer, None);
-            gpu.free(self.allocation);
-        }
+        unsafe { gpu.destroy_buffer(self.buffer, self.allocation) }
     }
 }
 
@@ -70,32 +66,24 @@ unsafe fn create_buffer_with_mapping(
             "{name}: {usage:?} needs memory with DEVICE_ADDRESS, which a device created \
              without bufferDeviceAddress cannot give"
         );
-        let device = &gpu.device;
-        let buffer = gpu.own(device.create_buffer(
-            &vk::BufferCreateInfo::default().size(size).usage(usage),
-            None,
-        )?);
-        let mut requirements = device.get_buffer_memory_requirements(*buffer);
-        requirements.alignment = requirements.alignment.max(alignment);
-        let allocation = gpu.with_allocator(|allocator| {
-            allocator.allocate(AllocationCreateDesc {
-                name: Some(name),
-                mapped,
-                ..AllocationCreateDesc::new(requirements, location, true)
-            })
+        // The allocator creates the buffer, gives it memory with DEVICE_ADDRESS if its
+        // usage needs that, and binds it, or leaves nothing behind when it fails.
+        let (buffer, allocation) = gpu.with_allocator(|allocator| {
+            allocator.create_buffer(
+                &vk::BufferCreateInfo::default().size(size).usage(usage),
+                ResourceAllocationDesc {
+                    name: Some(name),
+                    mapped,
+                    alignment,
+                    ..ResourceAllocationDesc::new(location)
+                },
+            )
         })?;
-        // From here the buffer and its memory go together.
-        let buffer = gpu.own(Buffer {
-            buffer: buffer.into_inner(),
+        Ok(gpu.own(Buffer {
+            buffer,
             allocation,
             size,
-        });
-        device.bind_buffer_memory(
-            buffer.buffer,
-            buffer.allocation.memory(),
-            buffer.allocation.offset(),
-        )?;
-        Ok(buffer)
+        }))
     }
 }
 
@@ -258,11 +246,8 @@ impl Owned<MappedBuffer> {
 
 impl Destroy for MappedBuffer {
     unsafe fn destroy(self, gpu: &GpuOwner) {
-        unsafe {
-            gpu.device.destroy_buffer(self.buffer, None);
-            // Freeing a persistently mapped allocation also ends its mapping.
-            gpu.free(self.allocation);
-        }
+        // Freeing a persistently mapped allocation also ends its mapping.
+        unsafe { gpu.destroy_buffer(self.buffer, self.allocation) }
     }
 }
 
@@ -319,49 +304,29 @@ pub struct Image {
 
 impl Destroy for Image {
     unsafe fn destroy(self, gpu: &GpuOwner) {
-        unsafe {
-            gpu.device.destroy_image(self.image, None);
-            gpu.free(self.allocation);
-        }
+        unsafe { gpu.destroy_image(self.image, self.allocation) }
     }
 }
 
+/// An image created from `info`, in device-local memory from the allocator. The
+/// allocator tells from `info` whether the image is linear, and gives it memory of its
+/// own if the driver asks for that, or exportable memory if `info` asks for that.
 pub unsafe fn create_image(
     gpu: &Gpu,
     name: &str,
     info: &vk::ImageCreateInfo<'_>,
 ) -> Result<Owned<Image>> {
     unsafe {
-        let device = &gpu.device;
-        let image = gpu.own(device.create_image(info, None)?);
-        // A DRM-modifier image is linear or not by the modifier it was given.
-        let modifier = if info.tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
-            drm_format_modifier(device, *image)?
-        } else {
-            DRM_FORMAT_MOD_LINEAR
-        };
-        let requirements = device.get_image_memory_requirements(*image);
-        let allocation = gpu.with_allocator(|allocator| {
-            allocator.allocate(AllocationCreateDesc {
-                name: Some(name),
-                ..AllocationCreateDesc::new(
-                    requirements,
-                    MemoryLocation::GpuOnly,
-                    is_linear_image(info.tiling, modifier),
-                )
-            })
+        let (image, allocation) = gpu.with_allocator(|allocator| {
+            allocator.create_image(
+                info,
+                ResourceAllocationDesc {
+                    name: Some(name),
+                    ..ResourceAllocationDesc::new(MemoryLocation::GpuOnly)
+                },
+            )
         })?;
-        // From here the image and its memory go together.
-        let image = gpu.own(Image {
-            image: image.into_inner(),
-            allocation,
-        });
-        device.bind_image_memory(
-            image.image,
-            image.allocation.memory(),
-            image.allocation.offset(),
-        )?;
-        Ok(image)
+        Ok(gpu.own(Image { image, allocation }))
     }
 }
 

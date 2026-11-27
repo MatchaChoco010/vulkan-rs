@@ -190,7 +190,10 @@ impl Allocator {
     /// Allocates a range of device memory for a resource.
     ///
     /// Create the resource, query its memory requirements, pass them here, then bind the
-    /// returned [`Allocation`] to the resource yourself.
+    /// returned [`Allocation`] to the resource yourself. For a buffer or an image,
+    /// [`Allocator::create_buffer`] and [`Allocator::create_image`] do all of this and
+    /// fill the description from the resource (see the
+    /// [crate documentation](crate#use)).
     ///
     /// The memory type is chosen among those allowed by
     /// `desc.requirements.memory_type_bits` that have every flag
@@ -927,6 +930,14 @@ impl Allocator {
             .iter_mut()
             .map(|memory_type| unsafe { memory_type.free_empty_blocks(&self.device) })
             .sum()
+    }
+
+    pub(crate) fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub(crate) fn memory_allocate_flags(&self) -> vk::MemoryAllocateFlags {
+        self.memory_allocate_flags
     }
 
     unsafe fn allocate_from_type(

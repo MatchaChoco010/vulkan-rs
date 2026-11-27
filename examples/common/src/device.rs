@@ -6,7 +6,7 @@ use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use vulkan::{Device, Instance, vk};
-use vulkan_alloc::{Allocation, Allocator, AllocatorCreateDesc};
+use vulkan_alloc::{Allocation, Allocator, AllocatorCreateDesc, FreeError};
 
 use crate::extensions::has_extension;
 use crate::instance::VulkanInstance;
@@ -188,16 +188,48 @@ impl GpuOwner {
         f(&mut self.allocator.borrow_mut())
     }
 
-    /// Frees `allocation`, as the [`Destroy`] of a buffer or image does. A failure is
-    /// printed: destruction has no caller to return it to. The memory of an allocation
-    /// that could not be freed goes with the device.
-    pub(crate) unsafe fn free(&self, allocation: Allocation) {
+    /// Destroys `buffer` and frees `allocation`, as the [`Destroy`] of a buffer does. A
+    /// failure is printed: destruction has no caller to return it to. The buffer is
+    /// destroyed all the same, and the memory of an allocation that could not be freed
+    /// goes with the device.
+    pub(crate) unsafe fn destroy_buffer(&self, buffer: vk::Buffer, allocation: Allocation) {
+        let destroyed = self.destroy_with_memory(allocation, |allocator, allocation| unsafe {
+            allocator.destroy_buffer(buffer, allocation)
+        });
+        if !destroyed {
+            unsafe { self.device.destroy_buffer(buffer, None) };
+        }
+    }
+
+    /// Destroys `image` and frees `allocation`, as the [`Destroy`] of an image does,
+    /// with failures handled as for [`GpuOwner::destroy_buffer`].
+    pub(crate) unsafe fn destroy_image(&self, image: vk::Image, allocation: Allocation) {
+        let destroyed = self.destroy_with_memory(allocation, |allocator, allocation| unsafe {
+            allocator.destroy_image(image, allocation)
+        });
+        if !destroyed {
+            unsafe { self.device.destroy_image(image, None) };
+        }
+    }
+
+    /// Calls `destroy` with the allocator and `allocation`, and tells whether it
+    /// destroyed the resource: not when the allocator is in use, nor when it did not
+    /// free the allocation, which leaves the resource alive.
+    fn destroy_with_memory(
+        &self,
+        allocation: Allocation,
+        destroy: impl FnOnce(&mut Allocator, Allocation) -> Result<(), FreeError>,
+    ) -> bool {
         let Ok(mut allocator) = self.allocator.try_borrow_mut() else {
             cleanup_failed("an object was dropped while the allocator was in use");
-            return;
+            return false;
         };
-        if let Err(error) = unsafe { allocator.free(allocation) } {
-            cleanup_failed(format_args!("freeing memory: {}", error.error));
+        match destroy(&mut allocator, allocation) {
+            Ok(()) => true,
+            Err(error) => {
+                cleanup_failed(format_args!("freeing memory: {}", error.error));
+                false
+            }
         }
     }
 }

@@ -10,7 +10,7 @@ use proptest::test_runner::{RngAlgorithm, TestRng, TestRunner};
 use vulkan::{Device, Entry, Instance, vk};
 use vulkan_alloc::{
     Allocation, AllocationCreateDesc, AllocationError, AllocationScheme, Allocator,
-    AllocatorCreateDesc, AllocatorSnapshot, MemoryLocation,
+    AllocatorCreateDesc, AllocatorSnapshot, MemoryLocation, ResourceAllocationDesc,
 };
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
@@ -813,6 +813,7 @@ enum Op {
         location: MemoryLocation,
         dedicated: bool,
         mapped: bool,
+        by_allocator: Option<u64>,
     },
     Image {
         width: u32,
@@ -821,6 +822,7 @@ enum Op {
         location: MemoryLocation,
         dedicated: bool,
         mapped: bool,
+        by_allocator: Option<u64>,
     },
     Fill {
         target: Index,
@@ -880,6 +882,10 @@ fn image_extent() -> impl Strategy<Value = u32> {
     ]
 }
 
+fn by_allocator() -> impl Strategy<Value = Option<u64>> {
+    prop::option::weighted(0.5, prop::sample::select(vec![0u64, 1, 64, 256, 4096]))
+}
+
 fn operation() -> impl Strategy<Value = Op> {
     prop_oneof![
         8 => (
@@ -888,13 +894,15 @@ fn operation() -> impl Strategy<Value = Op> {
             location(),
             prop::bool::weighted(0.15),
             prop::bool::weighted(0.4),
+            by_allocator(),
         )
-            .prop_map(|(size, usage, location, dedicated, mapped)| Op::Buffer {
+            .prop_map(|(size, usage, location, dedicated, mapped, by_allocator)| Op::Buffer {
                 size,
                 usage,
                 location,
                 dedicated,
                 mapped,
+                by_allocator,
             }),
         4 => (
             image_extent(),
@@ -903,15 +911,19 @@ fn operation() -> impl Strategy<Value = Op> {
             location(),
             prop::bool::weighted(0.15),
             prop::bool::weighted(0.4),
+            by_allocator(),
         )
-            .prop_map(|(width, height, linear, location, dedicated, mapped)| Op::Image {
-                width,
-                height,
-                linear,
-                location,
-                dedicated,
-                mapped,
-            }),
+            .prop_map(
+                |(width, height, linear, location, dedicated, mapped, by_allocator)| Op::Image {
+                    width,
+                    height,
+                    linear,
+                    location,
+                    dedicated,
+                    mapped,
+                    by_allocator,
+                },
+            ),
         6 => (any::<Index>(), any::<bool>())
             .prop_map(|(target, persistent)| Op::Fill { target, persistent }),
         6 => any::<Index>().prop_map(|target| Op::Free { target }),
@@ -959,6 +971,7 @@ struct Live {
     dedicated: bool,
     contents: Option<u8>,
     persistent: Option<NonNull<u8>>,
+    by_allocator: bool,
 }
 
 #[derive(Debug, Default)]
@@ -983,6 +996,9 @@ struct Coverage {
     frees_with_nothing_live: usize,
     free_alls_with_live_allocations: usize,
     over_the_live_bytes_limit: usize,
+    created_by_the_allocator: usize,
+    images_created_by_the_allocator: usize,
+    destroyed_by_the_allocator: usize,
 }
 
 impl Coverage {
@@ -1008,6 +1024,9 @@ impl Coverage {
         self.frees_with_nothing_live += other.frees_with_nothing_live;
         self.free_alls_with_live_allocations += other.free_alls_with_live_allocations;
         self.over_the_live_bytes_limit += other.over_the_live_bytes_limit;
+        self.created_by_the_allocator += other.created_by_the_allocator;
+        self.images_created_by_the_allocator += other.images_created_by_the_allocator;
+        self.destroyed_by_the_allocator += other.destroyed_by_the_allocator;
     }
 }
 
@@ -1081,10 +1100,8 @@ impl<'g> Sequence<'g> {
                     .map_err(|e| format!("after operation {step} ({operation:?}): {e}"))?;
             }
             while let Some(live) = self.live.pop() {
-                self.destroy(live.resource);
-                self.allocator
-                    .free(live.allocation)
-                    .map_err(|e| format!("freeing what is left: {e:?}"))?;
+                self.release(live)
+                    .map_err(|e| format!("freeing what is left: {e}"))?;
             }
             ensure!(self.allocator.is_empty(), "the allocator is not empty");
             check_empty_blocks(&self.allocator.snapshot())?;
@@ -1100,6 +1117,24 @@ impl<'g> Sequence<'g> {
             if ending == Ending::FreeAllThenDrop {
                 self.allocator.free_all();
             }
+        }
+    }
+
+    unsafe fn release(&mut self, live: Live) -> Result<(), String> {
+        unsafe {
+            if !live.by_allocator {
+                self.destroy(live.resource);
+                return self
+                    .allocator
+                    .free(live.allocation)
+                    .map_err(|e| format!("free: {e:?}"));
+            }
+            self.coverage.destroyed_by_the_allocator += 1;
+            match live.resource {
+                Resource::Buffer(buffer) => self.allocator.destroy_buffer(buffer, live.allocation),
+                Resource::Image(image) => self.allocator.destroy_image(image, live.allocation),
+            }
+            .map_err(|e| format!("destroying through the allocator: {e:?}"))
         }
     }
 
@@ -1119,9 +1154,27 @@ impl<'g> Sequence<'g> {
                     size,
                     usage,
                     location,
+                    mapped,
+                    by_allocator: Some(alignment),
+                    ..
+                } => self.create_buffer(size, usage, location, mapped, alignment),
+                Op::Buffer {
+                    size,
+                    usage,
+                    location,
                     dedicated,
                     mapped,
+                    by_allocator: None,
                 } => self.allocate_buffer(size, usage, location, dedicated, mapped),
+                Op::Image {
+                    width,
+                    height,
+                    linear,
+                    location,
+                    mapped,
+                    by_allocator: Some(alignment),
+                    ..
+                } => self.create_image(width, height, linear, location, mapped, alignment),
                 Op::Image {
                     width,
                     height,
@@ -1129,6 +1182,7 @@ impl<'g> Sequence<'g> {
                     location,
                     dedicated,
                     mapped,
+                    by_allocator: None,
                 } => self.allocate_image(width, height, linear, location, dedicated, mapped),
                 Op::Fill { target, persistent } => self.fill(target, persistent),
                 Op::Free { target } => self.free(target),
@@ -1180,33 +1234,10 @@ impl<'g> Sequence<'g> {
         mapped: bool,
     ) -> Result<(), String> {
         unsafe {
-            let (tiling, usage) = if linear {
-                (
-                    vk::ImageTiling::LINEAR,
-                    vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
-                )
-            } else {
-                (
-                    vk::ImageTiling::OPTIMAL,
-                    vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
-                )
-            };
             let image = self
                 .gpu
                 .device
-                .create_image(
-                    &vk::ImageCreateInfo::default()
-                        .image_type(vk::ImageType::_2D)
-                        .format(vk::Format::R8G8B8A8_UNORM)
-                        .extent(vk::Extent3D {
-                            width,
-                            height,
-                            depth: 1,
-                        })
-                        .tiling(tiling)
-                        .usage(usage),
-                    None,
-                )
+                .create_image(&image_info(width, height, linear), None)
                 .map_err(|e| format!("vkCreateImage: {e}"))?;
             let requirements = self.gpu.device.get_image_memory_requirements(image);
             self.coverage.images += 1;
@@ -1329,6 +1360,7 @@ impl<'g> Sequence<'g> {
                 dedicated,
                 contents: None,
                 persistent,
+                by_allocator: false,
             });
             bound.map_err(|e| format!("binding the resource: {e}"))?;
             ensure!(
@@ -1348,6 +1380,155 @@ impl<'g> Sequence<'g> {
             }
             self.check_placement(self.live.last().unwrap())
         }
+    }
+
+    unsafe fn create_buffer(
+        &mut self,
+        size: u64,
+        usage: vk::BufferUsageFlags,
+        location: MemoryLocation,
+        mapped: bool,
+        alignment: u64,
+    ) -> Result<(), String> {
+        unsafe {
+            if self.over_the_live_bytes_limit(size) {
+                return Ok(());
+            }
+            let (buffer, allocation) = self
+                .allocator
+                .create_buffer(
+                    &vk::BufferCreateInfo::default().size(size).usage(usage),
+                    ResourceAllocationDesc {
+                        mapped,
+                        alignment,
+                        ..ResourceAllocationDesc::new(location)
+                    },
+                )
+                .map_err(|e| format!("create_buffer: {e}"))?;
+            let requirements = self.gpu.device.get_buffer_memory_requirements(buffer);
+            self.coverage.buffers += 1;
+            self.record_created(
+                Resource::Buffer(buffer),
+                allocation,
+                requirements,
+                alignment,
+                true,
+                usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS),
+                Memory {
+                    location,
+                    dedicated: false,
+                    mapped,
+                },
+            )
+        }
+    }
+
+    unsafe fn create_image(
+        &mut self,
+        width: u32,
+        height: u32,
+        linear: bool,
+        location: MemoryLocation,
+        mapped: bool,
+        alignment: u64,
+    ) -> Result<(), String> {
+        unsafe {
+            if self.over_the_live_bytes_limit(u64::from(width) * u64::from(height) * 4) {
+                return Ok(());
+            }
+            let (image, allocation) = self
+                .allocator
+                .create_image(
+                    &image_info(width, height, linear),
+                    ResourceAllocationDesc {
+                        mapped,
+                        alignment,
+                        ..ResourceAllocationDesc::new(location)
+                    },
+                )
+                .map_err(|e| format!("create_image: {e}"))?;
+            let requirements = self.gpu.device.get_image_memory_requirements(image);
+            self.coverage.images += 1;
+            self.coverage.images_created_by_the_allocator += 1;
+            if linear {
+                self.coverage.linear_images += 1;
+            }
+            self.record_created(
+                Resource::Image(image),
+                allocation,
+                requirements,
+                alignment,
+                linear,
+                false,
+                Memory {
+                    location,
+                    dedicated: false,
+                    mapped,
+                },
+            )
+        }
+    }
+
+    fn over_the_live_bytes_limit(&mut self, size: u64) -> bool {
+        let live_bytes: u64 = self.live.iter().map(|live| live.allocation.size()).sum();
+        let over = live_bytes + size > SEQUENCE_LIVE_BYTES_LIMIT;
+        if over {
+            self.coverage.over_the_live_bytes_limit += 1;
+        }
+        over
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record_created(
+        &mut self,
+        resource: Resource,
+        allocation: Allocation,
+        mut requirements: vk::MemoryRequirements,
+        alignment: u64,
+        linear: bool,
+        device_address: bool,
+        memory: Memory,
+    ) -> Result<(), String> {
+        requirements.alignment = requirements.alignment.max(alignment);
+        self.coverage.created_by_the_allocator += 1;
+        if self
+            .live
+            .iter()
+            .any(|live| live.allocation.memory() == allocation.memory())
+        {
+            self.coverage.into_a_block_with_another_allocation += 1;
+        }
+        let host_visible = allocation
+            .memory_properties()
+            .contains(vk::MemoryPropertyFlags::HOST_VISIBLE);
+        let persistent = allocation.mapped_ptr();
+        let dedicated = allocation.is_dedicated();
+        if dedicated {
+            self.coverage.dedicated += 1;
+        }
+        if device_address {
+            self.coverage.device_address += 1;
+        }
+        self.live.push(Live {
+            allocation,
+            resource,
+            requirements,
+            location: memory.location,
+            linear,
+            device_address,
+            dedicated,
+            contents: None,
+            persistent,
+            by_allocator: true,
+        });
+        ensure!(
+            persistent.is_some() == (memory.mapped && host_visible),
+            "a resource created with mapped {} in memory that is {}host-visible has the \
+             mapped pointer {persistent:?}",
+            memory.mapped,
+            if host_visible { "" } else { "not " }
+        );
+        self.check_placement(self.live.last().unwrap())
     }
 
     fn check_placement(&self, live: &Live) -> Result<(), String> {
@@ -1472,10 +1653,7 @@ impl<'g> Sequence<'g> {
             {
                 self.coverage.blocks_emptied_by_free += 1;
             }
-            self.destroy(live.resource);
-            self.allocator
-                .free(live.allocation)
-                .map_err(|e| format!("free: {e:?}"))
+            self.release(live)
         }
     }
 
@@ -1651,6 +1829,30 @@ impl<'g> Sequence<'g> {
     }
 }
 
+fn image_info(width: u32, height: u32, linear: bool) -> vk::ImageCreateInfo<'static> {
+    let (tiling, usage) = if linear {
+        (
+            vk::ImageTiling::LINEAR,
+            vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST,
+        )
+    } else {
+        (
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST,
+        )
+    };
+    vk::ImageCreateInfo::default()
+        .image_type(vk::ImageType::_2D)
+        .format(vk::Format::R8G8B8A8_UNORM)
+        .extent(vk::Extent3D {
+            width,
+            height,
+            depth: 1,
+        })
+        .tiling(tiling)
+        .usage(usage)
+}
+
 fn check_empty_blocks(snapshot: &AllocatorSnapshot) -> Result<(), String> {
     for memory_type in &snapshot.memory_types {
         let mut flags_of_empty_blocks = Vec::new();
@@ -1743,6 +1945,18 @@ fn the_generated_sequences_reach_every_kind_of_placement_and_mapping() {
         ),
         ("fills of a filled allocation", coverage.refills),
         ("reads", coverage.reads),
+        (
+            "resources created by the allocator",
+            coverage.created_by_the_allocator,
+        ),
+        (
+            "images created by the allocator",
+            coverage.images_created_by_the_allocator,
+        ),
+        (
+            "resources destroyed by the allocator",
+            coverage.destroyed_by_the_allocator,
+        ),
         ("fills with nothing live", coverage.fills_with_nothing_live),
         ("frees with nothing live", coverage.frees_with_nothing_live),
         (

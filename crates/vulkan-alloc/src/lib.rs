@@ -15,30 +15,35 @@
 //!    takes the [`vulkan::Device`] and the memory properties and properties of the
 //!    physical device it was created from. If the device was created with the
 //!    `bufferDeviceAddress` feature, add `DEVICE_ADDRESS` to
-//!    [`AllocatorCreateDesc::memory_allocate_flags`], so that any allocation can back a
-//!    buffer whose device address is taken.
-//! 2. Create a buffer or an image and query its memory requirements.
-//! 3. Describe the memory in an [`AllocationCreateDesc`], made with
-//!    [`AllocationCreateDesc::new`], and pass it to [`Allocator::allocate`]. The
-//!    [`MemoryLocation`] chooses the memory type from how the memory is used:
-//!    [`MemoryLocation::GpuOnly`] for memory only the device accesses,
-//!    [`MemoryLocation::CpuToGpu`] for memory the host writes and the device reads,
-//!    such as staging buffers for uploads and the uniform buffer below, and
-//!    [`MemoryLocation::GpuToCpu`] for memory the device writes and the host reads. The
-//!    memory of the last two is host-visible and host-coherent.
-//! 4. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`]. The
-//!    allocator does not bind anything itself.
-//! 5. Access host-visible memory through the allocation, made with
-//!    [`AllocationCreateDesc::mapped`], or through one of the mapping functions (see
-//!    [Mapping](#mapping)).
-//! 6. When the device no longer uses the resource, destroy it and pass the allocation to
-//!    [`Allocator::free`].
-//! 7. Drop the allocator before the device is destroyed (see
+//!    [`AllocatorCreateDesc::memory_allocate_flags`], so that buffers with and without a
+//!    device address share blocks, and so that any allocation can back a buffer whose
+//!    device address is taken.
+//! 2. Create a buffer with [`Allocator::create_buffer`] or an image with
+//!    [`Allocator::create_image`]. They take the create info of the resource and a
+//!    [`ResourceAllocationDesc`], made with [`ResourceAllocationDesc::new`], which says
+//!    where the memory goes. The [`MemoryLocation`] chooses the memory type from how the
+//!    memory is used: [`MemoryLocation::GpuOnly`] for memory only the device accesses,
+//!    [`MemoryLocation::CpuToGpu`] for memory the host writes and the device reads, such
+//!    as the uniform buffer below and staging buffers, and [`MemoryLocation::GpuToCpu`]
+//!    for memory the device writes and the host reads. The memory of the last two is
+//!    host-visible and host-coherent, and [`ResourceAllocationDesc::new`] asks for it to
+//!    be mapped, so that the host can reach it through [`Allocation::mapped_slice_mut`]
+//!    and [`Allocation::mapped_slice`]. The function creates the resource, queries its
+//!    memory requirements, allocates memory for it, and binds the resource to the
+//!    memory. What the allocation needs besides the location, such as whether the
+//!    resource is linear, whether it needs a dedicated allocation and whether its usage
+//!    needs a device address, follows from the create info and the requirements.
+//! 3. Access host-visible memory through the allocation, mapped as
+//!    [`ResourceAllocationDesc::mapped`] says, or through one of the mapping functions
+//!    (see [Mapping](#mapping)).
+//! 4. When the device no longer uses the resource, pass it and its allocation to
+//!    [`Allocator::destroy_buffer`] or [`Allocator::destroy_image`].
+//! 5. Drop the allocator before the device is destroyed (see
 //!    [Order of destruction](#order-of-destruction)).
 //!
 //! ```no_run
 //! use vulkan::{Device, Instance, vk};
-//! use vulkan_alloc::{AllocationCreateDesc, Allocator, AllocatorCreateDesc, MemoryLocation};
+//! use vulkan_alloc::{Allocator, AllocatorCreateDesc, MemoryLocation, ResourceAllocationDesc};
 //!
 //! unsafe fn upload(
 //!     instance: &Instance,
@@ -53,22 +58,15 @@
 //!             instance.get_physical_device_properties(physical_device),
 //!         ));
 //!
-//!         let buffer = device.create_buffer(
+//!         let (buffer, mut allocation) = allocator.create_buffer(
 //!             &vk::BufferCreateInfo::default()
 //!                 .size(data.len() as u64)
 //!                 .usage(vk::BufferUsageFlags::UNIFORM_BUFFER),
-//!             None,
+//!             ResourceAllocationDesc {
+//!                 name: Some("uniforms"),
+//!                 ..ResourceAllocationDesc::new(MemoryLocation::CpuToGpu)
+//!             },
 //!         )?;
-//!         let mut allocation = allocator.allocate(AllocationCreateDesc {
-//!             name: Some("uniforms"),
-//!             mapped: true,
-//!             ..AllocationCreateDesc::new(
-//!                 device.get_buffer_memory_requirements(buffer),
-//!                 MemoryLocation::CpuToGpu,
-//!                 true,
-//!             )
-//!         })?;
-//!         device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
 //!
 //!         allocation
 //!             .mapped_slice_mut()
@@ -78,9 +76,60 @@
 //!             .copy_from_slice(data);
 //!         allocator.flush_allocation(&allocation)?;
 //!
+//!         allocator.destroy_buffer(buffer, allocation)?;
+//!         drop(allocator);
+//!         Ok(())
+//!     }
+//! }
+//! ```
+//!
+//! ## Resources that the caller creates
+//!
+//! [`Allocator::allocate`] allocates memory without creating anything, for a resource
+//! that the caller creates and binds itself. Use it for the resources that
+//! [`Allocator::create_buffer`] and [`Allocator::create_image`] refuse, such as sparse
+//! buffers and images and disjoint images, for a resource bound with `vkBindBufferMemory2`
+//! or `vkBindImageMemory2` and a structure in their chain, for memory bound to other
+//! objects, such as acceleration structures of `VK_NV_ray_tracing`, video sessions and
+//! tensors, and on a device whose Vulkan version is below 1.1:
+//!
+//! 1. Create the resource and query its memory requirements.
+//! 2. Describe the memory in an [`AllocationCreateDesc`], made with
+//!    [`AllocationCreateDesc::new`], and pass it to [`Allocator::allocate`]. The fields
+//!    that [`Allocator::create_buffer`] and [`Allocator::create_image`] fill from the
+//!    resource are the caller's to fill: [`AllocationCreateDesc::linear`],
+//!    [`AllocationCreateDesc::allocation_scheme`] for a resource that needs or prefers a
+//!    dedicated allocation, [`AllocationCreateDesc::export_handle_types`] and the
+//!    `DEVICE_ADDRESS` in [`AllocationCreateDesc::memory_allocate_flags`] that some
+//!    buffer usages need.
+//! 3. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`].
+//! 4. When the device no longer uses the resource, destroy it and pass the allocation to
+//!    [`Allocator::free`].
+//!
+//! ```no_run
+//! use vulkan::{Device, vk};
+//! use vulkan_alloc::{AllocationCreateDesc, Allocator, MemoryLocation};
+//!
+//! unsafe fn storage_buffer(
+//!     allocator: &mut Allocator,
+//!     device: &Device,
+//! ) -> Result<(), Box<dyn std::error::Error>> {
+//!     unsafe {
+//!         let buffer = device.create_buffer(
+//!             &vk::BufferCreateInfo::default()
+//!                 .size(4096)
+//!                 .usage(vk::BufferUsageFlags::STORAGE_BUFFER),
+//!             None,
+//!         )?;
+//!         let allocation = allocator.allocate(AllocationCreateDesc::new(
+//!             device.get_buffer_memory_requirements(buffer),
+//!             MemoryLocation::GpuOnly,
+//!             true,
+//!         ))?;
+//!         device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())?;
+//!
 //!         device.destroy_buffer(buffer, None);
 //!         allocator.free(allocation)?;
-//!         drop(allocator);
 //!         Ok(())
 //!     }
 //! }
@@ -148,7 +197,8 @@
 //!
 //! The allocator does not:
 //!
-//! - create, bind or destroy buffers and images;
+//! - create, bind or destroy resources other than buffers and images, nor buffers and
+//!   images that [`Allocator::create_buffer`] and [`Allocator::create_image`] refuse;
 //! - know when the device has finished with memory: [`Allocator::free`] releases memory
 //!   immediately, so the caller waits for the device first;
 //! - check memory heap budgets or `maxMemoryAllocationCount`;
@@ -244,8 +294,10 @@
 //! function table, not an owner: nothing stops the device from being destroyed while the
 //! allocator is alive, so the caller keeps this order:
 //!
-//! 1. Wait until the device no longer uses the buffers and images, then destroy them.
-//! 2. Pass their allocations to [`Allocator::free`], or call [`Allocator::free_all`].
+//! 1. Wait until the device no longer uses the buffers and images.
+//! 2. Pass them with their allocations to [`Allocator::destroy_buffer`] and
+//!    [`Allocator::destroy_image`], or destroy them and pass their allocations to
+//!    [`Allocator::free`] or call [`Allocator::free_all`].
 //! 3. Drop the allocator.
 //! 4. Destroy the device.
 //!
@@ -308,6 +360,7 @@ mod error;
 mod mapping;
 mod memory_type;
 mod report;
+mod resource;
 mod suballocator;
 
 pub use allocation::{Allocation, AllocationCreateDesc, AllocationResourceClass, AllocationScheme};
@@ -319,3 +372,4 @@ pub use report::{
     AllocatorSnapshot, AllocatorStats, LiveAllocation, MemoryBlockSnapshot, MemoryRegionSnapshot,
     MemoryRegionState, MemoryTypeSnapshot, MemoryTypeStats,
 };
+pub use resource::ResourceAllocationDesc;
