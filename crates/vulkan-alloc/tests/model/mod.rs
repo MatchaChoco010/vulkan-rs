@@ -1268,6 +1268,16 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
     .into_iter()
     .map(|memory_type| (memory_type, world.known_heap_size(memory_type).unwrap()))
     .collect::<Vec<_>>();
+    let roomy = memory_types.clone();
+    let fallbacks_that_change_host_visibility = roomy
+        .iter()
+        .flat_map(|&first| roomy.iter().map(move |&then| (first, then)))
+        .filter(|&(first, then)| {
+            first < then
+                && world.memory_types[first as usize].flags.contains(VISIBLE)
+                    != world.memory_types[then as usize].flags.contains(VISIBLE)
+        })
+        .collect::<Vec<_>>();
     let world = world.clone();
     prop::sample::select(memory_types)
         .prop_flat_map(move |memory_type| {
@@ -1299,11 +1309,17 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
                 ),
                 (
                     2,
-                    prop::sample::select(vec![(candidates - 1).max(1), candidates, candidates])
-                        .prop_map(move |failures| {
+                    (
+                        prop::sample::select(vec![(candidates - 1).max(1), candidates, candidates]),
+                        any::<bool>(),
+                    )
+                        .prop_map(move |(failures, mapped)| {
                             let mut ops =
                                 vec![Op::FailNextAllocation(out_of_device_memory); failures];
-                            ops.push(Op::Allocate(any_memory_type));
+                            ops.push(Op::Allocate(Request {
+                                mapped,
+                                ..any_memory_type
+                            }));
                             ops
                         })
                         .boxed(),
@@ -1339,6 +1355,23 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
                     .boxed(),
                 ),
             ];
+            if !fallbacks_that_change_host_visibility.is_empty() {
+                variants.push((
+                    2,
+                    prop::sample::select(fallbacks_that_change_host_visibility.clone())
+                        .prop_map(move |(first, then)| {
+                            vec![
+                                Op::FailNextAllocation(out_of_device_memory),
+                                Op::Allocate(Request {
+                                    memory_type_bits: 1 << first | 1 << then,
+                                    mapped: true,
+                                    ..Request::plain(1, 1, first)
+                                }),
+                            ]
+                        })
+                        .boxed(),
+                ));
+            }
             if !heap_limited.is_empty() {
                 variants.push((
                     2,
@@ -2067,10 +2100,6 @@ impl Harness {
         if !left_out.is_empty() {
             self.coverage
                 .note("allocate: falls back to another memory type");
-            if request.mapped {
-                self.coverage
-                    .note("allocate: mapped after falling back to another memory type");
-            }
         }
         for reason in &reasons {
             self.coverage.note(match *reason {
@@ -2083,6 +2112,14 @@ impl Harness {
 
         let chosen = holding.or(empty);
         let maps = request.mapped && self.flags_of(memory_type).contains(VISIBLE);
+        if !left_out.is_empty() && maps {
+            self.coverage
+                .note("allocate: mapped after falling back to another memory type");
+        } else if !left_out.is_empty() && request.mapped {
+            self.coverage.note(
+                "allocate: mapped is ignored after falling back to memory that is not host-visible",
+            );
+        }
         let map_expectation = if !maps {
             None
         } else if chosen.is_some_and(|memory| self.mapping_references_in(memory) > 0) {
