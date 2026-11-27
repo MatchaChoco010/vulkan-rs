@@ -232,6 +232,7 @@ proptest! {
             memory_properties: device.memory_properties(),
             non_coherent_atom_size: 1,
             block_size: 4096,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         });
         let earlier = earlier_allocation
             .then(|| unsafe { allocator.allocate(description(1, 1, u32::MAX, false)) })

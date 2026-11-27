@@ -147,6 +147,7 @@ fn allocate_all(types: &[vk::MemoryPropertyFlags], requests: &[Request]) -> usiz
         memory_properties: properties,
         non_coherent_atom_size: 64,
         block_size: BLOCK_SIZE,
+        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     });
     let mut live = Vec::new();
     let mut succeeded = 0;
@@ -265,6 +266,7 @@ fn an_allocation_that_falls_back_reports_the_flags_of_the_type_it_was_made_in() 
         memory_properties: memory_properties(&types),
         non_coherent_atom_size: 64,
         block_size: BLOCK_SIZE,
+        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     });
     fake.script_allocations([vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY]);
     let request = Request {

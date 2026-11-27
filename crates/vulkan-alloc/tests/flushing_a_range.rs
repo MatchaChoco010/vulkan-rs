@@ -115,6 +115,7 @@ fn layout(case: &Case) -> Layout {
         memory_properties,
         non_coherent_atom_size: case.atom,
         block_size: case.block_size,
+        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     });
     unsafe {
         let mut allocate = |size: u64| allocator.allocate(desc(size, 1, 0)).unwrap();

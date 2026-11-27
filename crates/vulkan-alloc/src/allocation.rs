@@ -80,7 +80,11 @@ pub struct AllocationCreateDesc<'a> {
     /// Flags for `VkMemoryAllocateFlagsInfo`, chained to the `vkAllocateMemory` call
     /// when not empty. A buffer created with
     /// [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`] needs
-    /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here.
+    /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here, unless the allocator adds it.
+    ///
+    /// The allocator adds [`AllocatorCreateDesc::memory_allocate_flags`][added] to these
+    /// flags. What is said here and in [`Allocator::allocate`](crate::Allocator::allocate)
+    /// of the flags of an allocation applies to that union.
     ///
     /// The `deviceMask` of the chained structure is always 0, so
     /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] is refused with
@@ -94,7 +98,12 @@ pub struct AllocationCreateDesc<'a> {
     /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`], the allocation gets a
     /// `VkDeviceMemory` of its own of exactly `requirements.size` bytes, at offset 0,
     /// because the implementation zeroes memory only when `vkAllocateMemory` creates it,
-    /// and a range of a shared block may hold the bytes of an earlier allocation.
+    /// and a range of a shared block may hold the bytes of an earlier allocation. Vulkan
+    /// does not allow the flag for protected memory: an allocation with it must not be
+    /// made in a memory type with `PROTECTED` (see the safety section of
+    /// [`Allocator::allocate`](crate::Allocator::allocate)).
+    ///
+    /// [added]: crate::AllocatorCreateDesc::memory_allocate_flags
     pub memory_allocate_flags: vk::MemoryAllocateFlags,
     /// Handle types the memory can be exported as (`VkExportMemoryAllocateInfo`), such
     /// as `DMA_BUF_EXT`. When not empty, the allocation gets a `VkDeviceMemory` of its
@@ -132,7 +141,9 @@ impl<'a> AllocationCreateDesc<'a> {
     /// [`AllocationCreateDesc::export_handle_types`], and
     /// [`AllocationCreateDesc::allocation_scheme`]
     /// [`AllocationScheme::GpuAllocatorManaged`], and [`AllocationCreateDesc::mapped`]
-    /// `false`. Such an allocation is placed in a shared block and is not mapped.
+    /// `false`. Such an allocation is not mapped, and is placed in a shared block unless
+    /// the allocator adds [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] to its flags
+    /// (see [`AllocationCreateDesc::memory_allocate_flags`]).
     pub const fn new(
         requirements: vk::MemoryRequirements,
         location: MemoryLocation,
@@ -176,9 +187,9 @@ impl fmt::Debug for AllocationCreateDesc<'_> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AllocationScheme {
     /// The allocation is placed in a block shared with other allocations, unless
-    /// [`AllocationCreateDesc::export_handle_types`] is not empty or
-    /// [`AllocationCreateDesc::memory_allocate_flags`] contains
-    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`].
+    /// [`AllocationCreateDesc::export_handle_types`] is not empty or the flags of the
+    /// allocation ([`AllocationCreateDesc::memory_allocate_flags`] together with those
+    /// the allocator adds) contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`].
     GpuAllocatorManaged,
     /// The allocation gets a `VkDeviceMemory` of its own of exactly
     /// `requirements.size` bytes, at offset 0, allocated with a
@@ -282,9 +293,11 @@ impl Allocation {
     /// was requested: it was made with [`AllocationScheme::DedicatedBuffer`] or
     /// [`AllocationScheme::DedicatedImage`], with
     /// [`AllocationCreateDesc::export_handle_types`] that are not empty, or with
-    /// [`AllocationCreateDesc::memory_allocate_flags`] that contain
-    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]. Such an allocation has offset 0
-    /// and exactly the requested size, and no other allocation is placed in its memory.
+    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] in
+    /// [`AllocationCreateDesc::memory_allocate_flags`] or in the flags the allocator
+    /// adds ([`AllocatorCreateDesc::memory_allocate_flags`][added]). Such an allocation
+    /// has offset 0 and exactly the requested size, and no other allocation is placed in
+    /// its memory.
     /// This is the value of
     /// [`MemoryBlockSnapshot::dedicated`](crate::MemoryBlockSnapshot::dedicated) for the
     /// block that holds the allocation.
@@ -293,6 +306,8 @@ impl Allocation {
     /// [`AllocatorCreateDesc::block_size`](crate::AllocatorCreateDesc::block_size)) that
     /// got a block of its own size: that block is a shared block, which holds no other
     /// allocation only because the allocation fills it.
+    ///
+    /// [added]: crate::AllocatorCreateDesc::memory_allocate_flags
     pub fn is_dedicated(&self) -> bool {
         self.dedicated
     }

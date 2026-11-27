@@ -105,6 +105,7 @@ pub struct World {
     pub heaps: Vec<Heap>,
     pub block_size: u64,
     pub non_coherent_atom_size: u64,
+    pub allocator_flags: vk::MemoryAllocateFlags,
 }
 
 impl World {
@@ -121,6 +122,7 @@ impl World {
             }],
             block_size: 4096,
             non_coherent_atom_size: 64,
+            allocator_flags: vk::MemoryAllocateFlags::empty(),
         }
     }
 
@@ -573,20 +575,33 @@ pub fn worlds() -> impl Strategy<Value = World> {
             2 => Just(256u64),
             1 => Just(4096u64),
         ],
+        prop_oneof![
+            24 => Just(vk::MemoryAllocateFlags::empty()),
+            8 => Just(vk::MemoryAllocateFlags::DEVICE_ADDRESS),
+            2 => Just(
+                vk::MemoryAllocateFlags::DEVICE_ADDRESS
+                    | vk::MemoryAllocateFlags::DEVICE_ADDRESS_CAPTURE_REPLAY
+            ),
+            2 => Just(vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT),
+            1 => Just(vk::MemoryAllocateFlags::DEVICE_MASK),
+        ],
     )
         .prop_map(
-            |(memory_types, small_heap, block_size, non_coherent_atom_size)| World {
-                memory_types,
-                heaps: [0, 0, small_heap, u64::MAX]
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, size)| Heap {
-                        size,
-                        tile_memory: index as u32 == TILE_MEMORY_HEAP,
-                    })
-                    .collect(),
-                block_size,
-                non_coherent_atom_size,
+            |(memory_types, small_heap, block_size, non_coherent_atom_size, allocator_flags)| {
+                World {
+                    memory_types,
+                    heaps: [0, 0, small_heap, u64::MAX]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, size)| Heap {
+                            size,
+                            tile_memory: index as u32 == TILE_MEMORY_HEAP,
+                        })
+                        .collect(),
+                    block_size,
+                    non_coherent_atom_size,
+                    allocator_flags,
+                }
             },
         )
 }
@@ -1547,6 +1562,7 @@ struct Block {
     memory_type: u32,
     linear: bool,
     allocate_flags: vk::MemoryAllocateFlags,
+    requested_flags: vk::MemoryAllocateFlags,
     own: bool,
     block_index: usize,
 }
@@ -1637,6 +1653,7 @@ impl Harness {
                 memory_properties: world.memory_properties(),
                 non_coherent_atom_size: world.non_coherent_atom_size,
                 block_size: world.block_size,
+                memory_allocate_flags: world.allocator_flags,
             })
         };
         Self {
@@ -1879,8 +1896,19 @@ impl Harness {
             .sum()
     }
 
-    fn size_of_a_new_block(&self, request: &Request, memory_type: u32) -> u64 {
-        if request.needs_its_own_memory() {
+    fn flags_of_the_allocation(&self, request: &Request) -> vk::MemoryAllocateFlags {
+        request.allocate_flags() | self.world.allocator_flags
+    }
+
+    fn has_memory_of_its_own(&self, request: &Request) -> bool {
+        request.needs_its_own_memory()
+            || self
+                .flags_of_the_allocation(request)
+                .contains(vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT)
+    }
+
+    fn size_of_a_new_block(&self, request: &Request, own: bool, memory_type: u32) -> u64 {
+        if own {
             request.size
         } else {
             self.world.shared_block_size(memory_type).max(request.size)
@@ -1938,16 +1966,22 @@ impl Harness {
                 .allocate(create_desc(request, name.as_deref(), resource))
         };
 
+        let allocate_flags = self.flags_of_the_allocation(request);
+        let added_flags = allocate_flags != request.allocate_flags();
         let invalid = if request.size == 0 {
             Some("0 bytes")
         } else if request.alignment != 0 && !request.alignment.is_power_of_two() {
             Some("alignment that is not a power of two")
-        } else if request.device_mask {
+        } else if allocate_flags.contains(vk::MemoryAllocateFlags::DEVICE_MASK) {
             Some("DEVICE_MASK")
         } else {
             None
         };
         if let Some(invalid) = invalid {
+            if invalid == "DEVICE_MASK" && !request.device_mask {
+                self.coverage
+                    .note("allocate: refused for DEVICE_MASK that the allocator adds");
+            }
             ensure_eq!(
                 result,
                 Err(AllocationError::InvalidAllocationCreateDesc),
@@ -1972,8 +2006,9 @@ impl Harness {
             }
             return self.nothing_happened_since(&before, "an invalid description");
         }
-        let own = request.needs_its_own_memory();
-        let allocate_flags = request.allocate_flags();
+        let zero_initialized =
+            allocate_flags.contains(vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT);
+        let own = self.has_memory_of_its_own(request);
         let mut left_out = Vec::new();
         let mut reasons = Vec::new();
         let mut consumed = Vec::new();
@@ -2164,6 +2199,12 @@ impl Harness {
                 self.coverage
                     .note("allocate: tries the empty block after the blocks that hold allocations");
             }
+            if self.blocks[&memory].requested_flags != request.allocate_flags() {
+                self.coverage.note(
+                    "allocate: shares a block with a request that named other flags, which the \
+                     allocator adds",
+                );
+            }
             if holding.is_none()
                 && let Some(block) = self.blocks.get_mut(&memory)
             {
@@ -2177,7 +2218,7 @@ impl Harness {
             self.coverage.step("allocate: into a shared block");
             allocation
         } else {
-            let block_size = self.size_of_a_new_block(request, memory_type);
+            let block_size = self.size_of_a_new_block(request, own, memory_type);
             let allocation =
                 result.map_err(|error| format!("new memory was allocated, but: {error:?}"))?;
             let memory = allocation.memory();
@@ -2216,12 +2257,23 @@ impl Harness {
                     memory_type,
                     linear: request.linear,
                     allocate_flags,
+                    requested_flags: request.allocate_flags(),
                     own,
                     block_index,
                 },
             );
-            if request.zero_initialize {
+            if zero_initialized {
                 self.coverage.note("allocation of zero-initialized memory");
+            }
+            if added_flags {
+                self.coverage
+                    .note("allocate: new memory with flags that the allocator adds");
+                if !request.needs_its_own_memory() && own {
+                    self.coverage.note(
+                        "allocate: memory of its own for ZERO_INITIALIZE_EXT that the allocator \
+                         adds",
+                    );
+                }
             }
             if !own && self.world.shared_block_size(memory_type) < self.world.block_size {
                 self.coverage
@@ -2427,7 +2479,7 @@ impl Harness {
             persistent,
             allocation_id,
             fill: None,
-            zero_initialized: request.zero_initialize,
+            zero_initialized,
         });
         Ok(())
     }
@@ -2506,12 +2558,13 @@ impl Harness {
             self.coverage
                 .note("allocate: mapping fails in an existing block, which stays");
         } else {
-            let own = request.needs_its_own_memory();
+            let own = self.has_memory_of_its_own(request);
             let block = Block {
-                size: self.size_of_a_new_block(request, memory_type),
+                size: self.size_of_a_new_block(request, own, memory_type),
                 memory_type,
                 linear: request.linear,
-                allocate_flags: request.allocate_flags(),
+                allocate_flags: self.flags_of_the_allocation(request),
+                requested_flags: request.allocate_flags(),
                 own,
                 block_index: 0,
             };

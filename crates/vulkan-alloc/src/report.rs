@@ -90,10 +90,14 @@ pub struct MemoryBlockSnapshot {
     /// Whether the block is the `VkDeviceMemory` of a single dedicated, exportable or
     /// zero-initialized allocation.
     pub dedicated: bool,
-    /// The [`memory_allocate_flags`] the block was allocated with. Only allocations with
-    /// the same flags are placed in it.
+    /// The flags the block was allocated with: the [`memory_allocate_flags`] of the
+    /// request that allocated it together with those of the allocator
+    /// ([`AllocatorCreateDesc::memory_allocate_flags`][allocator]), which is what
+    /// `VkMemoryAllocateFlagsInfo` was given. Only allocations with the same flags are
+    /// placed in it.
     ///
     /// [`memory_allocate_flags`]: crate::AllocationCreateDesc::memory_allocate_flags
+    /// [allocator]: crate::AllocatorCreateDesc::memory_allocate_flags
     pub memory_allocate_flags: vk::MemoryAllocateFlags,
     /// The `VkDeviceMemory` of the block.
     pub memory: vk::DeviceMemory,
