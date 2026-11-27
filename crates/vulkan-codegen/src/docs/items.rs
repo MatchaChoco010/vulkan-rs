@@ -1261,14 +1261,113 @@ mod tests {
             "flags = lambda *names: types.SimpleNamespace(flags=[types.SimpleNamespace(name=name) for name in names])",
             "stages = flags('VK_STAGE_A', 'VK_STAGE_B', 'VK_STAGE_C')",
             "accesses = flags('VK_ACCESS_A', 'VK_ACCESS_B', 'VK_ACCESS_C')",
-            "vk = types.SimpleNamespace(bitmasks={'VkPipelineStageFlagBits2': stages, 'VkAccessFlagBits2': accesses})",
+            "vk = types.SimpleNamespace(bitmasks={'VkPipelineStageFlagBits2': stages, 'VkAccessFlagBits2': accesses}, extensions={'VK_KHR_in': None})",
             "with tempfile.TemporaryDirectory() as directory:",
             "    tool.REGISTRY = pathlib.Path(directory)",
             "    (tool.REGISTRY / 'vk.xml').write_text(sys.stdin.read())",
             "    for file, lines in sorted(tool.spec_generated_files(vk).items()):",
             "        print('\\n'.join([file + ':', *(repr(line) for line in lines)]))",
         ];
-        run_with_the_tool(&steps, &[], &registry.join("\n"))
+        let registry = registry.join("\n");
+        let registry = match registry.contains("<extensions>") {
+            true => registry,
+            false => registry.replace("</registry>", &format!("{EXTENSIONS}</registry>")),
+        };
+        run_with_the_tool(&steps, &[], &registry)
+    }
+
+    const EXTENSIONS: &str = "<extensions>
+        <extension name=\"VK_KHR_out\" supported=\"vulkansc\"><require>
+            <enum extends=\"VkPipelineStageFlagBits2\" name=\"VK_STAGE_ALL\"/>
+            <enum extends=\"VkPipelineStageFlagBits2\" name=\"VK_STAGE_GONE\"/>
+            <enum extends=\"VkPipelineStageFlagBits2\" name=\"VK_ALL\"/>
+            <enum extends=\"VkPipelineStageFlagBits2\" name=\"VK_STAGE_A_OLD\" alias=\"VK_STAGE_A\"/>
+            <enum extends=\"VkAccessFlagBits2\" name=\"VK_ACCESS_ALL\"/>
+            <enum extends=\"VkAccessFlagBits2\" name=\"VK_ACCESS_GONE\"/>
+            <enum extends=\"VkAccessFlagBits2\" name=\"VK_ALL\"/>
+            <enum extends=\"VkAccessFlagBits2\" name=\"VK_ACCESS_C\"/>
+        </require></extension>
+        <extension name=\"VK_KHR_in\" supported=\"vulkan\">
+            <require><enum extends=\"VkPipelineStageFlagBits2\" name=\"VK_STAGE_A\"/></require>
+            <require depends=\"(VK_KHR_out,VK_KHR_in)+VK_KHR_in\">
+                <enum extends=\"VkPipelineStageFlagBits2\" name=\"VK_STAGE_C\"/>
+                <enum extends=\"VkAccessFlagBits2\" name=\"VK_ACCESS_C\"/>
+            </require>
+            <require depends=\"VK_KHR_in+VK_KHR_out\">
+                <enum extends=\"VkAccessFlagBits2\" name=\"VK_ACCESS_GONE\"/>
+            </require>
+        </extension>
+    </extensions>";
+
+    #[test]
+    fn the_tool_stops_when_the_flags_of_the_api_are_not_those_of_a_build_of_the_specification() {
+        for (registry, stop) in [
+            (
+                "<registry><sync><syncstage name=\"VK_STAGE_NEW\"/></sync></registry>",
+                "vk.xml: VK_STAGE_NEW is not a value of VkPipelineStageFlagBits2 in the vulkan API, and a build of the specification with every extension of the API would have it in the tables of <sync> (it depends on ``)",
+            ),
+            (
+                "<registry><sync><syncaccess name=\"VK_ACCESS_B\"/></sync><extensions>
+                <extension name=\"VK_KHR_out\"><require><enum extends=\"VkAccessFlagBits2\" name=\"VK_ACCESS_B\"/></require></extension>
+                <extension name=\"VK_KHR_in\"><require depends=\"VK_KHR_in+VK_KHR_out\"><enum extends=\"VkAccessFlagBits2\" name=\"VK_ACCESS_B\"/></require></extension>
+                </extensions></registry>",
+                "vk.xml: VK_ACCESS_B is a value of VkAccessFlagBits2 in the vulkan API, and a build of the specification with every extension of the API would not have it in the tables of <sync> (it depends on `VK_KHR_out,VK_KHR_in+VK_KHR_out`)",
+            ),
+        ] {
+            let Some(files) = generated_files(&[registry]) else {
+                return;
+            };
+            let error = files.expect_err(registry);
+            assert!(error.contains(stop), "{error}");
+        }
+        let steps = [
+            "defined = {'A', 'B', 'VK_VERSION_1_1'}",
+            "for dependency in sys.stdin.read().split():",
+            "    print(dependency, tool.spec_dependency_holds(dependency, defined))",
+        ];
+        let dependencies = [
+            "A",
+            "X",
+            "VK_VERSION_1_1",
+            "A,X",
+            "X,A",
+            "A+X",
+            "X+A",
+            "A+B",
+            "X,Y",
+            "(X,A)+B",
+            "(X,A)+Y",
+            "X+A,B",
+            "B,A+X",
+            "B,(A+X)",
+            "((A))",
+            "(X+(A,B)),Y",
+        ];
+        let Some(held) = run_with_the_tool(&steps, &[], &dependencies.join(" ")) else {
+            return;
+        };
+        assert_eq!(
+            held.as_deref().map(|held| held.lines().collect::<Vec<_>>()),
+            Ok(vec![
+                "A True",
+                "X False",
+                "VK_VERSION_1_1 True",
+                "A,X True",
+                "X,A True",
+                "A+X False",
+                "X+A False",
+                "A+B True",
+                "X,Y False",
+                "(X,A)+B True",
+                "(X,A)+Y False",
+                "X+A,B True",
+                "B,A+X False",
+                "B,(A+X) True",
+                "((A)) True",
+                "(X+(A,B)),Y False",
+            ]),
+            "the operators are read from left to right, as the scripts of the specification read them"
+        );
     }
 
     #[test]

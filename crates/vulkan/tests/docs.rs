@@ -73,6 +73,8 @@ struct Table {
 }
 
 struct TableSyntax {
+    include: Regex,
+    includes_not_read: Vec<Regex>,
     delimiter: Regex,
     block_header: Regex,
     cell_specifier: Regex,
@@ -87,6 +89,8 @@ struct TableSyntax {
 impl TableSyntax {
     fn new() -> Self {
         Self {
+            include: regex(r"(?:^|\|)\s*(include::\S+)"),
+            includes_not_read: TABLE_INCLUDES_NOT_READ.map(regex).to_vec(),
             delimiter: regex(r"^\|={3,}\s*$"),
             block_header: regex(r"^(?:\[.*\]|\.[^\s.].*)\s*$"),
             cell_specifier: regex(
@@ -655,9 +659,10 @@ struct Sources {
     attribute_reference: Regex,
 }
 
-const TABLE_ROWS_NOT_READ: [&str; 2] = [
-    "include::{generated}/formats/",
-    "include::{generated}/spirvcap/",
+const TABLE_INCLUDES_NOT_READ: [&str; 3] = [
+    r"^include::\{generated\}/formats/",
+    r"^include::\{generated\}/spirvcap/",
+    r"^include::\{chapters\}/\S+\[tag=sc\w+\]",
 ];
 
 const COMMENT: &str = "//";
@@ -1122,14 +1127,16 @@ impl Specification {
                 let content = &lines[index + 1..close];
                 let includes = content
                     .iter()
-                    .filter(|line| line.starts_with("include::"))
+                    .flat_map(|line| table_syntax.include.captures_iter(line))
+                    .map(|include| include[1].to_string())
                     .collect::<Vec<_>>();
                 for include in &includes {
                     assert!(
-                        TABLE_ROWS_NOT_READ
+                        table_syntax
+                            .includes_not_read
                             .iter()
-                            .any(|not_read| include.starts_with(not_read)),
-                        "{relative}: a table takes rows from {include}, which the test neither reads nor knows as rows that describe no value"
+                            .any(|not_read| not_read.is_match(include)),
+                        "{relative}: a table includes {include}, which the test neither reads nor knows as a part of a table that describes no value"
                     );
                 }
                 if includes.is_empty()
@@ -3679,18 +3686,14 @@ fn generated_documentation_matches_the_specification() {
             .collect::<BTreeSet<_>>(),
         "exactly these values are documented with the list item that their page has under a name that the registry gives them as an alias"
     );
-    for title in TABLES_WITH_ROWS_FROM_THE_REGISTRY {
+    for (title, expected) in TABLES_WITH_ROWS_FROM_THE_REGISTRY.into_iter().zip([46, 51]) {
         let rows = spec
             .tables
             .iter()
             .filter(|table| table.title.as_deref() == Some(title))
             .map(|table| table.rows.len())
             .collect::<Vec<_>>();
-        assert!(
-            matches!(rows[..], [rows] if rows >= 40),
-            "the table “{title}” is read {} times, with {rows:?} rows",
-            rows.len()
-        );
+        assert_eq!(rows, [expected], "the rows read of the table “{title}”");
     }
     assert_eq!(
         checker

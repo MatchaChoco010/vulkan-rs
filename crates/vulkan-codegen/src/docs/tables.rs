@@ -410,6 +410,10 @@ mod tests {
         Some(dumped.map(|dumped| dumped.lines().map(str::to_string).collect()))
     }
 
+    const FORMATS: &str = r"include::\{generated\}/formats/";
+    const SPIRV: &str = r"include::\{generated\}/spirvcap/";
+    const VULKAN_SC: &str = r"include::\{chapters\}/\S+\[tag=sc\w+\]";
+
     #[test]
     fn the_dump_has_the_rows_that_a_table_takes_from_a_file_of_the_registry() {
         let Some(tables) = dumped_tables(&[
@@ -430,13 +434,18 @@ mod tests {
             "include::{generated}/spirvcap/captable.adoc[]",
             "include::{generated}/formats/more.adoc[]",
             "|====",
+            "",
+            "|====",
+            "| <<chapter,Chapter>> a| include::{chapters}/chapter.adoc[tag=scremoved]",
+            "| ename:VK_VALUE a|include::{chapters}/other.adoc[tag=scdeviation]",
+            "|====",
         ]) else {
             return;
         };
         assert_eq!(
             tables,
             Ok([
-                "not read: include::{generated}/formats/ include::{generated}/spirvcap/",
+                format!("not read: {VULKAN_SC} {FORMATS} {SPIRV}").as_str(),
                 ".Rows",
                 "|====",
                 "|Value |Use",
@@ -445,25 +454,42 @@ mod tests {
             ]
             .map(str::to_string)
             .to_vec()),
-            "a table with rows that are declared as not read is left out"
+            "a table with an include that is declared as not read is left out"
         );
     }
 
     #[test]
-    fn the_dump_stops_at_a_table_that_takes_rows_from_a_file_that_is_not_read_or_declared() {
-        for include in [
-            "include::{generated}/sync/other.adoc[]",
-            "include::{generated}/format/planeformat.adoc[]",
-            "include::{chapters}/rows.adoc[]",
+    fn the_dump_stops_at_a_table_with_an_include_that_is_not_read_or_declared() {
+        for (line, include) in [
+            (
+                "include::{generated}/sync/other.adoc[]",
+                "include::{generated}/sync/other.adoc[]",
+            ),
+            (
+                "include::{generated}/format/planeformat.adoc[]",
+                "include::{generated}/format/planeformat.adoc[]",
+            ),
+            (
+                "include::{chapters}/rows.adoc[]",
+                "include::{chapters}/rows.adoc[]",
+            ),
+            (
+                "| ename:VK_OTHER a| include::{chapters}/rows.adoc[tag=rows]",
+                "include::{chapters}/rows.adoc[tag=rows]",
+            ),
+            (
+                "|ename:VK_OTHER |include::{generated}/sync/cell.adoc[]",
+                "include::{generated}/sync/cell.adoc[]",
+            ),
         ] {
-            let source = ["|====", "|ename:VK_VALUE |Use", include, "|===="];
+            let source = ["|====", "|ename:VK_VALUE |Use", line, "|===="];
             let Some(tables) = dumped_tables(&source) else {
                 return;
             };
-            let error = tables.expect_err(include);
+            let error = tables.expect_err(line);
             assert!(
                 error.contains(&format!(
-                    "chapters/page.adoc: a table takes rows from a file that is not read: {include}."
+                    "chapters/page.adoc: a table includes a file that is not read: {include}."
                 )),
                 "{error}"
             );
@@ -473,47 +499,69 @@ mod tests {
             "",
             "|====",
             "|ename:VK_VALUE |Use",
+            "|see the include::directive of ename:VK_VALUE",
             "|====",
         ]) else {
             return;
         };
         assert_eq!(
             tables.map(|tables| tables.len()),
-            Ok(4),
-            "an include outside the table does not concern it"
+            Ok(5),
+            "an include outside the table, and the word in the text of a cell, do not concern it"
         );
     }
 
     #[test]
-    fn the_dump_stops_when_no_table_takes_the_rows_that_are_declared_as_not_read() {
-        let check = |used: &str| {
-            let steps = ["tool.spec_check_table_rows_not_read(set(sys.stdin.read().split()))"];
-            run_with_the_tool(&steps, &[], used)
+    fn the_dump_stops_when_no_table_has_an_include_that_is_declared_as_not_read() {
+        let check = |used: &[&str]| {
+            let steps = ["tool.spec_check_table_includes_not_read(set(sys.stdin.read().split()))"];
+            run_with_the_tool(&steps, &[], &used.join(" "))
         };
-        let all = "include::{generated}/formats/ include::{generated}/spirvcap/";
-        let Some(checked) = check(all) else {
+        let Some(checked) = check(&[FORMATS, SPIRV, VULKAN_SC]) else {
             return;
         };
         assert_eq!(checked.as_deref(), Ok(""));
         for (used, unused) in [
-            (
-                "include::{generated}/formats/",
-                "include::{generated}/spirvcap/",
-            ),
-            (
-                "",
-                "include::{generated}/formats/, include::{generated}/spirvcap/",
-            ),
+            (vec![FORMATS, VULKAN_SC], SPIRV.to_string()),
+            (vec![], format!("{VULKAN_SC}, {FORMATS}, {SPIRV}")),
         ] {
-            let error = check(used).expect("the tool runs").expect_err(used);
+            let error = check(&used).expect("the tool runs").expect_err(&unused);
             assert!(
                 error.contains(&format!(
-                    "SPEC_TABLE_ROWS_NOT_READ declares {unused}, and no table of the \
-                     specification takes rows from such a file"
+                    "SPEC_TABLE_INCLUDES_NOT_READ declares {unused}, and no table of the \
+                     specification has such an include"
                 )),
                 "{error}"
             );
         }
+    }
+
+    #[test]
+    fn the_dump_stops_when_a_format_has_no_list_item_while_the_tables_of_formats_are_not_read() {
+        let check = |described: &str| {
+            let steps = [
+                "fields = [types.SimpleNamespace(name=name) for name in ('VK_FORMAT_A', 'VK_FORMAT_B', 'VK_FORMAT_C')]",
+                "vk = types.SimpleNamespace(enums={'VkFormat': types.SimpleNamespace(fields=fields)})",
+                "items = [{'name': name} for name in sys.stdin.read().split()]",
+                "docs = {'pages': [{'name': 'VkOther', 'items': []}, {'name': 'VkFormat', 'items': items}]}",
+                "tool.spec_check_formats_have_list_items(vk, docs)",
+            ];
+            run_with_the_tool(&steps, &[], described)
+        };
+        let Some(checked) = check("VK_FORMAT_C VK_FORMAT_A VK_FORMAT_B VK_FORMAT_OLD") else {
+            return;
+        };
+        assert_eq!(checked.as_deref(), Ok(""));
+        let error = check("VK_FORMAT_B")
+            .expect("the tool runs")
+            .expect_err("two formats have no list item");
+        assert!(
+            error.contains(
+                "the page VkFormat has no list item for VK_FORMAT_A, VK_FORMAT_C, and the \
+                 tables of formats are not read (SPEC_TABLE_INCLUDES_NOT_READ)"
+            ),
+            "{error}"
+        );
     }
 
     fn lines(lines: &[&str]) -> Cell {
