@@ -335,10 +335,10 @@ fn mapped_allocations_hold_data_and_share_a_block() {
         let second = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
         let requirements = gpu.device.get_buffer_memory_requirements(first);
         let a = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuOnly))
+            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
             .unwrap();
         let b = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuOnly))
+            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
             .unwrap();
         assert_eq!(a.memory(), b.memory());
         assert_ne!(a.offset(), b.offset());
@@ -555,7 +555,7 @@ fn free_all_releases_memory_that_still_has_live_allocations() {
         let allocation = allocator
             .allocate(desc(
                 gpu.device.get_buffer_memory_requirements(buffer),
-                MemoryLocation::CpuOnly,
+                MemoryLocation::CpuToGpu,
             ))
             .unwrap();
         gpu.device
@@ -585,10 +585,10 @@ fn persistent_mappings_last_until_the_allocation_is_freed() {
         let second = gpu.buffer(vk::BufferUsageFlags::TRANSFER_SRC);
         let requirements = gpu.device.get_buffer_memory_requirements(first);
         let mut a = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuOnly))
+            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
             .unwrap();
         let mut b = allocator
-            .allocate(desc(requirements, MemoryLocation::CpuOnly))
+            .allocate(desc(requirements, MemoryLocation::CpuToGpu))
             .unwrap();
         gpu.device
             .bind_buffer_memory(first, a.memory(), a.offset())
@@ -636,7 +636,7 @@ fn unmapping_a_persistent_mapping_is_an_error() {
         let mut allocation = allocator
             .allocate(desc(
                 gpu.device.get_buffer_memory_requirements(buffer),
-                MemoryLocation::CpuOnly,
+                MemoryLocation::CpuToGpu,
             ))
             .unwrap();
         let pointer = allocator.map_persistent(&mut allocation).unwrap();
@@ -869,7 +869,6 @@ fn location() -> impl Strategy<Value = MemoryLocation> {
     prop::sample::select(vec![
         MemoryLocation::GpuOnly,
         MemoryLocation::CpuToGpu,
-        MemoryLocation::CpuOnly,
         MemoryLocation::GpuToCpu,
     ])
 }
@@ -1015,7 +1014,7 @@ impl Coverage {
 fn required_flags(location: MemoryLocation) -> vk::MemoryPropertyFlags {
     match location {
         MemoryLocation::GpuOnly => vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        MemoryLocation::CpuToGpu | MemoryLocation::CpuOnly | MemoryLocation::GpuToCpu => {
+        MemoryLocation::CpuToGpu | MemoryLocation::GpuToCpu => {
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
         }
         MemoryLocation::Custom { required, .. } => required,
