@@ -1136,7 +1136,8 @@ def spec_anchor_pages(
         if len(defining) != 1:
             raise RuntimeError(
                 f"{refers} the anchor `{anchor}` of the specification, which "
-                f"{' and '.join(defining) or 'no source file'} defines: exactly one source "
+                f"{' and '.join(defining) or 'no source file'} "
+                f"{'define' if len(defining) > 1 else 'defines'}: exactly one source "
                 "file has to define it"
             )
         if defining[0] not in pages:

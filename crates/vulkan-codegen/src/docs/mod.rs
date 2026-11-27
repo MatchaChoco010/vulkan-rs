@@ -1526,7 +1526,7 @@ mod tests {
             (
                 "<<things-outside>>",
                 "<<things-bias>> and <<things-twice>>",
-                "the description of VK_THING_KIND_ODD in chapters/limits.adoc refers, without a text, to the anchor `things-twice` of the specification, which chapters/more.adoc and chapters/things.adoc defines: exactly one source file has to define it".to_string(),
+                "the description of VK_THING_KIND_ODD in chapters/limits.adoc refers, without a text, to the anchor `things-twice` of the specification, which chapters/more.adoc and chapters/things.adoc define: exactly one source file has to define it".to_string(),
             ),
             (
                 "<<things-bias>>",
