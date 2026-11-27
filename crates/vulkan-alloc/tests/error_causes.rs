@@ -79,14 +79,14 @@ fn operations() -> impl Strategy<Value = Operation> {
             .prop_map(|(kind, (offset, size))| GuardStep::Range(kind, offset, size)),
     ];
     prop_oneof![
-        Just(Operation::Free),
-        Just(Operation::MapMemory),
-        Just(Operation::MapPersistent),
-        Just(Operation::UnmapMemory),
-        kinds().prop_map(Operation::Whole),
-        (kinds(), range_bounds())
+        4 => Just(Operation::Free),
+        3 => Just(Operation::MapMemory),
+        3 => Just(Operation::MapPersistent),
+        2 => Just(Operation::UnmapMemory),
+        2 => kinds().prop_map(Operation::Whole),
+        2 => (kinds(), range_bounds())
             .prop_map(|(kind, (offset, size))| Operation::Range(kind, offset, size)),
-        guard_steps.prop_map(Operation::Guard),
+        4 => guard_steps.prop_map(Operation::Guard),
     ]
 }
 
@@ -94,10 +94,10 @@ fn map_faults() -> impl Strategy<Value = Option<MapFault>> {
     prop::option::weighted(
         0.6,
         prop_oneof![
-            Just(MapFault::Fails(vk::VkResult::ERROR_MEMORY_MAP_FAILED)),
-            Just(MapFault::Fails(vk::VkResult::ERROR_OUT_OF_HOST_MEMORY)),
-            Just(MapFault::ReturnsNull),
-            (0..=1024usize).prop_map(|room| MapFault::ReturnsAddress(usize::MAX - room)),
+            1 => Just(MapFault::Fails(vk::VkResult::ERROR_MEMORY_MAP_FAILED)),
+            1 => Just(MapFault::Fails(vk::VkResult::ERROR_OUT_OF_HOST_MEMORY)),
+            3 => Just(MapFault::ReturnsNull),
+            2 => (0..=64usize).prop_map(|room| MapFault::ReturnsAddress(usize::MAX - room)),
         ],
     )
 }
@@ -110,8 +110,12 @@ fn cases() -> impl Strategy<Value = Case> {
             1 => SMALLEST_TOO_LARGE_FOR_A_SLICE..=u64::MAX,
         ],
         prop::option::of((1..=600u64, any::<bool>())),
-        (0..=2usize, any::<bool>()),
+        (
+            prop_oneof![2 => Just(0usize), 1 => 1..=2usize],
+            any::<bool>(),
+        ),
         prop::sample::select(vec![
+            Holder::TheAllocator,
             Holder::TheAllocator,
             Holder::TheAllocator,
             Holder::NobodyAfterFreeAll,
