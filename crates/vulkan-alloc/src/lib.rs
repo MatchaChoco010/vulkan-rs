@@ -197,6 +197,15 @@
 //! persistent mapping and the others can be used together. Do not call `vkMapMemory` or
 //! `vkUnmapMemory` on [`Allocation::memory`] yourself.
 //!
+//! Each error names its cause. The mapping functions return
+//! [`AllocationError::NotHostVisible`] for memory that is not host-visible,
+//! [`Allocator::unmap_memory`] and the flush and invalidate functions return
+//! [`AllocationError::NotMapped`] for an allocation without the mapping they need, and
+//! [`Allocator::free`] returns [`AllocationError::StillMapped`] for an allocation that
+//! still holds references taken with [`Allocator::map_memory`]. Every function that takes
+//! an allocation returns [`AllocationError::InvalidAllocation`] for one that the allocator
+//! does not hold, before it checks anything else.
+//!
 //! On a logical device that represents more than one physical device, memory from a
 //! heap with `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT` has an instance on every physical
 //! device, and Vulkan does not allow memory with more than one instance to be mapped.

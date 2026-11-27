@@ -117,7 +117,7 @@ proptest! {
                     );
                 }
                 None => {
-                    prop_assert_eq!(mapped, Err(AllocationError::InvalidAllocation));
+                    prop_assert_eq!(mapped, Err(AllocationError::MappingFailed));
                     prop_assert_eq!(after.unmap, calls.unmap + 1);
                     prop_assert!(!fake.memory_objects()[&second.memory()].mapped);
                     prop_assert_eq!(allocator.snapshot(), snapshot);

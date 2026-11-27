@@ -205,6 +205,7 @@ fn the_generated_sequences_reach_every_outcome_the_model_distinguishes() {
         for outcome in [
             "refused: unmapped",
             "outside the allocation",
+            "outside an allocation that is not mapped",
             "of 0 bytes",
             "of coherent memory",
             "fails on the device",

@@ -292,7 +292,7 @@ impl Allocator {
     ///    was made in is `HOST_VISIBLE`, the errors of mapping it, as for
     ///    [`Allocator::map_persistent`]: [`AllocationError::Vulkan`] if `vkMapMemory`
     ///    fails, also with [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`], and
-    ///    [`AllocationError::InvalidAllocation`] if `vkMapMemory` returns a null pointer
+    ///    [`AllocationError::MappingFailed`] if `vkMapMemory` returns a null pointer
     ///    or if the address of the allocation (the address of the mapped block plus
     ///    [`Allocation::offset`]) cannot be represented as a non-null pointer. The
     ///    allocation is freed before the error is returned, as [`Allocator::free`] frees
@@ -301,9 +301,16 @@ impl Allocator {
     ///
     /// The first two are returned before any Vulkan call. No allocation is left when an
     /// error is returned, but the empty blocks of a heap in which `vkAllocateMemory` ran
-    /// out of memory may have been freed. [`AllocationError::InvalidAllocation`] is
-    /// returned only when mapping fails as the fifth describes, or when no identifier is
-    /// left for a new allocation (see that variant).
+    /// out of memory may have been freed. [`AllocationError::MappingFailed`] is returned
+    /// only when mapping fails as the fifth describes, and the other errors about an
+    /// allocation, such as [`AllocationError::InvalidAllocation`], are never returned.
+    ///
+    /// # Panics
+    ///
+    /// If no identifier is left for a new allocation, after 2<sup>64</sup> - 2 allocations
+    /// in the process. The allocator stays consistent: the panic changes its blocks and
+    /// allocations no more than an error would, so it can still be used or dropped. A
+    /// block allocated with `vkAllocateMemory` for this request is not freed.
     ///
     /// # Safety
     ///
@@ -463,10 +470,13 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// A [`FreeError`] whose [`FreeError::error`] is
-    /// [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    /// allocation, or if it still has a mapping made with [`Allocator::map_memory`]
-    /// that was not released with [`Allocator::unmap_memory`].
+    /// A [`FreeError`] whose [`FreeError::error`] is the first of these that applies:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::StillMapped`] if the allocation still holds a reference taken
+    ///    with [`Allocator::map_memory`] that was not released with
+    ///    [`Allocator::unmap_memory`].
     ///
     /// Nothing is freed or unmapped when an error is returned, and
     /// [`FreeError::allocation`] hands the allocation back: release its
@@ -503,13 +513,20 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation, if its memory type is not `HOST_VISIBLE`, if `vkMapMemory` returns
-    ///   a null pointer, if the address of the allocation (the address of the mapped
-    ///   block plus [`Allocation::offset`]) cannot be represented as a non-null pointer,
-    ///   or if the allocation already holds [`usize::MAX`] mapping references.
-    /// - [`AllocationError::Vulkan`] if `vkMapMemory` fails, also with
-    ///   [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
+    /// The first of these that applies:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::NotHostVisible`] if its memory type is not `HOST_VISIBLE`.
+    /// 3. [`AllocationError::MappingFailed`] if the allocation already holds
+    ///    [`usize::MAX`] mapping references, if `vkMapMemory` returns a null pointer, or
+    ///    if the address of the allocation (the address of the mapped block plus
+    ///    [`Allocation::offset`]) cannot be represented as a non-null pointer.
+    /// 4. [`AllocationError::Vulkan`] if `vkMapMemory` fails, also with
+    ///    [`vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY`].
+    ///
+    /// `vkMapMemory` is called only if the block is not mapped yet. No reference is taken
+    /// and the block is left as it was when an error is returned.
     ///
     /// # Safety
     ///
@@ -545,9 +562,10 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// The same as [`Allocator::map_memory`], and
-    /// [`AllocationError::InvalidAllocation`] if the allocation is larger than
-    /// [`isize::MAX`] bytes, which no slice can cover. Nothing is mapped in that case;
+    /// The same as [`Allocator::map_memory`], in the same order, and
+    /// [`AllocationError::MappingFailed`] if the allocation is larger than [`isize::MAX`]
+    /// bytes, which no slice can cover. That one is checked after
+    /// [`AllocationError::NotHostVisible`] and before anything is mapped;
     /// [`Allocator::map_memory`] has no such limit.
     ///
     /// # Safety
@@ -569,10 +587,11 @@ impl Allocator {
         &'b mut self,
         allocation: &'b Allocation,
     ) -> Result<MappedAllocation<'b>, AllocationError> {
+        self.ensure_host_visible(allocation)?;
         let len = usize::try_from(allocation.size)
             .ok()
             .filter(|&len| isize::try_from(len).is_ok())
-            .ok_or(AllocationError::InvalidAllocation)?;
+            .ok_or(AllocationError::MappingFailed)?;
         let ptr = unsafe { self.map_host_visible(allocation) }?;
         Ok(MappedAllocation::new(self, allocation, ptr, len))
     }
@@ -592,8 +611,15 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// The same as [`Allocator::map_memory`]. The allocation is not changed when an error
-    /// is returned.
+    /// The same as [`Allocator::map_memory`], in the same order. The allocation is not
+    /// changed when an error is returned.
+    ///
+    /// For an allocation that is already persistently mapped, only the first two are
+    /// checked, and the second never applies, since only host-visible memory can be
+    /// mapped. Then the same pointer is returned without taking a reference and without
+    /// a Vulkan call, so no other error is returned: not
+    /// [`AllocationError::MappingFailed`] either, whatever the number of mapping
+    /// references the allocation holds.
     ///
     /// # Safety
     ///
@@ -630,9 +656,15 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    /// allocation, if the allocation is not mapped, or if the only reference it holds is
-    /// its persistent mapping. Nothing is released in these cases.
+    /// The first of these that applies:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::NotMapped`] if the allocation holds no reference taken with
+    ///    [`Allocator::map_memory`]: it is not mapped, or its only mapping is its
+    ///    persistent one.
+    ///
+    /// Nothing is released in these cases.
     ///
     /// # Safety
     ///
@@ -671,10 +703,13 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation or the allocation is not mapped, whether its memory type has
-    ///   `HOST_COHERENT` or not.
-    /// - [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
+    /// The first of these that applies:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::NotMapped`] if the allocation is not mapped, whether its
+    ///    memory type has `HOST_COHERENT` or not.
+    /// 3. [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
     ///
     /// # Safety
     ///
@@ -698,12 +733,19 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation, if the allocation is not mapped, or if the range does not lie inside
-    ///   the [`Allocation::size`] bytes of the allocation (including when
-    ///   `offset + size` overflows), whether its memory type has `HOST_COHERENT` or not.
-    ///   No Vulkan call is made in these cases.
-    /// - [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
+    /// The first of these that applies, whether the memory type has `HOST_COHERENT` or
+    /// not:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::RangeOutOfBounds`] if the range does not lie inside the
+    ///    [`Allocation::size`] bytes of the allocation (including when `offset + size`
+    ///    overflows). It depends on the arguments and the allocation alone, so it is
+    ///    returned whether the allocation is mapped or not.
+    /// 3. [`AllocationError::NotMapped`] if the allocation is not mapped.
+    /// 4. [`AllocationError::Vulkan`] if `vkFlushMappedMemoryRanges` fails.
+    ///
+    /// No Vulkan call is made for the first three.
     ///
     /// # Safety
     ///
@@ -742,10 +784,13 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation or the allocation is not mapped, whether its memory type has
-    ///   `HOST_COHERENT` or not.
-    /// - [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
+    /// The first of these that applies:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::NotMapped`] if the allocation is not mapped, whether its
+    ///    memory type has `HOST_COHERENT` or not.
+    /// 3. [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
     ///
     /// # Safety
     ///
@@ -772,12 +817,19 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::InvalidAllocation`] if the allocator does not hold the
-    ///   allocation, if the allocation is not mapped, or if the range does not lie inside
-    ///   the [`Allocation::size`] bytes of the allocation (including when
-    ///   `offset + size` overflows), whether its memory type has `HOST_COHERENT` or not.
-    ///   No Vulkan call is made in these cases.
-    /// - [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
+    /// The first of these that applies, whether the memory type has `HOST_COHERENT` or
+    /// not:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::RangeOutOfBounds`] if the range does not lie inside the
+    ///    [`Allocation::size`] bytes of the allocation (including when `offset + size`
+    ///    overflows). It depends on the arguments and the allocation alone, so it is
+    ///    returned whether the allocation is mapped or not.
+    /// 3. [`AllocationError::NotMapped`] if the allocation is not mapped.
+    /// 4. [`AllocationError::Vulkan`] if `vkInvalidateMappedMemoryRanges` fails.
+    ///
+    /// No Vulkan call is made for the first three.
     ///
     /// # Safety
     ///
@@ -926,11 +978,9 @@ impl Allocator {
             }
             result => result,
         }?;
-        let Some(suballocation) = block.suballocate(requirements.size, requirements.alignment)
-        else {
-            unsafe { block.free_memory(&self.device) };
-            return Err(AllocationError::InvalidAllocation);
-        };
+        let suballocation = block
+            .suballocate(requirements.size, requirements.alignment)
+            .expect("a new block has room for the allocation it is made for");
         Ok(self.memory_types[memory_type_index as usize].insert_block(block, suballocation))
     }
 
@@ -985,7 +1035,7 @@ impl Allocator {
         {
             Ok(())
         } else {
-            Err(AllocationError::InvalidAllocation)
+            Err(AllocationError::NotHostVisible)
         }
     }
 

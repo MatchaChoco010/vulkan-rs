@@ -11,9 +11,9 @@ const NO_REGION: u32 = u32::MAX;
 
 static NEXT_ALLOCATION_ID: AtomicU64 = AtomicU64::new(1);
 
-fn take_allocation_id(next: &AtomicU64) -> Option<u64> {
+fn take_allocation_id(next: &AtomicU64) -> u64 {
     next.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .ok()
+        .expect("vulkan-alloc has no allocation identifier left")
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -151,7 +151,7 @@ impl TlsfSuballocator {
         if !self.has_room_for_regions(2) {
             return None;
         }
-        let id = take_allocation_id(next_id)?;
+        let id = take_allocation_id(next_id);
 
         let found = self.regions[index as usize];
         let padding = offset - found.offset;
@@ -992,18 +992,40 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn rejects_allocation_id_overflow_without_mutating_state() {
+    fn the_last_allocation_id_is_one_below_u64_max_and_the_next_one_panics() {
+        let next = AtomicU64::new(u64::MAX - 1);
+        assert_eq!(take_allocation_id(&next), u64::MAX - 1);
+        assert_eq!(next.load(Ordering::Relaxed), u64::MAX);
+        let exhausted = std::panic::catch_unwind(|| take_allocation_id(&next));
+        assert!(
+            exhausted.is_err(),
+            "taking an identifier after the last one must panic"
+        );
+        assert_eq!(next.load(Ordering::Relaxed), u64::MAX);
+    }
+
+    #[test]
+    fn an_allocation_without_an_id_left_panics_without_mutating_state() {
         let mut allocator = TlsfSuballocator::new(1024);
+        allocator.allocate(256, 1).unwrap();
         let before = allocator.clone();
         let exhausted = AtomicU64::new(u64::MAX);
-        assert!(
-            allocator
-                .allocate_with_id_from(&exhausted, 128, 1)
-                .is_none()
-        );
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            allocator.allocate_with_id_from(&exhausted, 128, 1)
+        }));
+        assert!(result.is_err(), "an allocation without an id must panic");
         assert_eq!(exhausted.load(Ordering::Relaxed), u64::MAX);
-        assert_eq!(allocator, before);
+        assert_eq!(
+            allocator, before,
+            "the panic must leave the suballocator unchanged"
+        );
         check_invariants(&allocator);
+        assert_eq!(
+            allocator.allocate_with_id_from(&exhausted, 2048, 1),
+            None,
+            "a request that fits nowhere is refused before an id is taken"
+        );
+        assert_eq!(allocator, before);
     }
 
     #[test]

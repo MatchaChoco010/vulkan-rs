@@ -150,7 +150,7 @@ fn layout_without_empty_blocks(snapshot: &AllocatorSnapshot) -> Vec<(vk::DeviceM
 fn error_of(fault: MapFault) -> AllocationError {
     match fault {
         MapFault::Fails(result) => AllocationError::Vulkan(result),
-        MapFault::ReturnsNull | MapFault::ReturnsAddress(_) => AllocationError::InvalidAllocation,
+        MapFault::ReturnsNull | MapFault::ReturnsAddress(_) => AllocationError::MappingFailed,
     }
 }
 
@@ -462,7 +462,7 @@ impl Run {
         };
         let maps = self.fake.calls().map - before.map;
         if !host_visible {
-            prop_assert_eq!(result, Err(AllocationError::InvalidAllocation));
+            prop_assert_eq!(result, Err(AllocationError::NotHostVisible));
             prop_assert_eq!(maps, 0);
             prop_assert_eq!(self.live[index].allocation.mapped_ptr(), None);
             return Ok(());
@@ -625,7 +625,7 @@ fn a_mapping_whose_address_does_not_fit_in_a_pointer_undoes_the_allocation() {
         let calls = fake.calls();
         assert_eq!(
             allocator.allocate(mapped(16)),
-            Err(AllocationError::InvalidAllocation),
+            Err(AllocationError::MappingFailed),
             "an allocation at offset 16 of memory mapped at usize::MAX - 8"
         );
         assert_eq!(allocator.snapshot(), snapshot);

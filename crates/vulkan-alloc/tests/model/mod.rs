@@ -2501,7 +2501,7 @@ impl Harness {
                 "allocate: vkMapMemory fails and the allocation is undone",
             ),
             _ => (
-                AllocationError::InvalidAllocation,
+                AllocationError::MappingFailed,
                 MapFault::ReturnsNull,
                 1,
                 "allocate: vkMapMemory returns null and the allocation is undone",
@@ -2688,7 +2688,7 @@ impl Harness {
             };
             ensure_eq!(
                 error,
-                AllocationError::InvalidAllocation,
+                AllocationError::StillMapped,
                 "the error of freeing a mapped allocation"
             );
             ensure_eq!(
@@ -2828,9 +2828,9 @@ impl Harness {
     ) -> Result<bool, String> {
         let calls = self.fake.calls();
         let (expected, maps, unmaps) = match expectation {
-            MapExpectation::NotHostVisible => (AllocationError::InvalidAllocation, 0, 0),
+            MapExpectation::NotHostVisible => (AllocationError::NotHostVisible, 0, 0),
             MapExpectation::Fails(result) => (AllocationError::Vulkan(result), 1, 0),
-            MapExpectation::ReturnsNull => (AllocationError::InvalidAllocation, 1, 1),
+            MapExpectation::ReturnsNull => (AllocationError::MappingFailed, 1, 1),
             MapExpectation::MapsTheBlock | MapExpectation::SharesTheMapping => return Ok(false),
         };
         ensure_eq!(error, Some(expected), "{what} with {expectation:?}");
@@ -2909,7 +2909,7 @@ impl Harness {
         if self.live[index].raw_mappings == 0 {
             ensure_eq!(
                 result,
-                Err(AllocationError::InvalidAllocation),
+                Err(AllocationError::NotMapped),
                 "unmap_memory of an allocation that is {state}"
             );
             self.coverage.step(format!("unmap_memory refused: {state}"));
@@ -3099,7 +3099,7 @@ impl Harness {
         if self.live[index].mapping_references() == 0 {
             ensure_eq!(
                 result,
-                Err(AllocationError::InvalidAllocation),
+                Err(AllocationError::NotMapped),
                 "{kind:?} of an allocation that is not mapped"
             );
             self.coverage.step(format!("{kind:?} refused: {state}"));
@@ -3167,18 +3167,24 @@ impl Harness {
         };
         let what = format!("{name}({offset}, {size}) of an allocation of {length} bytes");
         let inside = offset.checked_add(size).is_some_and(|end| end <= length);
-        if self.live[index].mapping_references() == 0 || !inside {
-            ensure_eq!(
-                result,
-                Err(AllocationError::InvalidAllocation),
-                "{what} that is {state}"
-            );
-            self.coverage
-                .step(if self.live[index].mapping_references() == 0 {
-                    format!("{name} refused: {state}")
-                } else {
-                    format!("{name} outside the allocation")
-                });
+        let mapped = self.live[index].mapping_references() > 0;
+        if !mapped || !inside {
+            let (expected, outcome) = match (inside, mapped) {
+                (false, true) => (
+                    AllocationError::RangeOutOfBounds,
+                    format!("{name} outside the allocation"),
+                ),
+                (false, false) => (
+                    AllocationError::RangeOutOfBounds,
+                    format!("{name} outside an allocation that is not mapped"),
+                ),
+                (true, _) => (
+                    AllocationError::NotMapped,
+                    format!("{name} refused: {state}"),
+                ),
+            };
+            ensure_eq!(result, Err(expected), "{what} that is {state}");
+            self.coverage.step(outcome);
             return self
                 .nothing_happened_since(&before, "a refused flush or invalidate of a range");
         }
@@ -3330,7 +3336,7 @@ impl Harness {
                             None => Ok(()),
                         }
                     } else {
-                        Err(AllocationError::InvalidAllocation)
+                        Err(AllocationError::RangeOutOfBounds)
                     };
                     ensure_eq!(
                         result,

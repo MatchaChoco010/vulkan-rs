@@ -266,7 +266,7 @@ proptest! {
         let ranges = layout.fake.synchronized()[synchronized_before..].to_vec();
         prop_assert_eq!(layout.fake.misuse(), Vec::<String>::new(), "misuse of the device");
         if !inside {
-            prop_assert_eq!(result, Err(AllocationError::InvalidAllocation), "a range outside the allocation");
+            prop_assert_eq!(result, Err(AllocationError::RangeOutOfBounds), "a range outside the allocation");
             prop_assert_eq!(ranges, Vec::new(), "ranges given to Vulkan for a range outside the allocation");
         } else if size == 0 || case.flags.contains(COHERENT) {
             prop_assert_eq!(result, Ok(()), "an empty range or coherent memory");

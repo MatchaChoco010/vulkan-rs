@@ -197,10 +197,12 @@ fn documented_result(case: &Case) -> Result<(), AllocationError> {
             case.state,
             State::MappedWithMapMemory | State::MappedPersistently
         );
-    if held && mapped {
-        Ok(())
-    } else {
+    if !held {
         Err(AllocationError::InvalidAllocation)
+    } else if !mapped {
+        Err(AllocationError::NotMapped)
+    } else {
+        Ok(())
     }
 }
 
