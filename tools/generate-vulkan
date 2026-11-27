@@ -10,7 +10,8 @@ Pipeline:
    in `vulkan-codegen`, not here. Only attributes that the generator reads are dumped:
    every extra one is one more way for a Vulkan-Headers update to break this script.
    The `<deprecate>` blocks, which mark functionality as legacy, are read from the
-   registry tree itself, because `VulkanObject` has them for commands only.
+   registry tree itself, because `VulkanObject` has them for commands only, and so are
+   the `deprecated` attributes, which it does not have.
 2. Dump the descriptions that the specification gives for the registry's names, as the
    AsciiDoc text of the specification, to `crates/vulkan-registry/vulkan-docs.json`.
    Turning that text into rustdoc is `vulkan-codegen`'s job as well.
@@ -82,8 +83,8 @@ def main() -> int:
             )
             return 1
 
-    vk, registry_tree = load_vulkan_object()
-    ir = build_ir(vk, registry_tree, args.allow_non_sdk_tag)
+    vk, registry_tree, attributes = load_vulkan_object()
+    ir = build_ir(vk, registry_tree, attributes, args.allow_non_sdk_tag)
     IR_PATH.write_text(json.dumps(ir, indent=1, sort_keys=True) + "\n")
     linked_anchors = {mark["link"] for mark in ir["legacy"]}
     docs = build_docs(defined_spec_attributes(vk), spec_generated_files(vk), linked_anchors)
@@ -113,8 +114,17 @@ def main() -> int:
     return 0
 
 
-def load_vulkan_object():
-    sys.path.insert(0, str(REGISTRY))
+def load_registry(xml: Path):
+    """Khronos' Registry with a registry file loaded, and its generator.
+
+    Loading reduces the tree, `registry.reg`, to the `vulkan` API: it drops the elements
+    of other APIs and merges the internal `VK_BASE_VERSION_*`, `VK_COMPUTE_VERSION_*` and
+    `VK_GRAPHICS_VERSION_*` features into the `VK_VERSION_*` feature that they are a part
+    of. It also copies every enumerant that a version or an extension adds to a type into
+    the `<enums>` group of that type, where the copy of one from an extension names the
+    extension as `extname`."""
+    if str(REGISTRY) not in sys.path:
+        sys.path.insert(0, str(REGISTRY))
     import base_generator  # type: ignore
     from reg import Registry  # type: ignore
 
@@ -140,13 +150,18 @@ def load_vulkan_object():
     )
     gen = IrGenerator()
     registry = Registry(gen, opts)
-    registry.loadElementTree(ElementTree.parse(REGISTRY / "vk.xml"))
+    registry.loadElementTree(ElementTree.parse(xml))
+    return registry, gen
+
+
+def load_vulkan_object():
+    registry, gen = load_registry(REGISTRY / "vk.xml")
+    # The `deprecated` attributes are read before `apiGen`, which gives the attribute to
+    # the members that `<deprecate>` blocks mark as features.
+    attributes = legacy_attributes(registry.reg)
+    attributes += legacy_attributes(load_registry(REGISTRY / "video.xml")[0].reg)
     registry.apiGen()
-    # `registry.reg` is the root of vk.xml as Khronos' Registry has reduced it to the
-    # `vulkan` API: without the elements of other APIs, and with the internal
-    # `VK_BASE_VERSION_*`, `VK_COMPUTE_VERSION_*` and `VK_GRAPHICS_VERSION_*` features
-    # merged into the `VK_VERSION_*` feature that they are a part of.
-    return gen.vk, registry.reg
+    return gen.vk, registry.reg, attributes
 
 
 def sdk_tag_key(tag: str) -> tuple[int, ...]:
@@ -230,7 +245,92 @@ def legacy_ir(vk, registry_tree):
     return [marks[key] for key in sorted(marks)]
 
 
-def build_ir(vk, registry_tree, allow_non_sdk_tag: bool):
+LEGACY_ATTRIBUTE_ELEMENTS = ("enum", "member")
+LEGACY_ATTRIBUTE_VALUES = ("aliased", "true", "unused")
+
+
+def legacy_attributes(tree) -> list[dict]:
+    """The elements of a registry tree that have the `deprecated` attribute, in the order
+    of the tree: enumerants and constants (`<enum>`, in an `<enums>` group or required by
+    a version or an extension) and members of structures. Each one comes with the value of
+    the attribute, with the type that owns it (the group or the `extends` of an enumerant,
+    none for a constant; the structure of a member), with the `alias` attribute, and with
+    the extension that it is in, if any.
+
+    The tree is one that `load_registry` has loaded, so an enumerant that an extension
+    adds to a type is in it twice, in the extension and as a copy in the group of the
+    type. Both name the extension as `extname`, and `legacy_attributes_ir` takes the two
+    for one.
+
+    Khronos' generators write a comment for the attribute wherever it is, and for three
+    values (`deprecationComment` in generator.py). Another element or another value stops
+    the generation: this script would not know what it stands for."""
+    found = []
+
+    def visit(element, owner, extension):
+        for child in element:
+            child_owner, child_extension = owner, extension
+            if child.tag == "enums":
+                child_owner = child.get("name") if child.get("type") in ("enum", "bitmask") else None
+            elif child.tag == "type":
+                child_owner = child.get("name")
+            elif child.tag == "extension":
+                child_extension = child.get("name")
+            elif child.tag == "enum":
+                child_extension = child.get("extname", extension)
+            reason = child.get("deprecated")
+            if reason is not None:
+                name = child.get("name") or child.findtext("name")
+                if child.tag not in LEGACY_ATTRIBUTE_ELEMENTS:
+                    raise RuntimeError(
+                        f"a <{child.tag}> ({name}) has the attribute deprecated=\"{reason}\", "
+                        "which this script knows on <enum> and <member> only"
+                    )
+                if reason not in LEGACY_ATTRIBUTE_VALUES:
+                    raise RuntimeError(
+                        f"{name} has the attribute deprecated=\"{reason}\", a value that this "
+                        "script does not know"
+                    )
+                attribute_owner = child.get("extends", owner) if child.tag == "enum" else owner
+                if not name or (child.tag == "member" and not attribute_owner):
+                    raise RuntimeError(
+                        f"a <{child.tag}> with the attribute deprecated=\"{reason}\" has no "
+                        f"name, or is a member of no type: {dict(child.attrib)}"
+                    )
+                found.append(
+                    {
+                        "element": child.tag,
+                        "name": name,
+                        "owner": attribute_owner,
+                        "reason": reason,
+                        "alias": child.get("alias"),
+                        "extension": child_extension,
+                    }
+                )
+            visit(child, child_owner, child_extension)
+
+    visit(tree, None, None)
+    return found
+
+
+def legacy_attributes_ir(supported_extensions, attributes: list[dict]) -> list[dict]:
+    """`attributes` without the ones in extensions that are not supported, each name once.
+    A name that the registry gives the attribute twice, with different values or as an
+    alias of different names, has no single answer and stops the generation."""
+    stated = {}
+    for attribute in attributes:
+        if attribute["extension"] is not None and attribute["extension"] not in supported_extensions:
+            continue
+        entry = {key: attribute[key] for key in ("element", "name", "owner", "reason", "alias")}
+        earlier = stated.setdefault((entry["element"], entry["owner"] or "", entry["name"]), entry)
+        if earlier != entry:
+            raise RuntimeError(
+                f"{entry['name']} has the attribute `deprecated` twice, as {earlier} and as {entry}"
+            )
+    return [stated[key] for key in sorted(stated)]
+
+
+def build_ir(vk, registry_tree, attributes, allow_non_sdk_tag: bool):
     video = attr(vk, "videoStd")
     constants = list(vk.constants.values())
     enums = list(vk.enums.values())
@@ -388,6 +488,9 @@ def build_ir(vk, registry_tree, allow_non_sdk_tag: bool):
             for e in sorted(vk.extensions.values(), key=lambda x: x.name)
         ],
         "legacy": legacy_ir(vk, registry_tree),
+        "legacy_attributes": legacy_attributes_ir(
+            {*vk.extensions, *(header["name"] for header in video_headers)}, attributes
+        ),
         "formats": [
             {
                 "name": f.name,

@@ -1,9 +1,10 @@
 use super::{bitmasks, commands, constants, doc_of, enums, extensions, handles, structs, version};
 use crate::model::Model;
-use crate::test_support::{counted, field, registry, result_command, tagged};
+use crate::test_support::{catch_quietly, counted, field, registry, result_command, tagged};
 use vulkan_registry::{
     Bitmask, Constant, DocItem, DocItemOutsidePages, DocPage, DocTable, Docs, Enum, EnumField,
-    Extension, Flags, Handle, Legacy, LegacyKind, Registry, Version,
+    Extension, Flags, Handle, Legacy, LegacyAttribute, LegacyElement, LegacyKind, LegacyReason,
+    Registry, Version,
 };
 
 fn page(name: &str, desc: &str, items: &[(&str, &str)]) -> DocPage {
@@ -1082,4 +1083,355 @@ fn documentation_without_legacy_marks_has_no_legacy_statement() {
     ] {
         assert!(!emit(&model).contains("Legacy"));
     }
+}
+
+const NO_REASON: &str = "Legacy functionality, for which the registry gives no reason.";
+const NOT_USED: &str = "Legacy functionality that is not used.";
+
+fn legacy_attribute(
+    element: LegacyElement,
+    owner: &str,
+    name: &str,
+    reason: LegacyReason,
+    alias: Option<&str>,
+) -> LegacyAttribute {
+    LegacyAttribute {
+        element,
+        name: name.to_string(),
+        owner: Some(owner.to_string()),
+        reason,
+        alias: alias.map(str::to_string),
+    }
+}
+
+#[test]
+fn values_say_that_the_registry_calls_them_legacy() {
+    let mut ir = ir();
+    let color = ir.enums.iter_mut().find(|e| e.name == "VkColor");
+    color.expect("the enumeration").fields[0].aliases = vec![
+        "VK_COLOR_CRIMSON".to_string(),
+        "VK_COLOR_SCARLET".to_string(),
+    ];
+    ir.bitmasks[0].fields[0].aliases = vec![
+        "VK_QUEUE_DRAWING_BIT".to_string(),
+        "VK_QUEUE_GRAPHICS".to_string(),
+        "VK_QUEUE_PAINTING_BIT".to_string(),
+    ];
+    let value = |owner: &str, name: &str, reason, alias| {
+        legacy_attribute(LegacyElement::Enum, owner, name, reason, alias)
+    };
+    ir.legacy_attributes = vec![
+        value(
+            "VkColor",
+            "VK_COLOR_SCARLET",
+            LegacyReason::Aliased,
+            Some("VK_COLOR_CRIMSON"),
+        ),
+        value("VkColor", "VK_COLOR_RED", LegacyReason::True, None),
+        value("VkColor", "VK_COLOR_BLUE", LegacyReason::True, None),
+        value("VkColor", "VK_COLOR_GREEN", LegacyReason::True, None),
+        value(
+            "VkQueueFlagBits",
+            "VK_QUEUE_DRAWING_BIT",
+            LegacyReason::Aliased,
+            Some("VK_QUEUE_GRAPHICS_BIT"),
+        ),
+        value(
+            "VkQueueFlagBits",
+            "VK_QUEUE_GRAPHICS",
+            LegacyReason::Aliased,
+            Some("VK_QUEUE_GRAPHICS_BIT"),
+        ),
+    ];
+    let docs = docs();
+    let model = Model::with_docs(&ir, &docs);
+    crate::docs::assert_every_legacy_attribute_is_stated(&model);
+    let out = enums::emit(&model);
+    assert_eq!(
+        doc_of(&out, "pub const SCARLET:"),
+        [
+            "`VK_COLOR_SCARLET` is a legacy alias of [`VK_COLOR_RED`](Self::RED).".to_string(),
+            alias("VK_COLOR_SCARLET"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const CRIMSON:"),
+        [
+            "`VK_COLOR_CRIMSON` is an alias of [`VK_COLOR_RED`](Self::RED).".to_string(),
+            alias("VK_COLOR_CRIMSON"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const RED:"),
+        [
+            "`VK_COLOR_RED` specifies red, not [`VK_COLOR_BLUE`](Color::BLUE).".to_string(),
+            NO_REASON.to_string(),
+            alias("VK_COLOR_RED"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const BLUE:"),
+        [
+            format!("`VK_COLOR_BLUE`, a value of [`VkColor`]({PAGES}/VkColor.html)."),
+            NO_REASON.to_string(),
+            alias("VK_COLOR_BLUE"),
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub const GREEN:")[2..],
+        [NO_REASON.to_string(), alias("VK_COLOR_GREEN")]
+    );
+    assert_eq!(out.matches("Legacy functionality").count(), 3);
+    assert_eq!(out.matches("legacy alias").count(), 1);
+
+    let out = bitmasks::emit(&model);
+    let (bits, flags) = out
+        .split_once("pub struct QueueFlags(")
+        .expect("the flags type after the bits");
+    for constants in [bits, flags] {
+        assert_eq!(
+            doc_of(constants, "pub const DRAWING:"),
+            [
+                "`VK_QUEUE_DRAWING_BIT` is a legacy alias of [`VK_QUEUE_GRAPHICS_BIT`](Self::GRAPHICS)."
+                    .to_string(),
+                alias("VK_QUEUE_DRAWING_BIT"),
+            ]
+        );
+        assert_eq!(
+            doc_of(constants, "pub const PAINTING:"),
+            [
+                "`VK_QUEUE_PAINTING_BIT` is an alias of [`VK_QUEUE_GRAPHICS_BIT`](Self::GRAPHICS)."
+                    .to_string(),
+                alias("VK_QUEUE_PAINTING_BIT"),
+            ]
+        );
+        assert_eq!(
+            doc_of(constants, "pub const GRAPHICS:"),
+            [
+                "`VK_QUEUE_GRAPHICS_BIT` specifies graphics.".to_string(),
+                "The C header also calls this value `VK_QUEUE_GRAPHICS`, which is a legacy alias of `VK_QUEUE_GRAPHICS_BIT`."
+                    .to_string(),
+                alias("VK_QUEUE_GRAPHICS_BIT"),
+                alias("VK_QUEUE_GRAPHICS"),
+            ],
+            "the legacy alias `VK_QUEUE_GRAPHICS` has the Rust name of the value, which is not legacy"
+        );
+    }
+    assert_eq!(out.matches("legacy").count(), 4);
+}
+
+fn queue_flags_with_aliases(aliases: &[&str], legacy: &[&str]) -> Registry {
+    let mut ir = ir();
+    ir.bitmasks[0].fields[0].aliases = aliases.iter().map(|alias| alias.to_string()).collect();
+    let legacy = legacy.iter().map(|name| {
+        legacy_attribute(
+            LegacyElement::Enum,
+            "VkQueueFlagBits",
+            name,
+            LegacyReason::Aliased,
+            Some("VK_QUEUE_GRAPHICS_BIT"),
+        )
+    });
+    ir.legacy_attributes = legacy.collect();
+    ir
+}
+
+#[test]
+fn a_constant_that_a_legacy_alias_shares_is_documented_as_the_name_that_is_not_legacy() {
+    let painting = "VK_QUEUE_PAINTING_BIT";
+    let legacy = ["VK_QUEUE_PAINTING", "VK_PAINTING"];
+    let graphics = "[`VK_QUEUE_GRAPHICS_BIT`](Self::GRAPHICS)";
+    for aliases in [
+        [painting, legacy[0], legacy[1]],
+        [legacy[0], painting, legacy[1]],
+        [legacy[1], legacy[0], painting],
+    ] {
+        let ir = queue_flags_with_aliases(&aliases, &legacy);
+        let docs = docs();
+        let model = Model::with_docs(&ir, &docs);
+        let out = bitmasks::emit(&model);
+        let (bits, flags) = out
+            .split_once("pub struct QueueFlags(")
+            .expect("the flags type after the bits");
+        for constants in [bits, flags] {
+            assert_eq!(
+                doc_of(constants, "pub const PAINTING:"),
+                [
+                    format!("`VK_QUEUE_PAINTING_BIT` is an alias of {graphics}."),
+                    format!(
+                        "The C header also calls this value `VK_PAINTING` and `VK_QUEUE_PAINTING`, which are legacy aliases of {graphics}."
+                    ),
+                    alias("VK_QUEUE_PAINTING_BIT"),
+                    alias("VK_PAINTING"),
+                    alias("VK_QUEUE_PAINTING"),
+                ],
+                "{aliases:?}"
+            );
+            assert_eq!(constants.matches("pub const PAINTING:").count(), 1);
+            assert_eq!(
+                constants.matches("(Self(1), \"PAINTING\"),").count(),
+                1,
+                "{aliases:?}: the constant is one of the other names of its value"
+            );
+            assert_eq!(constants.matches("(Self(1), \"GRAPHICS\"),").count(), 1);
+        }
+        assert_eq!(out.matches("legacy").count(), 2, "{aliases:?}");
+    }
+}
+
+#[test]
+fn a_constant_that_only_legacy_aliases_share_is_documented_as_the_first_of_them() {
+    let graphics = "[`VK_QUEUE_GRAPHICS_BIT`](Self::GRAPHICS)";
+    for (aliases, own, other) in [
+        (
+            ["VK_QUEUE_PAINTING", "VK_PAINTING"],
+            "VK_QUEUE_PAINTING",
+            "VK_PAINTING",
+        ),
+        (
+            ["VK_PAINTING", "VK_QUEUE_PAINTING"],
+            "VK_PAINTING",
+            "VK_QUEUE_PAINTING",
+        ),
+    ] {
+        let ir = queue_flags_with_aliases(&aliases, &aliases);
+        let docs = docs();
+        let model = Model::with_docs(&ir, &docs);
+        let out = bitmasks::emit(&model);
+        assert_eq!(
+            doc_of(&out, "pub const PAINTING:"),
+            [
+                format!("`{own}` is a legacy alias of {graphics}."),
+                format!(
+                    "The C header also calls this value `{other}`, which is a legacy alias of {graphics}."
+                ),
+                alias(own),
+                alias(other),
+            ]
+        );
+    }
+}
+
+#[test]
+fn two_names_of_a_value_that_are_not_legacy_and_share_a_constant_abort_generation() {
+    let ir = queue_flags_with_aliases(&["VK_QUEUE_PAINTING_BIT", "VK_PAINTING"], &[]);
+    let docs = docs();
+    assert_eq!(
+        catch_quietly(|| bitmasks::emit(&Model::with_docs(&ir, &docs))).map(|_| ()),
+        Err("VkQueueFlagBits: `VK_QUEUE_PAINTING_BIT` and `VK_PAINTING` both map to `PAINTING`, and neither is a legacy alias".to_string())
+    );
+    let mut ir = queue_flags_with_aliases(&[], &[]);
+    let mut other = ir.bitmasks[0].fields[0].clone();
+    other.name = "VK_GRAPHICS".to_string();
+    other.value = "2".to_string();
+    ir.bitmasks[0].fields.push(other);
+    assert_eq!(
+        catch_quietly(|| bitmasks::emit(&Model::with_docs(&ir, &docs))).map(|_| ()),
+        Err(
+            "VkQueueFlagBits: `VK_GRAPHICS` maps to `GRAPHICS` which already has value 1, not 2"
+                .to_string()
+        )
+    );
+}
+
+#[test]
+fn a_name_that_shares_the_constant_of_another_value_aborts_generation() {
+    let docs = docs();
+    for legacy in [&["VK_QUEUE_PAINTING"][..], &[]] {
+        let mut ir = queue_flags_with_aliases(&["VK_QUEUE_PAINTING"], legacy);
+        let mut other = ir.bitmasks[0].fields[0].clone();
+        other.name = "VK_QUEUE_PAINTING_BIT".to_string();
+        other.aliases.clear();
+        ir.bitmasks[0].fields.push(other);
+        assert_eq!(
+            catch_quietly(|| bitmasks::emit(&Model::with_docs(&ir, &docs))).map(|_| ()),
+            Err("VkQueueFlagBits: `VK_QUEUE_PAINTING`, a name of `VK_QUEUE_GRAPHICS_BIT`, maps to `PAINTING`, which stands for `VK_QUEUE_PAINTING_BIT`".to_string()),
+            "{legacy:?}"
+        );
+    }
+}
+
+#[test]
+fn members_that_are_not_used_say_so_unless_their_description_does_and_their_setters_say_so() {
+    let mut ir = ir();
+    let member = |name: &str| {
+        legacy_attribute(
+            LegacyElement::Member,
+            "VkQueueInfo",
+            name,
+            LegacyReason::Unused,
+            None,
+        )
+    };
+    ir.legacy_attributes = vec![
+        member("queueCount"),
+        member("pPriorities"),
+        member("reserved"),
+    ];
+    let docs = docs();
+    let model = Model::with_docs(&ir, &docs);
+    crate::docs::assert_every_legacy_attribute_is_stated(&model);
+    let out = structs::emit(&model);
+    assert_eq!(
+        doc_of(&out, "pub queue_count:"),
+        [
+            "`queueCount` is the number of queues, at most [`VK_MAX_QUEUES`](MAX_QUEUES).",
+            NOT_USED
+        ]
+    );
+    assert_eq!(
+        doc_of(&out, "pub p_priorities:"),
+        ["The C member `const float* pPriorities`.", NOT_USED]
+    );
+    assert_eq!(
+        doc_of(&out, "pub reserved:"),
+        ["The C member `uint32_t reserved`.", NOT_USED]
+    );
+    assert_eq!(
+        doc_of(&out, "pub fn queue_count("),
+        ["Sets [`queue_count`](Self::queue_count).", NOT_USED]
+    );
+    assert_eq!(
+        doc_of(&out, "pub fn reserved("),
+        ["Sets [`reserved`](Self::reserved).", NOT_USED]
+    );
+    let priorities = doc_of(&out, "pub fn priorities(");
+    assert_eq!(
+        priorities[0],
+        "Sets [`p_priorities`](Self::p_priorities) to the start of a slice of elements and [`queue_count`](Self::queue_count) to its length."
+    );
+    assert_eq!(
+        priorities
+            .iter()
+            .position(|block| block == NOT_USED)
+            .zip(priorities.iter().position(|block| block == "# Panics")),
+        Some((priorities.len() - 3, priorities.len() - 2)),
+        "the last paragraph before the sections: {priorities:?}"
+    );
+    assert_eq!(out.matches(NOT_USED).count(), 6);
+
+    let described = with_item(
+        docs,
+        "VkQueueInfo",
+        "queueCount",
+        &[
+            "pname:queueCount is legacy and",
+            "not used.",
+            "Implementations must: not access it.",
+        ],
+    );
+    let out = structs::emit(&Model::with_docs(&ir, &described));
+    assert_eq!(
+        doc_of(&out, "pub queue_count:"),
+        ["`queueCount` is legacy and not used. Implementations must not access it."]
+    );
+    assert_eq!(
+        doc_of(&out, "pub fn queue_count("),
+        ["Sets [`queue_count`](Self::queue_count).", NOT_USED]
+    );
+    assert_eq!(out.matches(NOT_USED).count(), 5);
+
+    ir.legacy_attributes.clear();
+    let out = structs::emit(&Model::with_docs(&ir, &described));
+    assert_eq!(out.matches("Legacy").count(), 0);
 }

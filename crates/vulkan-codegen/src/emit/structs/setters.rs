@@ -295,7 +295,7 @@ pub(super) fn member_methods(
 ) -> String {
     let ty = CType::of(m);
     let field = field_name(&m.name);
-    let legacy = model.legacy_member(&model.cfg(s.protect.as_deref()), &s.name, &m.name);
+    let legacy = model.legacy_setter(&model.cfg(s.protect.as_deref()), &s.name, &m.name);
     if ty.is_array() {
         let setter = value_setter(model, m, names).with_legacy(legacy).render();
         return setter + &fixed_array_reader(model, s, m, &ty, names);

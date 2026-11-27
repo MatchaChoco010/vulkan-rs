@@ -9,6 +9,15 @@ use syn::{Attribute, Expr, FnArg, ImplItem, Item, Lit, Meta, Pat, Type};
 const REFERENCE_PAGES: &str = "https://docs.vulkan.org/refpages/latest/refpages/source/";
 const SPECIFICATION: &str = "https://docs.vulkan.org/spec/latest/";
 
+const LEGACY_WITHOUT_A_REASON: &str =
+    "Legacy functionality, for which the registry gives no reason.";
+const LEGACY_AND_NOT_USED: &str = "Legacy functionality that is not used.";
+const DESCRIBED_AS_NOT_USED: &str = "is legacy and not used";
+const ALSO_CALLED: &str = "The C header also calls this value ";
+
+const LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE: &[&str] =
+    &["STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED"];
+
 const LEGACY_MACROS_WITHOUT_AN_ITEM: &[&str] = &[
     "VK_API_VERSION",
     "VK_MAKE_VERSION",
@@ -393,6 +402,130 @@ struct Segment {
     lines: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DeprecatedAttribute {
+    reason: String,
+    alias: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct DeprecatedAttributes {
+    attributes: BTreeMap<(String, String, String), DeprecatedAttribute>,
+    entries: BTreeMap<String, usize>,
+    entries_of_other_apis: usize,
+    aliases: BTreeMap<String, String>,
+}
+
+impl DeprecatedAttributes {
+    fn read(&mut self, registry: &str) {
+        let member_name = regex(r"<name>(\w+)</name>");
+        let mut interface_matches = true;
+        let mut require_matches = true;
+        let mut group = None::<(String, bool)>;
+        let mut structure = None::<String>;
+        for line in registry.lines().map(str::trim) {
+            let names_vulkan = |apis: &str| apis.split(',').any(|api| api == "vulkan");
+            let api_matches =
+                |element: &str| xml_attribute(element, "api").is_none_or(names_vulkan);
+            if line.starts_with("<feature ") && xml_attribute(line, "number").is_some() {
+                interface_matches = api_matches(line);
+            } else if line.starts_with("<extension ") {
+                let supported = xml_attribute(line, "supported").is_some_and(names_vulkan);
+                interface_matches = supported && api_matches(line);
+            } else if line == "</feature>" || line == "</extension>" {
+                interface_matches = true;
+            } else if line.starts_with("<require") {
+                require_matches = api_matches(line);
+            } else if line == "</require>" {
+                require_matches = true;
+            } else if line.starts_with("<enums ") {
+                let name = xml_attribute(line, "name").expect("a group of enumerants has a name");
+                let owner = match xml_attribute(line, "type") {
+                    Some("enum" | "bitmask") => name,
+                    _ => "",
+                };
+                group = (!line.ends_with("/>")).then(|| (owner.to_string(), api_matches(line)));
+            } else if line == "</enums>" {
+                group = None;
+            } else if line.starts_with("<type ")
+                && !line.ends_with("/>")
+                && !line.contains("</type>")
+            {
+                structure = xml_attribute(line, "name").map(str::to_string);
+            } else if line == "</type>" {
+                structure = None;
+            }
+            let is_enumerant = line.starts_with("<enum ");
+            let is_member = line.starts_with("<member");
+            let group_matches = group.as_ref().is_none_or(|(_, matches)| *matches);
+            let matches =
+                interface_matches && require_matches && group_matches && api_matches(line);
+            if is_enumerant
+                && matches
+                && let (Some(name), Some(alias)) =
+                    (xml_attribute(line, "name"), xml_attribute(line, "alias"))
+            {
+                self.aliases.insert(name.to_string(), alias.to_string());
+            }
+            let Some(reason) = xml_attribute(line, "deprecated") else {
+                continue;
+            };
+            assert!(
+                is_enumerant || is_member,
+                "the test knows the attribute `deprecated` on <enum> and <member>, and the registry has `{line}`"
+            );
+            assert!(
+                ["aliased", "true", "unused"].contains(&reason),
+                "the test does not know the value of `deprecated` in `{line}`"
+            );
+            if !matches {
+                self.entries_of_other_apis += 1;
+                continue;
+            }
+            *self.entries.entry(reason.to_string()).or_default() += 1;
+            let (element, owner, name) = if is_enumerant {
+                let in_a_group = group.as_ref().map(|(owner, _)| owner.as_str());
+                let owner = xml_attribute(line, "extends").or(in_a_group);
+                let name = xml_attribute(line, "name").expect("an enumerant has a name");
+                ("enum", owner.unwrap_or_default(), name.to_string())
+            } else {
+                let owner = structure.as_deref().expect("a member is in a type");
+                let name = member_name.captures(line).expect("a member has a name");
+                ("member", owner, name[1].to_string())
+            };
+            let attribute = DeprecatedAttribute {
+                reason: reason.to_string(),
+                alias: xml_attribute(line, "alias").map(str::to_string),
+            };
+            let key = (element.to_string(), owner.to_string(), name);
+            let earlier = self.attributes.entry(key).or_insert(attribute.clone());
+            assert_eq!(
+                *earlier, attribute,
+                "`{line}` and another element say different things"
+            );
+        }
+    }
+
+    fn value_of<'a>(&'a self, mut name: &'a str) -> &'a str {
+        let mut steps = 0;
+        while let Some(alias) = self.aliases.get(name) {
+            assert!(steps < 8, "the aliases of {name} do not end");
+            (name, steps) = (alias.as_str(), steps + 1);
+        }
+        name
+    }
+
+    fn other_names<'a>(&'a self, name: &'a str) -> Vec<&'a str> {
+        let value = self.value_of(name);
+        let aliases = self.aliases.keys().map(String::as_str);
+        let same_value = aliases.filter(|alias| self.value_of(alias) == value);
+        same_value
+            .chain([value])
+            .filter(|other| *other != name)
+            .collect()
+    }
+}
+
 struct Specification {
     pages: BTreeMap<String, Page>,
     value_descriptions: BTreeMap<String, Vec<ValueDescription>>,
@@ -403,6 +536,7 @@ struct Specification {
     anchors: BTreeMap<String, BTreeSet<String>>,
     published: BTreeSet<String>,
     legacy: LegacyRegistry,
+    deprecated: DeprecatedAttributes,
     markup: Markup,
 }
 
@@ -880,6 +1014,14 @@ impl Specification {
             legacy: LegacyRegistry::read(
                 &fs::read_to_string(root.join("xml/vk.xml")).expect("read xml/vk.xml"),
             ),
+            deprecated: {
+                let mut deprecated = DeprecatedAttributes::default();
+                for registry in ["xml/vk.xml", "xml/video.xml"] {
+                    let registry = fs::read_to_string(root.join(registry));
+                    deprecated.read(&registry.expect("read a registry file"));
+                }
+                deprecated
+            },
             markup: Markup::new(),
         };
         for page in pages.values_mut() {
@@ -1500,8 +1642,23 @@ fn first_paragraph(doc: &str) -> &str {
     doc.split("\n\n").next().unwrap_or_default()
 }
 
+fn is_legacy_attribute_statement(paragraph: &str) -> bool {
+    paragraph == LEGACY_WITHOUT_A_REASON
+        || paragraph == LEGACY_AND_NOT_USED
+        || paragraph.starts_with(ALSO_CALLED)
+}
+
+fn also_called(legacy_names: &[&str], value: &str) -> String {
+    let names = legacy_names.iter().map(|name| format!("`{name}`"));
+    let names = join_and(names.collect());
+    match legacy_names.len() {
+        1 => format!("{ALSO_CALLED}{names}, which is a legacy alias of {value}."),
+        _ => format!("{ALSO_CALLED}{names}, which are legacy aliases of {value}."),
+    }
+}
+
 fn is_legacy_statement(paragraph: &str) -> bool {
-    paragraph.starts_with("Legacy functionality")
+    (paragraph.starts_with("Legacy functionality") && !is_legacy_attribute_statement(paragraph))
         || paragraph.contains("[Legacy Functionality](")
         || paragraph.contains(SPECIFICATION)
 }
@@ -1514,8 +1671,11 @@ fn legacy_statements(doc: &str) -> Vec<String> {
 }
 
 fn without_legacy_statements(doc: &str) -> String {
+    let is_legacy = |paragraph: &str| {
+        is_legacy_statement(paragraph) || is_legacy_attribute_statement(paragraph)
+    };
     doc.split("\n\n")
-        .filter(|paragraph| !is_legacy_statement(&flat(paragraph)))
+        .filter(|paragraph| !is_legacy(&flat(paragraph)))
         .collect::<Vec<_>>()
         .join("\n\n")
 }
@@ -1535,6 +1695,7 @@ struct Documented {
     name: String,
     features: BTreeSet<String>,
     doc: String,
+    aliases: Vec<String>,
     link_target: Option<(String, String)>,
 }
 
@@ -1571,6 +1732,7 @@ fn documented_items(generated: &Generated, items: &[Item], documented: &mut Vec<
             name: c_name.clone(),
             features: features_of(generated, attributes),
             doc,
+            aliases,
             link_target: Some((c_name, ident.to_string())),
         }
     };
@@ -1638,6 +1800,7 @@ fn documented_items(generated: &Generated, items: &[Item], documented: &mut Vec<
                         name,
                         features,
                         doc,
+                        aliases,
                         link_target,
                     });
                 }
@@ -1835,7 +1998,195 @@ impl Checker {
                 "is marked as legacy, and the bindings document no such item",
             );
         }
+        self.legacy_attributes(spec, &documented);
     }
+
+    fn legacy_attributes(&mut self, spec: &Specification, documented: &[Documented]) {
+        let paragraphs = |item: &Documented| item.doc.split("\n\n").map(flat).collect::<Vec<_>>();
+        let values_named = |c_name: &str| {
+            let values = documented.iter().filter(|item| item.kind == "value");
+            values
+                .filter(|item| item.aliases.first().is_some_and(|alias| alias == c_name))
+                .collect::<Vec<_>>()
+        };
+        let mut stated = BTreeSet::<(&'static str, &str)>::new();
+        let mut sharing = BTreeMap::<(&'static str, &str), BTreeSet<&str>>::new();
+        let state = |checker: &mut Self, what: &'static str, item: &Documented, expected: &str| {
+            let said = paragraphs(item)
+                .iter()
+                .filter(|paragraph| paragraph.as_str() == expected)
+                .count();
+            if said == 1 {
+                *checker.legacy_attribute_statements.entry(what).or_default() += 1;
+            } else {
+                checker.fail(
+                    &described_item(item),
+                    format!("the registry calls it legacy, so its documentation has the one paragraph `{expected}`, but it has {said} of them: {:?}", paragraphs(item)),
+                );
+            }
+        };
+        let deprecated = &spec.deprecated;
+        for ((element, owner, name), attribute) in &deprecated.attributes {
+            let alias = attribute.alias.as_deref();
+            match (element.as_str(), owner.as_str(), attribute.reason.as_str(), alias) {
+                ("enum", "", "aliased", Some(alias)) => {
+                    let is_a_macro_of_an_extension =
+                        alias.ends_with("_EXTENSION_NAME") || alias.ends_with("_SPEC_VERSION");
+                    let has = |c_name: &str| {
+                        let mut names = documented.iter().flat_map(|item| &item.aliases);
+                        names.any(|alias| alias == c_name)
+                    };
+                    if is_a_macro_of_an_extension && has(alias) && !has(name) {
+                        let extension_macros = "the legacy alias of the name or of the version macro of an extension";
+                        let left_out = &mut self.legacy_aliases_without_a_constant;
+                        left_out.entry(extension_macros).or_default().insert(name.clone());
+                    } else {
+                        self.fail(name, format!("is a legacy alias of `{alias}`, and the bindings leave out only the legacy aliases of the name and of the version macro of an extension that they have, and have no item for them"));
+                    }
+                }
+                ("enum", _, "aliased", Some(_)) => {
+                    let constants = values_named(name);
+                    let value = deprecated.value_of(name);
+                    for constant in &constants {
+                        let type_name = constant.name.split("::").next().unwrap_or_default();
+                        let of_the_value = values_named(value)
+                            .into_iter()
+                            .find(|item| item.name.split("::").next() == Some(type_name));
+                        let Some(of_the_value) = of_the_value else {
+                            self.fail(&described_item(constant), format!("is a legacy alias of `{value}`, which has no constant of `{type_name}`"));
+                            continue;
+                        };
+                        let target = of_the_value.name.rsplit("::").next().unwrap_or_default();
+                        let expected = format!("`{name}` is a legacy alias of [`{value}`](Self::{target}).");
+                        stated.insert(("value", constant.name.as_str()));
+                        state(self, "legacy alias", constant, &expected);
+                    }
+                    if !constants.is_empty() {
+                        continue;
+                    }
+                    let without_bit = |c_name: &str| c_name.replace("_BIT", "");
+                    let other_names = deprecated.other_names(name).into_iter();
+                    let same_rust_name = other_names
+                        .filter(|other| without_bit(other) == without_bit(name))
+                        .flat_map(values_named)
+                        .collect::<Vec<_>>();
+                    for constant in &same_rust_name {
+                        sharing.entry(constant.key()).or_default().insert(name);
+                    }
+                    let reason = if !same_rust_name.is_empty() {
+                        "another name of the value differs from it only by `_BIT`, which the Rust names of flag bits leave out, so the two have one constant"
+                    } else if LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE.contains(&name.as_str())
+                        && !values_named(value).is_empty()
+                    {
+                        "LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE"
+                    } else {
+                        self.fail(name, format!("is a legacy alias of `{value}` in `{owner}`, and the bindings have no constant for it"));
+                        continue;
+                    };
+                    let left_out = &mut self.legacy_aliases_without_a_constant;
+                    left_out.entry(reason).or_default().insert(name.clone());
+                }
+                ("enum", _, "true", None) => {
+                    let constants = values_named(name);
+                    if constants.is_empty() {
+                        self.fail(name, format!("is legacy, and the bindings have no constant for it in `{owner}`"));
+                    }
+                    for constant in constants {
+                        stated.insert(("value", constant.name.as_str()));
+                        state(self, "legacy value", constant, LEGACY_WITHOUT_A_REASON);
+                    }
+                }
+                ("member", _, "unused", None) => {
+                    let structure = documented.iter().find(|item| {
+                        item.kind == "type" && item.aliases.first().is_some_and(|alias| alias == owner)
+                    });
+                    let type_name = structure.and_then(|item| item.link_target.as_ref());
+                    let type_name = type_name.map_or("", |(_, type_name)| type_name.as_str());
+                    let member = documented.iter().find(|item| {
+                        let field = item.name.strip_prefix(type_name);
+                        let field = field.and_then(|field| field.strip_prefix("::"));
+                        item.kind == "member" && field.is_some_and(|field| is_rust_name_of(field, name))
+                    });
+                    let Some(member) = member else {
+                        self.fail(&format!("{owner}::{name}"), "is legacy and not used, and the bindings have no such member");
+                        continue;
+                    };
+                    stated.insert(("member", member.name.as_str()));
+                    if flat(&member.doc).contains(DESCRIBED_AS_NOT_USED) {
+                        let described = "unused member that its description calls so";
+                        *self.legacy_attribute_statements.entry(described).or_default() += 1;
+                        if paragraphs(member).iter().any(|paragraph| paragraph == LEGACY_AND_NOT_USED) {
+                            self.fail(&described_item(member), "says twice that it is legacy and not used");
+                        }
+                    } else {
+                        state(self, "unused member", member, LEGACY_AND_NOT_USED);
+                    }
+                    let field = member.name.rsplit("::").next().unwrap_or_default();
+                    let sets = format!("Sets [`{field}`](Self::{field})");
+                    let setters = documented.iter().filter(|item| {
+                        item.kind == "method"
+                            && item.name.split("::").next() == Some(type_name)
+                            && flat(&item.doc).starts_with(&sets)
+                    });
+                    let setters = setters.collect::<Vec<_>>();
+                    if setters.is_empty() {
+                        self.fail(&described_item(member), "is legacy and not used, and has no setter");
+                    }
+                    for setter in setters {
+                        stated.insert(("method", setter.name.as_str()));
+                        state(self, "setter of an unused member", setter, LEGACY_AND_NOT_USED);
+                    }
+                }
+                _ => self.fail(name, format!("has the attribute `deprecated` as {attribute:?} on <{element}> of `{owner}`, which the test does not know how the bindings state")),
+            }
+        }
+        for item in documented {
+            let paragraphs = paragraphs(item);
+            let names = sharing.get(&item.key()).cloned().unwrap_or_default();
+            let names = names.into_iter().collect::<Vec<_>>();
+            let expected = (!names.is_empty()).then(|| {
+                let own = item.aliases.first().map_or("", String::as_str);
+                let value = deprecated.value_of(own);
+                let type_name = item.name.split("::").next();
+                let of_the_value = values_named(value)
+                    .into_iter()
+                    .find(|other| other.name.split("::").next() == type_name);
+                let target = of_the_value.map_or("", |other| {
+                    other.name.rsplit("::").next().unwrap_or_default()
+                });
+                match own == value {
+                    true => also_called(&names, &format!("`{value}`")),
+                    false => also_called(&names, &format!("[`{value}`](Self::{target})")),
+                }
+            });
+            let said = paragraphs
+                .iter()
+                .filter(|paragraph| paragraph.starts_with(ALSO_CALLED))
+                .collect::<Vec<_>>();
+            let other_names = item.aliases.get(1..).unwrap_or_default();
+            let says_so = paragraphs.iter().any(|paragraph| {
+                is_legacy_attribute_statement(paragraph) || paragraph.contains("legacy alias")
+            });
+            if said != expected.iter().collect::<Vec<_>>()
+                || (item.kind == "value" && other_names != names)
+            {
+                let paragraph = expected
+                    .map_or("no paragraph about such names".to_string(), |expected| {
+                        format!("the one paragraph `{expected}`")
+                    });
+                self.fail(&described_item(item), format!("the legacy aliases of the registry that have its Rust name and no constant of their own are {names:?}, so it has these as `#[doc(alias)]` after its own name and {paragraph}, but it has the names {other_names:?} and the paragraphs {said:?}"));
+            } else if expected.is_some() {
+                let shared = "constant that legacy aliases share";
+                *self.legacy_attribute_statements.entry(shared).or_default() += 1;
+            } else if says_so && !stated.contains(&item.key()) {
+                self.fail(&described_item(item), "says that the registry calls it legacy, but the registry has no `deprecated` attribute for it");
+            }
+        }
+    }
+}
+
+fn described_item(item: &Documented) -> String {
+    format!("the {} `{}`", item.kind, item.name)
 }
 
 fn documented_field(
@@ -1849,6 +2200,7 @@ fn documented_field(
         name: format!("{owner_ident}::{ident}"),
         features: owner.features.clone(),
         doc: doc_attributes(&field.attrs).0,
+        aliases: Vec::new(),
         link_target: None,
     }
 }
@@ -1901,6 +2253,8 @@ struct Checker {
     legacy_shown: BTreeMap<String, usize>,
     legacy_not_shown: BTreeMap<String, usize>,
     described_outside_their_page: Vec<String>,
+    legacy_attribute_statements: BTreeMap<&'static str, usize>,
+    legacy_aliases_without_a_constant: BTreeMap<&'static str, BTreeSet<String>>,
 }
 
 struct Generated {
@@ -2248,7 +2602,7 @@ impl Checker {
         } = owner;
         let raw = doc;
         let doc = &flat(doc);
-        let [c_name] = aliases else {
+        let [c_name, ..] = aliases else {
             return;
         };
         if !doc.starts_with(&format!("`{c_name}`")) {
@@ -2269,6 +2623,7 @@ impl Checker {
         }
         let rest = &doc[c_name.len() + 2..];
         if rest.starts_with(" is an alias of [`")
+            || rest.starts_with(" is a legacy alias of [`")
             || rest.starts_with(", the structure type of ")
             || rest.starts_with(", the object type of ")
         {
@@ -2724,6 +3079,85 @@ fn generated_documentation_matches_the_specification() {
             .collect::<BTreeSet<_>>(),
         "exactly these values are documented with a list item from outside the reference page of their type, which has no item for them. An item out there can be about one use of a value, so read the item before listing a value here"
     );
+    let deprecated = &spec.deprecated;
+    assert_eq!(
+        ["aliased", "true", "unused"].map(|reason| deprecated
+            .entries
+            .get(reason)
+            .copied()
+            .unwrap_or(0)),
+        [43, 1, 2],
+        "the elements of vk.xml and video.xml that have the attribute `deprecated` for the vulkan API: 42 legacy aliases in vk.xml and 1 in video.xml, 1 legacy value and 2 unused members"
+    );
+    assert_eq!(
+        (
+            deprecated.attributes.len(),
+            deprecated.entries_of_other_apis
+        ),
+        (46, 0),
+        "each name has the attribute once, and no element of another API has it"
+    );
+    assert_eq!(
+        checker
+            .legacy_attribute_statements
+            .iter()
+            .map(|(what, count)| (*what, *count))
+            .collect::<Vec<_>>(),
+        [
+            ("constant that legacy aliases share", 30),
+            ("legacy alias", 21),
+            ("legacy value", 1),
+            ("setter of an unused member", 2),
+            ("unused member that its description calls so", 2),
+        ],
+        "17 legacy aliases have a constant, 4 of them a second one in the bitmask type of their flag bits; 15 more have the Rust name of another name of their value, whose constant names them, in the type of the flag bits and in its bitmask type. A member that the registry calls unused has the paragraph `Legacy functionality that is not used.` unless its description says `is legacy and not used`: when `unused member` appears here, read the description of that member in the specification, which does not say so"
+    );
+    let without_a_constant = |names: &[&str]| names.iter().map(|name| name.to_string()).collect();
+    assert_eq!(
+        checker.legacy_aliases_without_a_constant,
+        BTreeMap::from([
+            (
+                "LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE",
+                without_a_constant(LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE)
+            ),
+            (
+                "another name of the value differs from it only by `_BIT`, which the Rust names of flag bits leave out, so the two have one constant",
+                without_a_constant(&[
+                    "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_KHR",
+                    "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_EXT",
+                    "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV",
+                    "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT",
+                    "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_EXT",
+                    "VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_EXT",
+                    "VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_EXT",
+                    "VK_HOST_IMAGE_COPY_MEMCPY",
+                    "VK_HOST_IMAGE_COPY_MEMCPY_EXT",
+                    "VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_KHR",
+                    "VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_KHR",
+                    "VK_PIPELINE_CREATE_DISPATCH_BASE",
+                    "VK_PIPELINE_CREATE_DISPATCH_BASE_KHR",
+                    "VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID",
+                    "VK_SURFACE_COUNTER_VBLANK_EXT",
+                ])
+            ),
+            (
+                "the legacy alias of the name or of the version macro of an extension",
+                without_a_constant(&[
+                    "VK_GOOGLE_HLSL_FUNCTIONALITY1_EXTENSION_NAME",
+                    "VK_GOOGLE_HLSL_FUNCTIONALITY1_SPEC_VERSION",
+                    "VK_KHR_MAINTENANCE1_EXTENSION_NAME",
+                    "VK_KHR_MAINTENANCE1_SPEC_VERSION",
+                    "VK_KHR_MAINTENANCE2_EXTENSION_NAME",
+                    "VK_KHR_MAINTENANCE2_SPEC_VERSION",
+                    "VK_KHR_MAINTENANCE3_EXTENSION_NAME",
+                    "VK_KHR_MAINTENANCE3_SPEC_VERSION",
+                    "VK_NV_VIEWPORT_ARRAY2_EXTENSION_NAME",
+                    "VK_NV_VIEWPORT_ARRAY2_SPEC_VERSION",
+                ])
+            ),
+        ]),
+        "the legacy aliases that the bindings have no constant of their own for: the Vulkan Video one because the registry data that the bindings are generated from has no aliases of the values of the Vulkan Video headers; 15 flag bits because the Rust name of the alias is the Rust name of another name of the same value, whose constant names the alias in a paragraph and as a `#[doc(alias)]`; 10 macros of extensions because the bindings have one constant for the name and one for the version of an extension"
+    );
     for (what, count, at_least) in [
         (
             "descriptions with the whole of their list item",
@@ -2872,7 +3306,7 @@ fn check_item(
                                 values: type_values.get(&owner).unwrap_or(&BTreeSet::new()),
                             },
                             &format!("{owner}::{name}"),
-                            doc.trim(),
+                            without_legacy_statements(&doc).trim(),
                             &aliases,
                         );
                     }
@@ -3032,6 +3466,7 @@ fn fixture_specification() -> Specification {
         anchors: BTreeMap::new(),
         published: BTreeSet::new(),
         legacy: LegacyRegistry::default(),
+        deprecated: DeprecatedAttributes::default(),
         markup: Markup::new(),
     };
     let limits = [
@@ -5947,6 +6382,718 @@ fn a_deprecate_block_that_the_test_cannot_read_stops_it() {
         assert_eq!(FIXTURE_REGISTRY.matches(replace).count(), 1, "{replace}");
         let registry = FIXTURE_REGISTRY.replacen(replace, with, 1);
         let panic = std::panic::catch_unwind(|| LegacyRegistry::read(&registry))
+            .expect_err(&format!("`{with}` is read"));
+        let panic = panic.downcast_ref::<String>().expect("a message");
+        assert_eq!(panic, message);
+    }
+}
+
+const FIXTURE_DEPRECATED_SOURCE: &str = r#"
+/// The name of the device extension `VK_KHR_things`.
+#[doc(alias = "VK_KHR_things")]
+#[doc(alias = "VK_KHR_THINGS_EXTENSION_NAME")]
+pub const KHR_THINGS_NAME: &CStr = c"VK_KHR_things";
+
+/// C enumeration `VkShade`.
+#[doc(alias = "VkShade")]
+pub struct Shade(pub i32);
+
+impl Shade {
+    /// `VK_SHADE_DARK`, a value of `VkShade`.
+    #[doc(alias = "VK_SHADE_DARK")]
+    pub const DARK: Self = Self(0);
+    /// `VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_DARK`](Self::DARK).
+    #[doc(alias = "VK_SHADE_DIM")]
+    pub const DIM: Self = Self(0);
+    /// `VK_SHADE_DUSK` is an alias of [`VK_SHADE_DARK`](Self::DARK).
+    #[doc(alias = "VK_SHADE_DUSK")]
+    pub const DUSK: Self = Self(0);
+    /// `VK_SHADE_PALE`, a value of `VkShade`.
+    ///
+    /// Legacy functionality, for which the registry gives no reason.
+    #[doc(alias = "VK_SHADE_PALE")]
+    pub const PALE: Self = Self(1);
+    /// `VK_SHADE_FAST_BIT`, a value of `VkShade`.
+    ///
+    /// The C header also calls this value `VK_SHADE_FAST`, which is a legacy alias of `VK_SHADE_FAST_BIT`.
+    #[doc(alias = "VK_SHADE_FAST_BIT")]
+    #[doc(alias = "VK_SHADE_FAST")]
+    pub const FAST: Self = Self(2);
+    /// `VK_SHADE_QUICK_BIT` is an alias of [`VK_SHADE_FAST_BIT`](Self::FAST).
+    ///
+    /// The C header also calls this value `VK_SHADE_QUICK` and `VK_SHADE_QUICK_BIT_BIT`, which are legacy aliases of [`VK_SHADE_FAST_BIT`](Self::FAST).
+    #[doc(alias = "VK_SHADE_QUICK_BIT")]
+    #[doc(alias = "VK_SHADE_QUICK")]
+    #[doc(alias = "VK_SHADE_QUICK_BIT_BIT")]
+    pub const QUICK: Self = Self(2);
+}
+
+/// C enumeration `VkTint`.
+#[doc(alias = "VkTint")]
+pub struct Tint(pub i32);
+
+impl Tint {
+    /// `VK_SHADE_DARK`, a value of `VkTint`.
+    #[doc(alias = "VK_SHADE_DARK")]
+    pub const DARK_SHADE: Self = Self(0);
+    /// `VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_DARK`](Self::DARK_SHADE).
+    #[doc(alias = "VK_SHADE_DIM")]
+    pub const DIM_SHADE: Self = Self(0);
+}
+
+/// C structure `VkLayers`.
+#[doc(alias = "VkLayers")]
+pub struct Layers {
+    /// The C member `uint32_t layerCount`.
+    ///
+    /// Legacy functionality that is not used.
+    pub layer_count: u32,
+    /// The C member `uint32_t used`.
+    pub used: u32,
+}
+
+impl Layers {
+    /// Sets [`layer_count`](Self::layer_count).
+    ///
+    /// Legacy functionality that is not used.
+    pub fn layer_count(mut self, value: u32) -> Self {
+        self.layer_count = value;
+        self
+    }
+    /// Sets [`used`](Self::used).
+    pub fn used(mut self, value: u32) -> Self {
+        self.used = value;
+        self
+    }
+}
+"#;
+
+fn fixture_deprecated_specification(
+    more: &[(&str, &str, &str, &str, Option<&str>)],
+) -> Specification {
+    let mut specification = fixture_specification();
+    let attributes = [
+        (
+            "enum",
+            "VkShade",
+            "VK_SHADE_DIM",
+            "aliased",
+            Some("VK_SHADE_DARK"),
+        ),
+        ("enum", "VkShade", "VK_SHADE_PALE", "true", None),
+        (
+            "enum",
+            "VkShade",
+            "VK_SHADE_FAST",
+            "aliased",
+            Some("VK_SHADE_FAST_BIT"),
+        ),
+        (
+            "enum",
+            "VkShade",
+            "VK_SHADE_QUICK",
+            "aliased",
+            Some("VK_SHADE_FAST_BIT"),
+        ),
+        (
+            "enum",
+            "VkShade",
+            "VK_SHADE_QUICK_BIT_BIT",
+            "aliased",
+            Some("VK_SHADE_QUICK_BIT"),
+        ),
+        (
+            "enum",
+            "",
+            "VK_KHR_THINGS1_EXTENSION_NAME",
+            "aliased",
+            Some("VK_KHR_THINGS_EXTENSION_NAME"),
+        ),
+        ("member", "VkLayers", "layerCount", "unused", None),
+    ];
+    for (element, owner, name, reason, alias) in attributes.iter().chain(more) {
+        let key = (element.to_string(), owner.to_string(), name.to_string());
+        let attribute = DeprecatedAttribute {
+            reason: reason.to_string(),
+            alias: alias.map(str::to_string),
+        };
+        specification.deprecated.attributes.insert(key, attribute);
+        if let (Some(alias), "enum") = (alias, *element) {
+            let aliases = &mut specification.deprecated.aliases;
+            aliases.insert(name.to_string(), alias.to_string());
+        }
+    }
+    let aliases = &mut specification.deprecated.aliases;
+    aliases.insert("VK_SHADE_DUSK".to_string(), "VK_SHADE_DARK".to_string());
+    aliases.insert(
+        "VK_SHADE_QUICK_BIT".to_string(),
+        "VK_SHADE_FAST_BIT".to_string(),
+    );
+    specification
+}
+
+fn fixture_deprecated_failures(
+    more: &[(&str, &str, &str, &str, Option<&str>)],
+    replace: &str,
+    with: &str,
+) -> Vec<String> {
+    assert_eq!(
+        FIXTURE_DEPRECATED_SOURCE.matches(replace).count(),
+        1,
+        "`{replace}` is not exactly once in the fixture"
+    );
+    let source = FIXTURE_DEPRECATED_SOURCE.replacen(replace, with, 1);
+    fixture_legacy_checker(&fixture_deprecated_specification(more), &source).failures
+}
+
+#[test]
+fn checker_accepts_what_the_bindings_say_about_the_deprecated_attributes_of_the_registry() {
+    let specification = fixture_deprecated_specification(&[(
+        "enum",
+        "VkShade",
+        "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED",
+        "aliased",
+        Some("VK_SHADE_PALE"),
+    )]);
+    let checker = fixture_legacy_checker(&specification, FIXTURE_DEPRECATED_SOURCE);
+    assert!(checker.failures.is_empty(), "{:#?}", checker.failures);
+    assert_eq!(
+        checker.legacy_attribute_statements,
+        BTreeMap::from([
+            ("constant that legacy aliases share", 2),
+            ("legacy alias", 2),
+            ("legacy value", 1),
+            ("setter of an unused member", 1),
+            ("unused member", 1),
+        ])
+    );
+    let names = |names: &[&str]| names.iter().map(|name| name.to_string()).collect();
+    assert_eq!(
+        checker.legacy_aliases_without_a_constant,
+        BTreeMap::from([
+            (
+                "LEGACY_ALIASES_THAT_THE_BINDINGS_DO_NOT_HAVE",
+                names(&["STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED"])
+            ),
+            (
+                "another name of the value differs from it only by `_BIT`, which the Rust names of flag bits leave out, so the two have one constant",
+                names(&["VK_SHADE_FAST", "VK_SHADE_QUICK", "VK_SHADE_QUICK_BIT_BIT"])
+            ),
+            (
+                "the legacy alias of the name or of the version macro of an extension",
+                names(&["VK_KHR_THINGS1_EXTENSION_NAME"])
+            ),
+        ])
+    );
+}
+
+const FIXTURE_DIM: &str =
+    "    /// `VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_DARK`](Self::DARK).\n";
+const FIXTURE_PALE: &str = "    /// `VK_SHADE_PALE`, a value of `VkShade`.
+    ///
+    /// Legacy functionality, for which the registry gives no reason.
+";
+const FIXTURE_LAYER_COUNT: &str = "    /// The C member `uint32_t layerCount`.
+    ///
+    /// Legacy functionality that is not used.
+";
+const FIXTURE_LAYER_COUNT_SETTER: &str = "    /// Sets [`layer_count`](Self::layer_count).
+    ///
+    /// Legacy functionality that is not used.
+";
+
+#[test]
+fn checker_reports_an_item_that_does_not_say_what_its_deprecated_attribute_says() {
+    let alias = "`VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_DARK`](Self::DARK).";
+    for (defect, replace, with, failure) in [
+        (
+            "a legacy alias documented as an alias",
+            FIXTURE_DIM,
+            "    /// `VK_SHADE_DIM` is an alias of [`VK_SHADE_DARK`](Self::DARK).\n".to_string(),
+            format!(
+                "the value `Shade::DIM`: the registry calls it legacy, so its documentation has the one paragraph `{alias}`, but it has 0 of them: [\"`VK_SHADE_DIM` is an alias of [`VK_SHADE_DARK`](Self::DARK).\"]"
+            ),
+        ),
+        (
+            "a legacy alias documented as an alias of another value",
+            FIXTURE_DIM,
+            "    /// `VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_PALE`](Self::PALE).\n".to_string(),
+            format!(
+                "the value `Shade::DIM`: the registry calls it legacy, so its documentation has the one paragraph `{alias}`, but it has 0 of them: [\"`VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_PALE`](Self::PALE).\"]"
+            ),
+        ),
+        (
+            "a legacy alias that links the constant of another type",
+            FIXTURE_DIM,
+            "    /// `VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_DARK`](Self::DARK_SHADE).\n"
+                .to_string(),
+            format!(
+                "the value `Shade::DIM`: the registry calls it legacy, so its documentation has the one paragraph `{alias}`, but it has 0 of them: [\"`VK_SHADE_DIM` is a legacy alias of [`VK_SHADE_DARK`](Self::DARK_SHADE).\"]"
+            ),
+        ),
+        (
+            "a legacy alias that says so twice",
+            FIXTURE_DIM,
+            format!("{FIXTURE_DIM}    ///\n{FIXTURE_DIM}"),
+            format!(
+                "the value `Shade::DIM`: the registry calls it legacy, so its documentation has the one paragraph `{alias}`, but it has 2 of them: [{alias:?}, {alias:?}]"
+            ),
+        ),
+        (
+            "a legacy value without the paragraph",
+            FIXTURE_PALE,
+            "    /// `VK_SHADE_PALE`, a value of `VkShade`.\n".to_string(),
+            format!(
+                "the value `Shade::PALE`: the registry calls it legacy, so its documentation has the one paragraph `{LEGACY_WITHOUT_A_REASON}`, but it has 0 of them: [\"`VK_SHADE_PALE`, a value of `VkShade`.\"]"
+            ),
+        ),
+        (
+            "an unused member without the paragraph",
+            FIXTURE_LAYER_COUNT,
+            "    /// The C member `uint32_t layerCount`.\n".to_string(),
+            format!(
+                "the member `Layers::layer_count`: the registry calls it legacy, so its documentation has the one paragraph `{LEGACY_AND_NOT_USED}`, but it has 0 of them: [\"The C member `uint32_t layerCount`.\"]"
+            ),
+        ),
+        (
+            "an unused member that says so twice",
+            FIXTURE_LAYER_COUNT,
+            "    /// `layerCount` is legacy and not used.\n    ///\n    /// Legacy functionality that is not used.\n".to_string(),
+            "the member `Layers::layer_count`: says twice that it is legacy and not used".to_string(),
+        ),
+        (
+            "the setter of an unused member without the paragraph",
+            FIXTURE_LAYER_COUNT_SETTER,
+            "    /// Sets [`layer_count`](Self::layer_count).\n".to_string(),
+            format!(
+                "the method `Layers::layer_count`: the registry calls it legacy, so its documentation has the one paragraph `{LEGACY_AND_NOT_USED}`, but it has 0 of them: [\"Sets [`layer_count`](Self::layer_count).\"]"
+            ),
+        ),
+        (
+            "an unused member without a setter",
+            FIXTURE_LAYER_COUNT_SETTER,
+            "    /// Reads [`layer_count`](Self::layer_count).\n".to_string(),
+            "the member `Layers::layer_count`: is legacy and not used, and has no setter".to_string(),
+        ),
+    ] {
+        assert_eq!(
+            fixture_deprecated_failures(&[], replace, &with)
+                .iter()
+                .filter(|reported| !reported.contains(": is described although") && !reported.contains("is documented with the description"))
+                .collect::<Vec<_>>(),
+            [&failure],
+            "{defect}"
+        );
+    }
+    assert_eq!(
+        fixture_deprecated_failures(
+            &[],
+            FIXTURE_LAYER_COUNT,
+            "    /// The C member `uint32_t layerCount`, which is legacy and\n    /// not used.\n"
+        ),
+        Vec::<String>::new(),
+        "a description that says it stands for the paragraph"
+    );
+}
+
+#[test]
+fn checker_reports_a_constant_that_does_not_name_the_legacy_aliases_that_share_it() {
+    let fast = "The C header also calls this value `VK_SHADE_FAST`, which is a legacy alias of `VK_SHADE_FAST_BIT`.";
+    let quick = "The C header also calls this value `VK_SHADE_QUICK` and `VK_SHADE_QUICK_BIT_BIT`, which are legacy aliases of [`VK_SHADE_FAST_BIT`](Self::FAST).";
+    let fast_line = format!("    /// {fast}\n");
+    let quick_line = format!("    /// {quick}\n");
+    let of_fast = format!(
+        "the value `Shade::FAST`: the legacy aliases of the registry that have its Rust name and no constant of their own are [\"VK_SHADE_FAST\"], so it has these as `#[doc(alias)]` after its own name and the one paragraph `{fast}`, but it has"
+    );
+    let of_quick = format!(
+        "the value `Shade::QUICK`: the legacy aliases of the registry that have its Rust name and no constant of their own are [\"VK_SHADE_QUICK\", \"VK_SHADE_QUICK_BIT_BIT\"], so it has these as `#[doc(alias)]` after its own name and the one paragraph `{quick}`, but it has"
+    );
+    let of_dark = "the value `Shade::DARK`: the legacy aliases of the registry that have its Rust name and no constant of their own are [], so it has these as `#[doc(alias)]` after its own name and no paragraph about such names, but it has";
+    let dark = "    #[doc(alias = \"VK_SHADE_DARK\")]\n    pub const DARK:";
+    for (defect, replace, with, failure) in [
+        (
+            "a shared constant without the paragraph",
+            fast_line.as_str(),
+            "    /// Another name.\n".to_string(),
+            format!("{of_fast} the names [\"VK_SHADE_FAST\"] and the paragraphs []"),
+        ),
+        (
+            "a shared constant with the paragraph twice",
+            fast_line.as_str(),
+            format!("{fast_line}    ///\n{fast_line}"),
+            format!(
+                "{of_fast} the names [\"VK_SHADE_FAST\"] and the paragraphs [{fast:?}, {fast:?}]"
+            ),
+        ),
+        (
+            "a shared constant that cannot be found by the legacy name",
+            "    #[doc(alias = \"VK_SHADE_FAST\")]\n",
+            String::new(),
+            format!("{of_fast} the names [] and the paragraphs [{fast:?}]"),
+        ),
+        (
+            "a shared constant that names the legacy alias as an alias of the constant of another name",
+            fast_line.as_str(),
+            fast_line.replace("`VK_SHADE_FAST_BIT`.", "[`VK_SHADE_FAST_BIT`](Self::FAST)."),
+            format!(
+                "{of_fast} the names [\"VK_SHADE_FAST\"] and the paragraphs [{:?}]",
+                fast.replace("`VK_SHADE_FAST_BIT`.", "[`VK_SHADE_FAST_BIT`](Self::FAST).")
+            ),
+        ),
+        (
+            "a shared constant of an alias that does not link the constant of the value",
+            quick_line.as_str(),
+            quick_line.replace("[`VK_SHADE_FAST_BIT`](Self::FAST)", "`VK_SHADE_QUICK_BIT`"),
+            format!(
+                "{of_quick} the names [\"VK_SHADE_QUICK\", \"VK_SHADE_QUICK_BIT_BIT\"] and the paragraphs [{:?}]",
+                quick.replace("[`VK_SHADE_FAST_BIT`](Self::FAST)", "`VK_SHADE_QUICK_BIT`")
+            ),
+        ),
+        (
+            "a shared constant that names one of two legacy aliases",
+            quick_line.as_str(),
+            quick_line.replace(
+                "`VK_SHADE_QUICK` and `VK_SHADE_QUICK_BIT_BIT`, which are legacy aliases",
+                "`VK_SHADE_QUICK`, which is a legacy alias",
+            ),
+            format!(
+                "{of_quick} the names [\"VK_SHADE_QUICK\", \"VK_SHADE_QUICK_BIT_BIT\"] and the paragraphs [{:?}]",
+                quick.replace(
+                    "`VK_SHADE_QUICK` and `VK_SHADE_QUICK_BIT_BIT`, which are legacy aliases",
+                    "`VK_SHADE_QUICK`, which is a legacy alias"
+                )
+            ),
+        ),
+        (
+            "a shared constant that cannot be found by one of two legacy names",
+            "    #[doc(alias = \"VK_SHADE_QUICK_BIT_BIT\")]\n",
+            String::new(),
+            format!("{of_quick} the names [\"VK_SHADE_QUICK\"] and the paragraphs [{quick:?}]"),
+        ),
+        (
+            "a constant of its own that says it is shared",
+            dark,
+            format!("    ///\n{fast_line}{dark}"),
+            format!("{of_dark} the names [] and the paragraphs [{fast:?}]"),
+        ),
+        (
+            "a constant of its own with a second name",
+            dark,
+            "    #[doc(alias = \"VK_SHADE_DARK\")]\n    #[doc(alias = \"VK_SHADE_FAST\")]\n    pub const DARK:"
+                .to_string(),
+            format!("{of_dark} the names [\"VK_SHADE_FAST\"] and the paragraphs []"),
+        ),
+    ] {
+        assert_eq!(
+            fixture_deprecated_failures(&[], replace, &with),
+            [failure],
+            "{defect}"
+        );
+    }
+    assert_eq!(
+        fixture_deprecated_failures(
+            &[],
+            "/// C structure `VkLayers`.\n",
+            &format!("/// C structure `VkLayers`.\n///\n/// {fast}\n")
+        ),
+        [format!(
+            "the type `VkLayers`: the legacy aliases of the registry that have its Rust name and no constant of their own are [], so it has these as `#[doc(alias)]` after its own name and no paragraph about such names, but it has the names [] and the paragraphs [{fast:?}]"
+        )]
+    );
+}
+
+#[test]
+fn checker_reports_an_item_that_says_it_is_legacy_without_a_deprecated_attribute() {
+    let unmarked = "says that the registry calls it legacy, but the registry has no `deprecated` attribute for it";
+    for (defect, replace, with, item) in [
+        (
+            "an alias called legacy",
+            "    /// `VK_SHADE_DUSK` is an alias of [`VK_SHADE_DARK`](Self::DARK).\n",
+            "    /// `VK_SHADE_DUSK` is a legacy alias of [`VK_SHADE_DARK`](Self::DARK).\n",
+            "the value `Shade::DUSK`",
+        ),
+        (
+            "a value called legacy",
+            "    /// `VK_SHADE_DARK`, a value of `VkShade`.\n",
+            "    /// `VK_SHADE_DARK`, a value of `VkShade`.\n    ///\n    /// Legacy functionality, for which the registry gives no reason.\n",
+            "the value `Shade::DARK`",
+        ),
+        (
+            "a member called unused",
+            "    /// The C member `uint32_t used`.\n",
+            "    /// The C member `uint32_t used`.\n    ///\n    /// Legacy functionality that is not used.\n",
+            "the member `Layers::used`",
+        ),
+        (
+            "a setter of a member that is used",
+            "    /// Sets [`used`](Self::used).\n",
+            "    /// Sets [`used`](Self::used).\n    ///\n    /// Legacy functionality that is not used.\n",
+            "the method `Layers::used`",
+        ),
+        (
+            "a type called legacy",
+            "/// C structure `VkLayers`.\n",
+            "/// C structure `VkLayers`.\n///\n/// Legacy functionality that is not used.\n",
+            "the type `VkLayers`",
+        ),
+    ] {
+        assert_eq!(
+            fixture_deprecated_failures(&[], replace, with),
+            [format!("{item}: {unmarked}")],
+            "{defect}"
+        );
+    }
+}
+
+#[test]
+fn checker_reports_a_deprecated_attribute_that_the_bindings_do_not_reflect() {
+    let dim = FIXTURE_DIM;
+    for (attribute, failure) in [
+        (
+            (
+                "enum",
+                "VkShade",
+                "VK_SHADE_GONE",
+                "aliased",
+                Some("VK_SHADE_DARK"),
+            ),
+            "VK_SHADE_GONE: is a legacy alias of `VK_SHADE_DARK` in `VkShade`, and the bindings have no constant for it",
+        ),
+        (
+            (
+                "enum",
+                "VkShade",
+                "VK_SHADE_DARK_BIT_BIT",
+                "aliased",
+                Some("VK_SHADE_GONE"),
+            ),
+            "VK_SHADE_DARK_BIT_BIT: is a legacy alias of `VK_SHADE_GONE` in `VkShade`, and the bindings have no constant for it",
+        ),
+        (
+            (
+                "enum",
+                "VkShade",
+                "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED",
+                "aliased",
+                Some("VK_SHADE_GONE"),
+            ),
+            "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED: is a legacy alias of `VK_SHADE_GONE` in `VkShade`, and the bindings have no constant for it",
+        ),
+        (
+            ("enum", "VkShade", "VK_SHADE_GONE", "true", None),
+            "VK_SHADE_GONE: is legacy, and the bindings have no constant for it in `VkShade`",
+        ),
+        (
+            (
+                "enum",
+                "",
+                "VK_KHR_OTHER1_EXTENSION_NAME",
+                "aliased",
+                Some("VK_KHR_OTHER_EXTENSION_NAME"),
+            ),
+            "VK_KHR_OTHER1_EXTENSION_NAME: is a legacy alias of `VK_KHR_OTHER_EXTENSION_NAME`, and the bindings leave out only the legacy aliases of the name and of the version macro of an extension that they have, and have no item for them",
+        ),
+        (
+            (
+                "enum",
+                "",
+                "VK_SHADE_GONE",
+                "aliased",
+                Some("VK_KHR_things"),
+            ),
+            "VK_SHADE_GONE: is a legacy alias of `VK_KHR_things`, and the bindings leave out only the legacy aliases of the name and of the version macro of an extension that they have, and have no item for them",
+        ),
+        (
+            (
+                "enum",
+                "",
+                "VK_KHR_things",
+                "aliased",
+                Some("VK_KHR_THINGS_EXTENSION_NAME"),
+            ),
+            "VK_KHR_things: is a legacy alias of `VK_KHR_THINGS_EXTENSION_NAME`, and the bindings leave out only the legacy aliases of the name and of the version macro of an extension that they have, and have no item for them",
+        ),
+        (
+            ("member", "VkLayers", "gone", "unused", None),
+            "VkLayers::gone: is legacy and not used, and the bindings have no such member",
+        ),
+        (
+            ("member", "VkGone", "layerCount", "unused", None),
+            "VkGone::layerCount: is legacy and not used, and the bindings have no such member",
+        ),
+        (
+            ("member", "VkLayers", "used", "true", None),
+            "used: has the attribute `deprecated` as DeprecatedAttribute { reason: \"true\", alias: None } on <member> of `VkLayers`, which the test does not know how the bindings state",
+        ),
+        (
+            ("enum", "VkShade", "VK_SHADE_DARK", "unused", None),
+            "VK_SHADE_DARK: has the attribute `deprecated` as DeprecatedAttribute { reason: \"unused\", alias: None } on <enum> of `VkShade`, which the test does not know how the bindings state",
+        ),
+        (
+            ("enum", "VkShade", "VK_SHADE_DARK", "aliased", None),
+            "VK_SHADE_DARK: has the attribute `deprecated` as DeprecatedAttribute { reason: \"aliased\", alias: None } on <enum> of `VkShade`, which the test does not know how the bindings state",
+        ),
+    ] {
+        assert_eq!(
+            fixture_deprecated_failures(&[attribute], dim, dim),
+            [failure],
+            "{attribute:?}"
+        );
+    }
+}
+
+const FIXTURE_DEPRECATED_REGISTRY: &str = r#"
+<registry>
+    <types>
+        <type category="struct" name="VkLayers">
+            <member deprecated="unused"><type>uint32_t</type> <name>layerCount</name></member>
+            <member><type>uint32_t</type> <name>used</name></member>
+        </type>
+        <type category="basetype">typedef <type>uint32_t</type> <name>VkBool32</name>;</type>
+        <type category="struct" name="VkLayersKHR" alias="VkLayers"/>
+    </types>
+    <enums name="API Constants" type="constants">
+        <enum name="VK_OLD_MAX" alias="VK_MAX" deprecated="aliased"/>
+    </enums>
+    <enums name="VkShade" type="enum">
+        <enum value="0" name="VK_SHADE_DARK"/>
+        <enum api="vulkan" name="VK_SHADE_DIM" alias="VK_SHADE_DARK" deprecated="aliased"/>
+        <enum api="vulkansc" name="VK_SHADE_DIM" alias="VK_SHADE_PALE" deprecated="aliased"/>
+        <enum name="VK_SHADE_DUSK" alias="VK_SHADE_DIM"/>
+    </enums>
+    <enums api="vulkansc" name="VkSafeShade" type="enum">
+        <enum name="VK_SAFE_SHADE_DIM" alias="VK_SAFE_SHADE_DARK" deprecated="aliased"/>
+    </enums>
+    <enums name="VkTintFlagBits" type="bitmask">
+        <enum bitpos="0" name="VK_TINT_FAST_BIT" deprecated="true"/>
+    </enums>
+    <feature api="vulkan,vulkansc" name="VK_VERSION_1_1" number="1.1">
+        <require>
+            <feature name="old" struct="VkFeatures"/>
+            <enum extends="VkShade" name="VK_SHADE_DIM" alias="VK_SHADE_DARK" deprecated="aliased"/>
+        </require>
+        <require api="vulkansc">
+            <enum extends="VkShade" name="VK_SHADE_SAFE" alias="VK_SHADE_DARK" deprecated="aliased"/>
+        </require>
+    </feature>
+    <feature api="vulkansc" name="VKSC_VERSION_1_0" number="1.0">
+        <require>
+            <enum extends="VkShade" name="VK_SHADE_SAFER" alias="VK_SHADE_DARK" deprecated="aliased"/>
+        </require>
+    </feature>
+    <extensions>
+        <extension name="VK_KHR_things" number="1" supported="vulkan" deprecatedby="VK_KHR_other">
+            <require>
+                <enum name="VK_KHR_THINGS1_EXTENSION_NAME" alias="VK_KHR_THINGS_EXTENSION_NAME" deprecated="aliased"/>
+                <enum extends="VkTintFlagBits" name="VK_TINT_FAST" alias="VK_TINT_FAST_BIT" deprecated="aliased"/>
+            </require>
+        </extension>
+        <extension name="VK_KHR_disabled" number="2" supported="disabled">
+            <require>
+                <enum extends="VkShade" name="VK_SHADE_OFF" alias="VK_SHADE_DARK" deprecated="aliased"/>
+            </require>
+        </extension>
+        <extension name="VK_KHR_other_api" number="3" supported="vulkan" api="vulkansc">
+            <require>
+                <enum extends="VkShade" name="VK_SHADE_OTHER" alias="VK_SHADE_DARK" deprecated="aliased"/>
+            </require>
+        </extension>
+    </extensions>
+</registry>
+"#;
+
+#[test]
+fn the_deprecated_attributes_of_the_registry_are_read_for_the_vulkan_api() {
+    let mut deprecated = DeprecatedAttributes::default();
+    deprecated.read(FIXTURE_DEPRECATED_REGISTRY);
+    let attribute = |reason: &str, alias: Option<&str>| DeprecatedAttribute {
+        reason: reason.to_string(),
+        alias: alias.map(str::to_string),
+    };
+    let key = |element: &str, owner: &str, name: &str| {
+        (element.to_string(), owner.to_string(), name.to_string())
+    };
+    assert_eq!(
+        deprecated.attributes,
+        BTreeMap::from([
+            (
+                key("enum", "", "VK_KHR_THINGS1_EXTENSION_NAME"),
+                attribute("aliased", Some("VK_KHR_THINGS_EXTENSION_NAME"))
+            ),
+            (
+                key("enum", "", "VK_OLD_MAX"),
+                attribute("aliased", Some("VK_MAX"))
+            ),
+            (
+                key("enum", "VkShade", "VK_SHADE_DIM"),
+                attribute("aliased", Some("VK_SHADE_DARK"))
+            ),
+            (
+                key("enum", "VkTintFlagBits", "VK_TINT_FAST"),
+                attribute("aliased", Some("VK_TINT_FAST_BIT"))
+            ),
+            (
+                key("enum", "VkTintFlagBits", "VK_TINT_FAST_BIT"),
+                attribute("true", None)
+            ),
+            (
+                key("member", "VkLayers", "layerCount"),
+                attribute("unused", None)
+            ),
+        ])
+    );
+    assert_eq!(
+        deprecated.entries,
+        BTreeMap::from([
+            ("aliased".to_string(), 5),
+            ("true".to_string(), 1),
+            ("unused".to_string(), 1)
+        ])
+    );
+    assert_eq!(
+        deprecated.entries_of_other_apis, 6,
+        "an element, a group, a block and a version of another API, and an extension that is disabled or of another API"
+    );
+    assert_eq!(deprecated.value_of("VK_SHADE_DUSK"), "VK_SHADE_DARK");
+    assert_eq!(deprecated.value_of("VK_SHADE_DARK"), "VK_SHADE_DARK");
+    assert_eq!(deprecated.value_of("VK_SHADE_OFF"), "VK_SHADE_OFF");
+    assert_eq!(
+        deprecated.other_names("VK_SHADE_DIM"),
+        ["VK_SHADE_DUSK", "VK_SHADE_DARK"]
+    );
+    assert_eq!(
+        deprecated.other_names("VK_SHADE_DARK"),
+        ["VK_SHADE_DIM", "VK_SHADE_DUSK"]
+    );
+    assert_eq!(deprecated.other_names("VK_TINT_FAST_BIT"), ["VK_TINT_FAST"]);
+}
+
+#[test]
+fn a_deprecated_attribute_that_the_test_cannot_read_stops_it() {
+    for (replace, with, message) in [
+        (
+            "<enum bitpos=\"0\" name=\"VK_TINT_FAST_BIT\" deprecated=\"true\"/>",
+            "<enum bitpos=\"0\" name=\"VK_TINT_FAST_BIT\" deprecated=\"ignored\"/>",
+            "the test does not know the value of `deprecated` in `<enum bitpos=\"0\" name=\"VK_TINT_FAST_BIT\" deprecated=\"ignored\"/>`",
+        ),
+        (
+            "<type category=\"struct\" name=\"VkLayersKHR\" alias=\"VkLayers\"/>",
+            "<type category=\"struct\" name=\"VkLayersKHR\" alias=\"VkLayers\" deprecated=\"aliased\"/>",
+            "the test knows the attribute `deprecated` on <enum> and <member>, and the registry has `<type category=\"struct\" name=\"VkLayersKHR\" alias=\"VkLayers\" deprecated=\"aliased\"/>`",
+        ),
+        (
+            "<enum extends=\"VkTintFlagBits\" name=\"VK_TINT_FAST\" alias=\"VK_TINT_FAST_BIT\" deprecated=\"aliased\"/>",
+            "<enum extends=\"VkShade\" name=\"VK_SHADE_DIM\" alias=\"VK_SHADE_DUSK\" deprecated=\"aliased\"/>",
+            "assertion `left == right` failed: `<enum extends=\"VkShade\" name=\"VK_SHADE_DIM\" alias=\"VK_SHADE_DUSK\" deprecated=\"aliased\"/>` and another element say different things\n  left: DeprecatedAttribute { reason: \"aliased\", alias: Some(\"VK_SHADE_DARK\") }\n right: DeprecatedAttribute { reason: \"aliased\", alias: Some(\"VK_SHADE_DUSK\") }",
+        ),
+    ] {
+        assert_eq!(
+            FIXTURE_DEPRECATED_REGISTRY.matches(replace).count(),
+            1,
+            "{replace}"
+        );
+        let registry = FIXTURE_DEPRECATED_REGISTRY.replacen(replace, with, 1);
+        let panic = std::panic::catch_unwind(|| DeprecatedAttributes::default().read(&registry))
             .expect_err(&format!("`{with}` is read"));
         let panic = panic.downcast_ref::<String>().expect("a message");
         assert_eq!(panic, message);

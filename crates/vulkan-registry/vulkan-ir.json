@@ -96106,6 +96106,330 @@
    "superseded_by": null
   }
  ],
+ "legacy_attributes": [
+  {
+   "alias": "VK_GOOGLE_HLSL_FUNCTIONALITY_1_EXTENSION_NAME",
+   "element": "enum",
+   "name": "VK_GOOGLE_HLSL_FUNCTIONALITY1_EXTENSION_NAME",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_GOOGLE_HLSL_FUNCTIONALITY_1_SPEC_VERSION",
+   "element": "enum",
+   "name": "VK_GOOGLE_HLSL_FUNCTIONALITY1_SPEC_VERSION",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_KHR_MAINTENANCE_1_EXTENSION_NAME",
+   "element": "enum",
+   "name": "VK_KHR_MAINTENANCE1_EXTENSION_NAME",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_KHR_MAINTENANCE_1_SPEC_VERSION",
+   "element": "enum",
+   "name": "VK_KHR_MAINTENANCE1_SPEC_VERSION",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_KHR_MAINTENANCE_2_EXTENSION_NAME",
+   "element": "enum",
+   "name": "VK_KHR_MAINTENANCE2_EXTENSION_NAME",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_KHR_MAINTENANCE_2_SPEC_VERSION",
+   "element": "enum",
+   "name": "VK_KHR_MAINTENANCE2_SPEC_VERSION",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_KHR_MAINTENANCE_3_EXTENSION_NAME",
+   "element": "enum",
+   "name": "VK_KHR_MAINTENANCE3_EXTENSION_NAME",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_KHR_MAINTENANCE_3_SPEC_VERSION",
+   "element": "enum",
+   "name": "VK_KHR_MAINTENANCE3_SPEC_VERSION",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_NV_VIEWPORT_ARRAY_2_EXTENSION_NAME",
+   "element": "enum",
+   "name": "VK_NV_VIEWPORT_ARRAY2_EXTENSION_NAME",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_NV_VIEWPORT_ARRAY_2_SPEC_VERSION",
+   "element": "enum",
+   "name": "VK_NV_VIEWPORT_ARRAY2_SPEC_VERSION",
+   "owner": null,
+   "reason": "aliased"
+  },
+  {
+   "alias": "STD_VIDEO_AV1_COLOR_PRIMARIES_UNSPECIFIED",
+   "element": "enum",
+   "name": "STD_VIDEO_AV1_COLOR_PRIMARIES_BT_UNSPECIFIED",
+   "owner": "StdVideoAV1ColorPrimaries",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_BIT_KHR",
+   "element": "enum",
+   "name": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DATA_ACCESS_KHR",
+   "owner": "VkBuildAccelerationStructureFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_EXT",
+   "element": "enum",
+   "name": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_EXT",
+   "owner": "VkBuildAccelerationStructureFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_BIT_NV",
+   "element": "enum",
+   "name": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISPLACEMENT_MICROMAP_UPDATE_NV",
+   "owner": "VkBuildAccelerationStructureFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT",
+   "element": "enum",
+   "name": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_EXT",
+   "owner": "VkBuildAccelerationStructureFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT",
+   "element": "enum",
+   "name": "VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_EXT",
+   "owner": "VkBuildAccelerationStructureFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_COLOR_SPACE_SRGB_NONLINEAR_KHR",
+   "element": "enum",
+   "name": "VK_COLORSPACE_SRGB_NONLINEAR_KHR",
+   "owner": "VkColorSpaceKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT",
+   "element": "enum",
+   "name": "VK_COLOR_SPACE_DCI_P3_LINEAR_EXT",
+   "owner": "VkColorSpaceKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": null,
+   "element": "enum",
+   "name": "VK_COLOR_SPACE_DOLBYVISION_EXT",
+   "owner": "VkColorSpaceKHR",
+   "reason": "true"
+  },
+  {
+   "alias": "VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT",
+   "element": "enum",
+   "name": "VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT",
+   "owner": "VkDebugReportObjectTypeEXT",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT",
+   "element": "enum",
+   "name": "VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT",
+   "owner": "VkDebugReportObjectTypeEXT",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_FORMAT_R16G16_SFIXED5_NV",
+   "element": "enum",
+   "name": "VK_FORMAT_R16G16_S10_5_NV",
+   "owner": "VkFormat",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_EXT",
+   "element": "enum",
+   "name": "VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_EXT",
+   "owner": "VkGeometryInstanceFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_EXT",
+   "element": "enum",
+   "name": "VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_EXT",
+   "owner": "VkGeometryInstanceFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_HOST_IMAGE_COPY_MEMCPY_BIT",
+   "element": "enum",
+   "name": "VK_HOST_IMAGE_COPY_MEMCPY",
+   "owner": "VkHostImageCopyFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_HOST_IMAGE_COPY_MEMCPY_BIT",
+   "element": "enum",
+   "name": "VK_HOST_IMAGE_COPY_MEMCPY_EXT",
+   "owner": "VkHostImageCopyFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_BIT_KHR",
+   "element": "enum",
+   "name": "VK_PERFORMANCE_COUNTER_DESCRIPTION_CONCURRENTLY_IMPACTED_KHR",
+   "owner": "VkPerformanceCounterDescriptionFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_BIT_KHR",
+   "element": "enum",
+   "name": "VK_PERFORMANCE_COUNTER_DESCRIPTION_PERFORMANCE_IMPACTING_KHR",
+   "owner": "VkPerformanceCounterDescriptionFlagBitsKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PERFORMANCE_COUNTER_SCOPE_COMMAND_BUFFER_KHR",
+   "element": "enum",
+   "name": "VK_QUERY_SCOPE_COMMAND_BUFFER_KHR",
+   "owner": "VkPerformanceCounterScopeKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PERFORMANCE_COUNTER_SCOPE_COMMAND_KHR",
+   "element": "enum",
+   "name": "VK_QUERY_SCOPE_COMMAND_KHR",
+   "owner": "VkPerformanceCounterScopeKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PERFORMANCE_COUNTER_SCOPE_RENDER_PASS_KHR",
+   "element": "enum",
+   "name": "VK_QUERY_SCOPE_RENDER_PASS_KHR",
+   "owner": "VkPerformanceCounterScopeKHR",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PIPELINE_CREATE_DISPATCH_BASE_BIT",
+   "element": "enum",
+   "name": "VK_PIPELINE_CREATE_DISPATCH_BASE",
+   "owner": "VkPipelineCreateFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PIPELINE_CREATE_DISPATCH_BASE_BIT",
+   "element": "enum",
+   "name": "VK_PIPELINE_CREATE_DISPATCH_BASE_KHR",
+   "owner": "VkPipelineCreateFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PIPELINE_CREATE_RENDERING_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT",
+   "element": "enum",
+   "name": "VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_DENSITY_MAP_ATTACHMENT_BIT_EXT",
+   "owner": "VkPipelineCreateFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PIPELINE_CREATE_RENDERING_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR",
+   "element": "enum",
+   "name": "VK_PIPELINE_RASTERIZATION_STATE_CREATE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR",
+   "owner": "VkPipelineCreateFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_PIPELINE_STAGE_2_SUBPASS_SHADER_BIT_HUAWEI",
+   "element": "enum",
+   "name": "VK_PIPELINE_STAGE_2_SUBPASS_SHADING_BIT_HUAWEI",
+   "owner": "VkPipelineStageFlagBits2",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_BIT_ANDROID",
+   "element": "enum",
+   "name": "VK_RESOLVE_MODE_EXTERNAL_FORMAT_DOWNSAMPLE_ANDROID",
+   "owner": "VkResolveModeFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_INCOMPATIBLE_SHADER_BINARY_EXT",
+   "element": "enum",
+   "name": "VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT",
+   "owner": "VkResult",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE",
+   "element": "enum",
+   "name": "VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE_KHR",
+   "owner": "VkSamplerAddressMode",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_STENCIL_FACE_FRONT_AND_BACK",
+   "element": "enum",
+   "name": "VK_STENCIL_FRONT_AND_BACK",
+   "owner": "VkStencilFaceFlagBits",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT",
+   "element": "enum",
+   "name": "VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT",
+   "owner": "VkStructureType",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_STRUCTURE_TYPE_QUERY_POOL_PERFORMANCE_QUERY_CREATE_INFO_INTEL",
+   "element": "enum",
+   "name": "VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO_INTEL",
+   "owner": "VkStructureType",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_EXT",
+   "element": "enum",
+   "name": "VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT",
+   "owner": "VkStructureType",
+   "reason": "aliased"
+  },
+  {
+   "alias": "VK_SURFACE_COUNTER_VBLANK_BIT_EXT",
+   "element": "enum",
+   "name": "VK_SURFACE_COUNTER_VBLANK_EXT",
+   "owner": "VkSurfaceCounterFlagBitsEXT",
+   "reason": "aliased"
+  },
+  {
+   "alias": null,
+   "element": "member",
+   "name": "enabledLayerCount",
+   "owner": "VkDeviceCreateInfo",
+   "reason": "unused"
+  },
+  {
+   "alias": null,
+   "element": "member",
+   "name": "ppEnabledLayerNames",
+   "owner": "VkDeviceCreateInfo",
+   "reason": "unused"
+  }
+ ],
  "platforms": {
   "android": "VK_USE_PLATFORM_ANDROID_KHR",
   "directfb": "VK_USE_PLATFORM_DIRECTFB_EXT",

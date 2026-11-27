@@ -1,6 +1,7 @@
 pub(crate) mod asciidoc;
 mod items;
 mod legacy;
+mod legacy_attributes;
 mod links;
 mod other_names;
 mod render;
@@ -10,6 +11,10 @@ mod value_descriptions;
 pub(crate) use legacy::{
     LegacyMarks, assert_every_legacy_mark_has_an_item, assert_listed_legacy_macros_are_marked,
     legacy_marks,
+};
+pub(crate) use legacy_attributes::{
+    LegacyAttributes, assert_every_legacy_attribute_is_stated,
+    assert_listed_legacy_aliases_are_left_out, legacy_attributes,
 };
 pub(crate) use links::Links;
 pub(crate) use other_names::assert_every_other_name_is_in_use;

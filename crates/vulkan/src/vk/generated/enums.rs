@@ -5185,6 +5185,8 @@ impl ColorSpaceKHR {
     pub const HDR10_ST2084_EXT: Self = Self(1000104008);
     /// `VK_COLOR_SPACE_DOLBYVISION_EXT`, a value of
     /// [`VkColorSpaceKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkColorSpaceKHR.html).
+    ///
+    /// Legacy functionality, for which the registry gives no reason.
     #[doc(alias = "VK_COLOR_SPACE_DOLBYVISION_EXT")]
     pub const DOLBYVISION_EXT: Self = Self(1000104009);
     /// `VK_COLOR_SPACE_HDR10_HLG_EXT` specifies support for the images in HDR10 (BT2020) color
@@ -5212,11 +5214,11 @@ impl ColorSpaceKHR {
     /// supporting it.
     #[doc(alias = "VK_COLOR_SPACE_DISPLAY_NATIVE_AMD")]
     pub const DISPLAY_NATIVE_AMD: Self = Self(1000213000);
-    /// `VK_COLORSPACE_SRGB_NONLINEAR_KHR` is an alias of
+    /// `VK_COLORSPACE_SRGB_NONLINEAR_KHR` is a legacy alias of
     /// [`VK_COLOR_SPACE_SRGB_NONLINEAR_KHR`](Self::SRGB_NONLINEAR).
     #[doc(alias = "VK_COLORSPACE_SRGB_NONLINEAR_KHR")]
     pub const COLORSPACE_SRGB_NONLINEAR: Self = Self(0);
-    /// `VK_COLOR_SPACE_DCI_P3_LINEAR_EXT` is an alias of
+    /// `VK_COLOR_SPACE_DCI_P3_LINEAR_EXT` is a legacy alias of
     /// [`VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT`](Self::DISPLAY_P3_LINEAR_EXT).
     #[doc(alias = "VK_COLOR_SPACE_DCI_P3_LINEAR_EXT")]
     pub const DCI_P3_LINEAR_EXT: Self = Self(1000104003);
@@ -7024,11 +7026,11 @@ impl DebugReportObjectTypeEXT {
     /// [`VkDebugReportObjectTypeEXT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDebugReportObjectTypeEXT.html).
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_BUFFER_COLLECTION_FUCHSIA_EXT")]
     pub const BUFFER_COLLECTION_FUCHSIA: Self = Self(1000366000);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT` is an alias of
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT` is a legacy alias of
     /// [`VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT`](Self::DEBUG_REPORT_CALLBACK_EXT).
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT")]
     pub const DEBUG_REPORT: Self = Self(28);
-    /// `VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT` is an alias of
+    /// `VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT` is a legacy alias of
     /// [`VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT_EXT`](Self::VALIDATION_CACHE_EXT).
     #[doc(alias = "VK_DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT")]
     pub const VALIDATION_CACHE: Self = Self(33);
@@ -11474,7 +11476,7 @@ impl Format {
     /// [`VK_FORMAT_A4B4G4R4_UNORM_PACK16`](Self::A4B4G4R4_UNORM_PACK16).
     #[doc(alias = "VK_FORMAT_A4B4G4R4_UNORM_PACK16_EXT")]
     pub const A4B4G4R4_UNORM_PACK16_EXT: Self = Self(1000340001);
-    /// `VK_FORMAT_R16G16_S10_5_NV` is an alias of
+    /// `VK_FORMAT_R16G16_S10_5_NV` is a legacy alias of
     /// [`VK_FORMAT_R16G16_SFIXED5_NV`](Self::R16G16_SFIXED5_NV).
     #[doc(alias = "VK_FORMAT_R16G16_S10_5_NV")]
     pub const R16G16_S10_5_NV: Self = Self(1000464000);
@@ -15759,15 +15761,15 @@ impl PerformanceCounterScopeKHR {
     /// commands.
     #[doc(alias = "VK_PERFORMANCE_COUNTER_SCOPE_COMMAND_KHR")]
     pub const COMMAND: Self = Self(2);
-    /// `VK_QUERY_SCOPE_COMMAND_BUFFER_KHR` is an alias of
+    /// `VK_QUERY_SCOPE_COMMAND_BUFFER_KHR` is a legacy alias of
     /// [`VK_PERFORMANCE_COUNTER_SCOPE_COMMAND_BUFFER_KHR`](Self::COMMAND_BUFFER).
     #[doc(alias = "VK_QUERY_SCOPE_COMMAND_BUFFER_KHR")]
     pub const QUERY_SCOPE_COMMAND_BUFFER: Self = Self(0);
-    /// `VK_QUERY_SCOPE_RENDER_PASS_KHR` is an alias of
+    /// `VK_QUERY_SCOPE_RENDER_PASS_KHR` is a legacy alias of
     /// [`VK_PERFORMANCE_COUNTER_SCOPE_RENDER_PASS_KHR`](Self::RENDER_PASS).
     #[doc(alias = "VK_QUERY_SCOPE_RENDER_PASS_KHR")]
     pub const QUERY_SCOPE_RENDER_PASS: Self = Self(1);
-    /// `VK_QUERY_SCOPE_COMMAND_KHR` is an alias of
+    /// `VK_QUERY_SCOPE_COMMAND_KHR` is a legacy alias of
     /// [`VK_PERFORMANCE_COUNTER_SCOPE_COMMAND_KHR`](Self::COMMAND).
     #[doc(alias = "VK_QUERY_SCOPE_COMMAND_KHR")]
     pub const QUERY_SCOPE_COMMAND: Self = Self(2);
@@ -18330,7 +18332,7 @@ impl VkResult {
     /// [`VK_PIPELINE_COMPILE_REQUIRED`](Self::PIPELINE_COMPILE_REQUIRED).
     #[doc(alias = "VK_PIPELINE_COMPILE_REQUIRED_EXT")]
     pub const PIPELINE_COMPILE_REQUIRED_EXT: Self = Self(1000297000);
-    /// `VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT` is an alias of
+    /// `VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT` is a legacy alias of
     /// [`VK_INCOMPATIBLE_SHADER_BINARY_EXT`](Self::INCOMPATIBLE_SHADER_BINARY_EXT).
     #[doc(alias = "VK_ERROR_INCOMPATIBLE_SHADER_BINARY_EXT")]
     pub const ERROR_INCOMPATIBLE_SHADER_BINARY_EXT: Self = Self(1000482000);
@@ -18491,7 +18493,7 @@ impl SamplerAddressMode {
     /// extension is enabled.
     #[doc(alias = "VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE")]
     pub const MIRROR_CLAMP_TO_EDGE: Self = Self(4);
-    /// `VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE_KHR` is an alias of
+    /// `VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE_KHR` is a legacy alias of
     /// [`VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE`](Self::MIRROR_CLAMP_TO_EDGE).
     #[doc(alias = "VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE_KHR")]
     pub const MIRROR_CLAMP_TO_EDGE_KHR: Self = Self(4);
@@ -25019,7 +25021,7 @@ impl StructureType {
     /// [`VkBufferDeviceAddressAlignmentAllocateInfoVALVE`](BufferDeviceAddressAlignmentAllocateInfoVALVE).
     #[doc(alias = "VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_ALIGNMENT_ALLOCATE_INFO_VALVE")]
     pub const BUFFER_DEVICE_ADDRESS_ALIGNMENT_ALLOCATE_INFO_VALVE: Self = Self(1000709002);
-    /// `VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT` is an alias of
+    /// `VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT` is a legacy alias of
     /// [`VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT`](Self::DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT).
     #[doc(alias = "VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT")]
     pub const DEBUG_REPORT_CREATE_INFO_EXT: Self = Self(1000011000);
@@ -25215,7 +25217,7 @@ impl StructureType {
     /// [`VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO`](Self::DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO).
     #[doc(alias = "VK_STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR")]
     pub const DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: Self = Self(1000085000);
-    /// `VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT` is an alias of
+    /// `VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT` is a legacy alias of
     /// [`VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_EXT`](Self::SURFACE_CAPABILITIES_2_EXT).
     #[doc(alias = "VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT")]
     pub const SURFACE_CAPABILITIES2_EXT: Self = Self(1000090000);
@@ -25514,7 +25516,7 @@ impl StructureType {
     /// [`VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO`](Self::SEMAPHORE_SIGNAL_INFO).
     #[doc(alias = "VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO_KHR")]
     pub const SEMAPHORE_SIGNAL_INFO_KHR: Self = Self(1000207005);
-    /// `VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO_INTEL` is an alias of
+    /// `VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO_INTEL` is a legacy alias of
     /// [`VK_STRUCTURE_TYPE_QUERY_POOL_PERFORMANCE_QUERY_CREATE_INFO_INTEL`](Self::QUERY_POOL_PERFORMANCE_QUERY_CREATE_INFO_INTEL).
     #[doc(alias = "VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO_INTEL")]
     pub const QUERY_POOL_CREATE_INFO_INTEL: Self = Self(1000210000);

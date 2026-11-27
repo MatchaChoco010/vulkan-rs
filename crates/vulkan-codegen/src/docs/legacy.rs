@@ -181,7 +181,7 @@ impl Model<'_> {
             || ir.versions.iter().any(|v| v.name_api == c_name)
     }
 
-    fn documents_the_member(&self, structure: &str, member: &str) -> bool {
+    pub(super) fn documents_the_member(&self, structure: &str, member: &str) -> bool {
         let members = self
             .ir
             .structs
@@ -975,6 +975,7 @@ mod tests {
             "legacy = tool.legacy_ir(vk, ElementTree.fromstring(sys.stdin.read()))",
             "lists = ('vendor_tags', 'video_headers', 'versions', 'constants', 'handles', 'enums', 'bitmasks')",
             "lists += ('flags', 'func_pointers', 'structs', 'commands', 'extensions', 'formats')",
+            "lists += ('legacy_attributes',)",
             "ir = {name: [] for name in lists}",
             "ir.update(header_version=0, header_version_complete='', headers_tag='', headers_commit='')",
             "ir.update(platforms={}, legacy=legacy)",
