@@ -25,6 +25,7 @@ pub struct Registry {
     pub commands: Vec<Command>,
     pub extensions: Vec<Extension>,
     pub legacy: Vec<Legacy>,
+    pub legacy_attributes: Vec<LegacyAttribute>,
     pub formats: Vec<Format>,
 }
 
@@ -254,6 +255,32 @@ pub struct Legacy {
     pub link: String,
     pub marked_by: Vec<String>,
     pub superseded_by: Option<String>,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LegacyElement {
+    #[default]
+    Enum,
+    Member,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LegacyReason {
+    #[default]
+    Aliased,
+    True,
+    Unused,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct LegacyAttribute {
+    pub element: LegacyElement,
+    pub name: String,
+    pub owner: Option<String>,
+    pub reason: LegacyReason,
+    pub alias: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
