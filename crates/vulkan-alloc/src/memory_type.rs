@@ -89,13 +89,14 @@ pub enum MemoryLocation {
     /// [`MemoryLocation::Custom`] location that requires and prefers
     /// `HOST_VISIBLE | HOST_COHERENT` takes the lowest-indexed allowed type with both
     /// flags. The Vulkan specification places a memory type at a lower index than every
-    /// type whose property flags are a strict superset of its own, so a type with exactly
-    /// these two flags comes before every other host-visible coherent type, and is taken
-    /// when the requirements allow it. Otherwise the lowest-indexed one can be
-    /// device-local, and in either case the next type, taken when the chosen one is out
-    /// of memory, can be device-local. To keep the memory out of device-local memory in
-    /// every case, clear in [`vk::MemoryRequirements::memory_type_bits`] the bits of the
-    /// memory types with `DEVICE_LOCAL`, whose flags
+    /// type whose property flags are a strict superset of its own, so the types with
+    /// exactly these two flags come before every host-visible coherent type with more
+    /// flags, and one of them is taken when the requirements allow it. Otherwise the
+    /// lowest-indexed one can be device-local, and in either case the next type, taken
+    /// when the chosen one is out of memory, can be device-local. To keep the memory out
+    /// of device-local memory in every case, clear in
+    /// [`vk::MemoryRequirements::memory_type_bits`] the bits of the memory types with
+    /// `DEVICE_LOCAL`, whose flags
     /// [`Allocator::memory_type_flags`](crate::Allocator::memory_type_flags) gives. The
     /// allocation then fails if no other allowed type has the required flags, or if all
     /// of them are out of memory.
