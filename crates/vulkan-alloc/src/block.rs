@@ -205,10 +205,9 @@ impl MemoryTypeAllocator {
         let block = self.block_mut(allocation)?;
         unsafe { block.free_allocation(device, allocation.allocation_id) }?;
         if block.is_empty()
-            && !self.keeps_empty_block(allocation.block_index, shared_block_size)
             && let Some(block) = self
-                .blocks
-                .get_mut(allocation.block_index)
+                .empty_block_to_free(allocation.block_index, shared_block_size)
+                .and_then(|index| self.blocks.get_mut(index))
                 .and_then(Option::take)
         {
             unsafe { block.free_memory(device) };
@@ -216,19 +215,26 @@ impl MemoryTypeAllocator {
         Ok(())
     }
 
-    fn keeps_empty_block(&self, block_index: usize, shared_block_size: u64) -> bool {
-        let Some(Some(block)) = self.blocks.get(block_index) else {
-            return false;
-        };
-        !block.dedicated
-            && block.size == shared_block_size
-            && !self.blocks.iter().enumerate().any(|(index, other)| {
-                index != block_index
-                    && other.as_ref().is_some_and(|other| {
-                        other.is_empty()
-                            && other.memory_allocate_flags == block.memory_allocate_flags
-                    })
-            })
+    fn empty_block_to_free(&self, block_index: usize, shared_block_size: u64) -> Option<usize> {
+        let block = self.blocks.get(block_index)?.as_ref()?;
+        if block.dedicated || block.size > shared_block_size {
+            return Some(block_index);
+        }
+        let (other_index, other) = self.blocks.iter().enumerate().find_map(|(index, other)| {
+            other
+                .as_ref()
+                .filter(|other| {
+                    index != block_index
+                        && other.is_empty()
+                        && other.memory_allocate_flags == block.memory_allocate_flags
+                })
+                .map(|other| (index, other))
+        })?;
+        Some(if block.size > other.size {
+            other_index
+        } else {
+            block_index
+        })
     }
 
     pub(crate) unsafe fn free_empty_blocks(&mut self, device: &Device) -> usize {

@@ -81,6 +81,7 @@ struct State {
     next_allocation_fails: Option<vk::VkResult>,
     allocation_results: VecDeque<vk::VkResult>,
     allocated_memory_types: Vec<u32>,
+    allocated_sizes: Vec<u64>,
     next_map_fault: Option<MapFault>,
     next_synchronization_fails: Option<vk::VkResult>,
 }
@@ -107,6 +108,7 @@ impl FakeDevice {
             next_allocation_fails: None,
             allocation_results: VecDeque::new(),
             allocated_memory_types: Vec::new(),
+            allocated_sizes: Vec::new(),
             next_map_fault: None,
             next_synchronization_fails: None,
         })));
@@ -204,6 +206,10 @@ impl FakeDevice {
         self.state().allocated_memory_types.clone()
     }
 
+    pub fn allocated_sizes(&self) -> Vec<u64> {
+        self.state().allocated_sizes.clone()
+    }
+
     pub fn fault_next_map(&self, fault: MapFault) {
         self.state().next_map_fault = Some(fault);
     }
@@ -235,9 +241,9 @@ pub fn assert_only_kept_empty_blocks(
             assert!(
                 block.allocated_region_count == 0
                     && !block.dedicated
-                    && block.size == shared_block_size(index),
+                    && block.size <= shared_block_size(index),
                 "{context}: after every allocation was freed, memory type {index} holds {block:?}, \
-                 which is not an empty shared block of {} bytes",
+                 which is not an empty shared block of at most {} bytes",
                 shared_block_size(index)
             );
             assert!(
@@ -380,6 +386,7 @@ unsafe extern "system" fn allocate_memory(
     let info = unsafe { &*p_allocate_info };
     state.calls.allocate += 1;
     state.allocated_memory_types.push(info.memory_type_index);
+    state.allocated_sizes.push(info.allocation_size);
     if info.s_type != vk::StructureType::MEMORY_ALLOCATE_INFO {
         state
             .misuse
