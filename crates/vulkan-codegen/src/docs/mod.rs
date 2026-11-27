@@ -165,10 +165,29 @@ impl<'a> Model<'a> {
 
     pub(crate) fn described(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
         let page = self.page(owner)?;
-        let described = other_names::described(page, item).or_else(|| {
-            let aliases = self.aliases_of_the_value(owner, item);
-            other_names::described_under_an_alias(page, item, &aliases)
-        })?;
+        let described = other_names::described(page, item)?;
+        Some(self.description_under_its_name(from, page, item, described))
+    }
+
+    pub(crate) fn described_under_an_alias(
+        &self,
+        from: &Cfg,
+        owner: &str,
+        value: &str,
+    ) -> Option<Vec<Block>> {
+        let page = self.page(owner)?;
+        let aliases = self.aliases_of_the_value(owner, value);
+        let described = other_names::described_under_an_alias(page, value, &aliases)?;
+        Some(self.description_under_its_name(from, page, value, described))
+    }
+
+    fn description_under_its_name(
+        &self,
+        from: &Cfg,
+        page: &DocPage,
+        item: &str,
+        described: other_names::Described<'_>,
+    ) -> Vec<Block> {
         let mut blocks = self.description(from, Place::Page(page), item, &described.text);
         if let (Some(other), Some(Block::Text(lead))) =
             (described.under_the_name, blocks.first_mut())
@@ -177,7 +196,7 @@ impl<'a> Model<'a> {
                 "`{item}`, which the specification describes under the name `{other}`: {lead}"
             );
         }
-        Some(blocks)
+        blocks
     }
 
     pub(crate) fn described_outside_the_page(
@@ -205,7 +224,7 @@ impl<'a> Model<'a> {
 
     fn description(&self, from: &Cfg, place: Place<'_>, item: &str, text: &str) -> Vec<Block> {
         let mut parts = item_parts(place, item, text);
-        let notes = notes_of(place, &place.items_with(item, text));
+        let notes = notes_of(place, &place.items_with(item, text), &place.unnamed_items());
         items::take_notes(&mut parts);
         let marks = match notes.is_empty() {
             true => BTreeSet::new(),
@@ -423,15 +442,25 @@ fn item_parts(place: Place<'_>, item: &str, text: &str) -> Vec<Part> {
     })
 }
 
-fn notes_of(place: Place<'_>, items: &[(&str, &str)]) -> BTreeMap<u32, Vec<Part>> {
+fn notes_of(
+    place: Place<'_>,
+    items: &[(&str, &str)],
+    unnamed_items: &[&str],
+) -> BTreeMap<u32, Vec<Part>> {
     let mut notes = BTreeMap::new();
     let has_all_its_items = matches!(place, Place::Page(_));
-    if has_all_its_items && !items.iter().any(|(_, text)| items::may_have_notes(text)) {
+    let texts = items.iter().map(|(_, text)| text).chain(unnamed_items);
+    if has_all_its_items && !texts.into_iter().any(|text| items::may_have_notes(text)) {
         return notes;
     }
+    let named = items
+        .iter()
+        .map(|(name, text)| item_parts(place, name, text));
+    let unnamed = unnamed_items
+        .iter()
+        .filter_map(|text| items::read(text).ok());
     let mut marks = BTreeSet::new();
-    for (name, text) in items {
-        let mut parts = item_parts(place, name, text);
+    for mut parts in named.chain(unnamed) {
         for (number, note) in items::take_notes(&mut parts) {
             let twice = notes.insert(number, note).is_some();
             assert!(!twice, "{place} has two notes {number}");
@@ -863,8 +892,11 @@ mod tests {
         let model = Model::with_docs(&ir, &docs);
         let text = |text: &str| Block::Text(text.to_string());
         let described = |owner: &str, name: &str| model.described(&Cfg::default(), owner, name);
+        let under_an_alias =
+            |owner: &str, name: &str| model.described_under_an_alias(&Cfg::default(), owner, name);
+        assert_eq!(described("VkTintFlagBits", "VK_TINT_COLD_BIT"), None);
         assert_eq!(
-            described("VkTintFlagBits", "VK_TINT_COLD_BIT"),
+            under_an_alias("VkTintFlagBits", "VK_TINT_COLD_BIT"),
             Some(vec![text(
                 "`VK_TINT_COLD_BIT`, which the specification describes under the name `VK_TINT_COOL_BIT`: [`VK_TINT_COOL_BIT`](TintFlagBits::COOL) specifies a cool tint."
             )])
@@ -873,12 +905,82 @@ mod tests {
             described("VkTintFlagBits", "VK_TINT_COOL_BIT"),
             Some(vec![text("`VK_TINT_COOL_BIT` specifies a cool tint.")])
         );
-        assert_eq!(described("VkTintFlagBits", "VK_TINT_WARM_BIT"), None);
+        assert_eq!(under_an_alias("VkTintFlagBits", "VK_TINT_COOL_BIT"), None);
+        assert_eq!(under_an_alias("VkTintFlagBits", "VK_TINT_WARM_BIT"), None);
         assert_eq!(
-            described("VkShade", "VK_TINT_COLD_BIT"),
+            under_an_alias("VkShade", "VK_TINT_COLD_BIT"),
             None,
             "the aliases are those of a value of the type"
         );
+        assert_eq!(under_an_alias("VkColor", "VK_TINT_COLD_BIT"), None);
+    }
+
+    #[test]
+    fn an_item_that_starts_with_no_name_shares_the_notes_of_its_page() {
+        let ir = ir();
+        let unnamed = |anchor: &str, text: &str| vulkan_registry::DocUnnamedItem {
+            anchors: vec![anchor.to_string()],
+            text: text.to_string(),
+            problem: None,
+        };
+        let with_unnamed_items = |height: &str, items: &[vulkan_registry::DocUnnamedItem]| {
+            let mut docs = with_the_members_described_as(&["pname:width is wide^1^."], &[height]);
+            docs.pages[0].unnamed_items = items.to_vec();
+            docs
+        };
+        let text = |text: &str| Block::Text(text.to_string());
+        let note = |number: u32, note: &str| {
+            Block::Quote(vec![text(&format!("**Note {number}**")), text(note)])
+        };
+        let docs = with_unnamed_items(
+            "pname:height is high.\n\n1:: The first note.",
+            &[
+                unnamed(
+                    "limits-depth",
+                    "If set, pname:depth is deep^1^ and^2^ more.\n\n2:: The second note.",
+                ),
+                unnamed("other", "The rest is {unknown}^3^.\n\n3:: Not read."),
+                unnamed("other", "See the notes^1^."),
+            ],
+        );
+        let model = Model::with_docs(&ir, &docs);
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "depth"),
+            Some(vec![
+                text("If set, `depth` is deep (note 1) and (note 2) more."),
+                note(1, "The first note."),
+                note(2, "The second note."),
+            ]),
+            "the item takes the note of another item and its own"
+        );
+        assert_eq!(
+            model.described(&Cfg::default(), "VkExtent2D", "width"),
+            Some(vec![
+                text("`width` is wide (note 1)."),
+                note(1, "The first note.")
+            ])
+        );
+        for (items, message) in [
+            (
+                vec![unnamed("limits-depth", "If set, pname:depth is deep^4^.")],
+                "the notes {1} and the marks {1, 4} on the page VkExtent2D do not pair up",
+            ),
+            (
+                vec![unnamed(
+                    "limits-depth",
+                    "If set, pname:depth is deep.\n\n1:: The first note again.",
+                )],
+                "the page VkExtent2D has two notes 1",
+            ),
+        ] {
+            let docs = with_unnamed_items("pname:height is high.\n\n1:: The first note.", &items);
+            let model = Model::with_docs(&ir, &docs);
+            let panic = crate::test_support::catch_quietly(|| {
+                model.described(&Cfg::default(), "VkExtent2D", "depth")
+            })
+            .expect_err(message);
+            assert_eq!(panic, message);
+        }
     }
 
     #[test]

@@ -1982,6 +1982,8 @@ mod tests {
             "  * [[limits-a]] [[limits-b, the limit b]]",
             "    When wide, pname:a and pname:b apply.",
             "  * VK_LINE_WIDE specifies wide lines.",
+            "  * Late [[limits-late]] anchors of pname:late",
+            "    [[limits-later]] are no anchors of the item.",
             "  * [[VUID-VkPage-wide-00001]]",
             "    pname:wide must: be ename:VK_TRUE",
             "  * Otherwise:",
@@ -2027,6 +2029,11 @@ mod tests {
                     None
                 ),
                 (vec![], "VK_LINE_WIDE specifies wide lines.", None),
+                (
+                    vec![],
+                    "Late anchors of pname:late\n[[limits-later]] are no anchors of the item.",
+                    None
+                ),
                 (
                     vec![],
                     "Otherwise:\n+\n+\nMore.",

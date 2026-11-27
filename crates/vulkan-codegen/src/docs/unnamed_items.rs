@@ -12,8 +12,9 @@ fn is_word(c: char) -> bool {
 
 fn names_the_member(text: &str, member: &str) -> bool {
     let named = format!("pname:{member}");
-    text.match_indices(&named)
-        .any(|(at, _)| !text[at + named.len()..].starts_with(is_word))
+    text.match_indices(&named).any(|(at, _)| {
+        !text[..at].ends_with(is_word) && !text[at + named.len()..].starts_with(is_word)
+    })
 }
 
 fn anchored_members(item: &DocUnnamedItem) -> impl Iterator<Item = &str> {
@@ -24,6 +25,7 @@ fn anchored_members(item: &DocUnnamedItem) -> impl Iterator<Item = &str> {
                 .iter()
                 .find_map(|prefix| anchor.strip_prefix(prefix))
         })
+        .filter(|member| !member.is_empty() && member.chars().all(is_word))
         .filter(|member| names_the_member(&item.text, member))
 }
 
@@ -138,6 +140,16 @@ mod tests {
                 vec![],
             ),
             (
+                vec!["features-wide"],
+                "If xpname:wide is ename:VK_TRUE, lines are wide.",
+                vec![],
+            ),
+            (
+                vec!["features-", "limits-wide-lines", "limits-wide.lines"],
+                "Of pname: and pname:wide-lines and pname:wide.lines.",
+                vec![],
+            ),
+            (
                 vec![],
                 "If pname:wide is ename:VK_TRUE, lines are wide.",
                 vec![],
@@ -222,6 +234,7 @@ mod tests {
             "extension-features-wide",
             "wide",
             "features-",
+            "limits-wide,",
         ]);
         let word = prop::sample::select(vec![
             "pname:wide",
@@ -266,8 +279,8 @@ mod tests {
         let regex = |pattern: &str| regex::Regex::new(pattern).expect("a pattern of the rules");
         let mut names = Vec::new();
         for anchor in &item.anchors {
-            if let Some(member) = regex(r"^(?:features|limits)-(.*)$").captures(anchor) {
-                let named = format!(r"pname:{}(?:[^A-Za-z0-9_]|$)", regex::escape(&member[1]));
+            if let Some(member) = regex(r"^(?:features|limits)-([A-Za-z0-9_]+)$").captures(anchor) {
+                let named = format!(r"(?-u:\b)pname:{}(?-u:\b)", &member[1]);
                 if regex(&named).is_match(&item.text) {
                     names.push(member[1].to_string());
                 }
@@ -314,7 +327,7 @@ mod tests {
         let named_first = described(&|item| value_named_first(&item.text).is_some());
         let nothing = items.len() - described(&|_| true);
         for (what, count, at_least) in [
-            ("members by their anchor", members, 500),
+            ("members by their anchor", members, 400),
             ("values without their macro", without_macro, 10),
             ("values named first", named_first, 15),
             ("items that describe nothing", nothing, 6000),

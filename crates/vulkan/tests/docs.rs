@@ -599,7 +599,7 @@ impl Markup {
             table_delimiter: regex(r"^\|={3,}\s*$"),
             leading_anchors: regex(r"^[ \t]*\*[ \t]+((?:\[\[[^\]]*\]\]\s*)*)"),
             anchor_name: regex(r"\[\[\s*([^\],\s]+)"),
-            member_anchor: regex(r"^(?:features|limits)-(\w+)$"),
+            member_anchor: regex(r"^(?:features|limits)-([A-Za-z0-9_]+)$"),
             name_macro: regex(r"\b(pname|ename):(\w+)"),
             value_without_its_macro: regex(r"^(VK_[A-Z0-9_]+)\s+specifies\s+\S"),
             specified: regex(r"^\s+specifies\s+\S"),
@@ -1120,7 +1120,7 @@ impl Specification {
             let said = &text[leading[0].len()..];
             for anchor in markup.anchor_name.captures_iter(&leading[1]) {
                 if let Some(member) = markup.member_anchor.captures(&anchor[1])
-                    && regex(&format!(r"\bpname:{}\b", &member[1])).is_match(said)
+                    && regex(&format!(r"(?-u:\b)pname:{}(?-u:\b)", &member[1])).is_match(said)
                 {
                     descriptions.push((member[1].to_string(), text.clone()));
                 }
@@ -2898,8 +2898,14 @@ impl Checker {
             if !spec.describes(page, "ename", other) {
                 self.fail(item, format!("the documentation takes the description of `{other}` for `{c_name}`, but the specification describes no `{other}` on the page `{page}`"));
             }
-            if generated.names_at_start(description).first() != Some(&other) {
+            if !generated.names_at_start(description).contains(&other) {
                 self.fail(item, format!("the description that the documentation takes for `{c_name}` is not the one of `{other}`"));
+            }
+            if !spec.table_rows(Some(page), values, c_name).is_empty() {
+                self.fail(item, format!("the specification describes `{c_name}` in a table row, which comes before the description under its alias name `{other}`"));
+            }
+            if let [elsewhere, ..] = spec.described_outside_the_page(page, c_name) {
+                self.fail(item, format!("the specification describes `{c_name}` in a list item of {}, which comes before the description under its alias name `{other}`", elsewhere.place()));
             }
             self.contained(spec, item, page, description);
             self.whole(spec, item, page, ("ename", other), description);
@@ -3937,8 +3943,9 @@ Empty ranges are for another day.
   * pname:sizeInBytes is the size of the thing in bytes.
   * [[limits-margin]] When the <<limits-range,pname:range>> is laid out,
     pname:margin indicates the space around it.
-  * [[limits-padding]] Things are padded.
+  * [[limits-padding]] Things are padded and xpname:padding is no name.
   * [[things-padding]] The pname:padding is not described here.
+  * A late anchor [[limits-padding]] of pname:padding is no anchor of the item.
 
 A thing is empty with the following properties:
 
@@ -5157,6 +5164,43 @@ fn checker_reports_a_value_that_takes_a_description_under_another_name_wrongly()
     ] {
         assert_reported(defect, replace, with, report);
     }
+}
+
+#[test]
+fn checker_reports_a_description_under_an_alias_name_taken_before_one_under_the_own_name() {
+    let source = FIXTURE_SOURCE.replace("PAGES/", REFERENCE_PAGES);
+    let failures = |specification: &Specification| {
+        let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("{e}:\n{source}"));
+        let mut checker = Checker::default();
+        check_files(specification, &Generated::new(), &mut checker, &[file]);
+        checker.failures
+    };
+    let mut with_a_row = fixture_specification();
+    with_a_row.tables.extend(fixture_table(
+        FIXTURE_FILE,
+        Some("VkColor"),
+        &[".Reds", "[options=\"header\"]"],
+        &["|Color |Use", "|ename:VK_COLOR_CINNABAR |paint"],
+    ));
+    assert_eq!(
+        failures(&with_a_row),
+        [
+            "Color::CINNABAR: the specification describes `VK_COLOR_CINNABAR` in a table row, which comes before the description under its alias name `VK_COLOR_VERMILION`"
+        ]
+    );
+    let mut with_an_item_elsewhere = fixture_specification();
+    let item = fixture_segment(
+        None,
+        "  * ename:VK_COLOR_CINNABAR specifies a red of the text.",
+    );
+    let elsewhere = with_an_item_elsewhere.value_descriptions_in(&[item]);
+    with_an_item_elsewhere.value_descriptions.extend(elsewhere);
+    assert_eq!(
+        failures(&with_an_item_elsewhere),
+        [
+            "Color::CINNABAR: the specification describes `VK_COLOR_CINNABAR` in a list item of chapters/things.adoc outside the reference pages, which comes before the description under its alias name `VK_COLOR_VERMILION`"
+        ]
+    );
 }
 
 #[test]

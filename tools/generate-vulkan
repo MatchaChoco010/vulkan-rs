@@ -554,6 +554,7 @@ SPEC_REFPAGE_ATTRIBUTE = re.compile(r"(\w+)='((?:[^'\\]|\\.)*)'")
 SPEC_LIST_ITEM = re.compile(r"^\s*(\*+)\s+(\S.*)$")
 SPEC_ANCHOR = re.compile(r"\[\[[^\]]*\]\]\s*")
 SPEC_ANCHOR_NAME = re.compile(r"\[\[\s*([^\],\s]+)")
+SPEC_LEADING_ANCHORS = re.compile(r"^(?:\[\[[^\]]*\]\]\s*)+")
 SPEC_DESCRIBED_NAME = re.compile(r"^(?:pname|ename):(\w+)\b")
 SPEC_DESCRIBED_VALUE = re.compile(r"^ename:(\w+)\b")
 SPEC_ATTRIBUTE_ENTRY = re.compile(r"^:([\w-]+)(!?):\s*(.*)$")
@@ -903,13 +904,20 @@ def spec_list_item(body: list[str], start: int) -> tuple[list[str], int, str | N
     return lines, index, problem
 
 
+def spec_leading_anchors(line: str) -> list[str]:
+    """The names of the anchors that `line` starts with."""
+    leading = SPEC_LEADING_ANCHORS.match(line)
+    return SPEC_ANCHOR_NAME.findall(leading.group(0)) if leading else []
+
+
 def spec_first_level_items(body: list[str]):
     """The first-level list items of `body` (the lines of a reference page block, or lines
     outside the blocks) in the order of the lines, each with everything that belongs to
     it: nested items and the blocks that list continuations attach stay part of the item's
-    text. An item comes as the names of the anchors of its first line (`[[name]]`), its
-    lines without those anchors, and what keeps it from being read reliably, if anything:
-    what `spec_list_item` found, or a line that goes on in a file that is not read.
+    text. An item comes as the names of the anchors that it starts with (`[[name]]`, before
+    any text), its lines without the anchors of its first line, and what keeps it from being
+    read reliably, if anything: what `spec_list_item` found, or a line that goes on in a
+    file that is not read.
 
     The items of valid usage, which start with a `[[VUID-...]]` anchor, state a requirement
     and do not describe what they name, so they are left out. So are the items in the cells
@@ -925,13 +933,13 @@ def spec_first_level_items(body: list[str]):
         lines, index, problem = spec_list_item(body, index)
         if lines[0].startswith("[[VUID-"):
             continue
-        anchors = SPEC_ANCHOR_NAME.findall(lines[0])
+        anchors = spec_leading_anchors(lines[0])
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
         if not lines[0]:
             lines.pop(0)
         if not lines:
             continue
-        anchors += SPEC_ANCHOR_NAME.findall(lines[0])
+        anchors += spec_leading_anchors(lines[0])
         lines[0] = SPEC_ANCHOR.sub("", lines[0])
         if problem:
             problem = f"cannot be read reliably: {problem}"
@@ -962,7 +970,7 @@ def spec_described_items(
 
 def spec_unnamed_items(body: list[str]) -> list[dict]:
     """The first-level list items of a reference page block that do not start with `pname:x`
-    or `ename:x`, each with the names of the anchors of its first line.
+    or `ename:x`, each with the names of the anchors that it starts with.
 
     The specification describes a few members and values in an item that starts with other
     words, or with the name of a value without its macro. Most of these items belong to

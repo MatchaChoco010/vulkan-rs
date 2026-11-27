@@ -97,13 +97,15 @@ fn names(item: &DocItem, name: &str) -> bool {
     item.name == name || names_at_the_start(&item.text).contains(&name)
 }
 
+fn item_that_starts_with<'a>(page: &'a DocPage, name: &str) -> Option<&'a DocItem> {
+    page.items
+        .iter()
+        .find(|item| item.name == name)
+        .or_else(|| page.items.iter().find(|item| names(item, name)))
+}
+
 pub(super) fn described<'a>(page: &'a DocPage, name: &str) -> Option<Described<'a>> {
-    let item = |name: &str| {
-        page.items
-            .iter()
-            .find(|item| item.name == name)
-            .or_else(|| page.items.iter().find(|item| names(item, name)))
-    };
+    let item = |name: &str| item_that_starts_with(page, name);
     if let Some(item) = item(name) {
         return Some(Described {
             text: Cow::Borrowed(&item.text),
@@ -133,23 +135,21 @@ pub(super) fn described_under_an_alias<'a>(
 ) -> Option<Described<'a>> {
     let mut under_an_alias = aliases
         .iter()
-        .filter_map(|alias| Some((*alias, described(page, alias)?)))
+        .filter_map(|alias| Some((*alias, item_that_starts_with(page, alias)?)));
+    let (alias, item) = under_an_alias.next()?;
+    let in_other_items = under_an_alias
+        .filter(|(_, other)| !std::ptr::eq(*other, item))
+        .map(|(alias, _)| alias)
         .collect::<Vec<_>>();
     assert!(
-        under_an_alias.len() <= 1,
-        "the page {} describes {name} under {} of its alias names, so that nothing says which \
-         description to take: {}",
+        in_other_items.is_empty(),
+        "the page {} describes {name} in several list items, under its alias names {alias}, \
+         {}, so that nothing says which description to take",
         page.name,
-        under_an_alias.len(),
-        under_an_alias
-            .iter()
-            .map(|(alias, _)| *alias)
-            .collect::<Vec<_>>()
-            .join(", ")
+        in_other_items.join(", ")
     );
-    let (alias, described) = under_an_alias.pop()?;
     Some(Described {
-        text: described.text,
+        text: Cow::Borrowed(&item.text),
         under_the_name: Some(alias),
     })
 }
@@ -351,6 +351,10 @@ mod tests {
             text: "VK_FACE_BOTH_KHR specifies both.".to_string(),
             problem: None,
         }];
+        page.items.push(DocItem {
+            name: "VK_FACE_SIDE_KHR".to_string(),
+            text: "ename:VK_FACE_SIDE_KHR and ename:VK_FACE_SIDE_EXT specify a side.".to_string(),
+        });
         for (aliases, text) in [
             (
                 &["VK_FACE_FRONT_NV", "VK_FACE_FRONT_KHR"][..],
@@ -360,9 +364,13 @@ mod tests {
                 )),
             ),
             (
-                &["VK_FACE_BOTH_KHR"],
-                Some(("VK_FACE_BOTH_KHR", "ename:VK_FACE_BOTH_KHR specifies both.")),
+                &["VK_FACE_SIDE_NV", "VK_FACE_SIDE_EXT", "VK_FACE_SIDE_KHR"],
+                Some((
+                    "VK_FACE_SIDE_EXT",
+                    "ename:VK_FACE_SIDE_KHR and ename:VK_FACE_SIDE_EXT specify a side.",
+                )),
             ),
+            (&["VK_FACE_BOTH_KHR"], None),
             (&["VK_FACE_NONE_KHR"], None),
             (&[], None),
         ] {
@@ -377,10 +385,12 @@ mod tests {
                 described_under_an_alias(&page, "VK_FACE_BACK", &aliases).is_some()
             }),
             Err(
-                "the page VkFace describes VK_FACE_BACK under 2 of its alias names, so that \
-                 nothing says which description to take: VK_FACE_BACK_KHR, VK_FACE_BACK_EXT"
+                "the page VkFace describes VK_FACE_BACK in several list items, under its alias \
+                 names VK_FACE_BACK_KHR, VK_FACE_BACK_EXT, so that nothing says which \
+                 description to take"
                     .to_string()
-            )
+            ),
+            "one list item that names two aliases is one description, two list items are two"
         );
     }
 
@@ -410,7 +420,8 @@ mod tests {
                 if let Some(found) = described_under_an_alias(page, &field.name, &aliases) {
                     let alias = found.under_the_name.expect("the alias name");
                     under_an_alias.push((owner.as_str(), field.name.as_str(), alias));
-                    let documented = model.described(&Cfg::default(), owner, &field.name);
+                    let documented =
+                        model.described_under_an_alias(&Cfg::default(), owner, &field.name);
                     let lead = format!(
                         "`{}`, which the specification describes under the name `{alias}`: ",
                         field.name
