@@ -17497,8 +17497,11 @@ impl PipelineStageFlagBits2 {
     /// stage.
     #[doc(alias = "VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI")]
     pub const CLUSTER_CULLING_SHADER_HUAWEI: Self = Self(2199023255552);
-    /// `VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM` in the table “Supported Pipeline Stage Flags” of
+    /// the specification:
+    ///
+    /// - Required queue capability flag:
+    ///   [`VK_QUEUE_DATA_GRAPH_BIT_ARM`](QueueFlagBits::DATA_GRAPH_ARM)
     #[doc(alias = "VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM")]
     pub const DATA_GRAPH_ARM: Self = Self(4398046511104);
     /// `VK_PIPELINE_STAGE_2_CONVERT_COOPERATIVE_VECTOR_MATRIX_BIT_NV` specifies the execution of
@@ -53468,8 +53471,11 @@ impl PipelineStageFlags2 {
     /// stage.
     #[doc(alias = "VK_PIPELINE_STAGE_2_CLUSTER_CULLING_SHADER_BIT_HUAWEI")]
     pub const CLUSTER_CULLING_SHADER_HUAWEI: Self = Self(2199023255552);
-    /// `VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM`, a value of
-    /// [`VkPipelineStageFlagBits2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineStageFlagBits2.html).
+    /// `VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM` in the table “Supported Pipeline Stage Flags” of
+    /// the specification:
+    ///
+    /// - Required queue capability flag:
+    ///   [`VK_QUEUE_DATA_GRAPH_BIT_ARM`](QueueFlagBits::DATA_GRAPH_ARM)
     #[doc(alias = "VK_PIPELINE_STAGE_2_DATA_GRAPH_BIT_ARM")]
     pub const DATA_GRAPH_ARM: Self = Self(4398046511104);
     /// `VK_PIPELINE_STAGE_2_CONVERT_COOPERATIVE_VECTOR_MATRIX_BIT_NV` specifies the execution of

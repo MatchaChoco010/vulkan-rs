@@ -87,7 +87,15 @@ def main() -> int:
     ir = build_ir(vk, registry_tree, attributes, args.allow_non_sdk_tag)
     IR_PATH.write_text(json.dumps(ir, indent=1, sort_keys=True) + "\n")
     linked_anchors = {mark["link"] for mark in ir["legacy"]}
-    docs = build_docs(defined_spec_attributes(vk), spec_generated_files(vk), linked_anchors)
+    table_includes_not_read = set()
+    docs = build_docs(
+        defined_spec_attributes(vk),
+        spec_generated_files(vk),
+        linked_anchors,
+        table_includes_not_read,
+    )
+    spec_check_table_includes_not_read(table_includes_not_read)
+    spec_check_formats_have_list_items(vk, docs)
     docs["commit"] = git(["-C", str(DOCS), "rev-parse", "--short=12", "HEAD"])
     DOCS_PATH.write_text(json.dumps(docs, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
 
@@ -599,6 +607,28 @@ SPEC_INCLUDES_AFTER_AN_ITEM = (
     "include::{generated}/api/",
     "include::{chapters}/commonvalidity/",
 )
+# The includes of tables that are not read, as a pattern for the include and what the
+# table has: in a row of its own or in a cell. A table with such an include is not dumped.
+# Every other file that a table includes has to be among those of `spec_generated_files`.
+SPEC_TABLE_INCLUDES_NOT_READ = {
+    r"include::\{generated\}/formats/": (
+        "tables about formats in which no row starts with a value: compatibility.adoc "
+        "starts each row with the name of a compatibility class, spirvimageformat.adoc "
+        "with the SPIR-V name of an image format and has the value in the second cell, "
+        "and planeformat.adoc has the format in a bold cell that spans its row and starts "
+        "the rows of its planes with the index of the plane. Every value of VkFormat has "
+        "a list item on its page (spec_check_formats_have_list_items)"
+    ),
+    r"include::\{generated\}/spirvcap/": (
+        "tables of SPIR-V capabilities and extensions, whose rows start with the SPIR-V "
+        "name and list the versions, features and extensions that allow it"
+    ),
+    r"include::\{chapters\}/\S+\[tag=sc\w+\]": (
+        "the differences of Vulkan SC by chapter, in the cells of the tables of its "
+        "appendix, whose rows start with the title of a chapter"
+    ),
+}
+SPEC_TABLE_INCLUDE = re.compile(r"(?:^|\|)\s*(include::\S+)")
 
 
 def defined_spec_attributes(vk) -> set[str]:
@@ -615,10 +645,24 @@ def spec_generated_files(vk) -> dict[str, list[str]]:
 
     `sync/flagDefinitions/<flag>.adoc` lists the flags that a synchronization flag stands
     for (`<syncequivalent>` in vk.xml), one nested list item each, in the order of the
-    registry and without the flags that the `vulkan` API does not have. This is what
-    `scripts/syncgenerator.py` of Vulkan-Docs writes for a build with every version and
-    every extension."""
+    registry and without the flags that the `vulkan` API does not have.
+
+    `sync/supportedPipelineStages.adoc` has the rows of the table "Supported Pipeline Stage
+    Flags": each pipeline stage with the queue flags that it requires (`<syncsupport
+    queues>`), or `None required`. `sync/supportedAccessTypes.adoc` has the rows of the table
+    "Supported Access Types": each access flag, with the name that it is an alias of, and
+    the pipeline stages that support it (`<syncsupport stage>`), or `Any`. Both are in the
+    order of the registry and without the stages and access flags that the `vulkan` API
+    does not have.
+
+    `scripts/syncgenerator.py` of Vulkan-Docs writes these files for a build of the
+    specification. It leaves a stage or an access flag out when none of the extensions that
+    add it (or the dependencies of their `<require>` blocks) is in the build; this takes
+    the stages and access flags that the `vulkan` API has. For a build with every version
+    and every extension of the `vulkan` API the two are the same, and the tool stops if
+    they are not (`spec_check_sync_flags`)."""
     registry = ElementTree.parse(REGISTRY / "vk.xml").getroot()
+    spec_check_sync_flags(vk, registry)
     files = {}
     for element, attribute, bitmask in (
         ("syncstage", "stage", "VkPipelineStageFlagBits2"),
@@ -637,7 +681,105 @@ def spec_generated_files(vk) -> dict[str, list[str]]:
             files[f"sync/flagDefinitions/{sync.get('name')}.adoc"] = [
                 f"  ** ename:{flag}" for flag in flags.split(",") if flag in defined
             ]
+
+    def supported(sync, attribute):
+        support = sync.find("syncsupport")
+        if support is None:
+            return None
+        names = support.get(attribute)
+        if names is None:
+            raise RuntimeError(
+                f"vk.xml: <syncsupport> of {sync.get('name')} has no `{attribute}` attribute"
+            )
+        return names.split(",")
+
+    stages = {flag.name for flag in vk.bitmasks["VkPipelineStageFlagBits2"].flags}
+    rows = []
+    for sync in registry.findall("sync/syncstage"):
+        if sync.get("name") in stages:
+            queues = supported(sync, "queues")
+            required = " or ".join(f"ename:{queue}" for queue in queues or [])
+            rows.append(f"|ename:{sync.get('name')} | {required or 'None required'}")
+    files["sync/supportedPipelineStages.adoc"] = rows
+
+    access_flags = {flag.name for flag in vk.bitmasks["VkAccessFlagBits2"].flags}
+    rows = []
+    for sync in registry.findall("sync/syncaccess"):
+        name, alias = sync.get("name"), sync.get("alias")
+        if name not in access_flags:
+            continue
+        if alias is None:
+            rows.append(f"|ename:{name} |")
+        else:
+            rows.extend([f"|ename:{name}, +", f" ename:{alias} |"])
+        supporting = supported(sync, "stage")
+        if supporting is None:
+            rows.append("\tAny")
+            continue
+        for index, stage in enumerate(supporting):
+            # The comma is the one of the stage in the list of the registry:
+            # syncgenerator.py leaves it where it leaves a later stage out.
+            separator = "," if index != len(supporting) - 1 else ""
+            if stage in stages:
+                rows.append(f"\tename:{stage}{separator}")
+    files["sync/supportedAccessTypes.adoc"] = rows
     return files
+
+
+def spec_dependency_holds(dependency: str, defined: set[str]) -> bool:
+    """Whether a dependency of the registry holds: names joined by `,` (or) and `+` (and),
+    read from left to right, with parentheses."""
+    tokens = re.findall(r"[\w.]+|[(),+]", dependency)
+
+    def term(at: int) -> tuple[bool, int]:
+        if tokens[at] == "(":
+            value, at = expression(at + 1)
+            return value, at + 1
+        return tokens[at] in defined, at + 1
+
+    def expression(at: int) -> tuple[bool, int]:
+        value, at = term(at)
+        while at < len(tokens) and tokens[at] in ",+":
+            operator = tokens[at]
+            other, at = term(at + 1)
+            value = (value or other) if operator == "," else (value and other)
+        return value, at
+
+    return expression(0)[0]
+
+
+def spec_check_sync_flags(vk, registry):
+    """Stops if a build of the specification with every version and extension of the
+    `vulkan` API would not have exactly the pipeline stages and access flags of `<sync>`
+    that the API has: `scripts/syncgenerator.py` leaves a flag out when none of the
+    extensions that add it is in the build, as `scripts/reg.py` collects them."""
+    defined = defined_spec_attributes(vk)
+    for element, bitmask in (
+        ("syncstage", "VkPipelineStageFlagBits2"),
+        ("syncaccess", "VkAccessFlagBits2"),
+    ):
+        added_by = {}
+        for extension in registry.findall("extensions/extension"):
+            for require in extension.findall("require"):
+                for flag in require.findall("enum"):
+                    if flag.get("extends") == bitmask:
+                        name = flag.get("alias") or flag.get("name")
+                        added_by.setdefault(name, []).append(
+                            require.get("depends") or extension.get("name")
+                        )
+        in_the_api = {flag.name for flag in vk.bitmasks[bitmask].flags}
+        for sync in registry.findall(f"sync/{element}"):
+            name = sync.get("name")
+            dependency = ",".join(added_by.get(name, []))
+            in_the_build = not dependency or spec_dependency_holds(dependency, defined)
+            if in_the_build != (name in in_the_api):
+                raise RuntimeError(
+                    f"vk.xml: {name} is {'' if name in in_the_api else 'not '}a value of {bitmask} "
+                    f"in the vulkan API, and a build of the specification with every extension "
+                    f"of the API would {'' if in_the_build else 'not '}have it in the tables of "
+                    f"<sync> (it depends on `{dependency}`): the rows of these tables cannot "
+                    "be taken from the values of the API"
+                )
 
 
 def spec_condition_holds(directive: str, target: str, defined: set[str]) -> bool:
@@ -1198,10 +1340,17 @@ def spec_table_end(lines: list[str], index: int) -> int:
     return end
 
 
-def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, str]]) -> list[dict]:
+def spec_tables(
+    file: str, lines: list[str], page_blocks: list[tuple[int, int, str]], not_read: set[str]
+) -> list[dict]:
     """The tables (`|===` blocks) that name an enumerant, as AsciiDoc text that starts
     with the attribute, anchor and title lines above the table, and the reference page
-    block that each one is in, if any, and the source file."""
+    block that each one is in, if any, and the source file.
+
+    A table with an include of `SPEC_TABLE_INCLUDES_NOT_READ` is left out, and the pattern
+    of the include is added to `not_read`. Any other include that is left in a table, on a
+    line of its own or in a cell, stops the dump: what it brings would be missing without a
+    word."""
     tables = []
     index = 0
     while index < len(lines):
@@ -1212,6 +1361,25 @@ def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, s
         start = index
         while start > 0 and SPEC_BLOCK_HEADER.match(lines[start - 1]):
             start -= 1
+        includes = [
+            include
+            for line in lines[index + 1 : end]
+            for include in SPEC_TABLE_INCLUDE.findall(line)
+        ]
+        for include in includes:
+            declared = [
+                pattern for pattern in SPEC_TABLE_INCLUDES_NOT_READ if re.match(pattern, include)
+            ]
+            if not declared:
+                raise RuntimeError(
+                    f"{file}: a table includes a file that is not read: {include}. "
+                    "Write the file in spec_generated_files, or declare in "
+                    "SPEC_TABLE_INCLUDES_NOT_READ what the table has"
+                )
+            not_read.update(declared)
+        if includes:
+            index = end + 1
+            continue
         if any("ename:" in line for line in lines[index + 1 : end]):
             page = next((name for first, last, name in page_blocks if first < index < last), None)
             tables.append({"file": file, "page": page, "text": "\n".join(lines[start : end + 1])})
@@ -1219,15 +1387,50 @@ def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, s
     return tables
 
 
-def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchors: set[str]):
+def spec_check_table_includes_not_read(not_read: set[str]):
+    """Stops if `SPEC_TABLE_INCLUDES_NOT_READ` declares includes that no table of the
+    specification has: `not_read` are the declared patterns that the tables use."""
+    unused = sorted(set(SPEC_TABLE_INCLUDES_NOT_READ) - not_read)
+    if unused:
+        raise RuntimeError(
+            f"SPEC_TABLE_INCLUDES_NOT_READ declares {', '.join(unused)}, and no table of the "
+            "specification has such an include"
+        )
+
+
+def spec_check_formats_have_list_items(vk, docs):
+    """Stops if a value of VkFormat has no list item on the page of VkFormat. The tables of
+    formats that are not read (`SPEC_TABLE_INCLUDES_NOT_READ`) could then be the only place
+    that says something about the value."""
+    page = next(page for page in docs["pages"] if page["name"] == "VkFormat")
+    described = {item["name"] for item in page["items"]}
+    missing = sorted(field.name for field in vk.enums["VkFormat"].fields if field.name not in described)
+    if missing:
+        raise RuntimeError(
+            f"the page VkFormat has no list item for {', '.join(missing)}, and the tables of "
+            "formats are not read (SPEC_TABLE_INCLUDES_NOT_READ)"
+        )
+
+
+def build_docs(
+    defined: set[str],
+    generated: dict[str, list[str]],
+    linked_anchors: set[str],
+    table_includes_not_read: set[str] | None = None,
+):
     """`linked_anchors` are the anchors of the specification that the registry links to.
     The page that each one is on is dumped, as the path of its source file, because the
     specification is published as many pages. So is the page of each anchor that a
     dumped text refers to without a text of its own (`<<anchor>>`) and that has no title
     and no other text that Asciidoctor would show (`spec_named_anchors`): Asciidoctor
-    shows the name of such an anchor as the text of the link."""
+    shows the name of such an anchor as the text of the link.
+
+    The patterns of `SPEC_TABLE_INCLUDES_NOT_READ` that the tables of the sources use are
+    added to `table_includes_not_read`."""
     pages = {}
     tables = []
+    if table_includes_not_read is None:
+        table_includes_not_read = set()
     items_outside_pages = []
     defined_anchors = {}
     term_anchors = {}
@@ -1255,7 +1458,7 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
                 "unnamed_items": spec_unnamed_items(lines[index + 2 : end]),
             }
         page_blocks = [(index, end, attributes["refpage"]) for index, end, attributes in blocks]
-        tables.extend(spec_tables(file, lines, page_blocks))
+        tables.extend(spec_tables(file, lines, page_blocks, table_includes_not_read))
         items_outside_pages.extend(spec_items_outside_pages(file, lines, blocks))
     if not pages:
         raise RuntimeError("third_party/vulkan-docs has no reference page blocks")

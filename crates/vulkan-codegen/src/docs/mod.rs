@@ -318,7 +318,37 @@ impl<'a> Model<'a> {
             .collect()
     }
 
+    pub(crate) fn tabulated_on_the_page(
+        &self,
+        from: &Cfg,
+        owner: &str,
+        item: &str,
+    ) -> Option<Vec<Block>> {
+        self.rows_of_tables(from, owner, item, false)
+    }
+
+    pub(crate) fn tabulated_outside_the_pages(
+        &self,
+        from: &Cfg,
+        owner: &str,
+        item: &str,
+    ) -> Option<Vec<Block>> {
+        self.rows_of_tables(from, owner, item, true)
+    }
+
+    #[cfg(test)]
     pub(crate) fn tabulated(&self, from: &Cfg, owner: &str, item: &str) -> Option<Vec<Block>> {
+        self.tabulated_on_the_page(from, owner, item)
+            .or_else(|| self.tabulated_outside_the_pages(from, owner, item))
+    }
+
+    fn rows_of_tables(
+        &self,
+        from: &Cfg,
+        owner: &str,
+        item: &str,
+        outside_the_pages: bool,
+    ) -> Option<Vec<Block>> {
         let page = self.page(owner)?;
         let values = self.values_of(owner);
         let about_the_type = |table: &Table| {
@@ -339,10 +369,12 @@ impl<'a> Model<'a> {
                 .filter(|(_, _, row)| value_named(row) == Some(item))
                 .collect::<Vec<_>>()
         };
-        let mut rows = rows_in(false);
-        if rows.is_empty() {
-            rows = rows_in(true);
-        }
+        let on_the_page = rows_in(false);
+        let rows = match (outside_the_pages, on_the_page.is_empty()) {
+            (false, _) => on_the_page,
+            (true, true) => rows_in(true),
+            (true, false) => return None,
+        };
         let blocks = rows
             .into_iter()
             .filter_map(|(source, table, row)| self.table_row(from, source, item, table, row))

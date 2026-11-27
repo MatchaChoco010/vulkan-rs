@@ -324,7 +324,9 @@ mod tests {
                 let described_before = model.described(&Cfg::default(), owner, value).is_some()
                     || is_the_type_of_a_structure
                     || is_the_type_of_a_handle
-                    || model.tabulated(&Cfg::default(), owner, value).is_some();
+                    || model
+                        .tabulated_on_the_page(&Cfg::default(), owner, value)
+                        .is_some();
                 let elsewhere = model.value_descriptions.get(value);
                 let (false, Some(descriptions)) = (described_before, elsewhere) else {
                     continue;
@@ -370,7 +372,7 @@ mod tests {
         assert_eq!(
             taken, pinned,
             "exactly these values are described by nothing that comes first (a list item or a \
-             table row of the reference page of their type, or the structure or the handle that \
+             row of a table of the reference page of their type, or the structure or the handle that \
              the registry has for a structure type or an object type) and by one list item \
              elsewhere. A value that joins them takes the text of that item, so read the item \
              before listing the value here"
