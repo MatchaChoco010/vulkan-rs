@@ -623,6 +623,14 @@ fn a_description_under_an_alias_name_comes_after_everything_under_the_name_of_th
     for field in &mut structure_types.fields {
         field.aliases = vec![format!("{}_KHR", field.name)];
     }
+    let object_types = ir
+        .enums
+        .iter_mut()
+        .find(|e| e.name == "VkObjectType")
+        .expect("the object types");
+    for field in &mut object_types.fields {
+        field.aliases = vec![format!("{}_KHR", field.name)];
+    }
     let mut docs = docs();
     for page in &mut docs.pages {
         page.items.retain(|item| item.name != "VK_COLOR_RED");
@@ -633,6 +641,14 @@ fn a_description_under_an_alias_name_comes_after_everything_under_the_name_of_th
         &[(
             "VK_STRUCTURE_TYPE_QUEUE_INFO_KHR",
             "ename:VK_STRUCTURE_TYPE_QUEUE_INFO_KHR specifies a structure.",
+        )],
+    ));
+    docs.pages.push(page(
+        "VkObjectType",
+        "Object types",
+        &[(
+            "VK_OBJECT_TYPE_QUEUE_KHR",
+            "ename:VK_OBJECT_TYPE_QUEUE_KHR specifies a handle.",
         )],
     ));
     let colors = docs
@@ -657,6 +673,14 @@ fn a_description_under_an_alias_name_comes_after_everything_under_the_name_of_th
         )[0],
         "`VK_STRUCTURE_TYPE_QUEUE_INFO`, the structure type of [`VkDeviceInfo`](DeviceInfo).",
         "the structure of the registry comes first"
+    );
+    assert_eq!(
+        doc_of(
+            &enums::emit(&Model::with_docs(&ir, &docs)),
+            "pub const QUEUE: Self = Self(4)"
+        )[0],
+        "`VK_OBJECT_TYPE_QUEUE`, the object type of [`VkDevice`](Device).",
+        "the handle of the registry comes first"
     );
     docs.tables.clear();
     assert_eq!(

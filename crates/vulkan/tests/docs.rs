@@ -531,6 +531,7 @@ struct Specification {
     value_descriptions: BTreeMap<String, Vec<ValueDescription>>,
     unnamed_descriptions: BTreeMap<String, Vec<(String, String)>>,
     value_aliases: BTreeMap<String, BTreeSet<String>>,
+    values_of_structures_and_handles: BTreeSet<String>,
     tables: Vec<Table>,
     extensions: BTreeSet<String>,
     attributes: BTreeMap<String, String>,
@@ -642,6 +643,7 @@ struct Sources {
     defined: BTreeSet<String>,
     equivalent_flags: BTreeMap<String, Vec<String>>,
     value_aliases: BTreeMap<String, BTreeSet<String>>,
+    values_of_structures_and_handles: BTreeSet<String>,
     conditional: Regex,
     end_conditional: Regex,
     tagged_include: Regex,
@@ -708,6 +710,20 @@ fn equivalent_flags(registry: &str) -> BTreeMap<String, Vec<String>> {
     flags
 }
 
+fn values_of_structures_and_handles(registry: &str) -> BTreeSet<String> {
+    let structure_type =
+        regex(r#"<member\s[^>]*\bvalues="(\w+)"[^>]*>\s*<type>VkStructureType</type>"#);
+    let handle = regex(r#"<type\s[^>]*\bcategory="handle"[^>]*>"#);
+    let structure_types = structure_type
+        .captures_iter(registry)
+        .map(|member| member[1].to_string());
+    let object_types = handle
+        .find_iter(registry)
+        .filter_map(|tag| xml_attribute(tag.as_str(), "objtypeenum"))
+        .map(str::to_string);
+    structure_types.chain(object_types).collect()
+}
+
 fn value_aliases(registry: &str) -> BTreeMap<String, BTreeSet<String>> {
     let mut alias_of = BTreeMap::new();
     for tag in regex(r"<enum\s[^>]*>").find_iter(registry) {
@@ -751,6 +767,7 @@ impl Sources {
             defined,
             equivalent_flags: equivalent_flags(&registry),
             value_aliases: value_aliases(&registry),
+            values_of_structures_and_handles: values_of_structures_and_handles(&registry),
             conditional: regex(r"^(ifdef|ifndef)::([^\[]*)\[(.*)\]\s*$"),
             end_conditional: regex(r"^endif::[^\[]*\[\]\s*$"),
             tagged_include: regex(r"^include::\{chapters\}/([^\[]+)\[tags?=([^\],;]+)\]\s*$"),
@@ -1056,6 +1073,7 @@ impl Specification {
             value_descriptions: BTreeMap::new(),
             unnamed_descriptions: BTreeMap::new(),
             value_aliases: sources.value_aliases.clone(),
+            values_of_structures_and_handles: sources.values_of_structures_and_handles.clone(),
             tables,
             extensions,
             attributes,
@@ -2907,6 +2925,9 @@ impl Checker {
             if let [elsewhere, ..] = spec.described_outside_the_page(page, c_name) {
                 self.fail(item, format!("the specification describes `{c_name}` in a list item of {}, which comes before the description under its alias name `{other}`", elsewhere.place()));
             }
+            if spec.values_of_structures_and_handles.contains(c_name) {
+                self.fail(item, format!("the registry has a structure or a handle for `{c_name}`, which comes before the description under its alias name `{other}`"));
+            }
             self.contained(spec, item, page, description);
             self.whole(spec, item, page, ("ename", other), description);
             self.described_under_an_alias
@@ -3842,6 +3863,7 @@ fn fixture_specification() -> Specification {
             "VK_COLOR_CINNABAR".to_string(),
             BTreeSet::from(["VK_COLOR_VERMILION".to_string()]),
         )]),
+        values_of_structures_and_handles: BTreeSet::new(),
         tables: fixture_tables(),
         extensions: BTreeSet::new(),
         attributes: BTreeMap::from([("times".to_string(), "×".to_string())]),
@@ -5186,6 +5208,29 @@ fn checker_reports_a_description_under_an_alias_name_taken_before_one_under_the_
         failures(&with_a_row),
         [
             "Color::CINNABAR: the specification describes `VK_COLOR_CINNABAR` in a table row, which comes before the description under its alias name `VK_COLOR_VERMILION`"
+        ]
+    );
+    let mut with_a_structure = fixture_specification();
+    with_a_structure.values_of_structures_and_handles = values_of_structures_and_handles(
+        r#"<type category="struct" name="VkThing">
+                <member values="VK_COLOR_CINNABAR"><type>VkStructureType</type> <name>sType</name></member>
+                <member values="VK_COLOR_RED"><type>VkColor</type> <name>color</name></member>
+            </type>
+            <type category="handle" parent="VkDevice" objtypeenum="VK_COLOR_GOLD"><type>VK_DEFINE_HANDLE</type>(<name>VkThings</name>)</type>
+            <type category="bitmask" objtypeenum="VK_COLOR_SILVER"/>"#,
+    );
+    assert_eq!(
+        with_a_structure
+            .values_of_structures_and_handles
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["VK_COLOR_CINNABAR", "VK_COLOR_GOLD"]
+    );
+    assert_eq!(
+        failures(&with_a_structure),
+        [
+            "Color::CINNABAR: the registry has a structure or a handle for `VK_COLOR_CINNABAR`, which comes before the description under its alias name `VK_COLOR_VERMILION`"
         ]
     );
     let mut with_an_item_elsewhere = fixture_specification();
