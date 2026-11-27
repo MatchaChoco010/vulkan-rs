@@ -106,9 +106,9 @@ pub struct AllocationCreateDesc<'a> {
     /// Whether [`Allocator::allocate`](crate::Allocator::allocate) maps the allocation
     /// before it returns it, if its memory type is `HOST_VISIBLE`.
     ///
-    /// The allocation is then mapped as
-    /// [`Allocator::map_persistent`](crate::Allocator::map_persistent) maps it, until it
-    /// is freed, and [`Allocation::mapped_ptr`], [`Allocation::mapped_slice`] and
+    /// The allocation then stays mapped until it is freed, as
+    /// [`Allocator::map_persistent`](crate::Allocator::map_persistent) maps it.
+    /// [`Allocation::mapped_ptr`], [`Allocation::mapped_slice`] and
     /// [`Allocation::mapped_slice_mut`] give its bytes without borrowing the allocator.
     /// The memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
     /// [`MemoryLocation::GpuToCpu`] is always `HOST_VISIBLE`, so their allocations are
@@ -321,10 +321,12 @@ impl Allocation {
     ///
     /// # Safety
     ///
-    /// - The pointer of [`Allocation::mapped_ptr`] must still be valid:
-    ///   [`Allocator::free_all`](crate::Allocator::free_all) must not have been called on
-    ///   the allocator that made the allocation, and that allocator must not have been
-    ///   dropped, since the allocation was made.
+    /// - The pointer of [`Allocation::mapped_ptr`] must be valid for as long as the slice
+    ///   is in use: [`Allocator::free_all`](crate::Allocator::free_all) must not be called
+    ///   on the allocator that made the allocation, and that allocator must not be
+    ///   dropped, from the time the allocation was made until the slice is no longer
+    ///   used. The slice borrows the allocation, not the allocator, so the compiler does
+    ///   not prevent either.
     /// - While the slice is in use, neither the device nor any other host pointer may
     ///   write these bytes.
     pub unsafe fn mapped_slice(&self) -> Option<&[u8]> {
@@ -338,8 +340,12 @@ impl Allocation {
     ///
     /// # Safety
     ///
-    /// - The pointer of [`Allocation::mapped_ptr`] must still be valid, as for
-    ///   [`Allocation::mapped_slice`].
+    /// - The pointer of [`Allocation::mapped_ptr`] must be valid for as long as the slice
+    ///   is in use: [`Allocator::free_all`](crate::Allocator::free_all) must not be called
+    ///   on the allocator that made the allocation, and that allocator must not be
+    ///   dropped, from the time the allocation was made until the slice is no longer
+    ///   used. The slice borrows the allocation, not the allocator, so the compiler does
+    ///   not prevent either.
     /// - While the slice is in use, neither the device nor any other host pointer may
     ///   read or write these bytes.
     pub unsafe fn mapped_slice_mut(&mut self) -> Option<&mut [u8]> {

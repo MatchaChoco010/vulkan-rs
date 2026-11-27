@@ -70,7 +70,7 @@
 //!
 //!         allocation
 //!             .mapped_slice_mut()
-//!             .ok_or("CpuToGpu memory is mapped")?
+//!             .ok_or("the allocation is not mapped")?
 //!             .get_mut(..data.len())
 //!             .ok_or("the allocation is smaller than the data")?
 //!             .copy_from_slice(data);
@@ -166,14 +166,13 @@
 //! # Mapping
 //!
 //! Memory that the host writes or reads, such as uniform, staging and readback buffers,
-//! usually stays mapped from its allocation to its free. Set
-//! [`AllocationCreateDesc::mapped`] to `true`, and [`Allocator::allocate`] maps the
-//! allocation before it returns it. [`Allocation::mapped_slice_mut`] and
-//! [`Allocation::mapped_slice`] then give its bytes, and [`Allocation::mapped_ptr`] a
-//! pointer to them, without borrowing the allocator, so several allocations can be
-//! accessed at once. Flush after host writes and invalidate before host reads as
-//! described below. [`Allocator::free`] releases the mapping. The memory of
-//! [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
+//! usually stays mapped from its allocation to its free, and [`Allocator::allocate`] maps
+//! an allocation before it returns it when [`AllocationCreateDesc::mapped`] is `true`.
+//! [`Allocation::mapped_slice_mut`] and [`Allocation::mapped_slice`] then give its bytes,
+//! and [`Allocation::mapped_ptr`] a pointer to them, without borrowing the allocator, so
+//! several allocations can be accessed at once. Flush after host writes and invalidate
+//! before host reads as described below. [`Allocator::free`] releases the mapping. The
+//! memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
 //! [`MemoryLocation::GpuToCpu`] is always host-visible, so it is always mapped; for other
 //! locations, memory that is not host-visible is returned unmapped.
 //!
@@ -199,11 +198,11 @@
 //! device, and Vulkan does not allow memory with more than one instance to be mapped.
 //! Such allocations can be made and bound to resources, but must not be made with
 //! [`AllocationCreateDesc::mapped`] nor passed to any of the mapping functions. The
-//! allocator does not check this. The device-local heaps
-//! of such a device usually have that flag. [`MemoryLocation::CpuToGpu`] prefers
-//! device-local memory, and the other host locations can give it too, for example when
-//! the memory they rank higher is out of memory (see [`Allocator::allocate`]). For an
-//! allocation that will be mapped on such a device, allow in
+//! allocator does not check this. The device-local heaps of such a device usually have
+//! that flag. [`MemoryLocation::CpuToGpu`] prefers device-local memory, and the other
+//! host locations can give it too, for example when the memory they rank higher is out
+//! of memory (see [`Allocator::allocate`]). For an allocation that will be mapped on
+//! such a device, allow in
 //! [`vk::MemoryRequirements::memory_type_bits`](vulkan::vk::MemoryRequirements::memory_type_bits)
 //! only the memory types of heaps without `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`.
 //!

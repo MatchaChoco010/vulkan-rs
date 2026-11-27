@@ -248,7 +248,6 @@ impl Allocator {
     ///    applies to every allocation, shared, dedicated, exportable or zero-initialized.
     ///    If the request is larger than the heap of every such type, it is returned
     ///    without a Vulkan call.
-    ///
     /// 5. If [`AllocationCreateDesc::mapped`] is `true` and the memory type the allocation
     ///    was made in is `HOST_VISIBLE`, the errors of mapping it, as for
     ///    [`Allocator::map_persistent`]: [`AllocationError::Vulkan`] if `vkMapMemory`
@@ -385,10 +384,9 @@ impl Allocator {
 
     /// Frees an allocation made by [`Allocator::allocate`].
     ///
-    /// If the allocation is persistently mapped (made with
-    /// [`AllocationCreateDesc::mapped`] or passed to [`Allocator::map_persistent`]), that
-    /// mapping is released. If it was the last allocation of its block, the block is not
-    /// mapped any more, and then:
+    /// If the allocation is persistently mapped (made with [`AllocationCreateDesc::mapped`]
+    /// or passed to [`Allocator::map_persistent`]), that mapping is released. If it was the
+    /// last allocation of its block, the block is not mapped any more, and then:
     ///
     /// - A shared block of the size of a new shared block of its memory type (the
     ///   smaller of [`AllocatorCreateDesc::block_size`] and the size of the memory heap
@@ -517,9 +515,8 @@ impl Allocator {
     ///   [`Allocator::map_memory`], [`Allocator::map_persistent`],
     ///   [`Allocation::mapped_ptr`] or [`MappedAllocation::as_ptr`] may access the
     ///   allocation's bytes in a way that conflicts with the slices the guard hands out,
-    ///   including through its safe
-    ///   methods: no writes while a shared slice is in use, and no access at all while a
-    ///   mutable slice is in use.
+    ///   including through its safe methods: no writes while a shared slice is in use,
+    ///   and no access at all while a mutable slice is in use.
     pub unsafe fn map<'b>(
         &'b mut self,
         allocation: &'b Allocation,
@@ -538,9 +535,9 @@ impl Allocator {
     /// The allocation keeps the pointer: [`Allocation::mapped_ptr`],
     /// [`Allocation::mapped_slice`] and [`Allocation::mapped_slice_mut`] give it and the
     /// bytes without borrowing the allocator. This is the state that
-    /// [`AllocationCreateDesc::mapped`] gives an allocation when it is made; this
-    /// function maps an allocation that was made without it. The pointer stays valid
-    /// until [`Allocator::free`] frees the allocation, which releases the mapping, until
+    /// [`AllocationCreateDesc::mapped`] gives an allocation when it is made; this function
+    /// maps an allocation that was made without it. The pointer stays valid until
+    /// [`Allocator::free`] frees the allocation, which releases the mapping, until
     /// [`Allocator::free_all`] or until the allocator is dropped. Calling this again for
     /// the same allocation returns the same pointer without taking another reference.
     /// [`Allocator::unmap_memory`] does not release this mapping.
