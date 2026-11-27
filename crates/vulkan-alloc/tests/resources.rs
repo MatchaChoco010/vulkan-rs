@@ -986,7 +986,7 @@ impl Run<'_> {
                 Err(refused) => refused,
             };
             ensure!(
-                refused.error == AllocationError::InvalidAllocation,
+                refused.error == AllocationError::StillMapped,
                 "{context}: refused with {:?}",
                 refused.error
             );

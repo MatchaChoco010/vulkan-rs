@@ -346,9 +346,10 @@ impl Allocator {
     /// 3. The errors of [`Allocator::allocate`] for the description above: in
     ///    particular [`AllocationError::NoCompatibleMemoryType`],
     ///    [`AllocationError::OutOfMemory`], [`AllocationError::Vulkan`] if
-    ///    `vkAllocateMemory` fails otherwise, and the errors of mapping the allocation
-    ///    when [`ResourceAllocationDesc::mapped`] is `true`, in the order that
-    ///    [`Allocator::allocate`] lists them.
+    ///    `vkAllocateMemory` fails otherwise, and, when [`ResourceAllocationDesc::mapped`]
+    ///    is `true`, [`AllocationError::Vulkan`] if `vkMapMemory` fails and
+    ///    [`AllocationError::MappingFailed`] if mapping cannot give a pointer, in the
+    ///    order that [`Allocator::allocate`] lists them.
     /// 4. [`AllocationError::Vulkan`] with the result if `vkBindBufferMemory` fails.
     ///
     /// Nothing is left when an error is returned: the buffer, if it was created, is
@@ -557,9 +558,10 @@ impl Allocator {
     ///    particular [`AllocationError::NoCompatibleMemoryType`], which images with
     ///    optimal tiling can get for a host-visible location,
     ///    [`AllocationError::OutOfMemory`], [`AllocationError::Vulkan`] if
-    ///    `vkAllocateMemory` fails otherwise, and the errors of mapping the allocation
-    ///    when [`ResourceAllocationDesc::mapped`] is `true`, in the order that
-    ///    [`Allocator::allocate`] lists them.
+    ///    `vkAllocateMemory` fails otherwise, and, when [`ResourceAllocationDesc::mapped`]
+    ///    is `true`, [`AllocationError::Vulkan`] if `vkMapMemory` fails and
+    ///    [`AllocationError::MappingFailed`] if mapping cannot give a pointer, in the
+    ///    order that [`Allocator::allocate`] lists them.
     /// 5. [`AllocationError::Vulkan`] with the result if `vkBindImageMemory` fails.
     ///
     /// Nothing is left when an error is returned: the image, if it was created, is
@@ -701,11 +703,17 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// The errors of [`Allocator::free`]: a [`FreeError`] if the allocator does not hold
-    /// the allocation, or if it still has a mapping made with
-    /// [`Allocator::map_memory`]. Nothing is freed then, and the buffer is not
-    /// destroyed: [`FreeError::allocation`] hands the allocation back, so that the cause
-    /// can be removed and both passed to this function again.
+    /// The errors of [`Allocator::free`]: a [`FreeError`] whose [`FreeError::error`] is
+    /// the first of these that applies:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::StillMapped`] if the allocation still holds a reference taken
+    ///    with [`Allocator::map_memory`].
+    ///
+    /// Nothing is freed then, and the buffer is not destroyed: [`FreeError::allocation`]
+    /// hands the allocation back, so that the cause can be removed and both passed to
+    /// this function again.
     ///
     /// # Safety
     ///
@@ -741,11 +749,17 @@ impl Allocator {
     ///
     /// # Errors
     ///
-    /// The errors of [`Allocator::free`]: a [`FreeError`] if the allocator does not hold
-    /// the allocation, or if it still has a mapping made with
-    /// [`Allocator::map_memory`]. Nothing is freed then, and the image is not destroyed:
-    /// [`FreeError::allocation`] hands the allocation back, so that the cause can be
-    /// removed and both passed to this function again.
+    /// The errors of [`Allocator::free`]: a [`FreeError`] whose [`FreeError::error`] is
+    /// the first of these that applies:
+    ///
+    /// 1. [`AllocationError::InvalidAllocation`] if the allocator does not hold the
+    ///    allocation.
+    /// 2. [`AllocationError::StillMapped`] if the allocation still holds a reference taken
+    ///    with [`Allocator::map_memory`].
+    ///
+    /// Nothing is freed then, and the image is not destroyed: [`FreeError::allocation`]
+    /// hands the allocation back, so that the cause can be removed and both passed to
+    /// this function again.
     ///
     /// # Safety
     ///
