@@ -133,8 +133,8 @@ def khronos_scripts():
 
     The replacement is for Khronos' script as it is. It stops the generation when the
     enumerant has the alias already, because Khronos' generator then does the step
-    itself, and `load_registry` stops it when a generation ends without this class
-    having run."""
+    itself, and the generator that `load_registry` runs stops it when Khronos'
+    `beginFile` returns without this class having run."""
     sys.path.insert(0, str(REGISTRY))
     import base_generator  # type: ignore
     from reg import Registry  # type: ignore
