@@ -22,11 +22,10 @@
 //!    [`AllocationCreateDesc::new`], and pass it to [`Allocator::allocate`]. The
 //!    [`MemoryLocation`] chooses the memory type from how the memory is used:
 //!    [`MemoryLocation::GpuOnly`] for memory only the device accesses,
-//!    [`MemoryLocation::CpuToGpu`] for memory the host writes and the device reads
-//!    directly, such as the uniform buffer below, [`MemoryLocation::CpuOnly`] for
-//!    staging buffers the device only copies from, and [`MemoryLocation::GpuToCpu`] for
-//!    memory the device writes and the host reads. The memory of the last three is
-//!    host-visible and host-coherent.
+//!    [`MemoryLocation::CpuToGpu`] for memory the host writes and the device reads,
+//!    such as staging buffers for uploads and the uniform buffer below, and
+//!    [`MemoryLocation::GpuToCpu`] for memory the device writes and the host reads. The
+//!    memory of the last two is host-visible and host-coherent.
 //! 4. Bind the resource to [`Allocation::memory`] at [`Allocation::offset`]. The
 //!    allocator does not bind anything itself.
 //! 5. Access host-visible memory through the allocation, made with
@@ -176,9 +175,9 @@
 //! and [`Allocation::mapped_ptr`] a pointer to them, without borrowing the allocator, so
 //! several allocations can be accessed at once. Flush after host writes and invalidate
 //! before host reads as described below. [`Allocator::free`] releases the mapping. The
-//! memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
-//! [`MemoryLocation::GpuToCpu`] is always host-visible, so it is always mapped; for other
-//! locations, memory that is not host-visible is returned unmapped.
+//! memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is always
+//! host-visible, so it is always mapped; for other locations, memory that is not
+//! host-visible is returned unmapped.
 //!
 //! The other ways to map an allocation of host-visible memory:
 //!
@@ -212,16 +211,16 @@
 //! Such allocations can be made and bound to resources, but must not be made with
 //! [`AllocationCreateDesc::mapped`] nor passed to any of the mapping functions. The
 //! allocator does not check this. The device-local heaps of such a device usually have
-//! that flag. [`MemoryLocation::CpuToGpu`] prefers device-local memory, and the other
-//! host locations can give it too, for example when the memory they rank higher is out
-//! of memory (see [`Allocator::allocate`]). For an allocation that will be mapped on
+//! that flag. [`MemoryLocation::CpuToGpu`] prefers device-local memory, and
+//! [`MemoryLocation::GpuToCpu`] can give it too, for example when the memory it ranks
+//! higher is out of memory (see [`Allocator::allocate`]). For an allocation that will be mapped on
 //! such a device, allow in
 //! [`vk::MemoryRequirements::memory_type_bits`](vulkan::vk::MemoryRequirements::memory_type_bits)
 //! only the memory types of heaps without `VK_MEMORY_HEAP_MULTI_INSTANCE_BIT`.
 //!
-//! Memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
-//! [`MemoryLocation::GpuToCpu`] is always `HOST_COHERENT`, so mapped writes and reads
-//! need neither a flush nor an invalidate (see [`MemoryLocation`]).
+//! Memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is always
+//! `HOST_COHERENT`, so mapped writes and reads need neither a flush nor an invalidate
+//! (see [`MemoryLocation`]).
 //! [`MemoryLocation::GpuOnly`] and a [`MemoryLocation::Custom`] location that does not
 //! require `HOST_COHERENT` can give host-visible memory without it. Such memory needs
 //! [`Allocator::flush_allocation`] after host writes and

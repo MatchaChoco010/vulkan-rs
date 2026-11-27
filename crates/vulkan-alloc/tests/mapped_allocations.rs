@@ -27,10 +27,9 @@ const KINDS: [vk::MemoryPropertyFlags; 6] = [
     LOCAL.union(VISIBLE).union(CACHED),
 ];
 
-const LOCATIONS: [MemoryLocation; 5] = [
+const LOCATIONS: [MemoryLocation; 4] = [
     MemoryLocation::GpuOnly,
     MemoryLocation::CpuToGpu,
-    MemoryLocation::CpuOnly,
     MemoryLocation::GpuToCpu,
     MemoryLocation::Custom {
         required: vk::MemoryPropertyFlags::empty(),
@@ -104,9 +103,7 @@ fn scenarios() -> impl Strategy<Value = (Vec<vk::MemoryPropertyFlags>, Vec<Op>)>
 fn required_flags(location: MemoryLocation) -> vk::MemoryPropertyFlags {
     match location {
         MemoryLocation::GpuOnly => LOCAL,
-        MemoryLocation::CpuToGpu | MemoryLocation::CpuOnly | MemoryLocation::GpuToCpu => {
-            VISIBLE | COHERENT
-        }
+        MemoryLocation::CpuToGpu | MemoryLocation::GpuToCpu => VISIBLE | COHERENT,
         MemoryLocation::Custom { required, .. } => required,
     }
 }

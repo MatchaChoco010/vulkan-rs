@@ -119,9 +119,8 @@ pub struct AllocationCreateDesc<'a> {
     /// [`Allocator::map_persistent`](crate::Allocator::map_persistent) maps it.
     /// [`Allocation::mapped_ptr`], [`Allocation::mapped_slice`] and
     /// [`Allocation::mapped_slice_mut`] give its bytes without borrowing the allocator.
-    /// The memory of [`MemoryLocation::CpuToGpu`], [`MemoryLocation::CpuOnly`] and
-    /// [`MemoryLocation::GpuToCpu`] is always `HOST_VISIBLE`, so their allocations are
-    /// always mapped.
+    /// The memory of [`MemoryLocation::CpuToGpu`] and [`MemoryLocation::GpuToCpu`] is
+    /// always `HOST_VISIBLE`, so their allocations are always mapped.
     ///
     /// For a memory type that is not `HOST_VISIBLE`, which [`MemoryLocation::GpuOnly`]
     /// and a [`MemoryLocation::Custom`] location that does not require the flag can give,
@@ -280,9 +279,8 @@ impl Allocation {
     /// [`Allocator::flush_allocation`](crate::Allocator::flush_allocation) and
     /// [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation); both
     /// do nothing for memory with it, so they can be called without checking.
-    /// `HOST_COHERENT` is always set for allocations made with [`MemoryLocation::CpuToGpu`],
-    /// [`MemoryLocation::CpuOnly`] and [`MemoryLocation::GpuToCpu`];
-    /// [`MemoryLocation::GpuOnly`] and a
+    /// `HOST_COHERENT` is always set for allocations made with [`MemoryLocation::CpuToGpu`]
+    /// and [`MemoryLocation::GpuToCpu`]; [`MemoryLocation::GpuOnly`] and a
     /// [`MemoryLocation::Custom`] location that does not require `HOST_COHERENT` can give
     /// host-visible memory without it.
     pub fn memory_properties(&self) -> vk::MemoryPropertyFlags {
