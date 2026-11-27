@@ -576,12 +576,12 @@ fn image_chain(image: &ImageMake) -> Chain {
 }
 
 fn compatible(location: MemoryLocation, memory_type_bits: u32) -> bool {
-    let required = if let MemoryLocation::Custom { required, .. } = location {
-        required
-    } else if location == MemoryLocation::GpuOnly {
-        vk::MemoryPropertyFlags::DEVICE_LOCAL
-    } else {
-        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
+    let required = match location {
+        MemoryLocation::GpuOnly => vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        MemoryLocation::CpuToGpu | MemoryLocation::GpuToCpu => {
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT
+        }
+        MemoryLocation::Custom { required, .. } => required,
     };
     let properties = FakeDevice::memory_properties();
     (0..properties.memory_type_count).any(|index| {
