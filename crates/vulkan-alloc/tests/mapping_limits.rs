@@ -29,7 +29,7 @@ fn the_guard_maps_only_allocations_a_slice_can_cover() {
                 }
                 Err(error) => {
                     assert!(size > largest, "{size} bytes were not mapped");
-                    assert_eq!(error, AllocationError::InvalidAllocation);
+                    assert_eq!(error, AllocationError::MappingFailed);
                     assert_eq!(fake.calls(), calls, "{size} bytes");
                 }
             }

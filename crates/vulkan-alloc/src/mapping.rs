@@ -149,7 +149,7 @@ impl<'a> MappedAllocation<'a> {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::InvalidAllocation`] if the range does not lie inside the
+    /// - [`AllocationError::RangeOutOfBounds`] if the range does not lie inside the
     ///   [`Allocation::size`] bytes of the allocation (including when `offset + size`
     ///   overflows), whether its memory type has `HOST_COHERENT` or not. No Vulkan call
     ///   is made in this case.
@@ -183,7 +183,7 @@ impl<'a> MappedAllocation<'a> {
     ///
     /// # Errors
     ///
-    /// - [`AllocationError::InvalidAllocation`] if the range does not lie inside the
+    /// - [`AllocationError::RangeOutOfBounds`] if the range does not lie inside the
     ///   [`Allocation::size`] bytes of the allocation (including when `offset + size`
     ///   overflows), whether its memory type has `HOST_COHERENT` or not. No Vulkan call
     ///   is made in this case.
@@ -208,7 +208,7 @@ impl<'a> MappedAllocation<'a> {
 fn range_in_bytes(offset: usize, size: usize) -> Result<(u64, u64), AllocationError> {
     match (u64::try_from(offset), u64::try_from(size)) {
         (Ok(offset), Ok(size)) => Ok((offset, size)),
-        _ => Err(AllocationError::InvalidAllocation),
+        _ => Err(AllocationError::RangeOutOfBounds),
     }
 }
 

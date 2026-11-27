@@ -40,33 +40,75 @@ pub enum AllocationError {
     /// here: [`Allocator::allocate`](crate::Allocator::allocate) tries another memory type
     /// then, and returns [`AllocationError::OutOfMemory`] when none is left. From the other
     /// calls it is reported here.
-    Vulkan(vk::VkResult),
-    /// The allocation does not fit the operation. Each function lists its cases under
-    /// `# Errors`. They are of these kinds:
     ///
-    /// - The allocator does not hold the allocation, for example because it comes from
-    ///   another allocator or has been freed.
-    /// - The operation does not apply to the allocation in its current state: mapping
-    ///   memory that is not host-visible or an allocation that already holds
-    ///   [`usize::MAX`] mapping references, unmapping an allocation that is not mapped
-    ///   or whose only reference is its persistent mapping, flushing or invalidating an
-    ///   allocation that is not mapped, or freeing an allocation that still has a
-    ///   mapping made with [`Allocator::map_memory`](crate::Allocator::map_memory).
-    /// - Mapping cannot give a pointer to the allocation: `vkMapMemory` returns a null
-    ///   pointer, the address of the allocation (the address of the mapped block plus
-    ///   [`Allocation::offset`](crate::Allocation::offset)) cannot be represented as a
-    ///   non-null pointer, or, for [`Allocator::map`](crate::Allocator::map), the
-    ///   allocation is larger than [`isize::MAX`] bytes. The first two also apply to
-    ///   [`Allocator::allocate`](crate::Allocator::allocate) when it maps the allocation
-    ///   for [`AllocationCreateDesc::mapped`](crate::AllocationCreateDesc::mapped), which
-    ///   then frees it.
-    /// - A range given to
-    ///   [`Allocator::flush_allocation_range`](crate::Allocator::flush_allocation_range),
-    ///   [`Allocator::invalidate_allocation_range`](crate::Allocator::invalidate_allocation_range),
-    ///   [`MappedAllocation::flush_range`](crate::MappedAllocation::flush_range) or
-    ///   [`MappedAllocation::invalidate_range`](crate::MappedAllocation::invalidate_range)
-    ///   does not lie inside the allocation.
+    /// A `vkMapMemory` call that fails is reported here, also by
+    /// [`Allocator::allocate`](crate::Allocator::allocate) when it maps the allocation for
+    /// [`AllocationCreateDesc::mapped`](crate::AllocationCreateDesc::mapped). A
+    /// `vkMapMemory` call that succeeds without giving a pointer to the allocation is
+    /// reported as [`AllocationError::MappingFailed`].
+    Vulkan(vk::VkResult),
+    /// The allocator does not hold the allocation: it was made by another allocator, it
+    /// has been freed, or [`Allocator::free_all`](crate::Allocator::free_all) was called
+    /// after it was made.
+    ///
+    /// Every function that takes an allocation checks this before anything else, so it is
+    /// returned whatever the memory type, the mapping state and the other arguments.
     InvalidAllocation,
+    /// The memory type of the allocation is not `HOST_VISIBLE`
+    /// ([`Allocation::memory_properties`](crate::Allocation::memory_properties) tells), so
+    /// it cannot be mapped.
+    ///
+    /// Returned by [`Allocator::map_memory`](crate::Allocator::map_memory),
+    /// [`Allocator::map`](crate::Allocator::map) and
+    /// [`Allocator::map_persistent`](crate::Allocator::map_persistent).
+    /// [`Allocator::allocate`](crate::Allocator::allocate) returns such an allocation
+    /// unmapped instead, also with
+    /// [`AllocationCreateDesc::mapped`](crate::AllocationCreateDesc::mapped).
+    NotHostVisible,
+    /// The operation needs a mapping that the allocation does not have:
+    ///
+    /// - [`Allocator::unmap_memory`](crate::Allocator::unmap_memory) of an allocation that
+    ///   holds no reference taken with
+    ///   [`Allocator::map_memory`](crate::Allocator::map_memory), also when it is
+    ///   persistently mapped, since that mapping is released only by
+    ///   [`Allocator::free`](crate::Allocator::free);
+    /// - a flush or invalidate through the allocator
+    ///   ([`Allocator::flush_allocation`](crate::Allocator::flush_allocation),
+    ///   [`Allocator::invalidate_allocation`](crate::Allocator::invalidate_allocation) and
+    ///   their range forms) of an allocation that is not mapped in any way, whether its
+    ///   memory type has `HOST_COHERENT` or not.
+    NotMapped,
+    /// [`Allocator::free`](crate::Allocator::free) was given an allocation that still holds
+    /// references taken with [`Allocator::map_memory`](crate::Allocator::map_memory).
+    ///
+    /// Release them with [`Allocator::unmap_memory`](crate::Allocator::unmap_memory), which
+    /// returns [`AllocationError::NotMapped`] once none is left, and free the allocation
+    /// again (see [`FreeError`]).
+    StillMapped,
+    /// Mapping cannot give a pointer to the allocation:
+    ///
+    /// - `vkMapMemory` succeeded but returned a null pointer;
+    /// - the address of the allocation (the address of the mapped block plus
+    ///   [`Allocation::offset`](crate::Allocation::offset)) cannot be represented as a
+    ///   non-null pointer;
+    /// - for [`Allocator::map`](crate::Allocator::map), the allocation is larger than
+    ///   [`isize::MAX`] bytes, which no slice can cover;
+    /// - the allocation already holds [`usize::MAX`] mapping references.
+    ///
+    /// The first two also apply to [`Allocator::allocate`](crate::Allocator::allocate) when
+    /// it maps the allocation for
+    /// [`AllocationCreateDesc::mapped`](crate::AllocationCreateDesc::mapped), which then
+    /// frees it. A `vkMapMemory` call that fails is reported as
+    /// [`AllocationError::Vulkan`] instead.
+    MappingFailed,
+    /// A range given to
+    /// [`Allocator::flush_allocation_range`](crate::Allocator::flush_allocation_range),
+    /// [`Allocator::invalidate_allocation_range`](crate::Allocator::invalidate_allocation_range),
+    /// [`MappedAllocation::flush_range`](crate::MappedAllocation::flush_range) or
+    /// [`MappedAllocation::invalidate_range`](crate::MappedAllocation::invalidate_range)
+    /// does not lie inside the [`Allocation::size`](crate::Allocation::size) bytes of the
+    /// allocation, including when `offset + size` overflows.
+    RangeOutOfBounds,
 }
 
 impl AllocationError {
@@ -87,7 +129,17 @@ impl fmt::Display for AllocationError {
                 write!(f, "the allocation description is not accepted")
             }
             Self::Vulkan(err) => write!(f, "{err}"),
-            Self::InvalidAllocation => write!(f, "invalid or already freed allocation"),
+            Self::InvalidAllocation => write!(f, "the allocator does not hold the allocation"),
+            Self::NotHostVisible => write!(f, "the memory of the allocation is not host-visible"),
+            Self::NotMapped => write!(f, "the allocation is not mapped"),
+            Self::StillMapped => {
+                write!(
+                    f,
+                    "the allocation still holds mappings made with map_memory"
+                )
+            }
+            Self::MappingFailed => write!(f, "mapping gave no pointer to the allocation"),
+            Self::RangeOutOfBounds => write!(f, "the range lies outside the allocation"),
         }
     }
 }
@@ -97,12 +149,19 @@ impl std::error::Error for AllocationError {}
 /// The error of [`Allocator::free`](crate::Allocator::free): the reason, and the
 /// allocation that was not freed.
 ///
+/// [`FreeError::error`] is [`AllocationError::InvalidAllocation`] if the allocator does
+/// not hold the allocation, and [`AllocationError::StillMapped`] if it does but the
+/// allocation still holds references taken with
+/// [`Allocator::map_memory`](crate::Allocator::map_memory).
+///
 /// The allocator did not change, so [`FreeError::allocation`] is as usable as it was
-/// before the call. Remove the cause and pass it to
-/// [`Allocator::free`](crate::Allocator::free) again:
+/// before the call. For [`AllocationError::StillMapped`], release the references and
+/// pass it to [`Allocator::free`](crate::Allocator::free) again; for
+/// [`AllocationError::InvalidAllocation`], pass it to the allocator that made it, if
+/// that one still holds it:
 ///
 /// ```no_run
-/// use vulkan_alloc::{Allocation, Allocator, FreeError};
+/// use vulkan_alloc::{Allocation, AllocationError, Allocator, FreeError};
 ///
 /// /// # Safety
 /// ///
@@ -114,11 +173,20 @@ impl std::error::Error for AllocationError {}
 /// ) -> Result<(), FreeError> {
 ///     unsafe {
 ///         match allocator.free(allocation) {
-///             Ok(()) => Ok(()),
-///             Err(FreeError { allocation, .. }) => {
-///                 while allocator.unmap_memory(&allocation).is_ok() {}
+///             Err(FreeError {
+///                 allocation,
+///                 error: AllocationError::StillMapped,
+///             }) => {
+///                 loop {
+///                     match allocator.unmap_memory(&allocation) {
+///                         Ok(()) => {}
+///                         Err(AllocationError::NotMapped) => break,
+///                         Err(error) => return Err(FreeError { allocation, error }),
+///                     }
+///                 }
 ///                 allocator.free(allocation)
 ///             }
+///             result => result,
 ///         }
 ///     }
 /// }
@@ -132,7 +200,8 @@ impl std::error::Error for AllocationError {}
 pub struct FreeError {
     /// The allocation that was passed to [`Allocator::free`](crate::Allocator::free).
     pub allocation: Allocation,
-    /// Why it was not freed.
+    /// Why it was not freed: [`AllocationError::InvalidAllocation`] or
+    /// [`AllocationError::StillMapped`].
     pub error: AllocationError,
 }
 

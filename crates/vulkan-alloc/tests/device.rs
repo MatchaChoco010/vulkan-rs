@@ -643,7 +643,7 @@ fn unmapping_a_persistent_mapping_is_an_error() {
 
         assert_eq!(
             allocator.unmap_memory(&allocation),
-            Err(AllocationError::InvalidAllocation)
+            Err(AllocationError::NotMapped)
         );
         assert_eq!(allocation.mapped_ptr(), Some(pointer));
 

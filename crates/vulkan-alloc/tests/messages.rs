@@ -17,6 +17,11 @@ fn allocation_errors_have_distinct_messages_that_name_the_vulkan_result() {
         AllocationError::Vulkan(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY),
         AllocationError::Vulkan(vk::VkResult::ERROR_MEMORY_MAP_FAILED),
         AllocationError::InvalidAllocationCreateDesc,
+        AllocationError::NotHostVisible,
+        AllocationError::NotMapped,
+        AllocationError::StillMapped,
+        AllocationError::MappingFailed,
+        AllocationError::RangeOutOfBounds,
     ];
     let messages = errors.iter().map(ToString::to_string).collect::<Vec<_>>();
     assert_eq!(
@@ -51,11 +56,8 @@ fn a_free_error_says_what_happened_and_why() {
     };
     assert!(error.to_string().contains("not freed"), "{error}");
     let source = error.source().expect("the reason is the source");
-    assert_eq!(
-        source.to_string(),
-        AllocationError::InvalidAllocation.to_string()
-    );
-    assert_eq!(error.error, AllocationError::InvalidAllocation);
+    assert_eq!(source.to_string(), AllocationError::StillMapped.to_string());
+    assert_eq!(error.error, AllocationError::StillMapped);
 
     let FreeError { allocation, error } = error;
     assert_eq!(

@@ -423,14 +423,14 @@ impl MemoryBlock {
         allocation: &Allocation,
     ) -> Result<NonNull<u8>, AllocationError> {
         let offset =
-            usize::try_from(allocation.offset).map_err(|_| AllocationError::InvalidAllocation)?;
+            usize::try_from(allocation.offset).map_err(|_| AllocationError::MappingFailed)?;
         let was_mapped = self.mapped_ptr.is_some();
         let base = match self.mapped_ptr {
             Some(base) => base,
             None => unsafe { self.map_whole_block(device) }?,
         };
         let mapped = pointer_at(base, offset)
-            .ok_or(AllocationError::InvalidAllocation)
+            .ok_or(AllocationError::MappingFailed)
             .and_then(|ptr| self.mark_mapped(allocation.allocation_id).map(|()| ptr));
         if mapped.is_err() && !was_mapped {
             unsafe { device.unmap_memory(self.memory) };
@@ -448,7 +448,7 @@ impl MemoryBlock {
                 .map_err(AllocationError::Vulkan)?;
         let Some(ptr) = NonNull::new(ptr) else {
             unsafe { device.unmap_memory(self.memory) };
-            return Err(AllocationError::InvalidAllocation);
+            return Err(AllocationError::MappingFailed);
         };
         self.mapped_ptr = Some(ptr);
         Ok(ptr)
@@ -481,7 +481,7 @@ impl MemoryBlock {
         allocation_id: u64,
     ) -> Result<(), AllocationError> {
         if self.holds_only_its_persistent_mapping(allocation_id) {
-            return Err(AllocationError::InvalidAllocation);
+            return Err(AllocationError::NotMapped);
         }
         unsafe { self.release_mapping(device, allocation_id) }
     }
@@ -509,10 +509,11 @@ impl MemoryBlock {
         device: &Device,
         allocation_id: u64,
     ) -> Result<(), AllocationError> {
-        if self.suballocator.allocation(allocation_id).is_none()
-            || self.holds_mapping_besides_its_persistent_one(allocation_id)
-        {
+        if self.suballocator.allocation(allocation_id).is_none() {
             return Err(AllocationError::InvalidAllocation);
+        }
+        if self.holds_mapping_besides_its_persistent_one(allocation_id) {
+            return Err(AllocationError::StillMapped);
         }
         if self.persistently_mapped.remove(&allocation_id) {
             unsafe { self.release_mapping(device, allocation_id) }?;
@@ -539,9 +540,7 @@ impl MemoryBlock {
 
     fn mark_mapped(&mut self, allocation_id: u64) -> Result<(), AllocationError> {
         let count = self.mapped_allocations.entry(allocation_id).or_default();
-        *count = count
-            .checked_add(1)
-            .ok_or(AllocationError::InvalidAllocation)?;
+        *count = count.checked_add(1).ok_or(AllocationError::MappingFailed)?;
         Ok(())
     }
 
@@ -549,7 +548,7 @@ impl MemoryBlock {
         let count = self
             .mapped_allocations
             .get_mut(&allocation_id)
-            .ok_or(AllocationError::InvalidAllocation)?;
+            .ok_or(AllocationError::NotMapped)?;
         *count -= 1;
         if *count == 0 {
             self.mapped_allocations.remove(&allocation_id);
@@ -564,14 +563,14 @@ impl MemoryBlock {
         size: u64,
         non_coherent_atom_size: u64,
     ) -> Result<Option<vk::MappedMemoryRange<'static>>, AllocationError> {
-        if !self.is_allocation_mapped(allocation.allocation_id) {
-            return Err(AllocationError::InvalidAllocation);
-        }
         if offset
             .checked_add(size)
             .is_none_or(|end| end > allocation.size)
         {
-            return Err(AllocationError::InvalidAllocation);
+            return Err(AllocationError::RangeOutOfBounds);
+        }
+        if !self.is_allocation_mapped(allocation.allocation_id) {
+            return Err(AllocationError::NotMapped);
         }
         if size == 0 {
             return Ok(None);
@@ -579,9 +578,9 @@ impl MemoryBlock {
         let start = allocation
             .offset
             .checked_add(offset)
-            .ok_or(AllocationError::InvalidAllocation)?;
+            .ok_or(AllocationError::RangeOutOfBounds)?;
         let (offset, size) = mapped_range_bounds(start, size, self.size, non_coherent_atom_size)
-            .ok_or(AllocationError::InvalidAllocation)?;
+            .ok_or(AllocationError::RangeOutOfBounds)?;
         Ok(Some(
             vk::MappedMemoryRange::default()
                 .memory(self.memory)
