@@ -171,6 +171,7 @@ impl Run {
             memory_properties,
             non_coherent_atom_size: 64,
             block_size: BLOCK_SIZE,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         });
         Self {
             types: types.to_vec(),

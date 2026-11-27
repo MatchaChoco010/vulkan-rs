@@ -365,6 +365,7 @@ proptest! {
             memory_properties: device.memory_properties(),
             non_coherent_atom_size: 1,
             block_size: BLOCK_SIZE,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         });
         let mut earlier_blocks = vec![None; device.types.len()];
         let mut earlier_allocations = Vec::<Allocation>::new();
@@ -511,6 +512,7 @@ fn allocator_for(fake: &FakeDevice, types: &[(vk::MemoryPropertyFlags, u64)]) ->
         memory_properties: properties,
         non_coherent_atom_size: 1,
         block_size: BLOCK_SIZE,
+        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     })
 }
 

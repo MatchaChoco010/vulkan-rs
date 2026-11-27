@@ -20,9 +20,10 @@ const DEFAULT_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
 /// The parameters of [`Allocator::new`].
 ///
 /// [`AllocatorCreateDesc::new`] takes the memory properties and the
-/// `nonCoherentAtomSize` limit that are passed to it and sets
-/// [`AllocatorCreateDesc::block_size`] to 64 MiB. The fields are public and can be
-/// changed afterwards.
+/// `nonCoherentAtomSize` limit that are passed to it, sets
+/// [`AllocatorCreateDesc::block_size`] to 64 MiB and leaves
+/// [`AllocatorCreateDesc::memory_allocate_flags`] empty. The fields are public and can
+/// be changed afterwards.
 pub struct AllocatorCreateDesc<'a> {
     /// The device to allocate from. The allocator keeps a clone of it.
     pub device: &'a Device,
@@ -60,11 +61,45 @@ pub struct AllocatorCreateDesc<'a> {
     ///
     /// When the last allocation of a block of the resulting size is freed, the block is
     /// kept empty for later allocations if its memory type has no other empty block with
-    /// the same [`AllocationCreateDesc::memory_allocate_flags`] (see [`Allocator::free`]),
+    /// the same flags of the allocation (see [`Allocator::free`]),
     /// so each memory type can hold this many bytes without any allocation in them for
     /// each set of flags that its shared blocks were allocated with, until
     /// `vkAllocateMemory` runs out of memory in their heap (see [`Allocator::allocate`]).
     pub block_size: u64,
+    /// Flags added to the [`AllocationCreateDesc::memory_allocate_flags`] of every
+    /// allocation of this allocator. [`AllocatorCreateDesc::new`] leaves them empty.
+    ///
+    /// The flags of an allocation are the union of these and those of its request:
+    /// [`Allocator::allocate`] passes the union to `VkMemoryAllocateFlagsInfo`, places the
+    /// allocation only in a block allocated with the same union, refuses it for
+    /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] and gives it a `VkDeviceMemory` of its
+    /// own for [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] in the union, and
+    /// [`Allocator::free`] keeps an empty block per memory type and union. The
+    /// `memory_allocate_flags` of a [`MemoryBlockSnapshot`](crate::MemoryBlockSnapshot)
+    /// are the union the block was allocated with.
+    ///
+    /// If the device was created with the `bufferDeviceAddress` feature, put
+    /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS`] here: every allocation can then be
+    /// bound to a buffer created with [`vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS`],
+    /// without naming the flag in its request, and allocations for buffers with and
+    /// without a device address share blocks. Memory allocated with the flag can be
+    /// bound to images and other resources as well. Like the flags of a request, these
+    /// flags need the matching device features (see the safety section of
+    /// [`Allocator::allocate`]), so leave `DEVICE_ADDRESS` out if the
+    /// `bufferDeviceAddress` feature is not enabled.
+    /// [`vk::MemoryAllocateFlags::DEVICE_ADDRESS_CAPTURE_REPLAY`] needs the
+    /// `bufferDeviceAddressCaptureReplay` feature, and Vulkan requires `DEVICE_ADDRESS`
+    /// in the same flags, so put it here together with `DEVICE_ADDRESS`; alone, it makes
+    /// every request that does not name `DEVICE_ADDRESS` invalid.
+    ///
+    /// With [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] here, every allocation gets
+    /// a `VkDeviceMemory` of its own, as a request with that flag does. Vulkan does not
+    /// allow the flag for protected memory, so no allocation of such an allocator may be
+    /// made in a memory type with `PROTECTED`, which only a location that names
+    /// `PROTECTED` can give. With
+    /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] here, every allocation is refused with
+    /// [`AllocationError::InvalidAllocationCreateDesc`].
+    pub memory_allocate_flags: vk::MemoryAllocateFlags,
 }
 
 impl<'a> AllocatorCreateDesc<'a> {
@@ -85,6 +120,7 @@ impl<'a> AllocatorCreateDesc<'a> {
             memory_properties,
             non_coherent_atom_size: physical_device_properties.limits.non_coherent_atom_size,
             block_size: DEFAULT_BLOCK_SIZE,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         }
     }
 }
@@ -119,6 +155,7 @@ pub struct Allocator {
     memory_properties: vk::PhysicalDeviceMemoryProperties,
     non_coherent_atom_size: u64,
     block_size: u64,
+    memory_allocate_flags: vk::MemoryAllocateFlags,
     memory_types: Vec<MemoryTypeAllocator>,
 }
 
@@ -145,6 +182,7 @@ impl Allocator {
             memory_properties,
             non_coherent_atom_size: desc.non_coherent_atom_size.max(1),
             block_size: desc.block_size.max(1),
+            memory_allocate_flags: desc.memory_allocate_flags,
             memory_types,
         }
     }
@@ -187,9 +225,12 @@ impl Allocator {
     /// [`MemoryLocation`](crate::MemoryLocation) documentation tells which location suits
     /// which use.
     ///
-    /// In each memory type it tries, a request that is not refused (see the errors below)
-    /// is placed in an existing shared block of that type that was made with the same
-    /// [`AllocationCreateDesc::memory_allocate_flags`] and has room, tried in this order:
+    /// The flags of the allocation are [`AllocationCreateDesc::memory_allocate_flags`]
+    /// together with [`AllocatorCreateDesc::memory_allocate_flags`], the same for every
+    /// memory type that is tried. In each memory type it tries, a request that is not
+    /// refused (see the errors below) is placed in an existing shared block of that type
+    /// that was made with the same flags of the allocation and has room, tried in this
+    /// order:
     ///
     /// 1. the blocks that hold allocations with the same [`AllocationCreateDesc::linear`],
     ///    in the order of their
@@ -199,15 +240,14 @@ impl Allocator {
     ///    the allocation placed in it.
     ///
     /// Trying the empty blocks last leaves them for requests that fit nowhere else. A
-    /// request with other [`AllocationCreateDesc::memory_allocate_flags`] cannot use a
-    /// block, since the flags are given to `vkAllocateMemory`.
+    /// request with other flags cannot use a block, since the flags are given to
+    /// `vkAllocateMemory`.
     /// Otherwise a new block is allocated with `vkAllocateMemory`: the smaller of
     /// [`AllocatorCreateDesc::block_size`] and the size of the memory heap of the type,
     /// or the allocation's size if that is larger, which is never larger than a heap
     /// whose size is known. Accepted dedicated allocations, exportable allocations and
-    /// allocations whose [`AllocationCreateDesc::memory_allocate_flags`] contain
-    /// [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] get a new `VkDeviceMemory` of
-    /// exactly `desc.requirements.size` bytes.
+    /// allocations whose flags contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]
+    /// get a new `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
     ///
     /// An existing block that the allocation may share counts as having room whenever
     /// one of its free ranges can hold the allocation at its alignment. Looking for that
@@ -221,10 +261,10 @@ impl Allocator {
     ///
     /// 1. [`AllocationError::InvalidAllocationCreateDesc`] if `desc.requirements.size` is
     ///    0, if `desc.requirements.alignment` is neither 0 nor a power of two, or if
-    ///    [`AllocationCreateDesc::memory_allocate_flags`] contain
-    ///    [`vk::MemoryAllocateFlags::DEVICE_MASK`], which needs a `deviceMask` the
-    ///    allocator cannot pass. It depends on `desc` alone, so it is returned whatever
-    ///    the memory types and heaps of the device.
+    ///    the flags of the allocation contain [`vk::MemoryAllocateFlags::DEVICE_MASK`],
+    ///    which needs a `deviceMask` the allocator cannot pass. It depends on `desc` and
+    ///    [`AllocatorCreateDesc::memory_allocate_flags`] alone, so it is returned
+    ///    whatever the memory types and heaps of the device.
     /// 2. [`AllocationError::NoCompatibleMemoryType`] if no allowed memory type has the
     ///    required flags, not counting the types that are left out as described above.
     ///    For [`MemoryLocation::CpuToGpu`](crate::MemoryLocation::CpuToGpu),
@@ -272,9 +312,15 @@ impl Allocator {
     ///   device. For a logical device that represents more than one physical device,
     ///   those of any of them will do: the physical devices of a device group have
     ///   identical properties.
-    /// - The `vkAllocateMemory` calls made from `desc` must be valid. In particular:
-    ///   non-empty [`AllocationCreateDesc::memory_allocate_flags`] need the matching
-    ///   device features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS`); a
+    /// - The `vkAllocateMemory` calls made from `desc` and the allocator's flags must be
+    ///   valid. In particular: the flags of the allocation, from
+    ///   [`AllocationCreateDesc::memory_allocate_flags`] and from
+    ///   [`AllocatorCreateDesc::memory_allocate_flags`], need the matching device
+    ///   features (such as `bufferDeviceAddress` for `DEVICE_ADDRESS` and
+    ///   `bufferDeviceAddressCaptureReplay` for `DEVICE_ADDRESS_CAPTURE_REPLAY`); flags
+    ///   with `DEVICE_ADDRESS_CAPTURE_REPLAY` must contain `DEVICE_ADDRESS` as well;
+    ///   flags with `ZERO_INITIALIZE_EXT` must not be given to a memory type with
+    ///   `PROTECTED`, so a location that may choose such a type needs flags without it; a
     ///   location that names `DEVICE_COHERENT_AMD` or `DEVICE_UNCACHED_AMD` needs the
     ///   `deviceCoherentMemory` feature; a location that names `PROTECTED` needs the
     ///   `protectedMemory` feature; non-empty
@@ -332,7 +378,8 @@ impl Allocator {
         &mut self,
         desc: AllocationCreateDesc<'_>,
     ) -> Result<Allocation, AllocationError> {
-        if !is_accepted(&desc) {
+        let memory_allocate_flags = desc.memory_allocate_flags | self.memory_allocate_flags;
+        if !is_accepted(&desc, memory_allocate_flags) {
             return Err(AllocationError::InvalidAllocationCreateDesc);
         }
         let resource_class = if desc.linear {
@@ -342,7 +389,7 @@ impl Allocator {
         };
         let request = BlockRequest {
             dedicated: desc.allocation_scheme.into(),
-            memory_allocate_flags: desc.memory_allocate_flags,
+            memory_allocate_flags,
             export_handle_types: desc.export_handle_types,
         };
         let mut memory_type_bits = desc.requirements.memory_type_bits;
@@ -391,8 +438,9 @@ impl Allocator {
     /// - A shared block of the size of a new shared block of its memory type (the
     ///   smaller of [`AllocatorCreateDesc::block_size`] and the size of the memory heap
     ///   of the type) is kept empty if the memory type has no other empty block with
-    ///   the same [`AllocationCreateDesc::memory_allocate_flags`]. Later allocations of
-    ///   that memory type with those flags can be placed in it (see
+    ///   the same flags of the allocation (see
+    ///   [`AllocatorCreateDesc::memory_allocate_flags`]). Later allocations of that memory
+    ///   type with those flags can be placed in it (see
     ///   [`Allocator::allocate`]), so that allocating and freeing one allocation again
     ///   and again calls `vkAllocateMemory` only once.
     /// - Any other block is freed with `vkFreeMemory` before this returns: a second
@@ -400,8 +448,8 @@ impl Allocator {
     ///   for a large allocation, and the `VkDeviceMemory` of a dedicated, exportable or
     ///   zero-initialized allocation.
     ///
-    /// So the allocator keeps at most one empty block per memory type and set of
-    /// [`AllocationCreateDesc::memory_allocate_flags`].
+    /// So the allocator keeps at most one empty block per memory type and flags of the
+    /// allocation.
     /// [`Allocator::free_empty_blocks`] frees them, and so do [`Allocator::free_all`] and
     /// dropping the allocator.
     ///
@@ -816,8 +864,8 @@ impl Allocator {
     /// Frees the empty blocks that the allocator keeps for later allocations (see
     /// [`Allocator::free`]) with `vkFreeMemory`, and returns how many it freed.
     ///
-    /// There is at most one such block per memory type and set of
-    /// [`AllocationCreateDesc::memory_allocate_flags`]. [`Allocator::allocate`] frees the
+    /// There is at most one such block per memory type and flags of the allocation (see
+    /// [`AllocatorCreateDesc::memory_allocate_flags`]). [`Allocator::allocate`] frees the
     /// empty blocks of a memory heap by itself when `vkAllocateMemory` runs out of memory
     /// in that heap, so they need not be freed to make room for allocations of this
     /// allocator. Call this to give their memory back for other uses, for example before
@@ -1023,13 +1071,14 @@ impl Drop for Allocator {
     }
 }
 
-fn is_accepted(desc: &AllocationCreateDesc<'_>) -> bool {
+fn is_accepted(
+    desc: &AllocationCreateDesc<'_>,
+    memory_allocate_flags: vk::MemoryAllocateFlags,
+) -> bool {
     let alignment = desc.requirements.alignment;
     desc.requirements.size != 0
         && (alignment == 0 || alignment.is_power_of_two())
-        && !desc
-            .memory_allocate_flags
-            .contains(vk::MemoryAllocateFlags::DEVICE_MASK)
+        && !memory_allocate_flags.contains(vk::MemoryAllocateFlags::DEVICE_MASK)
 }
 
 fn memory_type_mut<'a>(
@@ -1081,6 +1130,7 @@ mod tests {
                 },
                 non_coherent_atom_size: 1,
                 block_size: 4096,
+                memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
             });
             let expected = count.min(vk::MAX_MEMORY_TYPES as u32);
             assert_eq!(allocator.memory_types.len(), expected as usize, "{count}");

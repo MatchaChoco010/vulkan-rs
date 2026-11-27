@@ -5,6 +5,7 @@ use fake_device::{
     desc,
 };
 use proptest::prelude::*;
+use vulkan::vk;
 use vulkan_alloc::{AllocationError, Allocator, AllocatorCreateDesc};
 
 #[cfg(target_pointer_width = "64")]
@@ -23,6 +24,7 @@ fn pointers_are_the_block_address_plus_the_offset_for_any_offset() {
             memory_properties: FakeDevice::memory_properties(),
             non_coherent_atom_size: NON_COHERENT_ATOM_SIZE,
             block_size: u64::MAX,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         });
         unsafe {
             let first = allocator
@@ -86,6 +88,7 @@ proptest! {
             memory_properties: FakeDevice::memory_properties(),
             non_coherent_atom_size: NON_COHERENT_ATOM_SIZE,
             block_size: u64::MAX,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         });
         unsafe {
             let first = allocator.allocate(desc(first_size, 1, HOST_COHERENT)).unwrap();

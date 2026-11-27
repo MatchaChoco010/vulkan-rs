@@ -25,10 +25,13 @@ pub enum AllocationError {
     /// [`vk::MemoryRequirements::alignment`] that is neither 0 nor a power of two, or
     /// [`vk::MemoryAllocateFlags::DEVICE_MASK`] in
     /// [`AllocationCreateDesc::memory_allocate_flags`](crate::AllocationCreateDesc::memory_allocate_flags)
-    /// (see [`Allocator::allocate`](crate::Allocator::allocate)).
+    /// or in [`AllocatorCreateDesc::memory_allocate_flags`][allocator] (see
+    /// [`Allocator::allocate`](crate::Allocator::allocate)).
     ///
-    /// It depends on the description alone, not on the device or the state of the
-    /// allocator, and is returned before any Vulkan call.
+    /// It depends on the description and the flags of the allocator alone, not on the
+    /// device or the state of the allocator, and is returned before any Vulkan call.
+    ///
+    /// [allocator]: crate::AllocatorCreateDesc::memory_allocate_flags
     InvalidAllocationCreateDesc,
     /// A Vulkan call (`vkAllocateMemory`, `vkMapMemory`, `vkFlushMappedMemoryRanges` or
     /// `vkInvalidateMappedMemoryRanges`) failed with this result.

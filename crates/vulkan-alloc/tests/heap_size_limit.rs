@@ -87,6 +87,7 @@ proptest! {
             memory_properties: memory_properties(heap_count, heap_index, heap_size),
             non_coherent_atom_size: 1,
             block_size,
+            memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         });
         let earlier = earlier_allocation
             .then(|| unsafe { allocator.allocate(desc(1, 1, 0)) })

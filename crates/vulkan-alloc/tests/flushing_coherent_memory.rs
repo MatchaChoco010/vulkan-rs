@@ -107,6 +107,7 @@ fn allocator_of(fake: &FakeDevice, flags: vk::MemoryPropertyFlags, atom: u64) ->
         memory_properties,
         non_coherent_atom_size: atom,
         block_size: BLOCK_SIZE,
+        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     })
 }
 

@@ -83,6 +83,7 @@ fn allocated_type(
         memory_properties: memory_properties(types),
         non_coherent_atom_size: 64,
         block_size: 4096,
+        memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     });
     unsafe {
         let allocation = allocator.allocate(AllocationCreateDesc::new(

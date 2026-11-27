@@ -13,7 +13,10 @@
 //!
 //! 1. Create an [`Allocator`] from an [`AllocatorCreateDesc`]. [`AllocatorCreateDesc::new`]
 //!    takes the [`vulkan::Device`] and the memory properties and properties of the
-//!    physical device it was created from.
+//!    physical device it was created from. If the device was created with the
+//!    `bufferDeviceAddress` feature, add `DEVICE_ADDRESS` to
+//!    [`AllocatorCreateDesc::memory_allocate_flags`], so that any allocation can back a
+//!    buffer whose device address is taken.
 //! 2. Create a buffer or an image and query its memory requirements.
 //! 3. Describe the memory in an [`AllocationCreateDesc`], made with
 //!    [`AllocationCreateDesc::new`], and pass it to [`Allocator::allocate`]. The
@@ -102,18 +105,19 @@
 //! picked. A description the allocator does not accept, such as one of size 0, is
 //! refused with [`AllocationError::InvalidAllocationCreateDesc`] before anything else is
 //! checked.
-//! Allocations that differ in [`AllocationCreateDesc::memory_allocate_flags`] never
-//! share a block, and allocations that differ in [`AllocationCreateDesc::linear`] are
-//! never in a block at the same time. Dedicated
-//! allocations ([`AllocationScheme::DedicatedBuffer`],
+//! Allocations that differ in the flags of the allocation (the union of
+//! [`AllocationCreateDesc::memory_allocate_flags`] and
+//! [`AllocatorCreateDesc::memory_allocate_flags`]) never share a block, and allocations
+//! that differ in [`AllocationCreateDesc::linear`] are never in a block at the same time.
+//! Dedicated allocations ([`AllocationScheme::DedicatedBuffer`],
 //! [`AllocationScheme::DedicatedImage`]), exportable allocations
 //! ([`AllocationCreateDesc::export_handle_types`]) and zero-initialized allocations
-//! ([`vulkan::vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] in
-//! [`AllocationCreateDesc::memory_allocate_flags`]) get a `VkDeviceMemory` of their own.
+//! ([`vulkan::vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`] in those flags) get a
+//! `VkDeviceMemory` of their own.
 //!
 //! When the last allocation of a shared block is freed, the block is kept empty if it
 //! has the size of a new shared block of its memory type and the type has no other
-//! empty block with the same [`AllocationCreateDesc::memory_allocate_flags`]. An
+//! empty block with the same flags of the allocation. An
 //! allocation of that type with those flags that fits in no block holding allocations
 //! of its kind is placed in the empty block, whatever its
 //! [`AllocationCreateDesc::linear`]. This spares a `vkAllocateMemory` call each time a

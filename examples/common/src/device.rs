@@ -24,6 +24,36 @@ pub unsafe fn enables_draw_parameters(info: &vk::DeviceCreateInfo<'_>) -> bool {
     unsafe { enables_draw_parameters_extension(info) || enables_shader_draw_parameters(info) }
 }
 
+/// Whether a device created with `info` may take the device address of a buffer: the
+/// feature `bufferDeviceAddress` in `VkPhysicalDeviceBufferDeviceAddressFeatures` or in
+/// `VkPhysicalDeviceVulkan12Features` in the `pNext` chain.
+///
+/// # Safety
+///
+/// The `pNext` chain of `info` must be valid.
+pub unsafe fn enables_buffer_device_address(info: &vk::DeviceCreateInfo<'_>) -> bool {
+    let mut next = info.p_next.cast::<vk::BaseInStructure<'_>>();
+    // SAFETY: every structure in a valid chain starts with `sType` and `pNext`, and
+    // `sType` tells which structure it is.
+    while let Some(base) = unsafe { next.as_ref() } {
+        let enabled = match base.s_type {
+            vk::StructureType::PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES => unsafe {
+                (*next.cast::<vk::PhysicalDeviceBufferDeviceAddressFeatures<'_>>())
+                    .buffer_device_address
+            },
+            vk::StructureType::PHYSICAL_DEVICE_VULKAN_1_2_FEATURES => unsafe {
+                (*next.cast::<vk::PhysicalDeviceVulkan12Features<'_>>()).buffer_device_address
+            },
+            _ => vk::FALSE,
+        };
+        if enabled != vk::FALSE {
+            return true;
+        }
+        next = base.p_next;
+    }
+    false
+}
+
 unsafe fn enables_draw_parameters_extension(info: &vk::DeviceCreateInfo<'_>) -> bool {
     (0..info.enabled_extension_count as usize).any(|index| {
         // SAFETY: the caller guarantees an array of `enabledExtensionCount` valid
@@ -74,6 +104,9 @@ pub struct GpuOwner {
     pub device: Device,
     pub queue_family: u32,
     pub queue: vk::Queue,
+    /// Whether the device was created with `bufferDeviceAddress`. The allocator then
+    /// allocates all memory with `DEVICE_ADDRESS`, so any buffer may take its address.
+    pub buffer_device_address: bool,
     /// Dropped after the device is destroyed, which is harmless: the `Drop` of
     /// [`GpuOwner`] calls `free_all` before it destroys the device, and an allocator that
     /// holds no memory makes no Vulkan call when dropped.
@@ -100,17 +133,29 @@ impl Gpu {
         unsafe {
             let device = instance.create_device(physical_device, info, None)?;
             let queue = device.get_device_queue(queue_family, 0);
-            let allocator = Allocator::new(AllocatorCreateDesc::new(
-                &device,
-                instance.get_physical_device_memory_properties(physical_device),
-                instance.get_physical_device_properties(physical_device),
-            ));
+            let buffer_device_address = enables_buffer_device_address(info);
+            // Memory with DEVICE_ADDRESS may back any buffer or image, so with the feature
+            // every allocation gets it and no allocation has to ask for it.
+            let memory_allocate_flags = if buffer_device_address {
+                vk::MemoryAllocateFlags::DEVICE_ADDRESS
+            } else {
+                vk::MemoryAllocateFlags::empty()
+            };
+            let allocator = Allocator::new(AllocatorCreateDesc {
+                memory_allocate_flags,
+                ..AllocatorCreateDesc::new(
+                    &device,
+                    instance.get_physical_device_memory_properties(physical_device),
+                    instance.get_physical_device_properties(physical_device),
+                )
+            });
             Ok(Self(Rc::new(GpuOwner {
                 instance,
                 physical_device,
                 device,
                 queue_family,
                 queue,
+                buffer_device_address,
                 allocator: RefCell::new(allocator),
             })))
         }

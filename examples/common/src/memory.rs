@@ -23,7 +23,8 @@ impl Destroy for Buffer {
 }
 
 /// A buffer of `size` bytes in memory from the allocator. If the buffer can be used with
-/// a device address, its memory is allocated for that.
+/// a device address, its memory is allocated for that. Such a buffer needs a device
+/// created with `bufferDeviceAddress`; on another device this returns an error.
 pub unsafe fn create_buffer(
     gpu: &Gpu,
     name: &str,
@@ -59,6 +60,16 @@ unsafe fn create_buffer_with_mapping(
     mapped: bool,
 ) -> Result<Owned<Buffer>> {
     unsafe {
+        // The allocator gives all memory DEVICE_ADDRESS when the device can take buffer
+        // addresses (see `Gpu::create`). Buffers with these usages need such memory, so
+        // without the feature none can be bound.
+        let needs_device_address =
+            vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::DESCRIPTOR_HEAP_EXT;
+        ensure!(
+            !usage.intersects(needs_device_address) || gpu.buffer_device_address,
+            "{name}: {usage:?} needs memory with DEVICE_ADDRESS, which a device created \
+             without bufferDeviceAddress cannot give"
+        );
         let device = &gpu.device;
         let buffer = gpu.own(device.create_buffer(
             &vk::BufferCreateInfo::default().size(size).usage(usage),
@@ -66,16 +77,9 @@ unsafe fn create_buffer_with_mapping(
         )?);
         let mut requirements = device.get_buffer_memory_requirements(*buffer);
         requirements.alignment = requirements.alignment.max(alignment);
-        // Memory bound to a buffer whose address is taken has to be allocated for that.
-        let memory_allocate_flags = if usage.contains(vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS) {
-            vk::MemoryAllocateFlags::DEVICE_ADDRESS
-        } else {
-            vk::MemoryAllocateFlags::empty()
-        };
         let allocation = gpu.with_allocator(|allocator| {
             allocator.allocate(AllocationCreateDesc {
                 name: Some(name),
-                memory_allocate_flags,
                 mapped,
                 ..AllocationCreateDesc::new(requirements, location, true)
             })
