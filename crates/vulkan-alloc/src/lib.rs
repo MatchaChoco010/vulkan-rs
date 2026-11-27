@@ -89,9 +89,14 @@
 //! # What the allocator does and does not do
 //!
 //! [`Allocator::allocate`] picks a memory type, then places the allocation in an existing
-//! block of that type that has room and is compatible, or allocates a new block of the
-//! smaller of [`AllocatorCreateDesc::block_size`] and the size of the type's memory heap
-//! (or of the allocation's size, if that is larger). A memory type is out of memory for
+//! block of that type that has room and is compatible, or allocates a new block. The
+//! shared block size of a type is the smaller of [`AllocatorCreateDesc::block_size`] and
+//! an eighth of the size of the type's memory heap. An allocation larger than half of it
+//! gets a block of its own size; a small allocation gets a new block of an eighth, a
+//! quarter or a half of the shared block size, the smallest that is larger than the
+//! blocks the type has, not counting blocks made for one larger allocation, or else of
+//! the shared block size (see [`AllocatorCreateDesc::block_size`]). A memory type is
+//! out of memory for
 //! the allocation if the allocation is larger than the memory heap of the type, which is
 //! found without a `vkAllocateMemory` call whenever the memory properties give the size
 //! of that heap, or if `vkAllocateMemory` returns `VK_ERROR_OUT_OF_DEVICE_MEMORY` for
@@ -118,7 +123,7 @@
 //! `VkDeviceMemory` of their own.
 //!
 //! When the last allocation of a shared block is freed, the block is kept empty if it
-//! is not larger than a new shared block of its memory type. Of two empty blocks of a
+//! is not larger than the shared block size of its memory type. Of two empty blocks of a
 //! memory type with the same flags of the allocation, only the larger is kept. An
 //! allocation of that type with those flags that fits in no block holding allocations
 //! of its kind is placed in the empty block, whatever its

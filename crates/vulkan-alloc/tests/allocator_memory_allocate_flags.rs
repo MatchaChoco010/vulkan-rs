@@ -349,6 +349,11 @@ fn a_new_block_of_an_allocation_whose_mapping_fails_is_kept_by_the_flags_of_the_
             .collect::<Vec<_>>();
         assert_eq!(kept.len(), 1, "the new shared block is kept empty");
         assert_eq!(
+            kept[0].size,
+            8 << 20,
+            "the first block of a memory type is an eighth of the block size of 64 MiB"
+        );
+        assert_eq!(
             kept[0].memory_allocate_flags,
             vk::MemoryAllocateFlags::DEVICE_ADDRESS
         );

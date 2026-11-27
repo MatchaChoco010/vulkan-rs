@@ -54,8 +54,8 @@ struct Case {
 }
 
 struct Layout {
-    fake: FakeDevice,
     allocator: Allocator,
+    fake: FakeDevice,
     target: Allocation,
     target_block_size: u64,
     neighbours: Vec<Allocation>,
@@ -118,6 +118,8 @@ fn layout(case: &Case) -> Layout {
         memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
     });
     unsafe {
+        let block = allocator.allocate(desc(case.block_size, 1, 0)).unwrap();
+        allocator.free(block).unwrap();
         let mut allocate = |size: u64| allocator.allocate(desc(size, 1, 0)).unwrap();
         let mut neighbours = case
             .before
@@ -145,14 +147,21 @@ fn layout(case: &Case) -> Layout {
             }
             Target::LargerThanTheBlock(extra) => allocate(case.block_size + extra),
         };
-        let target_block_size = case.block_size.max(target.size());
         neighbours.extend(case.after.iter().map(|&size| allocate(size)));
+        let target_block_size = allocator
+            .snapshot()
+            .memory_types
+            .iter()
+            .flat_map(|memory_type| &memory_type.blocks)
+            .find(|block| block.memory == target.memory())
+            .map(|block| block.size)
+            .expect("the snapshot has the block of the target");
         for neighbour in &neighbours {
             allocator.map_memory(neighbour).unwrap();
         }
         Layout {
-            fake,
             allocator,
+            fake,
             target,
             target_block_size,
             neighbours,

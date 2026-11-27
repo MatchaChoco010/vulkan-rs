@@ -50,24 +50,45 @@ pub struct AllocatorCreateDesc<'a> {
     /// for, nor of this value, and a flushed or invalidated range can reach into another
     /// allocation.
     pub non_coherent_atom_size: u64,
-    /// The size in bytes of a new shared `VkDeviceMemory` block. 0 is treated as 1.
+    /// The largest size in bytes of a shared `VkDeviceMemory` block, except a block made
+    /// for a single larger allocation. 0 is treated as 1.
     ///
-    /// In a memory type whose heap is smaller than this, shared blocks have the size of
-    /// the heap instead. The heap is the entry `heap_index` of the memory type in
-    /// [`AllocatorCreateDesc::memory_properties`]; it is used only if `heap_index` is
-    /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0.
-    /// An allocation larger than the resulting size gets a block of its own size, unless
-    /// it is larger than that heap: [`Allocator::allocate`] refuses such an allocation.
+    /// The shared block size of a memory type is the smaller of this and an eighth of the
+    /// size of its heap (rounded down, and at least 1), so that one block does not take a
+    /// large part of a small heap. The heap is the entry `heap_index` of the memory type
+    /// in [`AllocatorCreateDesc::memory_properties`]; it is used only if `heap_index` is
+    /// below `memory_heap_count` (and [`vk::MAX_MEMORY_HEAPS`]) and its `size` is not 0,
+    /// and otherwise the shared block size is this value.
+    ///
+    /// A new shared block for an allocation of `size` bytes has:
+    ///
+    /// - exactly `size` bytes if `size` is larger than half the shared block size (rounded
+    ///   down), so that such an allocation leaves no large part of a block unused. An
+    ///   allocation larger than its heap is refused (see [`Allocator::allocate`]). The
+    ///   block is a shared block all the same: later allocations can be placed in it once
+    ///   it has room, and [`Allocation::is_dedicated`] is `false` for it.
+    /// - otherwise the shared block size, halved as long as the half is larger than every
+    ///   block of the memory type that counts and at least twice `size`, at most three
+    ///   times. The blocks that count are the shared blocks of the type, whatever their
+    ///   flags, kind of resource and allocations, except a block of exactly the size of the
+    ///   allocation it was made for: one made by the rule above, or the last size tried
+    ///   when the heap is full (see [`Allocator::allocate`]). So for an allocation of at
+    ///   most a sixteenth of the shared block size, a new block is the smallest of an
+    ///   eighth, a quarter and a half of the shared block size that is larger than every
+    ///   block of the type that counts, or the shared block size if none is. The first
+    ///   block of a memory type is an eighth of it, also next to a large allocation, so a
+    ///   program that allocates little does not allocate a whole shared block in each
+    ///   memory type it uses.
+    ///
     /// When `vkAllocateMemory` runs out of memory for a new block, smaller blocks are
-    /// tried, down to the size of the allocation (see [`Allocator::allocate`]), so shared
-    /// blocks can also be smaller than the resulting size.
+    /// tried, down to the size of the allocation (see [`Allocator::allocate`]).
     ///
-    /// When the last allocation of a block of at most the resulting size is freed, the
+    /// When the last allocation of a block of at most the shared block size is freed, the
     /// block is kept empty for later allocations, but each memory type keeps only one
     /// empty block, the largest, for each set of flags of the allocation (see
-    /// [`Allocator::free`]). So each memory type can hold up to this many bytes without
-    /// any allocation in them for each set of flags that its shared blocks were allocated
-    /// with, until `vkAllocateMemory` runs out of memory in their heap (see
+    /// [`Allocator::free`]). So each memory type can hold up to the shared block size
+    /// without any allocation in it for each set of flags that its shared blocks were
+    /// allocated with, until `vkAllocateMemory` runs out of memory in their heap (see
     /// [`Allocator::allocate`]).
     pub block_size: u64,
     /// Flags added to the [`AllocationCreateDesc::memory_allocate_flags`] of every
@@ -251,11 +272,11 @@ impl Allocator {
     /// Trying the empty blocks last leaves them for requests that fit nowhere else. A
     /// request with other flags cannot use a block, since the flags are given to
     /// `vkAllocateMemory`.
-    /// Otherwise a new block is allocated with `vkAllocateMemory`: the smaller of
-    /// [`AllocatorCreateDesc::block_size`] and the size of the memory heap of the type,
-    /// or the allocation's size if that is larger, which is never larger than a heap
-    /// whose size is known, or a smaller block when the type is out of memory for that one
-    /// (see above). Accepted dedicated allocations, exportable allocations and
+    /// Otherwise a new block is allocated with `vkAllocateMemory`, of the size that
+    /// [`AllocatorCreateDesc::block_size`] describes from the shared block size of the type,
+    /// the allocation's size and the blocks the type has, which is never larger than a
+    /// heap whose size is known, or a smaller block when the type is out of memory for that
+    /// one (see above). Accepted dedicated allocations, exportable allocations and
     /// allocations whose flags contain [`vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT`]
     /// get a new `VkDeviceMemory` of exactly `desc.requirements.size` bytes.
     ///
@@ -450,19 +471,18 @@ impl Allocator {
     /// or passed to [`Allocator::map_persistent`]), that mapping is released. If it was the
     /// last allocation of its block, the block is not mapped any more, and then:
     ///
-    /// - A shared block that is not larger than a new shared block of its memory type
-    ///   (the smaller of [`AllocatorCreateDesc::block_size`] and the size of the memory
-    ///   heap of the type) is kept empty. Later allocations of that memory type with the
-    ///   same flags of the allocation (see [`AllocatorCreateDesc::memory_allocate_flags`])
-    ///   can be placed in it (see
+    /// - A shared block that is not larger than the shared block size of its memory type
+    ///   (see [`AllocatorCreateDesc::block_size`]) is kept empty. Later allocations of that
+    ///   memory type with the same flags of the allocation (see
+    ///   [`AllocatorCreateDesc::memory_allocate_flags`]) can be placed in it (see
     ///   [`Allocator::allocate`]), so that allocating and freeing one allocation again
     ///   and again calls `vkAllocateMemory` only once. If the memory type already keeps
     ///   an empty block with those flags, only the larger of the two is kept, or the one
     ///   kept already if they have the same size, and the other one is freed with
     ///   `vkFreeMemory`. So a smaller block, made when `vkAllocateMemory` ran out of
     ///   memory (see [`Allocator::allocate`]), does not stay in place of a larger one.
-    /// - Any other block is freed with `vkFreeMemory` before this returns: a block made
-    ///   larger than that size for a large allocation, and the `VkDeviceMemory` of a
+    /// - Any other block is freed with `vkFreeMemory` before this returns: a block larger
+    ///   than that size made for a large allocation, and the `VkDeviceMemory` of a
     ///   dedicated, exportable or zero-initialized allocation.
     ///
     /// So the allocator keeps at most one empty block per memory type and flags of the
@@ -968,29 +988,32 @@ impl Allocator {
             return Ok(allocation);
         }
 
-        let block_size = request.block_size(requirements.size, shared_block_size);
-        let allocate_block = |device: &Device, block_size: u64| unsafe {
+        let (block_size, made_for_one_request) =
+            memory_type.new_block_size(request, requirements.size, shared_block_size);
+        let allocate_block = |device: &Device, block_size: u64, made_for_one_request: bool| unsafe {
             MemoryBlock::allocate(
                 device,
                 memory_type_index,
                 block_size,
                 resource_class,
                 request,
+                made_for_one_request,
             )
         };
-        let mut block = match allocate_block(&self.device, block_size) {
+        let mut block = match allocate_block(&self.device, block_size, made_for_one_request) {
             Err(AllocationError::OutOfMemory)
                 if unsafe { self.free_empty_blocks_of_heap(memory_type_index) } > 0 =>
             {
-                allocate_block(&self.device, block_size)
+                allocate_block(&self.device, block_size, made_for_one_request)
             }
             result => result,
         };
-        for smaller in smaller_block_sizes(block_size, requirements.size) {
+        for (smaller, of_the_allocation_size) in smaller_block_sizes(block_size, requirements.size)
+        {
             if !matches!(block, Err(AllocationError::OutOfMemory)) {
                 break;
             }
-            block = allocate_block(&self.device, smaller);
+            block = allocate_block(&self.device, smaller, of_the_allocation_size);
         }
         let mut block = block?;
         let suballocation = block
@@ -1090,7 +1113,9 @@ impl Allocator {
 
     fn shared_block_size(&self, memory_type_index: u32) -> u64 {
         self.heap_size(memory_type_index)
-            .map_or(self.block_size, |heap_size| self.block_size.min(heap_size))
+            .map_or(self.block_size, |heap_size| {
+                self.block_size.min((heap_size / 8).max(1))
+            })
     }
 
     fn adjusted_requirements(
@@ -1146,12 +1171,14 @@ fn is_accepted(
         && !memory_allocate_flags.contains(vk::MemoryAllocateFlags::DEVICE_MASK)
 }
 
-fn smaller_block_sizes(block_size: u64, allocation_size: u64) -> impl Iterator<Item = u64> {
+fn smaller_block_sizes(block_size: u64, allocation_size: u64) -> impl Iterator<Item = (u64, bool)> {
     let halves = [block_size / 2, block_size / 4, block_size / 8]
         .into_iter()
         .filter(move |&smaller| smaller >= allocation_size);
     let smallest_tried = halves.clone().next_back().unwrap_or(block_size);
-    halves.chain((smallest_tried != allocation_size).then_some(allocation_size))
+    halves
+        .map(|half| (half, false))
+        .chain((smallest_tried != allocation_size).then_some((allocation_size, true)))
 }
 
 fn memory_type_mut<'a>(
@@ -1268,6 +1295,10 @@ mod tests {
         fn every_size_asked_for_a_new_block_holds_the_allocation(
             allocation_size in sizes(),
             shared_block_size in sizes(),
+            largest_shared_block in proptest::prop_oneof![
+                proptest::strategy::Just(0u64),
+                sizes(),
+            ],
             own in proptest::bool::ANY,
             alignment in alignments(),
         ) {
@@ -1280,11 +1311,36 @@ mod tests {
                 memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
                 export_handle_types: vk::ExternalMemoryHandleTypeFlags::empty(),
             };
-            let first = request.block_size(allocation_size, shared_block_size);
-            let smaller = smaller_block_sizes(first, allocation_size).collect::<Vec<_>>();
+            let first = if largest_shared_block == 0 {
+                MemoryTypeAllocator::new(0, vk::MemoryPropertyFlags::empty())
+                    .new_block_size(request, allocation_size, shared_block_size)
+                    .0
+            } else if own {
+                allocation_size
+            } else {
+                crate::block::new_shared_block_size(
+                    allocation_size,
+                    shared_block_size,
+                    largest_shared_block,
+                )
+            };
+            let candidates = smaller_block_sizes(first, allocation_size).collect::<Vec<_>>();
+            let smaller = candidates.iter().map(|&(size, _)| size).collect::<Vec<_>>();
+            proptest::prop_assert!(
+                candidates
+                    .iter()
+                    .enumerate()
+                    .all(|(index, &(size, of_the_allocation_size))| of_the_allocation_size
+                        == (index + 1 == candidates.len()
+                            && size == allocation_size
+                            && ![first / 2, first / 4, first / 8].contains(&size))),
+                "only the size of the allocation that is not a half of {} is told apart: {:?}",
+                first,
+                candidates
+            );
             let context = format!(
-                "allocation of {allocation_size}, shared block of {shared_block_size}, own {own}: \
-                 {first} then {smaller:?}"
+                "allocation of {allocation_size}, shared block of {shared_block_size}, largest \
+                 block {largest_shared_block}, own {own}: {first} then {smaller:?}"
             );
             proptest::prop_assert!(first >= allocation_size, "{}", context);
             proptest::prop_assert!(

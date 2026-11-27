@@ -117,8 +117,23 @@ fn request(size: u64, kind: Kind) -> AllocationCreateDesc<'static> {
 
 fn shared_block_size(block_size: u64, heap_size: Option<u64>) -> u64 {
     heap_size.map_or(block_size.max(1), |heap_size| {
-        block_size.max(1).min(heap_size)
+        block_size.max(1).min((heap_size / 8).max(1))
     })
+}
+
+fn new_block_size(shared: u64, size: u64, largest_block: u64) -> u64 {
+    if size > shared / 2 {
+        return size;
+    }
+    let mut block_size = shared;
+    for _ in 0..3 {
+        if block_size / 2 > largest_block && block_size / 2 >= 2 * size {
+            block_size /= 2;
+        } else {
+            break;
+        }
+    }
+    block_size
 }
 
 fn known(heap_size: u64) -> Option<u64> {
@@ -158,10 +173,11 @@ fn documented_outcome(case: &Case) -> Expected {
         if heap_size.is_some_and(|heap_size| case.size > heap_size) {
             continue;
         }
+        let shared = shared_block_size(case.block_size, heap_size);
         let first = if own {
             case.size
         } else {
-            shared_block_size(case.block_size, heap_size).max(case.size)
+            new_block_size(shared, case.size, 0)
         };
         let mut tried = vec![first];
         calls.push((memory_type, first));
@@ -377,12 +393,18 @@ proptest! {
 #[test]
 fn a_full_preferred_heap_gives_a_quarter_of_a_block_before_it_gives_another_memory_type() {
     let fake = FakeDevice::new();
-    let mut allocator = allocator(&fake, 4096, 16384);
+    let mut allocator = allocator(&fake, 4096, 0);
+    let half = unsafe { allocator.allocate(request(2048, Kind::DeviceAddress)) }.unwrap();
+    assert_eq!(
+        fake.allocated_sizes(),
+        [4096],
+        "half the block size takes a block of the block size, which later blocks follow"
+    );
     fake.script_allocations([OOM, OOM]);
     let allocation = unsafe { allocator.allocate(request(256, Kind::Shared)) }
         .expect("a block of a quarter of the block size has room");
     assert_eq!(
-        calls_since(&fake, 0),
+        calls_since(&fake, 1),
         [(PREFERRED, 4096), (PREFERRED, 2048), (PREFERRED, 1024)],
         "the block size, then half of it, then a quarter of it"
     );
@@ -398,8 +420,9 @@ fn a_full_preferred_heap_gives_a_quarter_of_a_block_before_it_gives_another_memo
         allocation.memory(),
         "the smaller block is shared by later allocations"
     );
-    assert_eq!(fake.calls().allocate, 3);
+    assert_eq!(fake.calls().allocate, 4);
     unsafe {
+        allocator.free(half).unwrap();
         allocator.free(allocation).unwrap();
         allocator.free(second).unwrap();
     }
@@ -408,22 +431,28 @@ fn a_full_preferred_heap_gives_a_quarter_of_a_block_before_it_gives_another_memo
 #[test]
 fn a_request_moves_to_the_next_memory_type_only_after_a_block_of_its_own_size_fails() {
     let fake = FakeDevice::new();
-    let mut allocator = allocator(&fake, 64, 256);
+    let mut allocator = allocator(&fake, 64, 0);
+    let half = unsafe { allocator.allocate(request(32, Kind::DeviceAddress)) }.unwrap();
     fake.script_allocations([OOM; 5]);
     let allocation = unsafe { allocator.allocate(request(3, Kind::Shared)) }.unwrap();
     assert_eq!(
-        calls_since(&fake, 0),
+        calls_since(&fake, 1),
         [
             (PREFERRED, 64),
             (PREFERRED, 32),
             (PREFERRED, 16),
             (PREFERRED, 8),
             (PREFERRED, 3),
-            (FALLBACK, 64),
+            (FALLBACK, 8),
         ],
+        "the preferred type from the block size down, then the first block of the next type, \
+         an eighth of the block size"
     );
     assert_eq!(allocation.memory_type_index(), FALLBACK);
-    unsafe { allocator.free(allocation) }.unwrap();
+    unsafe {
+        allocator.free(half).unwrap();
+        allocator.free(allocation).unwrap();
+    }
 }
 
 #[test]
@@ -438,10 +467,12 @@ fn of_two_empty_blocks_the_larger_is_kept_whichever_is_emptied_last() {
             calls_since(&fake, 0),
             [
                 (PREFERRED, 64),
-                (PREFERRED, 64),
-                (PREFERRED, 32),
-                (PREFERRED, 16)
-            ]
+                (PREFERRED, 8),
+                (PREFERRED, 4),
+                (PREFERRED, 2)
+            ],
+            "a block made for one request of the block size leaves the first small block at an \
+             eighth of it"
         );
         let (first, last) = if larger_emptied_last {
             (small, full)
@@ -471,7 +502,7 @@ fn of_two_empty_blocks_the_larger_is_kept_whichever_is_emptied_last() {
                 64
             )],
             "larger emptied last {larger_emptied_last}: the block of the block size is kept and \
-             the block of 16 bytes is freed"
+             the block of 2 bytes is freed"
         );
         let again = unsafe { allocator.allocate(request(64, Kind::Shared)) }.unwrap();
         assert_eq!(

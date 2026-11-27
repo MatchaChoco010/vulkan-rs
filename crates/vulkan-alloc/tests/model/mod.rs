@@ -167,9 +167,26 @@ impl World {
     fn shared_block_size(&self, memory_type: u32) -> u64 {
         let block_size = self.block_size.max(1);
         match self.known_heap_size(memory_type) {
-            Some(heap_size) => block_size.min(heap_size),
+            Some(heap_size) => block_size.min((heap_size / 8).max(1)),
             None => block_size,
         }
+    }
+
+    fn new_shared_block_size(&self, memory_type: u32, size: u64, largest_block: u64) -> u64 {
+        let shared = self.shared_block_size(memory_type);
+        if size > shared / 2 {
+            return size;
+        }
+        let mut block_size = shared;
+        for _ in 0..3 {
+            let half = block_size / 2;
+            if half > largest_block && half >= 2 * size {
+                block_size = half;
+            } else {
+                break;
+            }
+        }
+        block_size
     }
 }
 
@@ -1260,7 +1277,7 @@ fn sizes_asked_for_a_new_block(world: &World, memory_type: u32, size: u64) -> us
     {
         return 1;
     }
-    let first = world.shared_block_size(memory_type).max(size);
+    let first = world.new_shared_block_size(memory_type, size, 0);
     let mut last = first;
     let mut asked = 1;
     for smaller in [first / 2, first / 4, first / 8, size] {
@@ -1418,6 +1435,17 @@ fn blocks_and_failed_allocations(world: &World, memory_types: Vec<u32>) -> Boxed
                     .boxed(),
                 ),
             ];
+            variants.push((
+                3,
+                Just(vec![
+                    Op::Allocate(Request {
+                        linear: false,
+                        ..big
+                    }),
+                    Op::Allocate(small),
+                ])
+                .boxed(),
+            ));
             if out_of_memory_after.len() > 1 {
                 variants.push((
                     2,
@@ -1656,6 +1684,7 @@ struct Block {
     allocate_flags: vk::MemoryAllocateFlags,
     requested_flags: vk::MemoryAllocateFlags,
     own: bool,
+    made_for_one_request: bool,
     block_index: usize,
 }
 
@@ -2106,7 +2135,7 @@ impl Harness {
         let mut consumed = Vec::new();
         let mut freed = Vec::new();
         let mut allocate_calls = 0;
-        let (memory_type, alignment, holding, empty, block_size) = loop {
+        let (memory_type, alignment, holding, empty, block_size, made_for_one_request) = loop {
             let Some(memory_type) = documented_memory_type_without(&self.world, request, &left_out)
             else {
                 if left_out.is_empty() {
@@ -2168,13 +2197,55 @@ impl Harness {
             let holding = first_with_room(false);
             let empty = first_with_room(true);
             if holding.is_some() || empty.is_some() {
-                break (memory_type, alignment, holding, empty, 0);
+                break (memory_type, alignment, holding, empty, 0, false);
             }
+            let largest_of = |counted: bool| {
+                self.blocks
+                    .values()
+                    .filter(|block| {
+                        block.memory_type == memory_type
+                            && !block.own
+                            && !(counted && block.made_for_one_request)
+                    })
+                    .map(|block| block.size)
+                    .max()
+                    .unwrap_or(0)
+            };
+            let largest_block = largest_of(true);
             let first_size = if own {
                 request.size
             } else {
-                self.world.shared_block_size(memory_type).max(request.size)
+                self.world
+                    .new_shared_block_size(memory_type, request.size, largest_block)
             };
+            let shared = self.world.shared_block_size(memory_type);
+            let mut made_for_one_request = own || request.size > shared / 2;
+            if !own
+                && first_size
+                    != self.world.new_shared_block_size(
+                        memory_type,
+                        request.size,
+                        largest_of(false),
+                    )
+            {
+                self.coverage.note(
+                    "allocate: a block made for one large request does not make the next block \
+                     larger",
+                );
+            }
+            if !own && request.size > shared / 2 && request.size <= shared {
+                self.coverage.note(
+                    "allocate: a request larger than half the block size gets a block of its own \
+                     size",
+                );
+            } else if !own && largest_block == 0 && first_size == shared / 8 {
+                self.coverage.note(
+                    "allocate: the first block of a memory type is an eighth of the block size",
+                );
+            } else if !own && first_size > shared / 8 && first_size < shared {
+                self.coverage
+                    .note("allocate: the new block is smaller than the block size and larger than the largest");
+            }
             let mut block_size = first_size;
             allocate_calls += 1;
             let mut failure = self.allocation_fails.pop_front();
@@ -2208,12 +2279,13 @@ impl Harness {
             }
             let halves = [first_size / 2, first_size / 4, first_size / 8];
             if failure == Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY) && !own {
-                for smaller in halves.into_iter().chain([request.size]) {
+                for (step, smaller) in halves.into_iter().chain([request.size]).enumerate() {
                     if failure == Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY)
                         && smaller >= request.size
                         && smaller < block_size
                     {
                         block_size = smaller;
+                        made_for_one_request = step == halves.len();
                         allocate_calls += 1;
                         failure = self.allocation_fails.pop_front();
                         consumed.extend(failure);
@@ -2233,7 +2305,16 @@ impl Harness {
                 }
             }
             match failure {
-                None => break (memory_type, alignment, None, None, block_size),
+                None => {
+                    break (
+                        memory_type,
+                        alignment,
+                        None,
+                        None,
+                        block_size,
+                        made_for_one_request,
+                    );
+                }
                 Some(vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY) => {
                     left_out.push(memory_type);
                     reasons.push("vkAllocateMemory is out of memory");
@@ -2292,7 +2373,7 @@ impl Harness {
             return self.check_undone_allocation(
                 request,
                 resource,
-                (memory_type, chosen, block_size),
+                (memory_type, chosen, block_size, made_for_one_request),
                 (expectation, result),
                 &before,
                 (allocate_calls, &freed, &consumed),
@@ -2382,6 +2463,7 @@ impl Harness {
                     allocate_flags,
                     requested_flags: request.allocate_flags(),
                     own,
+                    made_for_one_request,
                     block_index,
                 },
             );
@@ -2398,9 +2480,9 @@ impl Harness {
                     );
                 }
             }
-            if !own && self.world.shared_block_size(memory_type) < self.world.block_size {
+            if !own && self.world.shared_block_size(memory_type) < self.world.block_size.max(1) {
                 self.coverage
-                    .note("shared block limited by its memory heap");
+                    .note("shared block limited by an eighth of its memory heap");
             }
             self.coverage.step(if own {
                 "allocate: memory of its own"
@@ -2611,7 +2693,7 @@ impl Harness {
         &mut self,
         request: &Request,
         resource: u64,
-        (memory_type, chosen, block_size): (u32, Option<u64>, u64),
+        (memory_type, chosen, block_size, made_for_one_request): (u32, Option<u64>, u64, bool),
         (expectation, result): (MapExpectation, Result<Allocation, AllocationError>),
         before: &Observation,
         (allocate_calls, freed, consumed): (usize, &[u64], &[vk::VkResult]),
@@ -2689,6 +2771,7 @@ impl Harness {
                 allocate_flags: self.flags_of_the_allocation(request),
                 requested_flags: request.allocate_flags(),
                 own,
+                made_for_one_request,
                 block_index: 0,
             };
             self.blocks.insert(MEMORY_OF_AN_UNDONE_ALLOCATION, block);

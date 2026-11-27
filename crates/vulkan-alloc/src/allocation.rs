@@ -252,8 +252,10 @@ impl Allocation {
     ///
     /// In a shared block, when fewer than 256 free bytes would be left right after the
     /// requested size, those bytes are added to the range, so the size is at most the
-    /// requested size plus 255. In a shared block of 256 bytes or less, for example, a
-    /// request of 1 byte takes the whole block. An allocation with a
+    /// requested size plus 255. In a shared block of 256 bytes or less, for example the
+    /// first block of a memory type whose shared block size (see
+    /// [`AllocatorCreateDesc::block_size`](crate::AllocatorCreateDesc::block_size)) is
+    /// 2 KiB or less, a request of 1 byte takes the whole block. An allocation with a
     /// `VkDeviceMemory` of its own (dedicated, exportable or zero-initialized) has
     /// exactly the requested size. Padding before the range that aligns
     /// [`Allocation::offset`] is not part of the range, however small it is: it stays a
@@ -300,9 +302,9 @@ impl Allocation {
     /// [`MemoryBlockSnapshot::dedicated`](crate::MemoryBlockSnapshot::dedicated) for the
     /// block that holds the allocation.
     ///
-    /// `false` for every other allocation, also for one larger than a shared block (see
-    /// [`AllocatorCreateDesc::block_size`](crate::AllocatorCreateDesc::block_size)) that
-    /// got a block of its own size: that block is a shared block, which holds no other
+    /// `false` for every other allocation, also for one larger than half the shared block
+    /// size (see [`AllocatorCreateDesc::block_size`](crate::AllocatorCreateDesc::block_size))
+    /// that got a block of its own size: that block is a shared block, which holds no other
     /// allocation only because the allocation fills it.
     ///
     /// [added]: crate::AllocatorCreateDesc::memory_allocate_flags

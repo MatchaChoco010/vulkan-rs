@@ -1,6 +1,6 @@
 mod fake_device;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use fake_device::{FakeDevice, MapFault, MemoryObject};
 use proptest::prelude::*;
@@ -17,6 +17,21 @@ const CACHED: vk::MemoryPropertyFlags = vk::MemoryPropertyFlags::HOST_CACHED;
 const LOCAL: vk::MemoryPropertyFlags = vk::MemoryPropertyFlags::DEVICE_LOCAL;
 
 const BLOCK_SIZE: u64 = 4096;
+
+fn new_block_size(size: u64, largest_block: u64) -> u64 {
+    if size > BLOCK_SIZE / 2 {
+        return size;
+    }
+    let mut block_size = BLOCK_SIZE;
+    for _ in 0..3 {
+        if block_size / 2 > largest_block && block_size / 2 >= 2 * size {
+            block_size /= 2;
+        } else {
+            break;
+        }
+    }
+    block_size
+}
 
 const KINDS: [vk::MemoryPropertyFlags; 6] = [
     LOCAL,
@@ -122,6 +137,7 @@ struct Run {
     fault: Option<MapFault>,
     fills: u8,
     resources: u64,
+    made_for_one_request: HashSet<vk::DeviceMemory>,
 }
 
 fn mapped_memory(objects: &HashMap<vk::DeviceMemory, MemoryObject>) -> Vec<vk::DeviceMemory> {
@@ -178,6 +194,7 @@ impl Run {
             fault: None,
             fills: 0,
             resources: 0,
+            made_for_one_request: HashSet::new(),
         }
     }
 
@@ -244,8 +261,26 @@ impl Run {
         let flags = self.types[memory_type];
         let before_objects = self.fake.memory_objects();
         let before_snapshot = self.allocator.snapshot();
+        let largest_block = before_snapshot
+            .memory_types
+            .iter()
+            .filter(|candidate| candidate.memory_type_index == memory_type as u32)
+            .flat_map(|memory_type| &memory_type.blocks)
+            .filter(|block| !block.dedicated && !self.made_for_one_request.contains(&block.memory))
+            .map(|block| block.size)
+            .max()
+            .unwrap_or(0);
         let before_calls = self.fake.calls();
         let result = unsafe { self.allocator.allocate(desc) };
+        for memory in self.fake.memory_objects().into_keys() {
+            if !before_objects.contains_key(&memory) {
+                if size > BLOCK_SIZE / 2 {
+                    self.made_for_one_request.insert(memory);
+                } else {
+                    self.made_for_one_request.remove(&memory);
+                }
+            }
+        }
         let calls = self.fake.calls();
         let maps = calls.map - before_calls.map;
         prop_assert_eq!(self.fake.misuse(), Vec::<String>::new());
@@ -333,7 +368,7 @@ impl Run {
                     prop_assert!(
                         block.allocated_region_count == 0
                             && !block.dedicated
-                            && block.size == BLOCK_SIZE,
+                            && block.size == new_block_size(size, largest_block),
                         "the block left by an undone allocation is {:?}",
                         block
                     );

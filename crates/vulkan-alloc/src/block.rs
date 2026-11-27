@@ -45,14 +45,6 @@ impl BlockRequest {
                 .contains(vk::MemoryAllocateFlags::ZERO_INITIALIZE_EXT)
     }
 
-    pub(crate) fn block_size(self, allocation_size: u64, shared_block_size: u64) -> u64 {
-        if self.needs_own_block() {
-            allocation_size
-        } else {
-            shared_block_size.max(allocation_size)
-        }
-    }
-
     unsafe fn allocate_memory(
         self,
         device: &Device,
@@ -107,6 +99,29 @@ impl MemoryTypeAllocator {
 
     pub(crate) fn memory_type_index(&self) -> u32 {
         self.memory_type_index
+    }
+
+    pub(crate) fn new_block_size(
+        &self,
+        request: BlockRequest,
+        allocation_size: u64,
+        shared_block_size: u64,
+    ) -> (u64, bool) {
+        if request.needs_own_block() {
+            return (allocation_size, true);
+        }
+        let largest_shared_block = self
+            .blocks
+            .iter()
+            .flatten()
+            .filter(|block| !block.dedicated && !block.made_for_one_request)
+            .map(|block| block.size)
+            .max()
+            .unwrap_or(0);
+        (
+            new_shared_block_size(allocation_size, shared_block_size, largest_shared_block),
+            allocation_size > shared_block_size / 2,
+        )
     }
 
     pub(crate) fn allocate_from_existing_blocks(
@@ -305,6 +320,7 @@ pub(crate) struct MemoryBlock {
     size: u64,
     resource_class: AllocationResourceClass,
     dedicated: bool,
+    made_for_one_request: bool,
     memory_allocate_flags: vk::MemoryAllocateFlags,
     suballocator: TlsfSuballocator,
     mapped_ptr: Option<NonNull<c_void>>,
@@ -326,6 +342,7 @@ impl MemoryBlock {
             size,
             resource_class,
             dedicated,
+            made_for_one_request: dedicated,
             memory_allocate_flags,
             suballocator: TlsfSuballocator::new(size),
             mapped_ptr: None,
@@ -341,15 +358,18 @@ impl MemoryBlock {
         size: u64,
         resource_class: AllocationResourceClass,
         request: BlockRequest,
+        made_for_one_request: bool,
     ) -> Result<Self, AllocationError> {
         let memory = unsafe { request.allocate_memory(device, memory_type_index, size) }?;
-        Ok(Self::new(
+        let mut block = Self::new(
             memory,
             size,
             resource_class,
             request.needs_own_block(),
             request.memory_allocate_flags,
-        ))
+        );
+        block.made_for_one_request |= made_for_one_request;
+        Ok(block)
     }
 
     pub(crate) unsafe fn free_memory(self, device: &Device) {
@@ -646,6 +666,25 @@ impl MemoryBlock {
                 MemoryRegionState::Free => None,
             })
     }
+}
+
+pub(crate) fn new_shared_block_size(
+    allocation_size: u64,
+    shared_block_size: u64,
+    largest_shared_block: u64,
+) -> u64 {
+    if allocation_size > shared_block_size / 2 {
+        return allocation_size;
+    }
+    let mut block_size = shared_block_size;
+    for _ in 0..3 {
+        let half = block_size / 2;
+        if half <= largest_shared_block || half < allocation_size.saturating_mul(2) {
+            break;
+        }
+        block_size = half;
+    }
+    block_size
 }
 
 fn pointer_at(base: NonNull<c_void>, offset: usize) -> Option<NonNull<u8>> {

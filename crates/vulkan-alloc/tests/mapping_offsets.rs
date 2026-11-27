@@ -27,6 +27,10 @@ fn pointers_are_the_block_address_plus_the_offset_for_any_offset() {
             memory_allocate_flags: vk::MemoryAllocateFlags::empty(),
         });
         unsafe {
+            let whole = allocator
+                .allocate(desc(u64::MAX, 1, HOST_COHERENT))
+                .unwrap();
+            allocator.free(whole).unwrap();
             let first = allocator
                 .allocate(desc(first_size, 1, HOST_COHERENT))
                 .unwrap();

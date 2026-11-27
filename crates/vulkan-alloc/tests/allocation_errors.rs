@@ -68,7 +68,7 @@ impl Device {
 
     fn shared_block_size(&self, memory_type: usize) -> u64 {
         self.known_heap_size(memory_type)
-            .map_or(4096, |heap_size| heap_size.min(4096))
+            .map_or(4096, |heap_size| (heap_size / 8).clamp(1, 4096))
     }
 
     fn known_heap_size(&self, memory_type: usize) -> Option<u64> {
@@ -203,7 +203,7 @@ fn expected(
         };
         if result == vk::VkResult::ERROR_OUT_OF_DEVICE_MEMORY
             && matches!(kind, Kind::Shared)
-            && device.shared_block_size(memory_type).max(size) > size
+            && size <= device.shared_block_size(memory_type) / 2
         {
             calls += 1;
             result = vk::VkResult::SUCCESS;
