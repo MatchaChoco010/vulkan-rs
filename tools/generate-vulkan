@@ -88,6 +88,7 @@ def main() -> int:
     IR_PATH.write_text(json.dumps(ir, indent=1, sort_keys=True) + "\n")
     linked_anchors = {mark["link"] for mark in ir["legacy"]}
     docs = build_docs(defined_spec_attributes(vk), spec_generated_files(vk), linked_anchors)
+    docs["commit"] = git(["-C", str(DOCS), "rev-parse", "--short=12", "HEAD"])
     DOCS_PATH.write_text(json.dumps(docs, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
 
     subprocess.run(
@@ -558,6 +559,9 @@ SPEC_ATTRIBUTE_ENTRY = re.compile(r"^:([\w-]+)(!?):\s*(.*)$")
 SPEC_ATTRIBUTE_REFERENCE = re.compile(r"\{([\w-]+)\}")
 SPEC_ANCHOR_LINE = re.compile(r"^\[\[([\w.-]+)\]\]\s*$")
 SPEC_ANCHOR_DEFINITION = re.compile(r"\[\[([\w.-]+)\]\]")
+# The term of a description list that starts with an anchor, as Asciidoctor reads the two
+# (`DescriptionListRx` and `LeadingInlineAnchorRx`).
+SPEC_TERM_ANCHOR = re.compile(r"^[ \t]*\[\[([\w.-]+)\]\](.*?)(?::{2,4}|;;)(?:$|[ \t])")
 # The four below are the rules of the Antora build of the specification, which publishes
 # it on docs.vulkan.org: `spec_pages` in antora/Makefile and `findTitle` in
 # scripts/antora-prep.py of Vulkan-Docs.
@@ -1053,25 +1057,91 @@ def spec_is_page(name: str, text: str) -> bool:
     return False
 
 
-def spec_anchor_pages(
-    linked_anchors: set[str], defined_anchors: dict[str, set[str]], pages: set[str]
+def spec_term_anchors(lines: list[str]) -> dict[str, str]:
+    """The anchors that the lines of a source file have at the start of the term of a
+    description list (`[[name]]Term:: ...`), each with the term. Asciidoctor shows the
+    term as the text of a cross reference to such an anchor that has no text of its own."""
+    terms = {}
+    for line in lines:
+        term = SPEC_TERM_ANCHOR.match(line)
+        if term:
+            terms[term.group(1)] = term.group(2).strip()
+    return terms
+
+
+REGISTRY_LINKS = "the registry links to"
+
+
+def spec_named_anchors(
+    referenced: dict[str, list[str]],
+    titles: dict[str, str],
+    defined_anchors: dict[str, set[str]],
+    term_anchors: dict[str, dict[str, str]],
 ) -> dict[str, str]:
-    """The page that each of `linked_anchors` is on: the one source file that defines it,
-    given the anchors that each source file defines and the source files that are pages.
-    An anchor in a partial is on every page that includes the partial, and which pages
-    do is not read here, so it stops the generation."""
+    """The anchors that the dumped texts refer to without a text of their own
+    (`<<anchor>>`) and whose name Asciidoctor shows, in brackets, as the text of the link:
+    the ones that have no title and no other text. Each comes with the words that say
+    what refers to it. `referenced` gives the places that refer to each anchor, `titles`
+    the anchors with a title, `defined_anchors` the anchors that each source file
+    defines as `[[anchor]]` and `term_anchors` the ones that each file has at the start
+    of a term.
+
+    Asciidoctor shows the name where an anchor has nothing else to show, as in front of
+    a list item. An anchor at the start of a term stops the generation, because
+    Asciidoctor shows the term, and so does one that no source file defines as
+    `[[anchor]]`: what Asciidoctor shows for it depends on how the specification
+    defines it."""
+    named = {}
+    for anchor in sorted(referenced):
+        if anchor in titles:
+            continue
+        places = sorted(set(referenced[anchor]))
+        verb = "refers" if len(places) == 1 else "refer"
+        refers = f"{' and '.join(places)} {verb}, without a text, to"
+        for file in sorted(term_anchors):
+            if anchor in term_anchors[file]:
+                raise RuntimeError(
+                    f"{refers} the anchor `{anchor}` of the specification, which is at the "
+                    f"start of the term `{term_anchors[file][anchor]}` of a description list "
+                    f"in {file}. Asciidoctor shows the term as the text of the reference, and "
+                    "this script does not dump it: spec_anchor_titles has to learn to read "
+                    "the term"
+                )
+        if not any(anchor in anchors for anchors in defined_anchors.values()):
+            raise RuntimeError(
+                f"{refers} the anchor `{anchor}` of the specification, which no source file "
+                f"defines as `[[{anchor}]]`. If the specification generates the anchor when "
+                "it is built, as it does for the appendix of an extension, or defines it "
+                f"with a text (`[[{anchor}, text]]`), Asciidoctor shows a title or that text, "
+                "and spec_anchor_titles has to learn to read it. If nothing defines the "
+                f"anchor, Asciidoctor shows `[{anchor}]` as a link that leads nowhere"
+            )
+        named[anchor] = refers
+    return named
+
+
+def spec_anchor_pages(
+    anchors: dict[str, str], defined_anchors: dict[str, set[str]], pages: set[str]
+) -> dict[str, str]:
+    """The page that each of `anchors` is on: the one source file that defines it, given
+    the anchors that each source file defines and the source files that are pages. An
+    anchor in a partial is on every page that includes the partial, and which pages do is
+    not read here, so it stops the generation. `anchors` gives, for each anchor, the words
+    that say what refers to it (`REGISTRY_LINKS`, or the ones of `spec_named_anchors`),
+    for the message of a stop."""
     anchor_pages = {}
-    for anchor in sorted(linked_anchors):
-        defining = sorted(file for file, anchors in defined_anchors.items() if anchor in anchors)
+    for anchor in sorted(anchors):
+        refers = anchors[anchor]
+        defining = sorted(file for file, defined in defined_anchors.items() if anchor in defined)
         if len(defining) != 1:
             raise RuntimeError(
-                f"the registry links to the anchor `{anchor}` of the specification, which "
+                f"{refers} the anchor `{anchor}` of the specification, which "
                 f"{' and '.join(defining) or 'no source file'} defines: exactly one source "
                 "file has to define it"
             )
         if defining[0] not in pages:
             raise RuntimeError(
-                f"the registry links to the anchor `{anchor}` of the specification, which "
+                f"{refers} the anchor `{anchor}` of the specification, which "
                 f"{defining[0]} defines, and that file is not published as a page of its "
                 "own: it has no top-level title in its first "
                 f"{SPEC_PAGE_TITLE_SEARCH_LINES} lines, or not the name of a page"
@@ -1114,17 +1184,22 @@ def spec_tables(file: str, lines: list[str], page_blocks: list[tuple[int, int, s
 def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchors: set[str]):
     """`linked_anchors` are the anchors of the specification that the registry links to.
     The page that each one is on is dumped, as the path of its source file, because the
-    specification is published as many pages."""
+    specification is published as many pages. So is the page of each anchor that a
+    dumped text refers to without a text of its own (`<<anchor>>`) and that has no title
+    and no other text that Asciidoctor would show (`spec_named_anchors`): Asciidoctor
+    shows the name of such an anchor as the text of the link."""
     pages = {}
     tables = []
     items_outside_pages = []
     defined_anchors = {}
+    term_anchors = {}
     published = set()
     sources = sorted([*DOCS.glob("chapters/**/*.adoc"), *DOCS.glob("appendices/**/*.adoc")])
     for source in sources:
         file = str(source.relative_to(DOCS))
         lines = list(spec_lines(source, defined, generated=generated))
         defined_anchors[file] = spec_defined_anchors(lines)
+        term_anchors[file] = spec_term_anchors(lines)
         if spec_is_page(source.name, source.read_text()):
             published.add(file)
         blocks = spec_page_blocks(lines)
@@ -1146,17 +1221,27 @@ def build_docs(defined: set[str], generated: dict[str, list[str]], linked_anchor
     if not pages:
         raise RuntimeError("third_party/vulkan-docs has no reference page blocks")
     all_titles = spec_anchor_titles(sources)
-    referenced = set()
+    referenced = {}
+
+    def refer(place: str, text: str):
+        for anchor in SPEC_BARE_REFERENCE.findall(text):
+            referenced.setdefault(anchor, []).append(place)
+
     for page in pages.values():
-        for text in (page["desc"], *(item["text"] for item in page["items"])):
-            referenced.update(SPEC_BARE_REFERENCE.findall(text))
+        refer(f"the description of the page {page['name']}", page["desc"])
+        for item in page["items"]:
+            refer(f"the description of {item['name']} on the page {page['name']}", item["text"])
     for table in tables:
-        referenced.update(SPEC_BARE_REFERENCE.findall(table["text"]))
+        refer(f"a table of {table['page'] or table['file']}", table["text"])
     for item in items_outside_pages:
-        referenced.update(SPEC_BARE_REFERENCE.findall(item["text"]))
+        refer(f"the description of {item['name']} in {item['file']}", item["text"])
+    named_anchors = spec_named_anchors(referenced, all_titles, defined_anchors, term_anchors)
     return {
-        "commit": git(["-C", str(DOCS), "rev-parse", "--short=12", "HEAD"]),
-        "anchors": spec_anchor_pages(linked_anchors, defined_anchors, published),
+        "anchors": spec_anchor_pages(
+            {**named_anchors, **{anchor: REGISTRY_LINKS for anchor in linked_anchors}},
+            defined_anchors,
+            published,
+        ),
         "attributes": dict(sorted(spec_attributes(defined).items())),
         "titles": {name: all_titles[name] for name in sorted(referenced) if name in all_titles},
         "pages": [pages[name] for name in sorted(pages)],

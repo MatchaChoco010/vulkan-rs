@@ -1293,6 +1293,298 @@ mod tests {
         );
     }
 
+    fn dumped_from(sources: &[&str], linked: &[&str]) -> Option<Result<Docs, String>> {
+        let steps = [
+            "with tempfile.TemporaryDirectory() as directory:",
+            "    tool.DOCS = pathlib.Path(directory)",
+            "    for part in sys.stdin.read().split('FILE ')[1:]:",
+            "        name, _, text = part.partition(chr(10))",
+            "        file = tool.DOCS / name",
+            "        file.parent.mkdir(parents=True, exist_ok=True)",
+            "        file.write_text(text)",
+            "    docs = tool.build_docs(set(), {}, set(sys.argv[2:]))",
+            "docs['commit'] = ''",
+            "print(json.dumps(docs))",
+        ];
+        let json =
+            match crate::test_support::run_with_the_tool(&steps, linked, &sources.join("\n"))? {
+                Ok(json) => json,
+                Err(error) => return Some(Err(error)),
+            };
+        Some(Ok(
+            Docs::from_json(&json).unwrap_or_else(|error| panic!("{error}: {json}"))
+        ))
+    }
+
+    const SPECIFICATION: &[&str] = &[
+        "FILE config/attribs.adoc",
+        "FILE chapters/limits.adoc",
+        "= Limits",
+        "",
+        "[open,refpage='VkLimits',desc='Structure of limits',type='structs']",
+        "--",
+        "The sname:VkLimits structure is defined as:",
+        "",
+        "  * pname:bias is clamped.",
+        "    See <<things-bias>>.",
+        "  * pname:count is counted.",
+        "    See <<things-titled>> and <<things-count, the count>>.",
+        "",
+        ".Kinds of Things",
+        "[options=\"header\"]",
+        "|===",
+        "| Kind | Meaning",
+        "| ename:VK_THING_KIND_PLAIN | plain, see <<things-table>>",
+        "|===",
+        "--",
+        "",
+        "  * ename:VK_THING_KIND_ODD is odd, see <<things-outside>>.",
+        "FILE chapters/things.adoc",
+        "= Things",
+        "",
+        "[[things-titled]]",
+        "== Titled Things",
+        "",
+        "  * [[things-bias]] pname:bias is the bias.",
+        "  * [[things-count]] pname:count is the count.",
+        "  * [[things-table]] a table",
+        "  * [[things-outside]] outside",
+        "",
+        "[[things-text, The Text]]",
+        "Things with a text.",
+        "",
+        "[[things-term]]Term of Things:: A thing.",
+        "  [[things-other-term]] Another;; Another thing.",
+        "// [[things-commented]]No Term:: A comment.",
+        "",
+        "[[things-twice]]",
+        "FILE chapters/more.adoc",
+        "= More",
+        "",
+        "[[things-twice]]",
+        "FILE appendices/VK_KHR_things.adoc",
+        "== Not a Page",
+        "",
+        "  * [[things-partial]] a thing",
+    ];
+
+    #[test]
+    fn the_dump_has_the_page_of_each_anchor_that_a_text_names_and_the_title_of_each_that_has_one() {
+        let Some(docs) = dumped_from(SPECIFICATION, &["things-count"]) else {
+            return;
+        };
+        let docs = docs.unwrap_or_else(|error| panic!("{error}"));
+        let things = "chapters/things.adoc".to_string();
+        assert_eq!(
+            docs.anchors,
+            [
+                ("things-bias".to_string(), things.clone()),
+                ("things-count".to_string(), things.clone()),
+                ("things-outside".to_string(), things.clone()),
+                ("things-table".to_string(), things),
+            ]
+            .into(),
+            "the anchors without a title that an item, a table and an item outside the pages refer to without a text, and the one that the registry links to"
+        );
+        assert_eq!(
+            docs.titles,
+            [("things-titled".to_string(), "Titled Things".to_string())].into()
+        );
+    }
+
+    #[test]
+    fn the_dump_stops_at_a_reference_without_a_text_to_an_anchor_that_it_cannot_name_or_locate() {
+        let unknown = |anchor: &str| {
+            format!(
+                "refers, without a text, to the anchor `{anchor}` of the specification, which no source file defines as `[[{anchor}]]`. If the specification generates the anchor when it is built, as it does for the appendix of an extension, or defines it with a text (`[[{anchor}, text]]`), Asciidoctor shows a title or that text, and spec_anchor_titles has to learn to read it. If nothing defines the anchor, Asciidoctor shows `[{anchor}]` as a link that leads nowhere"
+            )
+        };
+        let term = |anchor: &str, term: &str| {
+            format!(
+                "refers, without a text, to the anchor `{anchor}` of the specification, which is at the start of the term `{term}` of a description list in chapters/things.adoc. Asciidoctor shows the term as the text of the reference, and this script does not dump it: spec_anchor_titles has to learn to read the term"
+            )
+        };
+        let bias = "the description of bias on the page VkLimits";
+        for (replace, with, message) in [
+            (
+                "<<things-bias>>",
+                "<<things-missing>>",
+                format!("{bias} {}", unknown("things-missing")),
+            ),
+            (
+                "<<things-bias>>",
+                "<<VK_KHR_things>>",
+                format!("{bias} {}", unknown("VK_KHR_things")),
+            ),
+            (
+                "<<things-bias>>",
+                "<<things-text>>",
+                format!("{bias} {}", unknown("things-text")),
+            ),
+            (
+                "<<things-bias>>",
+                "<<things-commented>>",
+                format!("{bias} {}", unknown("things-commented")),
+            ),
+            (
+                "<<things-bias>>",
+                "<<things-term>>",
+                format!("{bias} {}", term("things-term", "Term of Things")),
+            ),
+            (
+                "<<things-bias>>",
+                "<<things-other-term>>",
+                format!("{bias} {}", term("things-other-term", "Another")),
+            ),
+            (
+                "<<things-table>>",
+                "<<things-missing>>",
+                format!("a table of VkLimits {}", unknown("things-missing")),
+            ),
+            (
+                "<<things-outside>>",
+                "<<things-missing>>",
+                format!(
+                    "the description of VK_THING_KIND_ODD in chapters/limits.adoc {}",
+                    unknown("things-missing")
+                ),
+            ),
+            (
+                "desc='Structure of limits'",
+                "desc='Structure of <<things-missing>>'",
+                format!("the description of the page VkLimits {}", unknown("things-missing")),
+            ),
+            (
+                "<<things-table>>",
+                "<<things-missing>>, <<things-missing>> and <<things-term>>",
+                format!("a table of VkLimits {}", unknown("things-missing")),
+            ),
+            (
+                "<<things-outside>>",
+                "<<things-bias>> and <<things-twice>>",
+                "the description of VK_THING_KIND_ODD in chapters/limits.adoc refers, without a text, to the anchor `things-twice` of the specification, which chapters/more.adoc and chapters/things.adoc defines: exactly one source file has to define it".to_string(),
+            ),
+            (
+                "<<things-bias>>",
+                "<<things-partial>>",
+                format!("{bias} refers, without a text, to the anchor `things-partial` of the specification, which appendices/VK_KHR_things.adoc defines, and that file is not published as a page of its own: it has no top-level title in its first 30 lines, or not the name of a page"),
+            ),
+            (
+                "<<things-outside>>",
+                "<<things-partial>> and <<things-bias>>",
+                "the description of VK_THING_KIND_ODD in chapters/limits.adoc refers, without a text, to the anchor `things-partial` of the specification, which appendices/VK_KHR_things.adoc defines, and that file is not published as a page of its own: it has no top-level title in its first 30 lines, or not the name of a page".to_string(),
+            ),
+            (
+                "<<things-table>>",
+                "<<things-partial>>",
+                "a table of VkLimits refers, without a text, to the anchor `things-partial` of the specification, which appendices/VK_KHR_things.adoc defines, and that file is not published as a page of its own: it has no top-level title in its first 30 lines, or not the name of a page".to_string(),
+            ),
+        ] {
+            let specification = SPECIFICATION.join("\n");
+            assert_eq!(specification.matches(replace).count(), 1, "{replace}");
+            let specification = specification.replacen(replace, with, 1);
+            let Some(docs) = dumped_from(&[&specification], &[]) else {
+                return;
+            };
+            let error = docs.expect_err(&format!("`{with}` is dumped")).to_string();
+            assert!(
+                error
+                    .trim_end()
+                    .ends_with(&format!("RuntimeError: {message}")),
+                "{with}: {error}"
+            );
+        }
+
+        let specification = SPECIFICATION.join("\n");
+        let specification = specification.replacen("<<things-outside>>", "<<things-missing>>", 1);
+        let specification = specification.replacen("<<things-bias>>", "<<things-missing>>", 1);
+        let Some(docs) = dumped_from(&[&specification], &[]) else {
+            return;
+        };
+        let error = docs.expect_err("a missing anchor is dumped").to_string();
+        let message = format!(
+            "RuntimeError: the description of VK_THING_KIND_ODD in chapters/limits.adoc and {bias} refer, without a text, to the anchor `things-missing` of the specification, which no source file defines as"
+        );
+        assert!(error.contains(&message), "{error}");
+
+        let specification = SPECIFICATION.join("\n");
+        let specification = specification.replacen("<<things-outside>>", "<<things-partial>>", 1);
+        let linked = ["things-partial", "things-bias"];
+        let Some(docs) = dumped_from(&[&specification], &linked) else {
+            return;
+        };
+        let error = docs
+            .expect_err("an anchor in a partial is dumped")
+            .to_string();
+        assert!(
+            error.trim_end().ends_with(
+                "RuntimeError: the registry links to the anchor `things-partial` of the specification, which appendices/VK_KHR_things.adoc defines, and that file is not published as a page of its own: it has no top-level title in its first 30 lines, or not the name of a page"
+            ),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn the_descriptions_refer_to_two_anchors_without_a_title_and_the_dump_has_their_pages() {
+        let docs = Docs::get();
+        let mut texts = Vec::new();
+        for page in &docs.pages {
+            texts.push((page.name.clone(), page.desc.as_str()));
+            let items = page.items.iter();
+            texts.extend(
+                items.map(|item| (format!("{}::{}", page.name, item.name), item.text.as_str())),
+            );
+        }
+        let tables = docs.tables.iter();
+        texts.extend(tables.map(|table| (table.file.clone(), table.text.as_str())));
+        let outside = docs.items_outside_pages.iter();
+        texts.extend(
+            outside.map(|item| (format!("{}::{}", item.file, item.name), item.text.as_str())),
+        );
+        let (mut with_a_text, mut titled, mut untitled) = (0, 0, Vec::new());
+        for (place, text) in &texts {
+            for reference in text.split("<<").skip(1) {
+                let (reference, _) = reference
+                    .split_once(">>")
+                    .unwrap_or_else(|| panic!("{place}: a cross-reference does not end"));
+                let (anchor, label) = reference.split_once(',').unwrap_or((reference, ""));
+                if !label.trim().is_empty() {
+                    with_a_text += 1;
+                } else if docs.titles.contains_key(anchor.trim()) {
+                    titled += 1;
+                } else {
+                    untitled.push((place.as_str(), anchor.trim()));
+                }
+            }
+        }
+        assert_eq!(
+            untitled,
+            [
+                (
+                    "VkPhysicalDeviceLimits::maxSamplerLodBias",
+                    "samplers-mipLodBias"
+                ),
+                (
+                    "VkPhysicalDeviceLimits::maxSamplerAnisotropy",
+                    "samplers-maxAnisotropy"
+                ),
+            ],
+            "the cross-references that become links, with the name of their anchor as the text"
+        );
+        assert_eq!(
+            (with_a_text, titled),
+            (1662, 103),
+            "the cross-references that become their text, or the title of their anchor"
+        );
+        for (_, anchor) in untitled {
+            assert_eq!(
+                docs.anchors.get(anchor).map(String::as_str),
+                Some("chapters/samplers.adoc")
+            );
+        }
+        assert_eq!(docs.anchors.len(), 12 + 2, "with the links of the registry");
+    }
+
     #[test]
     #[should_panic(
         expected = "the description of width on the page VkExtent2D cannot be read (Block(\"a `|===` block with the attributes []\")): pname:width is in the table."
