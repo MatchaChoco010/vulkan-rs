@@ -302,8 +302,14 @@ impl Allocator {
     /// The first two are returned before any Vulkan call. No allocation is left when an
     /// error is returned, but the empty blocks of a heap in which `vkAllocateMemory` ran
     /// out of memory may have been freed. [`AllocationError::InvalidAllocation`] is
-    /// returned only when mapping fails as the fifth describes, or when no identifier is
-    /// left for a new allocation (see that variant).
+    /// returned only when mapping fails as the fifth describes.
+    ///
+    /// # Panics
+    ///
+    /// If no identifier is left for a new allocation, after 2<sup>64</sup> - 2 allocations
+    /// in the process. The allocator stays consistent: the panic changes its blocks and
+    /// allocations no more than an error would, so it can still be used or dropped. A
+    /// block allocated with `vkAllocateMemory` for this request is not freed.
     ///
     /// # Safety
     ///
@@ -926,11 +932,9 @@ impl Allocator {
             }
             result => result,
         }?;
-        let Some(suballocation) = block.suballocate(requirements.size, requirements.alignment)
-        else {
-            unsafe { block.free_memory(&self.device) };
-            return Err(AllocationError::InvalidAllocation);
-        };
+        let suballocation = block
+            .suballocate(requirements.size, requirements.alignment)
+            .expect("a new block has room for the allocation it is made for");
         Ok(self.memory_types[memory_type_index as usize].insert_block(block, suballocation))
     }
 
